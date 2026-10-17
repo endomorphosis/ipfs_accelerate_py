@@ -8,6 +8,7 @@ is uncertainty, including after every process has exited.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
 import re
@@ -139,6 +140,40 @@ class CleanupDirectoryAnchor:
         if _directory_identity(os.fstat(self.descriptor)) != self.identity:
             raise ValueError("retained cleanup namespace identity changed")
 
+    @classmethod
+    def reopen_retained(
+        cls, run_root: Path, *, expected_identity: tuple[int, int, int, int],
+    ) -> CleanupDirectoryAnchor:
+        """Reopen the exact directory journaled before child birth.
+
+        Recovery never creates a path. A missing namespace or a replacement
+        inode remains uncertainty even when no process or binding is visible.
+        ``expected_identity`` must come from the owner's native saga journal;
+        a newly hashed or caller-supplied description grants no custody.
+        """
+        if (
+            not isinstance(expected_identity, tuple) or len(expected_identity) != 4
+            or any(type(item) is not int or item < 0 for item in expected_identity)
+        ):
+            raise ValueError("retained cleanup directory identity is invalid")
+        root = Path(run_root).absolute()
+        path = root / _DIRECTORY
+        if root.resolve(strict=True) != root or path.resolve(strict=True) != path:
+            raise ValueError("retained cleanup directory is aliased")
+        descriptor = os.open(
+            path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+        try:
+            _assert_private_directory(path, descriptor)
+            identity = _directory_identity(os.fstat(descriptor))
+            if identity != expected_identity:
+                raise ValueError("retained cleanup directory identity changed")
+            return cls(descriptor, path, identity)
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+
     def close(self) -> None:
         if self._closed:
             return
@@ -173,6 +208,98 @@ class ManagedCleanupObserver:
         self.protected: set[tuple[int, int, str]] = set()
         self.failed = False
         self.boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+
+    def checkpoint(self) -> dict[str, object]:
+        """Snapshot observation custody for the existing lifecycle saga store.
+
+        This is neither a completion receipt nor dispatch authority. The
+        owner must fsync it before releasing a registered provider's create
+        capability and again after every monotonic observation or failure.
+        In particular an empty checkpoint cannot prove that an unregistered
+        effect never existed while the owner was absent.
+        """
+        return {
+            "profile_id": self.profile.profile_id,
+            "fencing_epoch": self.fencing_epoch,
+            "boot_id": self.boot_id,
+            "directory_identity": list(self.anchor.identity),
+            "records": copy.deepcopy(self.records),
+            "identities": copy.deepcopy(self.identities),
+            "protected_births": [list(item) for item in sorted(self.protected)],
+            "failed": self.failed,
+        }
+
+
+    @classmethod
+    def restore_checkpoint(
+        cls, profile: LifecycleProfile, checkpoint: Mapping[str, object],
+        *, fencing_epoch: int,
+    ) -> ManagedCleanupObserver:
+        """Restore only custody already persisted by the native owner journal.
+
+        The caller is responsible for binding the journal to its authorized
+        lifecycle transition. This API cannot establish custody by scanning a
+        newly opened name or by reading an unbound JSON artifact.
+        """
+        fields = {
+            "profile_id", "fencing_epoch", "boot_id", "directory_identity",
+            "records", "identities", "protected_births", "failed",
+        }
+        if not isinstance(checkpoint, Mapping) or set(checkpoint) != fields:
+            raise ValueError("retained cleanup checkpoint is invalid")
+        directory_identity = checkpoint["directory_identity"]
+        records, identities = checkpoint["records"], checkpoint["identities"]
+        births = checkpoint["protected_births"]
+        if (
+            checkpoint["profile_id"] != profile.profile_id
+            or type(checkpoint["fencing_epoch"]) is not int
+            or checkpoint["fencing_epoch"] != fencing_epoch
+            or type(checkpoint["failed"]) is not bool
+            or not isinstance(directory_identity, list) or len(directory_identity) != 4
+            or any(type(item) is not int or item < 0 for item in directory_identity)
+            or not isinstance(records, dict) or not isinstance(identities, dict)
+            or set(records) != set(identities) or len(records) > 128
+            or not isinstance(births, list) or len(births) > 4096
+            or any(
+                not isinstance(item, list) or len(item) != 3
+                or type(item[0]) is not int or item[0] <= 0
+                or type(item[1]) is not int or item[1] <= 0
+                or not isinstance(item[2], str) or not item[2]
+                or item[2] != checkpoint["boot_id"]
+                for item in births
+            )
+            or any(
+                not isinstance(stem, str) or re.fullmatch(r"[0-9a-f]{64}", stem) is None
+                or not isinstance(record, dict)
+                or not isinstance(identities[stem], dict)
+                or set(identities[stem]) != _IDENTITY_FIELDS
+                or any(type(item) is not int or item < 0 for item in identities[stem].values())
+                or identities[stem].get("uid") != os.geteuid()
+                or not stat.S_ISREG(identities[stem].get("mode", 0))
+                for stem, record in records.items()
+            )
+        ):
+            raise ValueError("retained cleanup checkpoint owner differs")
+        if len({tuple(item) for item in births}) != len(births):
+            raise ValueError("retained cleanup checkpoint repeats protected births")
+        anchor = CleanupDirectoryAnchor.reopen_retained(
+            Path(profile.run_root), expected_identity=tuple(directory_identity),
+        )
+        try:
+            observer = cls(profile, anchor, fencing_epoch=fencing_epoch)
+            if checkpoint["boot_id"] != observer.boot_id:
+                raise ValueError("retained cleanup checkpoint boot differs")
+            for stem, record in records.items():
+                observer._validate_record(record, stem)
+            observer.records = copy.deepcopy(records)
+            observer.identities = copy.deepcopy(identities)
+            observer.protected = {tuple(item) for item in births}
+            observer.failed = checkpoint["failed"]
+            return observer
+        except BaseException:
+            anchor.close()
+            raise
+
 
     def read(self, path: Path) -> dict[str, object] | None:
         # Structural read-only adapter for the producer's completion validator;

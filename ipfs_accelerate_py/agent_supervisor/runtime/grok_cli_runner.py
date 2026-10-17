@@ -356,6 +356,12 @@ class _AgentRouteEffectDenied(ValueError):
     """The canonical route lost authority before the provider effect."""
 _CODEX_TASK_TOOLCHAIN_IMAGE_ID = AGENT_IMPLEMENTATION_CODEX_IMAGE_ID
 _CODEX_TASK_TOOLCHAIN_IMAGE_LABEL = AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL
+# Ordinary task execution has a separately qualified source image pin.
+# Protected route receipts and native leases retain their original image ID.
+# Neither an environment value nor a mutable tag selects this successor.
+_ORDINARY_TASK_TOOLCHAIN_IMAGE_ID = "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e"
+_ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL = "2026-10-16-ordinary-v1"
+_ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL_KEY = "org.ipfs-accelerate.ordinary-worker"
 _CODEX_TASK_TOOLCHAIN_SITE_PACKAGES = Path(
     "/opt/ipfs-validation-site-packages"
 )
@@ -1388,6 +1394,9 @@ def _isolated_grok_home(
                     "",
                     "[cli]",
                     "use_leader = false",
+                    "",
+                    '[model."grok-4.7"]',
+                    "temperature = 0.0",
                 )
             )
             + "\n",
@@ -1835,6 +1844,61 @@ def _docker_codex_task_toolchain_image_id(
     )
     return (
         AGENT_IMPLEMENTATION_CODEX_IMAGE_ID
+        if completed.returncode == 0 and completed.stdout.strip() == expected
+        else ""
+    )
+
+
+def _ordinary_task_toolchain_image_pin() -> str:
+    """Return only the qualified source pin, never a caller-selected image."""
+
+    image = _ORDINARY_TASK_TOOLCHAIN_IMAGE_ID
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
+        raise ValueError("ordinary task-toolchain image source pin is not qualified")
+    return image
+
+def _docker_ordinary_task_toolchain_image_id(
+    docker_bin: str,
+    *,
+    docker_config: Path,
+) -> str:
+    """Verify the ordinary successor independently of protected image pins."""
+
+    try:
+        image = _ordinary_task_toolchain_image_pin()
+    except ValueError:
+        return ""
+    try:
+        completed = subprocess.run(
+            [
+                docker_bin,
+                f"--host={_DOCKER_LOCAL_HOST}",
+                "--config",
+                str(docker_config),
+                "image",
+                "inspect",
+                "--format",
+                (
+                    '{{.Id}}|{{.Os}}|{{.Architecture}}|'
+                    '{{index .Config.Labels '
+                    '"' + _ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL_KEY + '"}}'
+                ),
+                image,
+            ],
+            env=_docker_control_env(),
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    expected = (
+        f"{image}|linux|arm64|{_ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL}"
+    )
+    return (
+        image
         if completed.returncode == 0 and completed.stdout.strip() == expected
         else ""
     )
@@ -2581,6 +2645,91 @@ def _docker_grok_command(
     task_execution: bool = False,
     required_commands: Sequence[str] = (),
 ) -> list[str]:
+    """Build the existing image-pinned command without successor authority."""
+
+    return _docker_grok_command_for_pinned_image(
+        grok_command=grok_command,
+        grok_bin=grok_bin,
+        workspace=workspace,
+        prompt_path=prompt_path,
+        grok_home=grok_home,
+        base_env=base_env,
+        child_env=child_env,
+        denied_paths=denied_paths,
+        mask_root=mask_root,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        docker_bin=docker_bin,
+        isolation_image=isolation_image,
+        task_execution=task_execution,
+        required_commands=required_commands,
+        _expected_task_image=_CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+    )
+
+def _docker_ordinary_grok_command(
+    *,
+    grok_command: Sequence[str],
+    grok_bin: Path,
+    workspace: Path,
+    prompt_path: Path,
+    grok_home: Path,
+    base_env: dict[str, str],
+    child_env: dict[str, str],
+    denied_paths: Sequence[Path],
+    mask_root: Path,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    docker_bin: str = "",
+    isolation_image: str = "",
+    task_execution: bool = False,
+    required_commands: Sequence[str] = (),
+) -> list[str]:
+    """Build only an ordinary task command over its qualified source pin."""
+
+    if task_execution is not True:
+        raise ValueError("ordinary successor requires the task execution profile")
+    return _docker_grok_command_for_pinned_image(
+        grok_command=grok_command,
+        grok_bin=grok_bin,
+        workspace=workspace,
+        prompt_path=prompt_path,
+        grok_home=grok_home,
+        base_env=base_env,
+        child_env=child_env,
+        denied_paths=denied_paths,
+        mask_root=mask_root,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        docker_bin=docker_bin,
+        isolation_image=isolation_image,
+        task_execution=task_execution,
+        required_commands=required_commands,
+        _expected_task_image=_ordinary_task_toolchain_image_pin(),
+    )
+
+def _docker_grok_command_for_pinned_image(
+    *,
+    grok_command: Sequence[str],
+    grok_bin: Path,
+    workspace: Path,
+    prompt_path: Path,
+    grok_home: Path,
+    base_env: dict[str, str],
+    child_env: dict[str, str],
+    denied_paths: Sequence[Path],
+    mask_root: Path,
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    docker_bin: str = "",
+    isolation_image: str = "",
+    task_execution: bool = False,
+    required_commands: Sequence[str] = (),
+    _expected_task_image: str,
+) -> list[str]:
     """Wrap Grok in the peer-provider capability boundary.
 
     Grok necessarily retains its own read-only auth and writable ephemeral
@@ -2594,7 +2743,7 @@ def _docker_grok_command(
     image = str(isolation_image).strip()
     if re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
         raise ValueError("Docker Grok isolation image is not an immutable image ID")
-    if task_execution and image != _CODEX_TASK_TOOLCHAIN_IMAGE_ID:
+    if task_execution and image != _expected_task_image:
         raise ValueError("Grok task execution requires the pinned task-toolchain image")
     tool_profile = (base_env.get(_GROK_TASK_TOOL_PROFILE_ENV, "terminal")
                     if task_execution else "files")
@@ -2954,11 +3103,70 @@ def _docker_codex_fallback_command(
     isolation_image: str,
     base_env: Mapping[str, str] | None = None,
 ) -> list[str]:
+    """Retain the original protected image acceptance without successors."""
+
+    return _docker_codex_fallback_command_for_pinned_image(
+        codex_command=codex_command,
+        workspace=workspace,
+        source_auth=source_auth,
+        child_env=child_env,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        docker_bin=docker_bin,
+        isolation_image=isolation_image,
+        base_env=base_env,
+        _expected_task_image=AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
+    )
+
+def _docker_ordinary_codex_fallback_command(
+    *,
+    codex_command: Sequence[str],
+    workspace: Path,
+    source_auth: Path,
+    child_env: dict[str, str],
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    docker_bin: str,
+    isolation_image: str,
+    base_env: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Build the ordinary Codex command from its qualified source image pin."""
+
+    return _docker_codex_fallback_command_for_pinned_image(
+        codex_command=codex_command,
+        workspace=workspace,
+        source_auth=source_auth,
+        child_env=child_env,
+        docker_config=docker_config,
+        container_name=container_name,
+        cidfile=cidfile,
+        docker_bin=docker_bin,
+        isolation_image=isolation_image,
+        base_env=base_env,
+        _expected_task_image=_ordinary_task_toolchain_image_pin(),
+    )
+
+def _docker_codex_fallback_command_for_pinned_image(
+    *,
+    codex_command: Sequence[str],
+    workspace: Path,
+    source_auth: Path,
+    child_env: dict[str, str],
+    docker_config: Path,
+    container_name: str,
+    cidfile: Path,
+    docker_bin: str,
+    isolation_image: str,
+    base_env: Mapping[str, str] | None = None,
+    _expected_task_image: str,
+) -> list[str]:
     """Wrap the pinned Codex fallback in a host-write-confined container."""
 
     docker = str(docker_bin)
     image = str(isolation_image).strip()
-    if not docker or image != AGENT_IMPLEMENTATION_CODEX_IMAGE_ID:
+    if not docker or image != _expected_task_image:
         raise ValueError(
             "Codex fallback requires the exact pinned task-toolchain image"
         )
@@ -3164,7 +3372,7 @@ def _run_legacy_codex_quota_fallback_in_docker(
             provider_home=codex_home,
             prompt_path=prompt_path,
         )
-        isolation_image = _docker_codex_task_toolchain_image_id(
+        isolation_image = _docker_ordinary_task_toolchain_image_id(
             docker_bin,
             docker_config=docker_lease.docker_config,
         )
@@ -3172,7 +3380,7 @@ def _run_legacy_codex_quota_fallback_in_docker(
             raise ValueError(
                 "Codex fallback task-toolchain image is not pinned locally"
             )
-        command = _docker_codex_fallback_command(
+        command = _docker_ordinary_codex_fallback_command(
             codex_command=codex_command,
             workspace=workspace,
             source_auth=source_auth,
@@ -3260,7 +3468,7 @@ def _run_legacy_codex_quota_fallback_in_docker(
             }
             image_receipt = {
                 "image_id": isolation_image,
-                "image_label": AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
+                "image_label": _ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL,
             }
             cleanup_receipt: dict[str, object] = {
                 "schema": (
@@ -6770,7 +6978,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     provider_home=_policy_path.parent,
                     prompt_path=Path(prompt_path).resolve(strict=True),
                 )
-                isolation_image = _docker_codex_task_toolchain_image_id(
+                isolation_image = _docker_ordinary_task_toolchain_image_id(
                     docker_lease.docker_bin,
                     docker_config=docker_lease.docker_config,
                 )
@@ -6778,7 +6986,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     raise ValueError(
                         "Docker Grok isolation image could not be pinned locally"
                     )
-                cmd = _docker_grok_command(
+                cmd = _docker_ordinary_grok_command(
                     grok_command=cmd,
                     grok_bin=Path(grok_bin).resolve(strict=True),
                     workspace=workspace,
@@ -7290,7 +7498,10 @@ class _LegacyDockerContainerLease:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 cwd="/",
-                env=_docker_control_env(),
+                # The independent reaper validates every temporary path against
+                # tempfile.gettempdir(). Preserve this exact allocation root
+                # while keeping daemon/context and credential variables out.
+                env={**_docker_control_env(), "TMPDIR": str(lease_root.parent)},
                 start_new_session=True,
                 close_fds=True,
                 pass_fds=inherited_control_plane,

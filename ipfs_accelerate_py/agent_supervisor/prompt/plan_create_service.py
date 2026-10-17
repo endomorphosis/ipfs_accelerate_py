@@ -1075,6 +1075,11 @@ def plan_create_request_from_workflow(
         scope = "." if str(relative) in ("", ".") else str(relative).replace("\\", "/")
     except Exception:
         scope = "."
+    # The workflow scan layer denotes a root scan as "."; canonical plan
+    # contracts reject root path values (plan_revision_contracts
+    # ._relative_path), where an unnarrowed whole-repository scope is
+    # represented by the empty scope_paths tuple.
+    projected_scope_paths = () if scope in ("", ".") else (scope,)
     prompt_source = getattr(workflow_request, "prompt_source", None)
     prompt_cid = str(
         getattr(prompt_source, "content_id", None)
@@ -1174,7 +1179,7 @@ def plan_create_request_from_workflow(
         prompt_source_cid=prompt_cid,
         repository_id=resolved_repo_id,
         repository_root=repository_root,
-        scope_paths=tuple(scope_paths) if scope_paths is not None else (scope,),
+        scope_paths=tuple(scope_paths) if scope_paths is not None else projected_scope_paths,
         dirty_tree_policy=DirtyTreePolicy.OBSERVE_AND_BIND,
         task_source_kind=task_source_kind,
         board_namespace=board_namespace,

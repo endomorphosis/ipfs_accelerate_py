@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -13,6 +14,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.runtime import repository_pipeline_resources as pipeline
 from ipfs_accelerate_py.agent_supervisor.runtime import repository_resource_bridge as bridge
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_daemon_resources as daemon
+from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import policy_sha256
 from test.api.test_repository_pipeline_resources import injected_owners, budget, demand, reserve, attempt, eventually
 
 
@@ -25,10 +27,62 @@ def small_inventory(monkeypatch):
     assert pipeline.pending_pipeline_recoveries()==()
 
 
-def args(tmp_path,**changes):
+def args(tmp_path,supervisor,**changes):
     roots=tmp_path/'disk';roots.mkdir(exist_ok=True)
+    shared=supervisor._test_native_scheduler
+    ledger=tmp_path/'ledger.json'
+    if not ledger.exists():
+        ledger.write_text(json.dumps({'schema':daemon.SCHEMA,
+            'roots':[daemon._root_identity(roots)],'limit_bytes':daemon.MAX_STORAGE_BYTES,
+            'reservations':{}}))
     return dict(repository_id='lifecycle-cap',workspace=tmp_path,budget=budget(),
-        policy=pipeline.PipelineResourcePolicy(),ledger_path=tmp_path/'ledger.json',roots=[roots],**changes)
+        policy=pipeline.PipelineResourcePolicy(),ledger_path=ledger,roots=[roots],
+        scheduler_state_path=shared.state_path,
+        expected_scheduler_policy_sha256=policy_sha256(json.loads(shared.state_path.read_bytes())['config']),**changes)
+
+
+def _replacement_supervisor(supervisor):
+    replacement=type(supervisor)(supervisor.policy,host_sampler=supervisor.host_sampler)
+    replacement._test_native_scheduler=supervisor._test_native_scheduler
+    return replacement
+
+
+def _set_idle_private_cpu_capacity(shared,capacity):
+    # Three retained/recovery roots need six slots plus the private validation
+    # reserve. This changes only the test-owned idle native capacity, never
+    # host policy, existing owners, counters or cancellation state.
+    previous=shared.config
+    selected=replace(previous,total_cpu_slots=capacity)
+    selected.validate()
+    with shared._locked_state() as state:
+        if state['leases'] or state['waiters']:
+            raise RuntimeError('private capacity setup requires an idle native fixture')
+        state['config']=selected.persisted_dict()
+    shared.config=selected
+    return previous.total_cpu_slots
+
+
+def _expire_actual_owned_leases(shared,leases):
+    # Expiry is injected into only these authenticated real PRIVATE records.
+    # It revokes authority; it is never evidence that an owner/process stopped.
+    for lease in leases:
+        if Path(lease.token.state_path)!=shared.state_path or lease.owner_pid!=os.getpid():
+            raise RuntimeError('expiry fixture requires this process and private scheduler')
+        lease._stop_heartbeat.set()
+    for lease in leases:
+        heartbeat=lease._heartbeat_thread
+        if heartbeat is not None:
+            heartbeat.join(2)
+            if heartbeat.is_alive():raise RuntimeError('actual private heartbeat did not stop')
+    expired=time.time()-1
+    with shared._locked_state() as state:
+        for lease in leases:
+            record=state['leases'].get(lease.lease_id)
+            if (record is None or record['owner_pid']!=os.getpid()
+                    or record['lease_key']!=lease.lease_key):
+                raise RuntimeError('actual private native ownership changed before expiry fixture')
+        for lease in leases:state['leases'][lease.lease_id]['expires_at']=expired
+    return tuple(lease.lease_id for lease in leases)
 
 
 def test_cap_precedes_concurrent_host_admission_and_failed_entries_release(small_inventory,injected_owners,tmp_path,monkeypatch):
@@ -41,7 +95,7 @@ def test_cap_precedes_concurrent_host_admission_and_failed_entries_release(small
         raise RuntimeError('injected native admission refusal')
         yield
     monkeypatch.setattr(adapter.bridge,'reserve',admission)
-    options=args(tmp_path)
+    options=args(tmp_path,supervisor)
     def call():
         try:
             with adapter.reserve(**options):pytest.fail('refused host entry yielded')
@@ -65,34 +119,44 @@ def test_cap_precedes_concurrent_host_admission_and_failed_entries_release(small
 def test_recovery_mode_requires_exact_boolean_before_host_admission(small_inventory,injected_owners,tmp_path,value):
     supervisor,_=injected_owners
     with pytest.raises(bridge.RepositoryResourceError,match='Boolean'):
-        with pipeline.RepositoryPipelineResources(supervisor).reserve(**args(tmp_path,recovery_only=value)):
+        with pipeline.RepositoryPipelineResources(supervisor).reserve(**args(tmp_path,supervisor,recovery_only=value)):
             pytest.fail('nonboolean recovery mode admitted')
 
 
 def test_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanup_reaps(small_inventory,injected_owners,tmp_path):
     supervisor,shared=injected_owners
-    # Real file-backed native leases expire. Only host telemetry and this short
-    # test lease lifetime differ; old Python/native contexts remain reachable.
-    shared.config=replace(shared.config,lease_ttl_seconds=.2,auto_renew_leases=False)
-    children=[];olds=[]
+    # Expired live owners remain allocated until explicit native release.
+    # Stop only these owners' real renewal threads and expire their private
+    # records; changing nonpersisted facade TTL settings cannot establish this.
+    previous_cpu=_set_idle_private_cpu_capacity(shared,8)
+    children=[];olds=[];expired_ids=[]
     try:
         for number in range(2):
             with pytest.raises(bridge.RepositoryResourceError,match='active phases did not drain'):
-                with reserve(tmp_path,supervisor if number==0 else type(supervisor)(supervisor.policy,host_sampler=supervisor.host_sampler)) as old:
+                with reserve(tmp_path,supervisor if number==0 else _replacement_supervisor(supervisor)) as old:
                     olds.append(old)
                     with old.phase(demand('training'),attempt_directory=attempt(tmp_path,'unsafe-'+str(number))) as phase:
                         child=subprocess.Popen([sys.executable,'-I','-B','-c','import time;time.sleep(45)'],start_new_session=True)
                         children.append(child)
                         phase.daemon.check_usage(phase.attempt,child_pid=child.pid)
+                        expired_ids.extend(_expire_actual_owned_leases(shared,(
+                            old.parent.native,phase.native.native,phase.daemon.native_lease)))
             assert child.poll() is None
-            assert shared.snapshot()['active_lease_count']==0
+            snapshot=shared.snapshot()
+            assert snapshot['active_lease_count']==3*(number+1)
+            assert snapshot['active_root_lease_count']==number+1
+            assert snapshot['allocated']['cpu_slots']==2*(number+1)
+            actual={row['lease_id']:row for row in shared.active_leases()}
+            assert set(expired_ids)<=set(actual)
+            assert all(actual[identity]['cancelled'] for identity in expired_ids)
+            assert all(child.poll() is None for child in children)
             assert old in pipeline.pending_pipeline_recoveries()
             assert pipeline.pipeline_lifecycle_inventory()['ordinary']==number+1
         with pytest.raises(bridge.RepositoryResourceError,match='lifecycle capacity exhausted'):
             with reserve(tmp_path,supervisor):pytest.fail('expired native capacity hid retained Python owners')
-        shared.config=replace(shared.config,lease_ttl_seconds=120,auto_renew_leases=True)
-        options=args(tmp_path,recovery_only=True);options['ledger_path']=tmp_path/'disk-ledger.json'
-        recovery_supervisor=type(supervisor)(supervisor.policy,host_sampler=supervisor.host_sampler)
+        # The healthy new recovery root uses unchanged native operational defaults.
+        options=args(tmp_path,supervisor,recovery_only=True);options['ledger_path']=tmp_path/'disk-ledger.json'
+        recovery_supervisor=_replacement_supervisor(supervisor)
         with pipeline.RepositoryPipelineResources(recovery_supervisor).reserve(**options) as recovery:
             assert pipeline.pipeline_lifecycle_inventory()['reserved']==3
             with pytest.raises(bridge.RepositoryResourceError,match='lifecycle capacity exhausted'):
@@ -125,6 +189,7 @@ def test_injected_native_expiry_does_not_free_retained_slots_and_reserved_cleanu
             for reservation in list(old._retained):old._recover(reservation,artifacts_durable=True)
             if old._outer_exited and not old._active and not old._queued and not old._retained_contexts:
                 old.reap_lifecycle()
+        _set_idle_private_cpu_capacity(shared,previous_cpu)
 
 
 def test_injected_idle_native_close_failure_retains_slot_until_explicit_reap(small_inventory,injected_owners,tmp_path,monkeypatch):

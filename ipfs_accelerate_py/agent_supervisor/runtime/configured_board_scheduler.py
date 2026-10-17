@@ -2842,6 +2842,8 @@ def configured_board_common_args(
     args: list[str] = [
         "--todo-path",
         str(board.path(board.taskboard_path)),
+        "--board-namespace",
+        board.board_namespace,
         "--task-prefix",
         board.task_header_prefix,
         "--worktree-root",

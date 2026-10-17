@@ -215,7 +215,9 @@ def test_prepare_rejects_stale_or_mismatched_archive_before_harbor(packaged, tmp
     archive, manifest, dataset = packaged
     (archive / 'manifest.json').write_text(json.dumps(_mutate(manifest, kind)))
     monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k: pytest.fail('unexpected Harbor call'))
-    with pytest.raises(ValueError, match='worker archive capability'):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if kind == "inventory" else "worker archive capability")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=dataset, output=tmp_path / 'trial', archive=archive,
                           arm='full', resource_profile=profile)
     assert not (tmp_path / 'trial').exists()

@@ -1,0 +1,324 @@
+{
+  "accelerator": {
+    "base_branch": "agent/legal-ir-supervisor-start-20261016",
+    "base_head": "651d2ea941c720726e234fbe4e319e650ad70f71",
+    "base_tree": "3746b53b9229155fd0bd610345ac4585d731c834",
+    "controller_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller",
+    "prepared_branch": "agent/legal-ir-grok-parallel-20261016",
+    "router_runtime": {
+      "bytes": 127170,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9ae28cd52298f5b9d1202e6e4c56ce3891f67fbab6b66dad6387b6980b4d3799"
+    }
+  },
+  "datasets": {
+    "head": "074773e2111f59c417e72a82a33048dec87a7f9f",
+    "selected_source_files": [
+      {
+        "bytes": 14643,
+        "destination": "authoring/README.md",
+        "sha256": "3d49f924d0759d9ce93ba7a3269a00b6c7177078b81bf9a85005d3b1f15e2bdb",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/README.md"
+      },
+      {
+        "bytes": 7409,
+        "destination": "authoring/campaign.json",
+        "sha256": "37e78a51a9a70d0b1f3f2efb8f3e032d5872e63c6165b905e28861534912837f",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/campaign.json"
+      },
+      {
+        "bytes": 17303,
+        "destination": "authoring/goals.objectives.md",
+        "sha256": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/goals.objectives.md"
+      },
+      {
+        "bytes": 25721,
+        "destination": "authoring/source_baseline.json",
+        "sha256": "ebbec529f9f52a3ebce46c48c1b973d658a1880155c2daf631e4160b0f475a28",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/source_baseline.json"
+      },
+      {
+        "bytes": 212195,
+        "destination": "authoring/tasks.json",
+        "sha256": "147a33589b41df0cda3c0248f6803c36b073d8a36a928ab268f63656426ee90a",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/tasks.json"
+      },
+      {
+        "bytes": 134185,
+        "destination": "authoring/tasks.todo.md",
+        "sha256": "6deb9e7db384a8f3f2dfd6ee3c154be2a11f84e63b861b2bd50d22b2d5d9fce4",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/tasks.todo.md"
+      },
+      {
+        "bytes": 12171,
+        "destination": "authoring/validate_plan.py",
+        "sha256": "97b18bae969936a7449ad2a7265ff7bfbdc592375f03215c540efcbc5f4f90f4",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/validate_plan.py"
+      },
+      {
+        "bytes": 61649,
+        "destination": "context/datasets/docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+        "sha256": "f4b974b31cefb868856ba441c60e73617c64292a22f9d5248f93d84cdce8b2c6",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md"
+      },
+      {
+        "bytes": 109620,
+        "destination": "context/datasets/docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+        "sha256": "ffa9dee2e874bff6ea073ae6bf0ca6ca9025398d615c32f4d05fe19267d31569",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md"
+      },
+      {
+        "bytes": 17303,
+        "destination": "goals.objectives.md",
+        "sha256": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/goals.objectives.md"
+      },
+      {
+        "bytes": 7050,
+        "destination": "retained-source-audit.json",
+        "sha256": "8b889d9402184d3bc38b61cc7f828a860e4424103d9d81a3d4cd9cb366a147f7",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/evidence/legal-source-corpus-reuse-20261016/independent-native-audit-04.json"
+      },
+      {
+        "bytes": 212195,
+        "destination": "tasks.json",
+        "sha256": "147a33589b41df0cda3c0248f6803c36b073d8a36a928ab268f63656426ee90a",
+        "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets/docs/autoencoders/legal_ir_supervisor_plan/tasks.json"
+      }
+    ],
+    "source_root": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets",
+    "tree": "cbb9102c986b67742c6154f580fb46677f600ee8"
+  },
+  "historical_retained_population_binding_pin": {
+    "bytes": 10096,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/retained-population-bindings.json",
+    "sha256": "783b407457f7adb478a7ec5a27682852d61f194f74319a578c8d83153a80e68b"
+  },
+  "historical_retained_population_bindings": {
+    "historical_snapshot_only": true,
+    "plan_root_cid": "baguqeeraiddmy4khowkyv37gwstmexmmku3lecsjtnaekhpqnlwx4vuwrhza",
+    "population_source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-supervisor-plan-20261016/catalog-02/population.json",
+    "repository_tree_id": "baguqeeraj2tqqwsde6kp76rnia3shklmkik46ffs4b4krdy3mlysoswyvptq",
+    "schema": "legal-ir-retained-population-bindings/v1",
+    "task_alias_to_cid": {
+      "LIR-0101": "baguqeeraty5cz3vfxxx5hxcvvg4o6rivtl746eoq3remdluqc3o4gqnob2ua",
+      "LIR-0102": "baguqeerabt7pfpb5p6nuzmftacfjymnruurxqdsitliniynbxcf4na6ueyia",
+      "LIR-0201": "baguqeera26e3j35vveaaqo3rgctapsbxdgnqbkafthbfvgqepfegswt6jkhq",
+      "LIR-0202": "baguqeera6fbe2rlq7xbg3xecy6xtdhgwm33gp3tagycux7kzqiyr5ayfjwsa",
+      "LIR-0301": "baguqeerawgvz5op6k2ulctqnblqoqqf7udqavxqvld3a6rck3qc7bbd45kaa",
+      "LIR-0302": "baguqeerazdbfbb7dg3al2ehcetflfayvo4bno6uoybajk2u2paxouiv6kvwa",
+      "LIR-0401": "baguqeerakgz2uei3spyaqoqu4rgmam7ilbjn3xqr5stgioar2ralreubnxrq",
+      "LIR-0402": "baguqeeraunsvtb5mik67j3pn32irrljqendur64hzyrbmqf5ddurkhhehdna",
+      "LIR-0501": "baguqeeraqp7cy3rfj5l2d4njdwn6zlm53amw7oi77zto3ogummxrs26l5dea",
+      "LIR-0502": "baguqeeraudolynbwohxzl73gevyxbqcjq4qswddp7yeozab4itgcugu6staq",
+      "LIR-0601": "baguqeerac6t737q4cfohhukzzd6xqqm3av72or7kdbaght7gs7b33anb5y7a",
+      "LIR-0602": "baguqeera6d3dg2izadhoapcfs4usb4b2g3bt7mxs6vnx37hsrkf3xs3ktovq",
+      "LIR-0701": "baguqeeraanr6zd5ldabqafmbtoq4ggtha7w2umthkjwbesiucd45uoeuhzra",
+      "LIR-0702": "baguqeerapm7wgwftphw642waf6u2zujvlv3icwvcv3x4ri47fmehiojeypaq",
+      "LIR-0801": "baguqeera7nqxba3u5swe6k3rqrffafo3smz4ybnrvfhs625ea75izkmetkyq",
+      "LIR-0802": "baguqeerancqrkl4l44zzroncxknyzcl5svkrwomne5rnorzf2tzie2xnfdzq",
+      "LIR-0901": "baguqeeramluqrrnigoodrmx4iza77ayffiakl4b4b55ajbdqfzfpvgtr3olq",
+      "LIR-0902": "baguqeeraocteg73h4exnkiwsc4ui5vprrxbuodqsp3gfbdvwk67t32y2ajaa",
+      "LIR-1001": "baguqeerapmg4gdkm3e63hwq6zumvle7u4iqbjsygtkfdk4kfx65hz3sy24da",
+      "LIR-1002": "baguqeeravgtf5b35tvxypamd7v4cdtkumiegrxi7j7q3qyudl62zf327xzga",
+      "LIR-1101": "baguqeeraphy6hj2kj6ilt6w3tjoavuyufdykspzq65zby6xjgrrigskjzvmq",
+      "LIR-1102": "baguqeerad5v4shk6xwnedlcojsob6buoslp5us56zomkylufkjn2gmjxxznq",
+      "LIR-1201": "baguqeera6rc365iitfpntqbe6mcwuy6cdug2dhjrjjwl33adbq4wlwnlevra",
+      "LIR-1202": "baguqeerapw5sh7evyzz6hp4loolpkzicksu75gawnnmhpghj3yrzdzllkidq",
+      "LIR-1301": "baguqeeradmec2tb57xd5hpoz4g4vmxuozdms5h3gqfwpipgc7bhldn4idk2a",
+      "LIR-1302": "baguqeeravc7xe72jfdvzntxx6vgp6kkenmcj4n6ooad5qwovr6n7lagc6lzq",
+      "LIR-1401": "baguqeeragwwzyhnczgboohh2v5t5bhfuxpy6oi3obuvi4w336gf3censkwta",
+      "LIR-1402": "baguqeera2kham3hrregyl22x5hk5alp6w2ox4zipr5m5sy6eicun2bx2zdrq",
+      "LIR-1501": "baguqeeraylypiqxu75jwgybmzzuaynvf5etru5asawsikei6xhkrqwv243ka",
+      "LIR-1502": "baguqeerabza345drbzfzeqfk2zbxawz4mxtkdfrxrqiplrhwpprnnzlstera",
+      "LIR-1601": "baguqeeratdt2jmpj3zxkip2tltjulk4cxx735bn6plpvzksdsctpo6ve4jpq",
+      "LIR-1701": "baguqeerakpfgns2jp5m33tiq7eeqpyeh7z3wf5cbzgovcfsptdsnsuvjzrha",
+      "LIR-1702": "baguqeerasr6qy6lmzxsxzyieygh7eg2cnxvghdtbhddiczs7siwne7kullsq",
+      "LIR-1703": "baguqeerawg5sf3tqw74u73cj54yrjs73yhusqknuhtn5oavfrqsudyarjfoq",
+      "LIR-1801": "baguqeerakpmnd6qn4fgjphunuf4fttuaegnpumi5atcu6r5743rqgtxnsdta",
+      "LIR-1802": "baguqeera32ux5vfuliiqtprl3u7z25bmmhx6mjf6aqq4qp6etojefg73xb2a",
+      "LIR-1901": "baguqeeraflx53lkpqxa5uktgfbttmezpkaowwtei4ycvg4dcewmqzf5hyn5q",
+      "LIR-1902": "baguqeeraw5xs6otd4lsdc2tuxz72cqptxfcykroifamgssunefs2b4t7hdya",
+      "LIR-1903": "baguqeeraone4lmdc63uboofyjcnufe7gq4fylazxv4esdnpabi4ewysiqnva",
+      "LIR-1904": "baguqeeraiia7j4ct4e6m744ggtf5rmgfxcjck7qpuwsimiaewgmoscuzcz5a",
+      "LIR-1905": "baguqeeratwggshtt7j3eoxkr3mvyrsqw4m3bxkxrk4bdtprc62julenptpxq",
+      "LIR-2001": "baguqeerakmb2bu3nyxxmn65g5doqcpf4w3d4lxuxmhjug2sikhqlhmybggha",
+      "LIR-2002": "baguqeeraltdxktpstux6rv2iug3aaucib47ie537tnaugsx5j77uvi2zhhqq",
+      "LIR-2101": "baguqeeraromyte7gpypkzfdmuugkwlazlqbx4c4cdkklawovqyctso2ztftq",
+      "LIR-2102": "baguqeerastzc2enyjm65ousek3zw34he32lqonbecxqdixkuv4wbtoc3pcha",
+      "LIR-2201": "baguqeeraijsmwpc74b325pzuhdztvekzhodmjc5q2hkcubzv7yfwaia4aqqq",
+      "LIR-2202": "baguqeera4zfc3nadrel2jalgqqbalycxmagzn24pq7cet3hp72aox5ohmahq",
+      "LIR-2301": "baguqeera3o35amhcl4vrhnnr5eql73bpfy43q4etzpa6kmdhgkc3eqocbekq",
+      "LIR-2302": "baguqeeraatvs5zqbi6d2bjgtg532csjjsbbt3cdlnevp6nn5oebxtsgz52da",
+      "LIR-2401": "baguqeeraa522uawqqmux3tel3fhig5yeryrle4f7pshd6bsxb2r6pe2ohg5a",
+      "LIR-2402": "baguqeeraanwof6almluu2sevorxmhdmkexk22tvlzp2sq2whdwvhvo4eqm5a",
+      "LIR-2403": "baguqeera5dvlic5h6b4nvcnocd6asjbv3bn24lvkljupukbtegvqwvr656sa",
+      "LIR-9001": "baguqeeraqk2ln7d3plwfonnyycsxkr5tjrpo7e5uq4p7rhe6vi6btpxsaeyq",
+      "LIR-9002": "baguqeeravnaf3ihoavfqthzj2aanoxlw3rny2p6uwjvhu6hlby4yutpllwnq",
+      "LIR-9003": "baguqeeralcizvs3mgumflqkishxse6mao6j2chfaopd7zb7bwurew5mlwapq",
+      "LIR-9004": "baguqeera5j2okczdszugq3uy5t2kqbpczu3boair2yq2d2nltp5zwqvqslxa",
+      "LIR-9101": "baguqeeralhmkt6e3mgfyfbegj7yk5fltrzs2sy2j77k32pfyo5usdpinsd6a",
+      "LIR-9102": "baguqeeralqnvsfwi5a2ynku6jicd3pvvpyn6p4iusd5vtny35oivwpmy53ya",
+      "LIR-9103": "baguqeeradlkd772qygbtbtdy4ss4nt5j4voyst5rbynaxm7lxl7y7d6ozuxa",
+      "LIR-9104": "baguqeeracqhn24uby3tdudmubf5v53kbtrcvtgvzol4gklajt6vo3zrltf6q",
+      "LIR-9105": "baguqeera5cwhzootqamb4iy4fge7paqy3shehczqlb3cniqsgfmh5eb6nr4q",
+      "LIR-9106": "baguqeerav6aquvmquiiwhqjeempgcc2azmxj2hqea5krucmah5cacgiql4jq",
+      "LIR-9107": "baguqeeraddzqa6jeyxbbbs3jk355id2sjbpkoolscyzvtzvkhdennnippoya",
+      "LIR-9108": "baguqeeraocyeaxzrkzc5okyhwtogy7tmxqpj5eyf62icv22nigcubellyo6a"
+    },
+    "task_cids": [
+      "baguqeeraqk2ln7d3plwfonnyycsxkr5tjrpo7e5uq4p7rhe6vi6btpxsaeyq",
+      "baguqeeravnaf3ihoavfqthzj2aanoxlw3rny2p6uwjvhu6hlby4yutpllwnq",
+      "baguqeeralcizvs3mgumflqkishxse6mao6j2chfaopd7zb7bwurew5mlwapq",
+      "baguqeera5j2okczdszugq3uy5t2kqbpczu3boair2yq2d2nltp5zwqvqslxa",
+      "baguqeeraty5cz3vfxxx5hxcvvg4o6rivtl746eoq3remdluqc3o4gqnob2ua",
+      "baguqeerabt7pfpb5p6nuzmftacfjymnruurxqdsitliniynbxcf4na6ueyia",
+      "baguqeera26e3j35vveaaqo3rgctapsbxdgnqbkafthbfvgqepfegswt6jkhq",
+      "baguqeera6fbe2rlq7xbg3xecy6xtdhgwm33gp3tagycux7kzqiyr5ayfjwsa",
+      "baguqeerawgvz5op6k2ulctqnblqoqqf7udqavxqvld3a6rck3qc7bbd45kaa",
+      "baguqeerazdbfbb7dg3al2ehcetflfayvo4bno6uoybajk2u2paxouiv6kvwa",
+      "baguqeerakgz2uei3spyaqoqu4rgmam7ilbjn3xqr5stgioar2ralreubnxrq",
+      "baguqeeraunsvtb5mik67j3pn32irrljqendur64hzyrbmqf5ddurkhhehdna",
+      "baguqeeraqp7cy3rfj5l2d4njdwn6zlm53amw7oi77zto3ogummxrs26l5dea",
+      "baguqeeraudolynbwohxzl73gevyxbqcjq4qswddp7yeozab4itgcugu6staq",
+      "baguqeerac6t737q4cfohhukzzd6xqqm3av72or7kdbaght7gs7b33anb5y7a",
+      "baguqeera6d3dg2izadhoapcfs4usb4b2g3bt7mxs6vnx37hsrkf3xs3ktovq",
+      "baguqeeraanr6zd5ldabqafmbtoq4ggtha7w2umthkjwbesiucd45uoeuhzra",
+      "baguqeerapm7wgwftphw642waf6u2zujvlv3icwvcv3x4ri47fmehiojeypaq",
+      "baguqeera7nqxba3u5swe6k3rqrffafo3smz4ybnrvfhs625ea75izkmetkyq",
+      "baguqeerancqrkl4l44zzroncxknyzcl5svkrwomne5rnorzf2tzie2xnfdzq",
+      "baguqeeramluqrrnigoodrmx4iza77ayffiakl4b4b55ajbdqfzfpvgtr3olq",
+      "baguqeeraocteg73h4exnkiwsc4ui5vprrxbuodqsp3gfbdvwk67t32y2ajaa",
+      "baguqeerapmg4gdkm3e63hwq6zumvle7u4iqbjsygtkfdk4kfx65hz3sy24da",
+      "baguqeeravgtf5b35tvxypamd7v4cdtkumiegrxi7j7q3qyudl62zf327xzga",
+      "baguqeeraphy6hj2kj6ilt6w3tjoavuyufdykspzq65zby6xjgrrigskjzvmq",
+      "baguqeerad5v4shk6xwnedlcojsob6buoslp5us56zomkylufkjn2gmjxxznq",
+      "baguqeera6rc365iitfpntqbe6mcwuy6cdug2dhjrjjwl33adbq4wlwnlevra",
+      "baguqeerapw5sh7evyzz6hp4loolpkzicksu75gawnnmhpghj3yrzdzllkidq",
+      "baguqeeradmec2tb57xd5hpoz4g4vmxuozdms5h3gqfwpipgc7bhldn4idk2a",
+      "baguqeeravc7xe72jfdvzntxx6vgp6kkenmcj4n6ooad5qwovr6n7lagc6lzq",
+      "baguqeeragwwzyhnczgboohh2v5t5bhfuxpy6oi3obuvi4w336gf3censkwta",
+      "baguqeera2kham3hrregyl22x5hk5alp6w2ox4zipr5m5sy6eicun2bx2zdrq",
+      "baguqeeraylypiqxu75jwgybmzzuaynvf5etru5asawsikei6xhkrqwv243ka",
+      "baguqeerabza345drbzfzeqfk2zbxawz4mxtkdfrxrqiplrhwpprnnzlstera",
+      "baguqeeratdt2jmpj3zxkip2tltjulk4cxx735bn6plpvzksdsctpo6ve4jpq",
+      "baguqeerakpfgns2jp5m33tiq7eeqpyeh7z3wf5cbzgovcfsptdsnsuvjzrha",
+      "baguqeerasr6qy6lmzxsxzyieygh7eg2cnxvghdtbhddiczs7siwne7kullsq",
+      "baguqeerawg5sf3tqw74u73cj54yrjs73yhusqknuhtn5oavfrqsudyarjfoq",
+      "baguqeerakpmnd6qn4fgjphunuf4fttuaegnpumi5atcu6r5743rqgtxnsdta",
+      "baguqeera32ux5vfuliiqtprl3u7z25bmmhx6mjf6aqq4qp6etojefg73xb2a",
+      "baguqeeraflx53lkpqxa5uktgfbttmezpkaowwtei4ycvg4dcewmqzf5hyn5q",
+      "baguqeeraw5xs6otd4lsdc2tuxz72cqptxfcykroifamgssunefs2b4t7hdya",
+      "baguqeeraone4lmdc63uboofyjcnufe7gq4fylazxv4esdnpabi4ewysiqnva",
+      "baguqeeraiia7j4ct4e6m744ggtf5rmgfxcjck7qpuwsimiaewgmoscuzcz5a",
+      "baguqeeratwggshtt7j3eoxkr3mvyrsqw4m3bxkxrk4bdtprc62julenptpxq",
+      "baguqeerakmb2bu3nyxxmn65g5doqcpf4w3d4lxuxmhjug2sikhqlhmybggha",
+      "baguqeeraltdxktpstux6rv2iug3aaucib47ie537tnaugsx5j77uvi2zhhqq",
+      "baguqeeraromyte7gpypkzfdmuugkwlazlqbx4c4cdkklawovqyctso2ztftq",
+      "baguqeerastzc2enyjm65ousek3zw34he32lqonbecxqdixkuv4wbtoc3pcha",
+      "baguqeeraijsmwpc74b325pzuhdztvekzhodmjc5q2hkcubzv7yfwaia4aqqq",
+      "baguqeera4zfc3nadrel2jalgqqbalycxmagzn24pq7cet3hp72aox5ohmahq",
+      "baguqeera3o35amhcl4vrhnnr5eql73bpfy43q4etzpa6kmdhgkc3eqocbekq",
+      "baguqeeraatvs5zqbi6d2bjgtg532csjjsbbt3cdlnevp6nn5oebxtsgz52da",
+      "baguqeeraa522uawqqmux3tel3fhig5yeryrle4f7pshd6bsxb2r6pe2ohg5a",
+      "baguqeeraanwof6almluu2sevorxmhdmkexk22tvlzp2sq2whdwvhvo4eqm5a",
+      "baguqeera5dvlic5h6b4nvcnocd6asjbv3bn24lvkljupukbtegvqwvr656sa",
+      "baguqeeralhmkt6e3mgfyfbegj7yk5fltrzs2sy2j77k32pfyo5usdpinsd6a",
+      "baguqeeralqnvsfwi5a2ynku6jicd3pvvpyn6p4iusd5vtny35oivwpmy53ya",
+      "baguqeeradlkd772qygbtbtdy4ss4nt5j4voyst5rbynaxm7lxl7y7d6ozuxa",
+      "baguqeeracqhn24uby3tdudmubf5v53kbtrcvtgvzol4gklajt6vo3zrltf6q",
+      "baguqeera5cwhzootqamb4iy4fge7paqy3shehczqlb3cniqsgfmh5eb6nr4q",
+      "baguqeerav6aquvmquiiwhqjeempgcc2azmxj2hqea5krucmah5cacgiql4jq",
+      "baguqeeraddzqa6jeyxbbbs3jk355id2sjbpkoolscyzvtzvkhdennnippoya",
+      "baguqeeraocyeaxzrkzc5okyhwtogy7tmxqpj5eyf62icv22nigcubellyo6a"
+    ]
+  },
+  "limitations": [
+    "Controller HEAD/tree describe exact reused source before new control files are committed; root must bind the resulting current runtime generation independently.",
+    "Historical task CID, plan-root and repository-tree metadata are retained identities, not a fresh live Quack owner/generation or permission to claim tasks.",
+    "The frozen authored task population and source audit do not observe current parallel-agent task status, LAC equivalence or legal-meaning acceptance.",
+    "The source audit establishes retained source/package identity and historical dispositions; source semantics, legal review, training gold and Lean admission remain false.",
+    "Only the three declared metadata roles are supplied to the planning worker. Corpus text, source companions, vectors, checkpoints, live databases and credentials are excluded.",
+    "Three lane capacity does not imply three ready independent tasks; only LIR-9001 is initially eligible. Remaining work requires a new native-qualified phase transition."
+  ],
+  "live_database_authority_observed": false,
+  "repositories": [
+    {
+      "branch": "agent/legal-ir-grok-parallel-20261016",
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller",
+      "head": "651d2ea941c720726e234fbe4e319e650ad70f71",
+      "observation_scope": "exact preparation base before new control commit",
+      "source_files": [
+        {
+          "bytes": 127170,
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+          "sha256": "9ae28cd52298f5b9d1202e6e4c56ce3891f67fbab6b66dad6387b6980b4d3799"
+        }
+      ],
+      "status": "observed_metadata",
+      "tree": "3746b53b9229155fd0bd610345ac4585d731c834"
+    },
+    {
+      "checkout_path": "/home/barberb/lift_coding/artifacts/legal-ir-missing-component-import-20261016/datasets",
+      "head": "074773e2111f59c417e72a82a33048dec87a7f9f",
+      "observation_scope": "published 074 source snapshot retained in the clean source clone",
+      "source_files": [
+        {
+          "bytes": 14643,
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/README.md",
+          "sha256": "3d49f924d0759d9ce93ba7a3269a00b6c7177078b81bf9a85005d3b1f15e2bdb"
+        },
+        {
+          "bytes": 7409,
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/campaign.json",
+          "sha256": "37e78a51a9a70d0b1f3f2efb8f3e032d5872e63c6165b905e28861534912837f"
+        },
+        {
+          "bytes": 17303,
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/goals.objectives.md",
+          "sha256": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3"
+        },
+        {
+          "bytes": 25721,
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/source_baseline.json",
+          "sha256": "ebbec529f9f52a3ebce46c48c1b973d658a1880155c2daf631e4160b0f475a28"
+        },
+        {
+          "bytes": 212195,
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/tasks.json",
+          "sha256": "147a33589b41df0cda3c0248f6803c36b073d8a36a928ab268f63656426ee90a"
+        },
+        {
+          "bytes": 134185,
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/tasks.todo.md",
+          "sha256": "6deb9e7db384a8f3f2dfd6ee3c154be2a11f84e63b861b2bd50d22b2d5d9fce4"
+        },
+        {
+          "bytes": 12171,
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/validate_plan.py",
+          "sha256": "97b18bae969936a7449ad2a7265ff7bfbdc592375f03215c540efcbc5f4f90f4"
+        },
+        {
+          "bytes": 61649,
+          "path": "docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+          "sha256": "f4b974b31cefb868856ba441c60e73617c64292a22f9d5248f93d84cdce8b2c6"
+        },
+        {
+          "bytes": 109620,
+          "path": "docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+          "sha256": "ffa9dee2e874bff6ea073ae6bf0ca6ca9025398d615c32f4d05fe19267d31569"
+        },
+        {
+          "bytes": 7050,
+          "path": "docs/autoencoders/evidence/legal-source-corpus-reuse-20261016/independent-native-audit-04.json",
+          "sha256": "8b889d9402184d3bc38b61cc7f828a860e4424103d9d81a3d4cd9cb366a147f7"
+        }
+      ],
+      "status": "observed_metadata",
+      "tree": "cbb9102c986b67742c6154f580fb46677f600ee8"
+    }
+  ],
+  "schema": "legal-ir-grok-planning-source-bindings/v1",
+  "scope": "source metadata frozen before controller control commit"
+}

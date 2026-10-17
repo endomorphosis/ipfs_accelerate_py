@@ -4,6 +4,7 @@ These tests execute the installed Python snippets, with inert child, service,
 boundary and cleanup owners. They admit no native resources, change no UID,
 launch no container/provider, and do not qualify automatic Terminal wiring.
 The retained-cleanup loop and real native leases have separate qualifications.
+Actual sealed-stdin byte delivery is covered by test_terminal_decision_owner_launch.
 """
 from __future__ import annotations
 
@@ -71,11 +72,8 @@ def test_generated_monitor_retires_exact_source_owner_after_every_cleanup_path(w
             self.returncode = 0
             return 0
 
-        def communicate(self, *, input):
-            assert input == b"authored exact owner input"
-            event("settle")
-            self.returncode = 0
-            return None, None
+        def communicate(self, *args, **kwargs):
+            pytest.fail("monitor must wait with inherited sealed stdin, not communicate through a replacement pipe")
 
         def terminate(self):
             self.terminated = True
@@ -88,7 +86,7 @@ def test_generated_monitor_retires_exact_source_owner_after_every_cleanup_path(w
 
     def spawn(command, **kwargs):
         assert command == ["authored-worker"]
-        assert kwargs == ({"stdin": subprocess.PIPE} if with_input else {})
+        assert kwargs == {}, "monitor must inherit sealed stdin without PIPE or other Popen overrides"
         event("spawn")
         return child
 
@@ -119,6 +117,7 @@ def test_generated_monitor_retires_exact_source_owner_after_every_cleanup_path(w
         proof_query_guard=SimpleNamespace(note_spawned=lambda process: event("guard_register"),
                                         abort=lambda: event("guard_abort")))
     if with_input:
+        # Owner prompt metadata does not replace the already sealed inherited fd0.
         namespace["owner_prompt_bytes"] = b"authored exact owner input"
     modules = {"json": json, "time": SimpleNamespace(),
         "signal": SimpleNamespace(SIGTERM=signal.SIGTERM, SIGINT=signal.SIGINT,
@@ -131,6 +130,8 @@ def test_generated_monitor_retires_exact_source_owner_after_every_cleanup_path(w
     if failure is None:
         assert error.value.code == 0
         assert events.index("repository_register") < events.index("settle")
+    if failure not in {"spawn", "numerical_register", "source_register", "repository_register", "guard_register"}:
+        assert events.count("settle") == 1
     assert retired == [source_owner]
     assert events[-1] == "repository_retired"
     assert "repository_close" not in events  # The generated caller must use the retaining owner helper.

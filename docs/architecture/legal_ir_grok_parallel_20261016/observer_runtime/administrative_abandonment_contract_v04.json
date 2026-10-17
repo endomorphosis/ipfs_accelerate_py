@@ -1,0 +1,82 @@
+{
+  "schema": "legal-ir-planning-unknown-abandonment-api-contract/v4",
+  "design_only": true,
+  "scope": "Offline product implementation and copied-store qualification first; no original-store abandonment, successor, rearm or provider invocation is authorized by this artifact.",
+  "reuse_decision": {
+    "reuse": "Existing creator-bound ADMIN registration/grant/RPC machinery, bound canonical evidence transaction, exact durable audit replay, native failure-stage methods and existing coordinator failure envelope.",
+    "do_not_reuse_as_authority": [
+      "namespace_guard_nonreachability_adjudicate/v1",
+      "namespace-guard-nonreachability-administrator",
+      "namespace_guard_nonreachability_adjudicated_v1",
+      "The singleton namespace-guard source proof or any claim that the event forensic report proves all model nonreachability."
+    ],
+    "minimal_implementation": "Add a parallel registered service using the same existing primitives. Preserve the namespace wrappers and tests unchanged; a generic multi-purpose ADMIN framework is unnecessary for this increment."
+  },
+  "new_audit_contract": {
+    "operation": "planning_unknown_abandonment_decide/v1",
+    "client_id": "planning-unknown-abandonment-administrator",
+    "evidence_kind": "planning_unknown_abandonment_decision_v1",
+    "request_payload_keys": ["operation", "context_cid", "expected_task_revision"],
+    "registration_api": "bind_planning_unknown_abandonment_service(expected_identity, authority_context)",
+    "grant_api": "issue_planning_unknown_abandonment_grant(peer_pid, ttl_seconds)",
+    "client_api": "record_planning_unknown_abandonment_decision(context_cid, expected_task_revision)",
+    "ordinary_worker_access": false,
+    "database_task_command": false,
+    "audit_changes": "One canonical reserved evidence row and its native intent.evidence_recorded event only.",
+    "registration_scope": [
+      "One exact task CID/namespace, canonical expected revision/status and claim-bound control preimage.",
+      "One exact latest attempt/ordinal/claim/lease/owner/fence and current native execution/coordination preimages, with stopped local owner custody.",
+      "Exact physical canonical/execution/coordinator paths plus logical store ID, registered creator identity, source/context/launch/terminal pins and current immutable native observations.",
+      "Exact raw UNKNOWN provider row identities and digests, effect/result state, and original DB/WAL or verified published physical-maintenance receipt plus retained originals.",
+      "The operator's explicit decision to abandon this local execution authority while accepting that provider outcome and possible external effects remain UNKNOWN."
+    ],
+    "audit_body_required_semantics": {
+      "decision": "administratively_abandon_local_execution_authority",
+      "provider_outcome": "unknown",
+      "possible_external_effects": "unverified",
+      "callback_closed": false,
+      "remote_cancellation_proved": false,
+      "nonreachability_asserted": false,
+      "native_execution_settlement_performed_by_this_operation": false,
+      "automatic_retry_admitted": false,
+      "completion_authority": false
+    },
+    "evidence_identity": "Deterministically derive the reserved evidence ID from its kind plus exact task/attempt/claim and original control revision. Its body digest binds the full registered context and decision. This permits exact lookup from the native attempt without adding an unbounded discovery scan or new failure-envelope fields.",
+    "replay": "Require the identical reserved evidence, canonical native event and registered context. A changed context, source preimage, revision, newer owner, accepted result or incompatible effect refuses; lost response returns the original audit identity without another append."
+  },
+  "new_settlement_contract": {
+    "native_api": "settle_planning_unknown_administrative_abandonment(daemon, authority_context)",
+    "failure_kind": "administrative_operator_stop_outcome_unknown",
+    "failure_envelope_schema": "Retain the existing native task-claim failure schema, operation and closed field set.",
+    "builder_change": "Build a distinct failure envelope from the exact verified ADMIN audit. failure_payload_digest binds the audit evidence ID/body digest and original control binding; retain actual provider/effect counts and compute the ordinary settlement identity.",
+    "validator_change": "The existing daemon validator may recognize the new kind only by resolving and validating that exact immutable reserved audit and matching its digest, native identity and registered UNKNOWN preimage. Merely supplying the kind or a failure string is insufficient. Original terminal_portal_bridge_error validation stays unchanged.",
+    "native_stage_order": [
+      "Validate the genuine original daemon/source/coordinator adapters and exact physical three-store custody; no replacement owner, callback or fabricated connection.",
+      "Verify the durable canonical administrative audit and recovered actual native state. Refuse an accepted provider result, incompatible effect, completed task or newer claim.",
+      "Append the exact native FAILED execution phase using the new failure kind, without updating provider_invocations.",
+      "Call existing fail_task_claim with the exact failure envelope to fail/release local coordination authority.",
+      "CAS canonical in_progress revision12 to BLOCKED revision13 with that exact receipt.",
+      "Append/read back the unique native terminal event and return an administrative-abandonment result: local authority closed, provider outcome still UNKNOWN."
+    ],
+    "crash_resume": "After every stage, require the same audit, exact original immutable rows and exact permitted phase/coordination/control stage. Resume response loss idempotently; refuse a different terminal receipt or any later rearm/new claim.",
+    "preservation": [
+      "Both original UNKNOWN rows remain byte-for-byte, including result_json, recorded_at_ms, invocation IDs and idempotency keys.",
+      "Attempt1 remains its previously settled historical attempt. Attempt2 keeps ordinal2, original identity, claim, owner and fencing history; only its local terminal projection advances to FAILED.",
+      "No provider phase is committed, no old callback is invoked, and no old model output becomes an accepted result.",
+      "All other63 tasks and the existing plan/goal/dependency graph remain unchanged."
+    ],
+    "coordination_enum_or_schema_changes": false,
+    "canonical_status_enum_changes": false,
+    "raw_provider_result_schema_changes": false,
+    "successor_or_rearm_in_this_increment": false
+  },
+  "qualification_acceptance": [
+    "Use actual typed gateway/Quack registration and the dedicated grant to append/replay the audit in copied canonical stores. Verify ordinary worker and reserved-evidence forgery refusal.",
+    "Use genuine native daemon/source/coordinator adapters and copied WAL-backed execution state; reuse the published79fb physical-maintenance component rather than widening readonly status.",
+    "Inject response loss after audit, FAILED phase, coordinator failure and BLOCKED CAS; replay obtains exactly one audit and one terminal receipt/event.",
+    "Compare full raw UNKNOWN rows and original ordinal/fence history before/after, including the untouched predecessor UNKNOWN. Verify every unrelated canonical task and graph relation is unchanged.",
+    "Recover a changed result/effect from a genuine WAL fixture and verify closeout refuses. Verify stale revision, cross-store context, changed source, different audit and newer-owner refusal.",
+    "Ordinary provider replay, automatic claim/rearm and zero-provider recovery remain blocked after administrative abandonment. The API must leave the task BLOCKED without changing the attempt cap."
+  ],
+  "historical_unknown_selection_note": "Do not change _automatic_claim_exclusions for this first increment. A later explicit successor capability must independently bind every superseded UNKNOWN across execution shards before selectively permitting a new claim; old UNKNOWN idempotency-key replay must remain refused."
+}

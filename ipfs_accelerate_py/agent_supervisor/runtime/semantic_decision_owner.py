@@ -136,8 +136,6 @@ def _literal_arguments(arguments):
     retrieval = set(owner) & _RETRIEVAL_FLAGS
     if retrieval and retrieval != _RETRIEVAL_FLAGS:
         raise ValueError("complete signed retrieval context bundle and admitted task binding required")
-    if retrieval and owner.get(_TYPED_MODE_FLAG, "disabled") != "disabled":
-        raise ValueError("retrieval query references require typed nomination disabled")
     return owner, remaining
 
 
@@ -334,7 +332,7 @@ def prepare_decision_owner_dispatch(
     if owner.get(_TYPED_MODE_FLAG, "disabled") == "enabled":
         from .semantic_typed_owner_policy import build_typed_owner_decision_nomination
         from .semantic_typed_nomination_lineage import (
-            BINDING_SCHEMA, LINEAGE_SCHEMA, MAX_LINEAGE_BYTES, owner_typed_graph_root,
+            BINDING_SCHEMA, LINEAGE_SCHEMA, RETRIEVAL_LINEAGE_SCHEMA, MAX_LINEAGE_BYTES, owner_typed_graph_root,
         )
         origin_raw = _bounded_local_bytes(nomination_artifact, maximum=MAX_NOMINATION_BYTES,
                                           expected_sha256=nomination_sha)
@@ -344,8 +342,10 @@ def prepare_decision_owner_dispatch(
             nomination_artifact=nomination_artifact, nomination_sha256=nomination_sha,
             task_id=task, expected_parent_sha256=codec._sha(parent_text),
             expected_semantic_root_cid=parent["semantic_root_cid"],
-            graph_root_id=owner_typed_graph_root(task_id=task, parent_sha256=codec._sha(parent_text)))
-        lineage = {"schema": LINEAGE_SCHEMA, "origin_nomination_text": origin_raw.decode("utf-8"),
+            graph_root_id=owner_typed_graph_root(task_id=task, parent_sha256=codec._sha(parent_text)),
+            **({"retrieval_query_binding": retrieval_binding} if retrieval_binding is not None else {}))
+        lineage = {"schema": RETRIEVAL_LINEAGE_SCHEMA if retrieval_binding is not None else LINEAGE_SCHEMA,
+                   "origin_nomination_text": origin_raw.decode("utf-8"),
                    "typed_nomination": typed.to_dict()}
         # Check the complete sidecar before the first immutable commit.
         if len(_json(lineage)) > MAX_LINEAGE_BYTES:

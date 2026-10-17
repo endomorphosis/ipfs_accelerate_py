@@ -85,6 +85,10 @@ DATABASE_TASK_SOURCE_SNAPSHOT_SCHEMA: Final[str] = (
 )
 DATABASE_TASK_PAGE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/database-task-page@1"
 DATABASE_TASK_CAS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/database-task-cas@1"
+PLANNING_UNKNOWN_ABANDONMENT_EVIDENCE_KIND: Final[str] = "planning_unknown_abandonment_decision_v1"
+NAMESPACE_GUARD_ADJUDICATION_EVIDENCE_KIND: Final[str] = (
+    "namespace_guard_nonreachability_adjudicated_v1"
+)
 
 DEFAULT_QUERY_LIMIT: Final[int] = DEFAULT_PAGE_LIMIT
 MAX_QUERY_LIMIT: Final[int] = MAX_PAGE_LIMIT
@@ -4632,6 +4636,283 @@ class DatabaseTaskSource:
 
         return self._intent.get_queue_entry(task_cid)
 
+    def record_planning_unknown_abandonment_decision(
+        self, payload: Mapping[str, Any], *, authority_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Persist one administrative decision audit through the bound owner.
+
+        This operation never changes a task, attempt, provider invocation or
+        coordination claim. The gateway holds the exclusive owner lock and
+        supplies its immutable registered native preimage/context, rather than caller metadata.
+        Failure settlement and operator rearming are separate native actions.
+        """
+        from ..todo_daemon.planning_unknown_abandonment import (
+            scope as planning_unknown_abandonment_scope, verify_request as verify_planning_unknown_abandonment,
+            evidence_id as abandonment_evidence_id, canonical_population,
+        )
+        from .control_plane_contracts import canonical_json_bytes
+        from .intent_repository import INTENT_EVENT_SCHEMA
+
+        if not self._intent.uses_bound_connection or self._intent.uses_quack_transport:
+            raise TaskSourceIntegrityError("decision requires the exclusive owner's bound connection")
+        scope = dict(planning_unknown_abandonment_scope(authority_context))
+        task_cid = scope["task_cid"]
+        from ..todo_daemon.planning_unknown_abandonment import load_context
+        snapshot = load_context(authority_context, check_closed_stores=False)
+        evidence_id = abandonment_evidence_id(task_cid=task_cid,
+            attempt_id=snapshot["attempt"]["attempt_id"], claim_id=snapshot["attempt"]["claim_id"],
+            control_revision=scope["expected_task_revision"])
+        connection = self._intent._bound_connection
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            prior = connection.execute(
+                "SELECT task_cid, evidence_kind, digest, body_json, created_at, parent_evidence_id "
+                "FROM evidence_nodes WHERE evidence_id = ?", [evidence_id],
+            ).fetchone()
+            # This is the same bounded, fixed native relation read used by the
+            # authenticated original-run snapshot. No SQL arrives over RPC.
+            cursor = connection.execute(
+                "SELECT * FROM domain_events WHERE task_cid = ? "
+                "ORDER BY global_sequence LIMIT 1025", [task_cid],
+            )
+            rows = cursor.fetchall()
+            if rows and isinstance(rows[0], Mapping):
+                events = [dict(row) for row in rows]
+            else:
+                columns = [item[0] for item in getattr(cursor, "description", ())]
+                if rows and not columns:
+                    raise TaskSourceIntegrityError("decision event column metadata is unavailable")
+                events = [dict(zip(columns, row)) for row in rows]
+            if len(events) > 1024:
+                raise TaskSourceBoundsError("decision target event population exceeds its bound")
+            audit_events = []
+            for event in events:
+                body = json.loads(event["body_json"])
+                if body.get("subject_id") == evidence_id:
+                    audit_events.append((event, body))
+            if ((prior is None and audit_events)
+                    or (prior is not None and len(audit_events) != 1)):
+                raise TaskSourceIntegrityError("decision evidence and audit event differ")
+            excluded_event_id = audit_events[0][0]["event_id"] if prior is not None else ""
+            task = self.get_task(task_cid)
+            if task is None:
+                raise KeyError(task_cid)
+            observation = {
+                "task": task.to_dict(),
+                "intent_task": self._intent.get_task(task_cid),
+                "canonical_population": canonical_population(self),
+                "task_revision_history": self.task_revision_history_projection(task_cid),
+                "plan_projection": self.plan_projection(task_cids=[task_cid]),
+                "domain_events": [event for event in events
+                                  if event["event_id"] != excluded_event_id],
+            }
+            # Native projections use immutable mapping views. Freeze them as
+            # the same JSON scalars/containers used by the original snapshot.
+            def plain(value: Any) -> Any:
+                if isinstance(value, Mapping):
+                    return {str(key): plain(item) for key, item in value.items()}
+                if isinstance(value, (list, tuple)):
+                    return [plain(item) for item in value]
+                if value is None or type(value) in (str, int, bool, float):
+                    return value
+                raise TaskSourceIntegrityError("decision observation contains a non-JSON scalar")
+
+            observation = json.loads(json.dumps(plain(observation), allow_nan=False))
+            decision = dict(verify_planning_unknown_abandonment(
+                payload, authority_context=authority_context,
+                current_observation=observation,
+            ))
+            if (decision.get("task_cid") != task_cid
+                    or decision.get("context_cid") != scope["context_cid"]):
+                raise TaskSourceIntegrityError("decision result escaped its registered scope")
+            digest = content_identity(decision)
+            if prior is not None:
+                event, envelope = audit_events[0]
+                details = envelope.get("body")
+                if (prior[0] != task_cid
+                        or prior[1] != PLANNING_UNKNOWN_ABANDONMENT_EVIDENCE_KIND
+                        or prior[2] != digest
+                        or prior[5] != ""
+                        or json.loads(prior[3]) != decision
+                        or prior[3] != canonical_json_bytes(decision).decode("utf-8")
+                        or event["event_type"] != "intent.evidence_recorded"
+                        or event["attempt_id"] != ""
+                        or set(envelope) != {"schema", "event_type", "subject_id", "body", "recorded_at", "owner_id"}
+                        or envelope.get("schema") != INTENT_EVENT_SCHEMA
+                        or envelope.get("owner_id") != authority_context["registered_owner_identity"]["server_id"]
+                        or envelope.get("event_type") != event["event_type"]
+                        or envelope.get("recorded_at") != event["recorded_at"]
+                        or event["body_json"] != canonical_json_bytes(envelope).decode("utf-8")
+                        or not isinstance(details, dict)
+                        or details != {
+                            "evidence_id": evidence_id, "parent_evidence_id": "",
+                            "task_cid": task_cid,
+                            "evidence_kind": PLANNING_UNKNOWN_ABANDONMENT_EVIDENCE_KIND,
+                            "digest": digest, "body": decision,
+                            "created_at": str(prior[4]), "revision": 0,
+                        }
+                        or event["event_id"] != content_identity({
+                            "stream_id": event["stream_id"],
+                            "sequence": event["sequence"],
+                            "global_sequence": event["global_sequence"],
+                            "event_type": event["event_type"], "body": envelope,
+                        })):
+                    raise TaskSourceIntegrityError("decision replay audit binding differs")
+                receipt = IntentReceipt(
+                    event_id=str(event["event_id"]), event_type=str(event["event_type"]),
+                    global_sequence=int(event["global_sequence"]),
+                    recorded_at=str(event["recorded_at"]), subject_id=evidence_id,
+                    revision=0, changed=True, details=MappingProxyType(details),
+                )
+            else:
+                receipt = self._intent.record_evidence(
+                    task_cid=task_cid,
+                    evidence_kind=PLANNING_UNKNOWN_ABANDONMENT_EVIDENCE_KIND,
+                    digest=digest, body=decision, evidence_id=evidence_id,
+                )
+            result = {"decision": decision,
+                      "audit_receipt": receipt.to_dict(), "replayed": prior is not None}
+            connection.execute("COMMIT")
+            return MappingProxyType(result)
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+
+
+    def adjudicate_namespace_guard_nonreachability(
+        self, payload: Mapping[str, Any], *, authority_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Persist one source-verified ADMIN audit through the bound owner.
+
+        This operation never changes a task, attempt, provider invocation or
+        coordination claim. The gateway holds the exclusive owner lock and
+        supplies its immutable registered proof, rather than caller metadata.
+        Failure settlement and operator rearming are separate native actions.
+        """
+        from ..todo_daemon.namespace_guard_adjudication import (
+            namespace_guard_adjudication_scope, verify_namespace_guard_adjudication,
+        )
+        from .control_plane_contracts import canonical_json_bytes
+
+        if not self._intent.uses_bound_connection or self._intent.uses_quack_transport:
+            raise TaskSourceIntegrityError("adjudication requires the exclusive owner's bound connection")
+        scope = dict(namespace_guard_adjudication_scope(authority_context))
+        task_cid = scope["task_cid"]
+        evidence_id = content_identity({
+            "namespace": NAMESPACE_GUARD_ADJUDICATION_EVIDENCE_KIND,
+            "task_cid": task_cid, "proof_id": scope["proof_id"],
+        })
+        connection = self._intent._bound_connection
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            prior = connection.execute(
+                "SELECT task_cid, evidence_kind, digest, body_json, created_at "
+                "FROM evidence_nodes WHERE evidence_id = ?", [evidence_id],
+            ).fetchone()
+            # This is the same bounded, fixed native relation read used by the
+            # authenticated original-run snapshot. No SQL arrives over RPC.
+            cursor = connection.execute(
+                "SELECT * FROM domain_events WHERE task_cid = ? "
+                "ORDER BY global_sequence LIMIT 1025", [task_cid],
+            )
+            rows = cursor.fetchall()
+            if rows and isinstance(rows[0], Mapping):
+                events = [dict(row) for row in rows]
+            else:
+                columns = [item[0] for item in getattr(cursor, "description", ())]
+                if rows and not columns:
+                    raise TaskSourceIntegrityError("adjudication event column metadata is unavailable")
+                events = [dict(zip(columns, row)) for row in rows]
+            if len(events) > 1024:
+                raise TaskSourceBoundsError("adjudication target event population exceeds its bound")
+            audit_events = []
+            for event in events:
+                body = json.loads(event["body_json"])
+                if body.get("subject_id") == evidence_id:
+                    audit_events.append((event, body))
+            if ((prior is None and audit_events)
+                    or (prior is not None and len(audit_events) != 1)):
+                raise TaskSourceIntegrityError("adjudication evidence and audit event differ")
+            excluded_event_id = audit_events[0][0]["event_id"] if prior is not None else ""
+            task = self.get_task(task_cid)
+            if task is None:
+                raise KeyError(task_cid)
+            observation = {
+                "task": task.to_dict(),
+                "task_revision_history": self.task_revision_history_projection(task_cid),
+                "plan_projection": self.plan_projection(task_cids=[task_cid]),
+                "domain_events": [event for event in events
+                                  if event["event_id"] != excluded_event_id],
+            }
+            # Native projections use immutable mapping views. Freeze them as
+            # the same JSON scalars/containers used by the original snapshot.
+            def plain(value: Any) -> Any:
+                if isinstance(value, Mapping):
+                    return {str(key): plain(item) for key, item in value.items()}
+                if isinstance(value, (list, tuple)):
+                    return [plain(item) for item in value]
+                if value is None or type(value) in (str, int, bool, float):
+                    return value
+                raise TaskSourceIntegrityError("adjudication observation contains a non-JSON scalar")
+
+            observation = json.loads(json.dumps(plain(observation), allow_nan=False))
+            adjudication = dict(verify_namespace_guard_adjudication(
+                payload, authority_context=authority_context,
+                current_observation=observation,
+            ))
+            if (adjudication.get("task_cid") != task_cid
+                    or adjudication.get("proof_id") != scope["proof_id"]):
+                raise TaskSourceIntegrityError("adjudication result escaped its registered scope")
+            digest = content_identity(adjudication)
+            if prior is not None:
+                event, envelope = audit_events[0]
+                details = envelope.get("body")
+                if (prior[0] != task_cid
+                        or prior[1] != NAMESPACE_GUARD_ADJUDICATION_EVIDENCE_KIND
+                        or prior[2] != digest
+                        or json.loads(prior[3]) != adjudication
+                        or prior[3] != canonical_json_bytes(adjudication).decode("utf-8")
+                        or event["event_type"] != "intent.evidence_recorded"
+                        or event["attempt_id"] != ""
+                        or set(envelope) != {"schema", "event_type", "subject_id", "body", "recorded_at", "owner_id"}
+                        or envelope.get("event_type") != event["event_type"]
+                        or envelope.get("recorded_at") != event["recorded_at"]
+                        or event["body_json"] != canonical_json_bytes(envelope).decode("utf-8")
+                        or not isinstance(details, dict)
+                        or details != {
+                            "evidence_id": evidence_id, "parent_evidence_id": "",
+                            "task_cid": task_cid,
+                            "evidence_kind": NAMESPACE_GUARD_ADJUDICATION_EVIDENCE_KIND,
+                            "digest": digest, "body": adjudication,
+                            "created_at": str(prior[4]), "revision": 0,
+                        }
+                        or event["event_id"] != content_identity({
+                            "stream_id": event["stream_id"],
+                            "sequence": event["sequence"],
+                            "global_sequence": event["global_sequence"],
+                            "event_type": event["event_type"], "body": envelope,
+                        })):
+                    raise TaskSourceIntegrityError("adjudication replay audit binding differs")
+                receipt = IntentReceipt(
+                    event_id=str(event["event_id"]), event_type=str(event["event_type"]),
+                    global_sequence=int(event["global_sequence"]),
+                    recorded_at=str(event["recorded_at"]), subject_id=evidence_id,
+                    revision=0, changed=True, details=MappingProxyType(details),
+                )
+            else:
+                receipt = self._intent.record_evidence(
+                    task_cid=task_cid,
+                    evidence_kind=NAMESPACE_GUARD_ADJUDICATION_EVIDENCE_KIND,
+                    digest=digest, body=adjudication, evidence_id=evidence_id,
+                )
+            result = {"adjudication": adjudication,
+                      "audit_receipt": receipt.to_dict(), "replayed": prior is not None}
+            connection.execute("COMMIT")
+            return MappingProxyType(result)
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+
     def record_evidence(
         self,
         *,
@@ -4640,6 +4921,10 @@ class DatabaseTaskSource:
         digest: str,
         body: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
+        if evidence_kind == PLANNING_UNKNOWN_ABANDONMENT_EVIDENCE_KIND:
+            raise TaskSourceIntegrityError("UNKNOWN abandonment evidence is reserved for its dedicated ADMIN service")
+        if evidence_kind == NAMESPACE_GUARD_ADJUDICATION_EVIDENCE_KIND:
+            raise TaskSourceIntegrityError("namespace adjudication evidence is reserved for its ADMIN service")
         if self._intent.uses_quack_transport:
             try:
                 result = submit_quack_owner_command(

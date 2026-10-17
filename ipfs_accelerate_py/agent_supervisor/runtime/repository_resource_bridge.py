@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import math
 from pathlib import Path
 import shutil
 import threading
@@ -153,6 +154,7 @@ class RepositoryHostReservation:
                  repository_id, workspace, deadline, external_cancel):
         self.supervisor, self.supervisor_lease = supervisor, supervisor_lease
         self.shared, self.native, self.budget = shared, native, budget
+        self.policy_sha256 = hashlib.sha256(_raw(shared.config.persisted_dict())).hexdigest()
         self.repository_id, self.workspace = repository_id, workspace
         self.deadline, self.external_cancel = deadline, external_cancel
         self._cancelled, self._condition = threading.Event(), threading.Condition(threading.RLock())
@@ -274,7 +276,9 @@ class RepositoryResourceBridge:
         self.supervisor = supervisor
 
     @contextmanager
-    def reserve(self, *, repository_id, workspace, budget, cancel_event=None):
+    def reserve(self, *, repository_id, workspace, budget, cancel_event=None,
+                scheduler_state_path=None, expected_scheduler_policy_sha256=None,
+                deadline_monotonic=None):
         _require(type(repository_id) is str and 0 < len(repository_id) <= 256,
                  "bounded repository identity required")
         _require(type(budget) is RepositoryResourceBudget, "explicit typed repository budget required")
@@ -283,8 +287,22 @@ class RepositoryResourceBridge:
         workspace = Path(workspace).resolve(strict=True)
         _require(workspace.is_dir(), "existing workspace directory required")
         deadline = time.monotonic() + budget.wall_time_ms / 1000
-        shared = get_global_resource_scheduler()
-        _require(type(shared) is GlobalResourceScheduler and shared.config.proof_safety_enabled,
+        if deadline_monotonic is not None:
+            _require(type(deadline_monotonic) in (int, float) and math.isfinite(deadline_monotonic),
+                     "finite explicit request deadline required")
+            deadline = min(deadline, deadline_monotonic)
+        if deadline <= time.monotonic():
+            raise LeaseTimeoutError("repository envelope expired before metadata admission")
+        _require((scheduler_state_path is None) == (expected_scheduler_policy_sha256 is None),
+                 "existing scheduler state and policy must be supplied together")
+        if scheduler_state_path is not None:
+            from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import open_existing_scheduler
+            shared = open_existing_scheduler(scheduler_state_path, expected_scheduler_policy_sha256)
+        else:
+            shared = get_global_resource_scheduler()
+        canonical_type = (isinstance(shared, GlobalResourceScheduler) if scheduler_state_path is not None
+                          else type(shared) is GlobalResourceScheduler)
+        _require(canonical_type and shared.config.proof_safety_enabled,
                  "existing native shared proof-safety authority required")
         reservations = shared.config.reservations()
         _require(shared.config.max_waiting_requests is not None and "validation" in reservations
@@ -299,6 +317,8 @@ class RepositoryResourceBridge:
         local_budget = ResourceLeaseBudget(max_parallel=budget.process_slots,
             max_cpu_proof_concurrency=budget.process_slots, max_processes=budget.process_slots,
             wall_time_ms=budget.wall_time_ms, memory_bytes=budget.memory_mb*MIB, disk_bytes=budget.disk_bytes)
+        if deadline <= time.monotonic():
+            raise LeaseTimeoutError("repository envelope expired during metadata admission")
         decision, local = self.supervisor.acquire(requirement, budget=local_budget, path=workspace)
         _require(local is not None and decision.admitted, "supervisor lane policy refused repository envelope: " + decision.reason)
         native = None

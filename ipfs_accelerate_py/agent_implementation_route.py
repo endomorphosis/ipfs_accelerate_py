@@ -5152,6 +5152,32 @@ def agent_implementation_route_review_payload(
     }
 
 
+def eaaef_agent_route_authorization_path(source_tree: str) -> str:
+    """Derive the historical source-addressed filename; grant no authority.
+
+    Compatibility for retained EAAEF evidence and pure profile validators.
+    Current route authorization still requires its existing reviewed scope.
+    """
+
+    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", str(source_tree or "")) is None:
+        raise ValueError("source tree identity is invalid")
+    return (
+        "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
+        f"authority/provider-route-authorization-{source_tree}.json"
+    )
+
+
+def eaaef_agent_lifecycle_root_pin_path(source_tree: str) -> str:
+    """Derive a retained EAAEF root-pin filename without loading a grant."""
+
+    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", str(source_tree or "")) is None:
+        raise ValueError("source tree identity is invalid")
+    return (
+        "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
+        f"authority/provider-route-lifecycle-root-pin-{source_tree}.json"
+    )
+
+
 def load_agent_implementation_route_authorization(
     *,
     repo_root: Path | str,

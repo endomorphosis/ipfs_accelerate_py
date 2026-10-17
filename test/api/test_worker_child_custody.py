@@ -38,7 +38,7 @@ def callback():
     child = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(120)"],
         start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     children.append(child.pid)
-    code = "import os,time;from pathlib import Path\\nif os.fork():os._exit(0)\\nos.setsid()\\nif os.fork():os._exit(0)\\nPath('grandchild').write_text(str(os.getpid()))\\ntime.sleep(120)"
+    code = "import os,time;from pathlib import Path\\nif os.fork():os._exit(0)\\nos.setsid()\\nif os.fork():os._exit(0)\\nPath('grandchild.pending').write_text(str(os.getpid()));Path('grandchild.pending').replace('grandchild')\\ntime.sleep(120)"
     subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     deadline = time.monotonic() + 3
     while not Path('grandchild').exists():

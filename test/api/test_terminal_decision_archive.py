@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 from benchmarks.agent_supervisor.container_coding import full_supervisor_benchmark as benchmark
-from test.api.test_terminal_timeout_configuration import (
+from test.api.test_current_terminal_archive_fixtures import (
     _authored_prepare_dataset, _timeout_runtime_archive,
 )
 
@@ -32,6 +32,8 @@ def _decision_runtime_archive(tmp_path, *, fault=None):
             members.append((member.name, original.extractfile(member).read()))
     selected = benchmark._decision_runtime_sources()
     target = next(iter(selected))
+    members = [(name, raw) for name, raw in members if name not in selected]
+    manifest["files"] = [row for row in manifest["files"] if row["path"] not in selected]
     for name, source in selected.items():
         raw = source.read_bytes()
         row = {"path": name, "bytes": len(raw), "sha256": benchmark._hash(source), "mode": 0o644}
@@ -65,7 +67,8 @@ def test_selected_archive_checks_actual_current_members_and_leaves_legacy_reader
                            for name in benchmark.TIMEOUT_RUNTIME_SOURCE_NAMES}
     verified = benchmark._require_current_timeout_runtime(
         archive, manifest, selected_sources=benchmark._decision_runtime_sources())
-    expected = {row["path"]: row["sha256"] for row in manifest["files"]}
+    required = set(legacy) | set(benchmark._decision_runtime_sources())
+    expected = {row["path"]: row["sha256"] for row in manifest["files"] if row["path"] in required}
     assert verified == expected
     assert len(verified) == len(legacy) + len(benchmark._decision_runtime_sources())
     assert {name: verified[name] for name in legacy} == legacy

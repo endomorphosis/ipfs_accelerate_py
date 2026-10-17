@@ -2069,3 +2069,212 @@ audit cap is distinct from this isolated ten-second qualification. Machine or
 power-loss recovery, other filesystems, CUDA and 8D/384D/768D/4096D inference,
 complete provider usage, accepted tasks and whole-task token savings remain
 separate qualifications. No model or token savings are established here.
+
+
+## Current canonical semantic option plumbing and native component qualification (2026-10-15)
+
+Restored the current canonical option path through benchmark configuration,
+preparation, Harbor, the terminal driver, Doctor argv generation and the protected
+owner/worker boundary. Explicit tokenizer ceilings, native semantic input,
+versioned identifier/projection controls, independently pinned decision policy
+and nomination inputs, and the default-on typed nomination opt-out are forwarded
+again. Host nominations use the independently hashed immutable snapshot and root
+publication protocol. The shared route guard refuses unqualified combinations
+with alternative renderer controls; decision-policy routes retain their Codex
+boundary. Existing provider, physical resource, source-view, replay export and
+usage-accounting work is preserved. Archive packaging now retains required
+parent package initializers. Provider-free Doctor routes retain requested options
+as observations without claiming those model-rendering options were applied.
+Combinations of the decision worker with newer source-formalization, broker or
+budget-profile controls remain refused or unqualified; this milestone adds no
+support for those combinations.
+
+The fresh current build03 contains 13,101 source files and 13,104
+verified archive members. Its normal/retrieval declarations contain 32/35 source
+pins, and the actual admission closures contain 36/39. All 563 collected test
+cases passed exactly once with the normal repository conftests and fresh
+mandatory AST catalog seals containing each actual test file. Every runtime
+source and all 50 copied normal test/config files had independent
+matching SHA guards. The normal optional receipt plugin explicitly ran in mode
+off: no receipt read, write or skip path was admitted, and every test body ran.
+These executions establish behavior and source/AST custody; they establish no
+reusable test receipt, repository-forest admission or reusable-proof coverage.
+
+The separate public Bottle native component fixture retains 531 symbols and
+4,652 relations, with one nominated closure materializing five graph nodes and
+four edges. Actual DID signature verification, altered-argv refusal, protected
+UID1000 owner to UID1001 worker handoff and a complete-input-budget refusal all
+ran before any provider invocation. The current independent full auditors
+verified retained native input, typed lineage and owner coverage in
+2.44911 seconds in-process and 3.40940
+seconds in a cold subprocess. This run uses the current native 30-second audit
+cap. The earlier ten-second cap belongs to its earlier frozen qualification;
+that result is not transferred to this current source profile.
+
+The current native Codex 0.160.0 Linux ARM64 executables came from the exact
+official npm package. Its tar SHA256 is
+`9286a7e01d500ab224c9e5b4b223b7adf5dd901fba23efd6a438316426798b17`;
+SHA512 matched the independently pinned registry metadata. Complete member
+inventory, per-file hashes, remote uploaded bytes, and the unchanged installer's
+real version/help checks passed. This qualifies native executable staging and
+version compatibility without credentials or a provider call. The older 0.158
+portable cache was not substituted. The model-worker UID could not read the
+owner's private cache key. The whitelist public replay contains 6,281 files and
+excludes that key. Both owned containers closed; all 3 existing MAIN coordinators
+closed with zero leases/waiters and the frozen resource configuration unchanged.
+
+Earlier failed staging, obsolete helper-argument, observer and focused-test
+attempts remain retained and excluded from final qualification. The stopped
+qualification05 attempt with optional receipt generation selected is retained
+and is not counted as a completed result. The failed qualification06 run is also
+retained and excluded. The selected qualification09 is the final complete
+execution with optional receipt generation off. Earlier complete executions are retained separately and are not added to the selected final count.
+No failed task was reset or
+accepted from an earlier fixture.
+
+This milestone qualifies canonical option plumbing and the actual native
+components exercised above. It does not establish a complete canonical Harbor
+lifecycle, live provider inference, paid comparison, accepted benchmark task,
+CUDA/model-head inference, provider token savings or whole-task token savings.
+Next run the actual canonical Harbor lifecycle with replay delivery/custody,
+then a matched provider comparison with measured usage and independent task
+acceptance. Qualify CUDA and the 8D, 384D, 768D and 4096D heads separately.
+
+Evidence is retained in
+`artifacts/supervisor-canonical-semantic-forwarding-20261015-01/`:
+`qualification-result.json`, `qualification09/verification.json`,
+`build03/build-result.json`,
+`container01/typed-evidence/full-terminal-audit.json`,
+`container01/public-replay/manifest.json`, and `plan-update.json`.
+The final artifact inventory and CIDv1 integrity record are written separately
+as `evidence-manifest.json` and `evidence-integrity.json` after finalization.
+
+
+## Actual canonical Harbor lifecycle, replay custody and advisory 8D CPU training (2026-10-15)
+
+The actual Harbor SDK created and removed one exact owned container, and the
+unchanged FullSupervisorAgent setup and run methods exercised canonical
+planning, signed admission, typed nomination, the driver, isolated worker and
+replay delivery. This uses the existing public Bottle ARM image pinned by
+digest, its independently checked public source and the public task resource
+declaration: one CPU, 2,048 MiB memory and zero GPUs. The original published
+image recipe was not executed; the configured 10,240 MiB storage declaration is
+recorded without claiming storage-limit enforcement. Setup made no cached
+command substitution. Its native Codex 0.160.0 version check ran against the
+actual installed executable. External container networks were detached before
+the agent run.
+
+This is an explicitly authless worker fixture. No real host credential was
+read or transferred; a protected authored empty file satisfied the installer
+input boundary. Authentication readiness remains unqualified. The independently
+reviewed public semantic contract is an authored administrative interpretation,
+not a proof that the code or security requirements are correct. Native DID
+admission and the signed implementation grant were actually verified. The
+typed owner/worker route refused a complete prompt exceeding the one-token
+input ceiling before any provider invocation. The refusal did not complete or
+accept the task. Unknown provider token counters remain unknown; this result
+claims no measured provider usage or savings.
+
+The genuine native historical typed-nomination verification joins the exact
+owner, lineage, derived and original nominee, native input, semantic parent,
+policy and launch digests. It grants no source-freshness or proof authority.
+The overall input audit can remain unverified because no provider round was
+dispatched; this result does not relabel that status. The versioned typed replay
+profile retains the closed lineage, derived nominee and exact original bytes
+embedded in that lineage. The retained origin is not mounted or dispatched;
+the existing replay mounts and base profile remain unchanged.
+The genuine slim public context result pins its one public initial-context
+descriptor by exact path and SHA. Replay retains only that bound descriptor and
+does not follow nested world, index, model or learner references. Canonical
+manifest bytes are bounded at 4 MiB for the typed profile and 1 MiB for the
+unchanged base profile.
+
+This typed replay qualification covers the exercised public Bottle owner packet.
+Indexed-candidate typed snapshots and typed retrieval-reference launch@3 remain
+explicitly refused and require separate closure work and native qualification.
+Existing untyped launch@2/@3 behavior remains unchanged. The optional diagnostic
+capture of already public prepared/context-result leaves has no qualification
+authority and never substitutes for canonical replay delivery.
+
+The actual default codebase autoencoder trained in this run with task_profile
+unset. The independently SHA-bound receipt reports 24
+epochs, 2 sources and 358 samples;
+the natively observed checkpoint has latent width 8 and loaded no Legal IR
+weights. The training descriptor, receipt and checkpoint digest agree. Its
+security-code@1 result remains an unverified advisory candidate with no proof
+or formalization authority and no mutation of the legal state. The separately
+selected CPU runtime wheel is torch==2.13.0+cpu, SHA256 `6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604`. Actual
+wheel metadata, interpreter/platform compatibility, native archive verification
+and installed bytes were checked. This wheel supplies runtime code; learned
+model weights were not bundled or substituted. Build time imported no Torch
+and performed no training; the actual advisory 8D training happened later in
+the SDK container.
+
+The fresh build contains 13,104 source files and
+13,108 archive members, including three native DuckDB
+extensions and the exact CPU wheel. The real canonical replay was exported,
+downloaded to its named host destination and independently verified. Final
+stdlib closure freshly hashes every one of its 6,512
+manifest-listed files and its 14,928,004 content bytes. Replay
+excludes the private state tree and provider transcripts. It grants no
+execution or completion authority. Protected installed runtime files had exact
+opening and closing hashes, public Bottle bytes stayed unchanged, UID1001
+worker processes drained, and the actual SDK stop deleted the exact container.
+
+The selected qualification04 execution passed all 563 collected
+cases across 20 selected files, using the original normal
+conftests. Each test body executed once and had a fresh mandatory AST seal
+containing its actual test file. All 13,104 frozen
+runtime source files and 52 copied normal inputs had
+independent matching before/after guards. Actual DuckDB 1.5.5 supplied the native
+extension environment. Optional test proof reuse was explicitly off; no receipt
+skip, reusable receipt or repository-forest admission is qualified. Counts from
+failed, incomplete or superseded attempts are retained separately and are not
+added to this selected execution.
+
+The actual Harbor implementation ran from a byte-equivalent frozen capture of
+the installed SDK. All 458 SDK files are retained
+and freshly hashed; original installed-source hardlinks were not relabeled as
+single-link evidence. Frozen build/runtime/test source custody is the qualified
+scope. Closing observations of unrelated live checkout edits are retained as
+drift, without claiming that a concurrently used global repository head stayed
+unchanged. Both owned production fixes, for the CPU wheel and typed replay
+export, must still match their qualified sources.
+
+All 3 owned MAIN reservations closed without changing
+the frozen scheduler configuration or unrelated reservations. local01 released
+its own lease and joined its heartbeat before its obsolete global-empty check
+encountered another job; that reviewed failure remains retained. Later closures
+verify their own acquired lease and waiter are absent. A globally empty pool is
+neither required nor claimed.
+
+This qualifies the actual provider-free canonical SDK/adapter lifecycle, replay
+custody and the exercised advisory 8D CPU training. It establishes no accepted
+benchmark task, authenticated provider readiness, model/provider inference,
+paid comparison, CUDA qualification, 384D/768D/4096D head qualification, token
+savings, source-semantics proof or reusable test-proof coverage. Next qualify
+an independently accepted task with a matched provider comparison and measured
+usage, then measure the remaining model heads and CUDA independently.
+Separately close and qualify indexed-candidate typed snapshots and typed
+retrieval-reference launch@3 before extending this replay scope.
+
+Evidence: `artifacts/supervisor-canonical-harbor-lifecycle-20261015-01/`,
+`build03/build-result.json`, `qualification04/verification.json`,
+`lifecycle05/qualification.json`, `lifecycle05/actual-replay-manifest.json`,
+`lifecycle05/actual-codebase-training-receipt.json`, `sdk-source/capture.json`,
+and `plan-update.json`. The final evidence manifest and raw CIDv1 are written
+separately after all closure checks pass. Earlier failed or partial attempts
+remain retained as unqualified history.
+
+
+## Typed retrieval-reference launch and canonical replay qualification (2026-10-15)
+
+Default-on typed nomination now composes with independently admitted retrieval query references. The trusted owner derives the retrieval artifact, digest and task binding from the signed task bundle; workers cannot override those parents. New typed result, receipt and lineage revisions bind the exact native launch@3 descriptor. Legacy typed and explicit opt-out paths retain their existing contracts. On the retained 426-row, 268D, five-hit public Bottle retrieval workload, five measured searches per build after one warmup had median times of 639.954 ms before and 194.794 ms after (3.29x ratio), with identical canonical result bytes. This is a CPU search-kernel measurement, excluding model/encoder work, imports, loading and result serialization. Retrieval search now reuses the full snapshot identity within each call while the public validator independently revalidates it; export byte accounting uses running totals without skipping any source reads. The new combined export may use the existing 30-second collector bound within the unchanged remaining task deadline.
+
+A dedicated typed retrieval replay profile retains the exact raw retrieval parent, snapshot, typed origin, derived nominee and lineage. Native historical verification reconstructs the graph, policy and query reference and checks its inverse against retained source evidence. Replay retains only the reviewed public CAS closure; indexed candidate contexts remain explicitly refused pending their separate source-scope bridge.
+
+Qualification: 842 actual passing cases across 25 normal test files, fresh mandatory AST seals and optional proof reuse off; 13105 runtime sources independently guarded. Execution used three disjoint file groups in separate actual pytest processes, each with fresh full source guards, mandatory AST seals and its own finite existing-MAIN reservation. The checker matched their exact node union to the independently pinned planned collection; partial earlier runs were retained and excluded. Cumulative shard execution time is 2073.337 seconds; this does not qualify single-process order interactions. The actual Harbor SDK and unchanged FullSupervisorAgent setup/run exercised signed admission, the default typed retrieval owner and UID1001 worker, and delivered a verified 6512-file replay archive. One-token complete-input refusal kept provider calls at zero. Default advisory 8D CPU training also ran. The exact owned container and all owned existing-MAIN reservations were closed.
+
+This explicit authless diagnostic does not qualify authentication, accepted task completion, provider inference, measured whole-task token savings or CUDA/head inference. Existing public Bottle ARM image and original task CPU/memory/GPU declarations were retained. New evidence: artifacts/supervisor-typed-retrieval-replay-20261015-01/qualification-result.json and evidence-integrity.json. Prior sealed evidence remains immutable.
+
+Remaining work: separately bridge indexed context@2 program/support scope and bounded replay scratch; refresh current-source CUDA qualification for retained trained 8D/384D/768D heads, and qualify the 4096D Leanstral checkpoint with a declared batching/parity contract. The saved head-qualification-followup.json distinguishes prior trained, diagnostic and untrained evidence. A separate metadata-optimization-followup.json records transaction batching, connection reuse and narrowly scoped historical read-only replay opportunities; the normal regression and Harbor lifecycle retained default metadata behavior and the regression retained mandatory AST seals. Only the isolated search microbenchmark used the existing production read-only metadata context, as recorded in its result.

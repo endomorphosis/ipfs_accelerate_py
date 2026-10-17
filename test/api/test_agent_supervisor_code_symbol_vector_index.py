@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.analysis_ast_index import (
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
     CodeSymbolIndexRow,
+    CodeVectorHit,
     CodeSymbolLineage,
     CodeSymbolVectorIndexError,
     CodeSymbolVectorIndexIntegrityError,
@@ -274,3 +275,59 @@ def test_incremental_rebuild_equals_clean_rebuild_and_lineage_needs_review() -> 
 
     with pytest.raises(CodeSymbolVectorIndexError, match="requires the previous"):
         _index(new_ast, reviewed_lineage=(lineage,))
+
+
+@pytest.mark.parametrize("query_form", ["object", "mapping", "sequence"])
+@pytest.mark.parametrize("query_vector", [(0.0, 1.0), (0.0, 0.0)], ids=["ranked", "zero-cosine"])
+@pytest.mark.parametrize("max_results", [1, 2])
+def test_search_reuses_one_local_snapshot_identity_then_independently_revalidates(
+        monkeypatch, query_form, query_vector, max_results):
+    import ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index as module
+    snapshot = _index()
+    query = CodeVectorQuery.for_snapshot(snapshot, query_vector=query_vector, max_results=max_results)
+    ordered = sorted(snapshot.rows, key=lambda row: (row.symbol != "Service.dispatch", row.row_id))
+    hits = () if not any(query_vector) else tuple(CodeVectorHit(
+        row, snapshot.index_id, query.query_id, 1.0 if row.symbol == "Service.dispatch" else 0.0, rank)
+        for rank, row in enumerate(ordered[:max_results], 1))
+    expected = CodeVectorSearchResult(query, snapshot.index_id, hits,
+        complete=True, searched_row_count=len(snapshot.rows))
+    expected_bytes = module.canonical_code_symbol_vector_index_bytes(expected.to_dict())
+    input_query = query if query_form == "object" else query.to_dict() if query_form == "mapping" else query_vector
+    getter = CodeVectorIndexSnapshot.index_id.fget
+    original_validator = module.validate_code_vector_search_result
+    derivations, validation_entry_counts = [], []
+    def counted_identity(value):
+        derivations.append(value)
+        return getter(value)
+    def observed_validator(*args, **kwargs):
+        validation_entry_counts.append(len(derivations))
+        return original_validator(*args, **kwargs)
+    monkeypatch.setattr(CodeVectorIndexSnapshot, "index_id", property(counted_identity))
+    monkeypatch.setattr(module, "validate_code_vector_search_result", observed_validator)
+    observed = search_code_symbol_vector_index(snapshot, input_query, max_results=max_results)
+    # Query construction has its own identity derivation for a raw vector.
+    # Search derives once regardless of hit count; the real public validator
+    # then derives independently once. No verifier result is substituted.
+    search_phase_count = 2 if query_form == "sequence" else 1
+    assert validation_entry_counts == [search_phase_count]
+    assert len(derivations) == search_phase_count + 1
+    assert all(value is snapshot for value in derivations)
+    assert observed == expected and observed.result_id == expected.result_id
+    assert module.canonical_code_symbol_vector_index_bytes(observed.to_dict()) == expected_bytes
+
+
+def test_public_result_validator_rederives_identity_for_each_independent_call(monkeypatch):
+    snapshot = _index()
+    result = snapshot.search((0.0, 1.0))
+    getter = CodeVectorIndexSnapshot.index_id.fget
+    derivations = []
+    def counted_identity(value):
+        derivations.append(value)
+        return getter(value)
+    monkeypatch.setattr(CodeVectorIndexSnapshot, "index_id", property(counted_identity))
+    assert validate_code_vector_search_result(snapshot, result) == result
+    assert validate_code_vector_search_result(snapshot, result) == result
+    assert derivations == [snapshot, snapshot]
+    changed = replace(snapshot, rows=(replace(snapshot.rows[0], embedding=(0.0, 1.0)), *snapshot.rows[1:]))
+    with pytest.raises(CodeSymbolVectorIndexStaleError, match="roots"):
+        validate_code_vector_search_result(changed, result)

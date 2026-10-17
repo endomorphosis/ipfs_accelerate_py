@@ -1794,7 +1794,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 side_effecting=True,
                 task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
                 codex_cli_literal_response=codex_cli_literal_response,
-                **({"temperature": 0} if provider == "codex_cli" else {}),
+                temperature=0,
                 **provider_options,
             )
         failure_phase = "provider_result_validation"

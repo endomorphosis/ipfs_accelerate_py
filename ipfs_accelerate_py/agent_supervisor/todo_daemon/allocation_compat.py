@@ -8,9 +8,18 @@ before the daemon dispatches work.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from ipfs_accelerate_py.llm_allocation.paths import CLI_PROVIDERS, path_for_provider
+from ipfs_accelerate_py.llm_allocation.paths import (
+    CLI_PROVIDERS,
+    PROVIDER_PATH_METADATA,
+    path_for_provider,
+)
+
+_RESUME_CLI_PROVIDERS = frozenset(
+    {"codex_cli", "grok_cli", "claude_code", "copilot_cli", "muse_code"}
+)
 
 SUPERVISOR_TO_ROUTER: dict[str, str] = {
     "grok": "grok_cli",
@@ -241,9 +250,27 @@ def apply_resume_argv(
     task_id: str = "",
     allocation_session_id: str = "",
 ) -> list[str]:
-    """Insert native resume flags for a supervisor CLI command when mapped."""
+    """Insert resume flags only for the matching provider's native CLI.
+
+    Python, shell and other custom commands own their argument protocols and
+    must not receive native CLI flags or trigger session allocation here.
+    """
     argv = [str(part) for part in command]
     if not argv:
+        return argv
+    executable = Path(argv[0]).name
+    command_provider = next(
+        (
+            name
+            for name in _RESUME_CLI_PROVIDERS
+            if executable == PROVIDER_PATH_METADATA[name]["command"]
+        ),
+        "",
+    )
+    if not command_provider:
+        return argv
+    requested_provider = map_supervisor_provider(provider)
+    if requested_provider not in {"", "auto", "efficient", command_provider}:
         return argv
     kwargs = supervisor_generate_kwargs(
         task_id=task_id,
@@ -251,6 +278,8 @@ def apply_resume_argv(
         allocation_session_id=allocation_session_id,
     )
     router_provider = str(kwargs.get("provider") or map_supervisor_provider(provider))
+    if router_provider != command_provider:
+        return argv
     resume_id = str(
         kwargs.get("session_id")
         or kwargs.get("resume_session_id")
@@ -263,11 +292,15 @@ def apply_resume_argv(
         idx = argv.index("exec")
         argv[idx + 1 : idx + 1] = ["resume", resume_id]
         return argv
-    if router_provider in {"grok_cli", "claude_code", "copilot_cli"} and "--resume" not in argv:
+    if router_provider in {"grok_cli", "claude_code", "copilot_cli"} and not any(
+        part == "--resume" or part.startswith("--resume=") for part in argv[1:]
+    ):
         insert_at = 1 if len(argv) > 1 else len(argv)
         argv[insert_at:insert_at] = ["--resume", resume_id]
         return argv
-    if router_provider == "muse_code" and "--session-id" not in argv:
+    if router_provider == "muse_code" and not any(
+        part == "--session-id" or part.startswith("--session-id=") for part in argv[1:]
+    ):
         insert_at = argv.index("exec") + 1 if "exec" in argv else min(2, len(argv))
         argv[insert_at:insert_at] = ["--session-id", resume_id]
         return argv
