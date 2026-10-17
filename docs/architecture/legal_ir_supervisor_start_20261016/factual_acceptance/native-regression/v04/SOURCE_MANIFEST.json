@@ -1,0 +1,48 @@
+{
+  "schema": "legal-ir-genuine-native-docker-regression-source-manifest@4",
+  "status": "source_authored_and_reviewed_not_executed",
+  "base_adapter_manifest_sha256": "c9042090f0a9772c666dfa7b15f321a6c495989fbefcda8de30bd792dc0d6d5b",
+  "common_regression_manifest_sha256": "8240d5562e88c89bd4079e1b5605d4f57b8da7e8a3315d2942c5d31a5ee63c9a",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 8059,
+      "sha256": "39d01eec26f50d966bc29d04118d8eeaa67d0d1dd0b65e1f7f7277c78396480d"
+    },
+    {
+      "path": "RESOURCE_PLAN.json",
+      "bytes": 6656,
+      "sha256": "bf7303b90ed339d85ee5c30064447373a64f6c4deba98950f4723f7ec0929d4b"
+    },
+    {
+      "path": "REVISION_PROVENANCE.json",
+      "bytes": 2048,
+      "sha256": "0c8af2f8696963e06f5e8c810804302ca50d0c88ffc3186616eb07ca2a8160f6"
+    },
+    {
+      "path": "docker_fixture_roundtrip.py",
+      "bytes": 34356,
+      "sha256": "d47b06e2e908626934c77f209f893ec37b482c082fa92416de6d5bab55fe4077"
+    },
+    {
+      "path": "entry.py",
+      "bytes": 15628,
+      "sha256": "9186ae87f353690ed0f51eb1f8b013035983296894440f18bed64b8d5fee948d"
+    },
+    {
+      "path": "inner_checker.py",
+      "bytes": 2268,
+      "sha256": "6179c1910d0f259e6aa9aee0e9ecb359c88c349730f44410238e3967f2a5ee84"
+    },
+    {
+      "path": "outer_start_barrier.py",
+      "bytes": 1765,
+      "sha256": "855f4505c92405b4101b6fd1fd79e6ef03afcc4a72419c537f837b0473ad59db"
+    },
+    {
+      "path": "prepare_entry_request.py",
+      "bytes": 4234,
+      "sha256": "26896505992f696006aa73d6f4ff5a6f189e073a3ce90f195decb3b13ef3dde5"
+    }
+  ]
+}

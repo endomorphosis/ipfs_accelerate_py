@@ -1,0 +1,23 @@
+{
+  "actual_full_native_docker_fixture_passed": false,
+  "actual_provider_candidates_accepted": 0,
+  "additional_adapter_subtests_previously_qualified": 31,
+  "archived_runtime_receipts_are_not_acceptance_capabilities": true,
+  "canonical_tasks_accepted": 0,
+  "consumed_task_attempts_preserved": 2,
+  "controlled_adapter_testcases_previously_qualified": 36,
+  "controlled_docker_contract_testcases": 17,
+  "controlled_docker_contract_tests_passed": true,
+  "independent_unsafe_metadata_mutations": 23,
+  "native_docker_fixture_status": "observed_failed_or_incomplete",
+  "next_phase_activated": false,
+  "preserved_failed_v02_controls_evidence": [
+    "docker-contract-v02-failed.xml"
+  ],
+  "preserved_previous_qualification_sha256": "29a472388b4d642612d685d0bcf42cfc09fbcbb313a674c6f2d9712c76e82310",
+  "qualified_controls_generation": "v03",
+  "root_observation": "Actual Docker fixture r02 was refused by full8MiB ledger metadata; bounded lossless archival subsequently passed, reducing8,387,751 to3,450,663 bytes. Actual fresh r03 was refused by native proof_cpu_stall at51.1percent against unchanged50percent threshold, before checker execution. Both exact containers/watchdogs were independently absent after cleanup; no native leases remained for r03. Full native acceptance remains unqualified; no provider call or canonical task acceptance. Actual deployed retry51 and SDK65 controls passed; both sources published. Earlier failures preserved.",
+  "runtime_evidence_revision": "20261017-docker-and-recovery-r03",
+  "schema": "legal-ir-factual-adapter-qualification@3",
+  "total_canonical_tasks": 64
+}

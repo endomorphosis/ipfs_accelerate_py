@@ -1,0 +1,50 @@
+{
+  "schema": "legal-ir-native-regression-revision-provenance@3",
+  "original_manifest_sha256": "4920e848e9d3a283e2511e6fc39efb862367c32a96bcbdc251b86439bbee64ed",
+  "base_adapter_manifest_sha256": "c9042090f0a9772c666dfa7b15f321a6c495989fbefcda8de30bd792dc0d6d5b",
+  "changes": [
+    {
+      "path": "README.md",
+      "original_bytes": 4723,
+      "original_sha256": "72f854838c20d8fae5faeb3d014dc97d1133274c5fc8e4b0b3afbb1db344f0e1",
+      "candidate_bytes": 5451,
+      "candidate_sha256": "4d923197442d3b3a25818ae0191e0d80c9b061d680820d1cf8799d2d2108fe41"
+    },
+    {
+      "path": "RESOURCE_PLAN.json",
+      "original_bytes": 5976,
+      "original_sha256": "1a1058877d41df04367a8867b35e26d6c240dee2154e653322ec88bb182c12c6",
+      "candidate_bytes": 6570,
+      "candidate_sha256": "817201f82a6ea9caad46195c4b336cdf90ac4e7f372476db733938c2ae4aae50"
+    },
+    {
+      "path": "entry.py",
+      "original_bytes": 15150,
+      "original_sha256": "0858117e4431757caeaf64abdcf855173ce806f83956932dfca23027cba8db7e",
+      "candidate_bytes": 16035,
+      "candidate_sha256": "e92efe4613b8b36537f6a97d1fd6e312be563927497fe346b013f1c0e5be6c7c"
+    },
+    {
+      "path": "native_fixture_roundtrip.py",
+      "original_bytes": 19323,
+      "original_sha256": "85e62e939eddd01eeafb68421c4e8def5df28d57ddb234958195d452a9479ca1",
+      "candidate_bytes": 19647,
+      "candidate_sha256": "a25e1979b0d550947a0e2f5430c32007936811d77245eb39c6126b6734126502"
+    },
+    {
+      "path": "prepare_entry_request.py",
+      "original_bytes": 3786,
+      "original_sha256": "f66950b44fa2a03ed7fa5362e82a7bc1e2d6aabc2870d3766eb37d12f44f7ffa",
+      "candidate_bytes": 3925,
+      "candidate_sha256": "99f132c61f29a985cd0eeae0f4e72734e0bc57ad48e8c776d9a5ccf6a2498ff6"
+    },
+    {
+      "path": "startup_barrier.py",
+      "original_bytes": 1152,
+      "original_sha256": "085f583f0873ede39a8dcf6045e1e79e6ceb11afb4761a1952fdebaf576fb2a5",
+      "candidate_bytes": 2708,
+      "candidate_sha256": "a85b5ca8ba4274217fc4d8a1a4ca15c1ccb234fd6cd9623e2fc87a155c316fe0"
+    }
+  ],
+  "review": "Independent read-only source review found no remaining concrete held-SDK API blocker; source syntax parsed; no product imports or runtime execution performed by authors/reviewer."
+}

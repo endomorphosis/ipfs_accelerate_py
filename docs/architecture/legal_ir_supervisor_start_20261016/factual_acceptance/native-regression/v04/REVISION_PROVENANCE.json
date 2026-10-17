@@ -1,0 +1,27 @@
+{
+  "schema": "legal-ir-native-docker-fixture-source-revision@4",
+  "status": "authored_source_only_not_executed",
+  "base_adapter_manifest": "../../adapter-v02/SOURCE_MANIFEST.json",
+  "base_adapter_manifest_sha256": "c9042090f0a9772c666dfa7b15f321a6c495989fbefcda8de30bd792dc0d6d5b",
+  "common_regression_manifest": "../v03/SOURCE_MANIFEST.json",
+  "common_regression_manifest_sha256": "8240d5562e88c89bd4079e1b5605d4f57b8da7e8a3315d2942c5d31a5ee63c9a",
+  "reviewed_trigger": "Root reported actual V03 host Bubblewrap loopback RTM_NEWADDR Operation not permitted; predicate and acceptance did not run",
+  "supported_successor": "source-pinned existing ordinary A91 system Docker engineering factual checker, actual genuine native validation ownership unchanged",
+  "preserved": [
+    "frozen original and V02/V03 source generations",
+    "actual native SDK policy, lease, validation request/result and same-process one-use handle authority",
+    "manual factual completion and future-task gates",
+    "canonical real task identities and durable attempt history",
+    "protected image74 route, namespaces and builders",
+    "isolated synthetic fixture only; no legal teacher, training, provider or canonical task acceptance claims"
+  ],
+  "changed": [
+    "actual source-bound Docker runtime/argv replaces unusable host Bubblewrap backend for this engineering fixture",
+    "inert exact-CID create under preparation, actual direct validation child attachment plus independently observed container admission barrier",
+    "strict independently checked ordinary image, daemon, config, bind mounts, cgroup and ulimit correspondence",
+    "actual Docker exit/OOM proof and independent EOF watchdog/container/path absence before issuer or caller-controlled native exit",
+    "attributable redacted public native admission and admin lease receipts before productive work",
+    "unknown create/cleanup retains actual custody for real recovery"
+  ],
+  "source_author_execution": {"native_sdk": false, "docker": false, "provider": false, "tests": false}
+}

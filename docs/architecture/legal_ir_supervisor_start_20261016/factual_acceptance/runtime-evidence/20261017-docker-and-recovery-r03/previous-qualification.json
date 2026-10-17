@@ -1,0 +1,15 @@
+{
+  "schema": "legal-ir-factual-adapter-qualification@2",
+  "controlled_testcase_elements": 36,
+  "junit_total_including_subtests": 67,
+  "additional_subtests": 31,
+  "controlled_tests_passed": true,
+  "real_native_bubblewrap_fixture_status": "failed before factual checker: isolated loopback operation not permitted",
+  "failure_preserved": true,
+  "strict_docker_backend_status": "being authored; not yet runtime qualified",
+  "actual_provider_candidates_accepted": 0,
+  "canonical_tasks_accepted": 0,
+  "total_canonical_tasks": 64,
+  "consumed_task_attempts_preserved": 2,
+  "next_phase_activated": false
+}

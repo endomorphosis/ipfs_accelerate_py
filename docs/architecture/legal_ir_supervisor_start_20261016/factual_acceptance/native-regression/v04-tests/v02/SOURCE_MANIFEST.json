@@ -1,0 +1,23 @@
+{
+  "schema": "legal-ir-docker-metadata-contract-test-sources@2",
+  "ast_valid": true,
+  "authored_pytest_case_count": 17,
+  "independent_negative_mutation_count": 23,
+  "tests_executed_by_author": false,
+  "docker_or_native_execution_evidence": false,
+  "required_backend_source": "../../v04/docker_fixture_roundtrip.py",
+  "backend_and_dependency_pins": "Must come from the separately frozen backend and genuine qualification request.",
+  "preserved_original_manifest_sha256": "8c8aeac82de881b937c618660f973da236beace5db9e180b7c891706ca65c5d3",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 1014,
+      "sha256": "81f78dc0dede79cb66a45ddf9b0ec6ae6347dd0b0777c3151cf3a5e28882bc0c"
+    },
+    {
+      "path": "test_docker_container_contract.py",
+      "bytes": 8749,
+      "sha256": "4c6c74534944657ed9be67d7e474f74d108585cd9c0c60d2a56b220a4d990278"
+    }
+  ]
+}

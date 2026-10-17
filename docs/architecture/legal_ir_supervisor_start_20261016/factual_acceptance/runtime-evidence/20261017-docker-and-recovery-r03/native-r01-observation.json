@@ -1,0 +1,21 @@
+{
+  "schema": "legal-ir-native-fixture-r01-root-observation@1",
+  "source_request_sha256": "2276a897ea118c0f72b059a183c459220e637ef8dc9a4276be48db11424ed413",
+  "actual_exec_session": 42476,
+  "actual_exec_exit_code": 1,
+  "actual_native_terminal": {
+    "schema": "legal-ir-native-fixture-entry-terminal@2",
+    "passed": false,
+    "error_type": "AcceptanceRefusal",
+    "real_LIR_task_accepted": false,
+    "provider_calls_performed": false
+  },
+  "actual_child_log": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-acceptance-fixture-20261017-r01/validation/logs/actual-hermetic-child.log",
+    "bytes": 61,
+    "sha256": "ed3471f7900377f86150471417911309833a36d664cb5af7409e139103f67ddf"
+  },
+  "observed_blocker": "bwrap isolated loopback RTM_NEWADDR was refused by host",
+  "failed_run_rewritten": false,
+  "unisolated_fallback_used": false
+}

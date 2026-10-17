@@ -1,0 +1,33 @@
+{
+  "schema": "legal-ir-docker-metadata-contract-test-sources@3",
+  "ast_valid": true,
+  "authored_pytest_case_count": 17,
+  "independent_negative_mutation_count": 23,
+  "tests_executed_by_author": false,
+  "docker_or_native_execution_evidence": false,
+  "required_backend_source": "../../v04/docker_fixture_roundtrip.py",
+  "required_backend_manifest_sha256": "276338ca14edc7c1c7cdb76413ddf316a5d5290dd13b129e7b4b3a5ea5659387",
+  "backend_changed_by_this_correction": false,
+  "refusal_contract": "Only AcceptanceRefusal or FactualRefusal, with the exact expected reason for each unsafe mutation.",
+  "preserved_v02_manifest_sha256": "234122d3779297cdab7d434e4bea1497be6066264dfef94debe24a6e4b962ab3",
+  "preserved_actual_v02_failed_qualification": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-docker-contract-20261017-qualification01/docker-contract-tests.xml",
+    "bytes": 49668,
+    "sha256": "66ae13062aa28400e8867e78421e716bb2551d28600ae24331378e8565fe930b",
+    "observed_passes": 7,
+    "observed_failures": 10,
+    "scope": "The positive baseline passed; strict unsafe metadata checks raised FactualRefusal outside the prior test's narrower AcceptanceRefusal expectation. This is retained failure history, not a passing V03 qualification."
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 1633,
+      "sha256": "ce91274a3364160f56b6b31d242e28e89776ae73a0550e3dd5fe1aa91bc30483"
+    },
+    {
+      "path": "test_docker_container_contract.py",
+      "bytes": 10125,
+      "sha256": "5a34e5f412531f062b64b7347aa3908ecac4f92e8453fa08a4b567a8d9c1de11"
+    }
+  ]
+}
