@@ -8369,6 +8369,11 @@ def _grok_request_requirements(path: Path, model: str, *, zero_temperature: bool
     return policy
 
 
+def _grok_requirements_allow_zero(path: Path, model: str) -> None:
+    """Preserve zero-temperature callers through the current requirements parser."""
+    _grok_request_requirements(path, model, zero_temperature=True)
+
+
 @contextmanager
 def _grok_zero_temperature_environment(environment, *, model: str, command,
                                      zero_temperature: bool = True,

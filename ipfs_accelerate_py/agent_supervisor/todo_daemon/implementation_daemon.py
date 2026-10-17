@@ -5133,6 +5133,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation_provider_max_input_tokens: int | None = None,
         implementation_max_repair_rounds: int = 3,
         implementation_cancelled: Any = None,
+        production_owner_handoff_factory: Any = None,
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
@@ -5381,6 +5382,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             implementation_max_repair_rounds
         )
         self.implementation_cancelled = implementation_cancelled
+        if production_owner_handoff_factory is not None and not callable(production_owner_handoff_factory):
+            raise ValueError("production_owner_handoff_factory must be an owner-only callable or None")
+        self.production_owner_handoff_factory = production_owner_handoff_factory
         if decision_runtime is not None and decision_runtime_config is not None:
             configured = getattr(decision_runtime, "config", None)
             if configured is None:
@@ -31604,6 +31608,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 attempt=attempt,
                                 workspace_path=worktree_path,
                             )
+                            if (self.production_owner_handoff_factory is not None
+                                    and self.production_provider_policy is not None):
+                                raise RuntimeError("live-owner handoff cannot use the alternate production route")
                             if self.production_provider_policy is not None:
                                 provider_dispatched = True
                                 route = self.run_production_model_assisted_route(
@@ -31614,65 +31621,109 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 return subprocess.CompletedProcess(
                                     args=(), returncode=0 if route["route_result"].write_performed else 1,
                                 )
-                            birth_callback = (
-                                self._provider_runner_started_callback(
-                                    state,
-                                    task=task,
-                                    attempt=attempt,
-                                    command=command,
-                                    workspace_path=worktree_path,
+                            provider_handoff = None
+                            provider_command = command
+                            try:
+                                if self.production_owner_handoff_factory is not None:
+                                    # A new owner profile constructs the exact server here:
+                                    # the final worktree/Portal attempt now exist, and the
+                                    # existing pre-implementation gate already authorized.
+                                    from ipfs_accelerate_py.cli_runtime.grok_production_handoff import (
+                                        ProductionProviderHandoff, POLL_SECONDS,
+                                    )
+                                    candidate_handoff = self.production_owner_handoff_factory(
+                                        portal_daemon=self, task=task, portal_attempt=attempt,
+                                        workspace=worktree_path, command=tuple(command),
+                                        checkpoint_dir=checkpoint_dir,
+                                        maximum_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                    )
+                                    if type(candidate_handoff) is not ProductionProviderHandoff:
+                                        raise RuntimeError("live-owner profile returned the wrong handoff type")
+                                    provider_handoff = candidate_handoff
+                                    provider_command = provider_handoff.prepare_for_stream(
+                                        portal_daemon=self, task=task, portal_attempt=attempt,
+                                        workspace=worktree_path, command=command,
+                                        maximum_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                    )
+                                birth_callback = (
+                                    self._provider_runner_started_callback(
+                                        state,
+                                        task=task,
+                                        attempt=attempt,
+                                        command=provider_command,
+                                        workspace_path=worktree_path,
+                                    )
                                 )
-                            )
 
-                            def provider_started(
-                                process: subprocess.Popen[Any],
-                            ) -> None:
-                                nonlocal provider_dispatched, provider_process
-                                provider_dispatched = True
-                                provider_process = process
-                                if birth_callback is not None:
-                                    birth_callback(process)
+                                def provider_started(
+                                    process: subprocess.Popen[Any],
+                                ) -> None:
+                                    nonlocal provider_dispatched, provider_process
+                                    provider_dispatched = True
+                                    provider_process = process
+                                    if birth_callback is not None:
+                                        birth_callback(process)
+                                    if provider_handoff is not None:
+                                        # Context is fsynced for this actual Popen before
+                                        # run_process_group_stream sends original stdin.
+                                        provider_handoff.on_started(process)
 
-                            if self._database_attempt_authority is not None:
-                                provider_child_custody = self._begin_database_provider_child_custody()
-                            provider_deadline = time.monotonic() + timeout_policy.max_timeout_seconds
-                            provider_completed = run_process_group_stream(
-                                command,
-                                absolute_deadline=provider_deadline,
-                                cwd=worktree_path,
-                                stdout=log_fh,
-                                input_text=prompt,
-                                env=provider_environment,
-                                inherit_environment=False,
-                                **({"dispatch_binding": {
-                                    key: (self._database_attempt_authority or {}).get(key)
-                                    for key in ("database_task_cid", "task_id", "database_attempt_id",
-                                                "database_claim_id", "database_attempt_number")
-                                }} if any(str(part) == flag or str(part).startswith(flag + "=")
-                                          for part in command for flag in ("--finite-proof-query-context", "--finite-proof-query-sha256", "--finite-proof-query-context-cid")) else {}),
-                                pass_fds=self._accepted_control_plane_pass_fds(
-                                    command
-                                ),
-                                timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_timeout_seconds=(
-                                    timeout_policy.progress_timeout_seconds
-                                    if timeout_policy.progress_aware
-                                    else None
-                                ),
-                                max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                                progress_paths=(checkpoint_dir,),
-                                on_started=provider_started,
-                                on_progress=progress_observer,
-                            )
-                            provider_process_returned = True
-                            if provider_completed.returncode != 0:
-                                try:
-                                    from .bridge_failure_diagnostics import child_report_from_log
-                                    child_reported_router_failure = child_report_from_log(log_path, log_fh)
-                                except Exception:
-                                    # Observational diagnostics cannot change native outcome/custody.
-                                    pass
-                            return provider_completed
+                                if self._database_attempt_authority is not None:
+                                    provider_child_custody = self._begin_database_provider_child_custody()
+                                provider_deadline = (
+                                    provider_handoff.absolute_deadline
+                                    if provider_handoff is not None
+                                    else time.monotonic() + timeout_policy.max_timeout_seconds
+                                )
+                                provider_completed = run_process_group_stream(
+                                    provider_command,
+                                    absolute_deadline=provider_deadline,
+                                    cwd=worktree_path,
+                                    stdout=log_fh,
+                                    input_text=prompt,
+                                    env=provider_environment,
+                                    inherit_environment=False,
+                                    **({"dispatch_binding": {
+                                        key: (self._database_attempt_authority or {}).get(key)
+                                        for key in ("database_task_cid", "task_id", "database_attempt_id",
+                                                    "database_claim_id", "database_attempt_number")
+                                    }} if any(str(part) == flag or str(part).startswith(flag + "=")
+                                              for part in provider_command for flag in ("--finite-proof-query-context", "--finite-proof-query-sha256", "--finite-proof-query-context-cid")) else {}),
+                                    pass_fds=self._accepted_control_plane_pass_fds(
+                                        provider_command
+                                    ),
+                                    timeout_seconds=timeout_policy.max_timeout_seconds,
+                                    progress_timeout_seconds=(
+                                        timeout_policy.progress_timeout_seconds
+                                        if timeout_policy.progress_aware
+                                        else None
+                                    ),
+                                    max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                                    progress_paths=(checkpoint_dir,),
+                                    on_started=provider_started,
+                                    on_progress=progress_observer,
+                                    **({"cancel_requested": provider_handoff.poll_or_cancel,
+                                        "progress_poll_seconds": POLL_SECONDS}
+                                       if provider_handoff is not None else {}),
+                                )
+                                provider_process_returned = True
+                                if provider_handoff is not None:
+                                    provider_handoff.after_stream_return(provider_completed)
+                                if provider_completed.returncode != 0:
+                                    try:
+                                        from .bridge_failure_diagnostics import child_report_from_log
+                                        child_reported_router_failure = child_report_from_log(log_path, log_fh)
+                                    except Exception:
+                                        # Observational diagnostics cannot change native outcome/custody.
+                                        pass
+                                return provider_completed
+                            except BaseException:
+                                if provider_handoff is not None:
+                                    # Close also covers failures while preparing the
+                                    # argv/birth hook. Genuine close refuses any live
+                                    # or unverified consumer and retains its charge.
+                                    provider_handoff.close_after_stream_failure()
+                                raise
 
                         completed = self._decision_runtime_mutation(
                             "command_invocation",
