@@ -1,0 +1,60 @@
+{
+  "authored_parameterized_cases": 51,
+  "authored_test_functions": 16,
+  "files": [
+    {
+      "bytes": 1666,
+      "path": "BASE_PROVENANCE.json",
+      "sha256": "863ab03cdcfad6010ff62ea9ff2f831bad9540cdbf588bf505c9ad851c25bed9"
+    },
+    {
+      "bytes": 6480,
+      "path": "README.md",
+      "sha256": "63e89d6d89d0626198a8aefe3a83d828771e38ec496d021d795a4c27d457255f"
+    },
+    {
+      "bytes": 15936,
+      "path": "author_proposal.py",
+      "sha256": "36aefd927785aedb8cfecfa1c5277a260b7824a27a0bc57f613b2434f3e27a56"
+    },
+    {
+      "bytes": 18070,
+      "path": "preserve-task-attempts.patch",
+      "sha256": "bb4d29ccf61fa185199d1cef67713ac75b103e7427071f87748e37b88f3d5d1d"
+    },
+    {
+      "bytes": 266342,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "sha256": "cd193ad040f2e16ef2deb3d4443f1df058678bd27715a525150dc81bbd9e0257"
+    },
+    {
+      "bytes": 3300743,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "bytes": 72301,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+      "sha256": "db7a449089ed4bfdfb21336e14e01508019aa7342eb4f56212124888b859ddd2"
+    },
+    {
+      "bytes": 1011891,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "sha256": "abe2eb8f98340ec375d9d555f1b493a224eb629cf85ef788095fb1a026e9f0be"
+    },
+    {
+      "bytes": 21358,
+      "path": "test_preserve_task_attempts.py",
+      "sha256": "861a1f7292c1569550c5d81bfaedf3f34908c4a77fe61a4f888da11118da275d"
+    }
+  ],
+  "option": {
+    "cli": "--preserve-task-attempts",
+    "default": false,
+    "scheduler_json": "preserve_task_attempts"
+  },
+  "schema": "legal-ir-preserve-attempts-source-proposal@1",
+  "scope": "isolated-source-only-not-applied-not-executed",
+  "source_review": "independent agent found no remaining concrete source blocker; no imports/tests/native actions",
+  "test_status": "not-executed"
+}

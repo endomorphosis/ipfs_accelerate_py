@@ -1,0 +1,69 @@
+{
+  "actual_deployed_junit_sha256": "fe184dc7dec5387274d0c7a1ad94045c77d3980fc813acd1b21e84dc65e85f05",
+  "actual_test_command": [
+    "/usr/bin/python3.12",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--noconftest",
+    "-c",
+    "/dev/null",
+    "--rootdir=/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller",
+    "--confcutdir=/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/test/api",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=/tmp/pytest-of-barberb/legal-ir-preserve-attempts-20261017-tests01",
+    "--junitxml=/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-preservation-20261017-publication02/deployed-policy-tests.xml",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/test/api/test_preserve_task_attempts.py"
+  ],
+  "base_accelerator_head": "24af767c2587d82be03623c0d8a1ce19e1d902aa",
+  "corrected_controls_manifest_sha256": "8fa90c38f399e36dc37e7490252ff12340424f19f102344a8f62da5d9d005b28",
+  "deployed_test_source_sha256": "cec2439e98d0ed91c3ac13f005a39c28a159c4434e45885d0701f1951c250cb9",
+  "external_pytest_directory": "/tmp/pytest-of-barberb/legal-ir-preserve-attempts-20261017-tests01",
+  "frozen_test_source_sha256": "d441927aa705038ea031031a8b510f0159974f08f446e9b8eac976ce89921870",
+  "only_test_source_adaptation": {
+    "from": "str(Path(__file__).parent.parent / 'preserve-attempts-patch-v01' / 'proposed')",
+    "to": "str(Path(__file__).resolve().parents[2])"
+  },
+  "prior_engineering_observation_sha256": "2055a05e77167dc3934f505d9fa4a8774ae0ad01bbedbe5e01074fcc0b968c41",
+  "prior_observation_classification": "root-supplied-factual-engineering-observation-not-authority",
+  "production_sources": [
+    {
+      "original_bytes": 3297689,
+      "original_sha256": "d8bff8e58c3168082ed2b175710dc077333d99b41312b40425a38b41cc064d54",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "proposed_bytes": 3300743,
+      "proposed_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "original_bytes": 1010299,
+      "original_sha256": "bce7c7c3c4d206f286e5538861c410b4e8ff381b60f63f7d5c738609f444eef9",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "proposed_bytes": 1011891,
+      "proposed_sha256": "abe2eb8f98340ec375d9d555f1b493a224eb629cf85ef788095fb1a026e9f0be"
+    },
+    {
+      "original_bytes": 71945,
+      "original_sha256": "045907b45ae3ec96f5de3a1d5ab09440fc72d5f25eb38024d9887dd1022c0ee9",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+      "proposed_bytes": 72301,
+      "proposed_sha256": "db7a449089ed4bfdfb21336e14e01508019aa7342eb4f56212124888b859ddd2"
+    },
+    {
+      "original_bytes": 266206,
+      "original_sha256": "9a3db2b03f792f977ddd84e76a6d5fb522ac9b94678c6d13122c264461c31580",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "proposed_bytes": 266342,
+      "proposed_sha256": "cd193ad040f2e16ef2deb3d4443f1df058678bd27715a525150dc81bbd9e0257"
+    }
+  ],
+  "provider_execution_performed": false,
+  "qualification_observed_finished_at": 1792203011.2976193,
+  "qualification_started_at": 1792203006.6119196,
+  "resource_policy_or_ledger_changed": false,
+  "schema": "legal-ir-attempt-preservation-deployment-provenance@1",
+  "source_proposal_manifest_sha256": "05f0369a1d3c2bc6b876c4fc51ea83ef7ab00ba2d2e25ad30b0aac4e66f8f225",
+  "taskboard_or_taskstate_changed": false,
+  "worker_manifest_sha256": "fe107abb04e1dc01b56c90327cf389a38d2225235f8b38469a1da3e19bc4fb81"
+}

@@ -2316,6 +2316,7 @@ def load_configured_board(
             "objective_goal_refinement_enabled must be boolean"
         )
     for field in (
+        "preserve_task_attempts",
         "retry_budget_guardrail_enabled",
         "dependency_guardrail_enabled",
         "reconciliation_guardrail_enabled",
@@ -2947,6 +2948,8 @@ def configured_board_common_args(
             args.append("--no-objective-goal-refinement")
     if payload.get("codebase_refill_enabled") is True:
         args.append("--codebase-refill-scan")
+    if payload.get("preserve_task_attempts") is True:
+        args.append("--preserve-task-attempts")
     if payload.get("retry_budget_guardrail_enabled") is False:
         args.append("--no-retry-budget-guardrail")
     if payload.get("dependency_guardrail_enabled") is False:

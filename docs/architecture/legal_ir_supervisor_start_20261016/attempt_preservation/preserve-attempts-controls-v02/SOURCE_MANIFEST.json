@@ -1,0 +1,29 @@
+{
+  "authored_parameterized_cases": 51,
+  "files": [
+    {
+      "bytes": 1459,
+      "path": "README.md",
+      "sha256": "a764fa54f3d8b24d3566a07065aff697429143eab797f6032e4fb7b79ab4944c"
+    },
+    {
+      "bytes": 21466,
+      "path": "test_preserve_task_attempts.py",
+      "sha256": "d441927aa705038ea031031a8b510f0159974f08f446e9b8eac976ce89921870"
+    }
+  ],
+  "parent_reported_prior_actual_qualification": {
+    "failed": 1,
+    "passed": 50,
+    "request_sha256": "462a15581dc6dba50c6d28b67238dabcdc11f44bed15bc6a2bc832f3b918dce0",
+    "root_and_phase_released": true,
+    "seconds": 4.14,
+    "terminal_execution_session_id": 23817
+  },
+  "prior_source_manifest_sha256": "05f0369a1d3c2bc6b876c4fc51ea83ef7ab00ba2d2e25ad30b0aac4e66f8f225",
+  "prior_test_sha256": "861a1f7292c1569550c5d81bfaedf3f34908c4a77fe61a4f888da11118da275d",
+  "schema": "legal-ir-preserve-attempts-controls@2",
+  "scope": "source-only-test-fixture-correction-no-product-change",
+  "source_root_default": "../preserve-attempts-patch-v01/proposed",
+  "test_status": "not-executed-by-author"
+}
