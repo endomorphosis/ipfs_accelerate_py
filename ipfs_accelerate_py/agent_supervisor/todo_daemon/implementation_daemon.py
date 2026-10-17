@@ -76837,6 +76837,13 @@ class DatabaseImplementationDaemon:
                 )
         return binding
 
+    def settle_planning_unknown_administrative_abandonment(
+        self, *, authority_context: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Explicit audit-bound local closeout; provider outcome stays UNKNOWN."""
+        from .planning_unknown_abandonment_settlement import settle_planning_unknown_administrative_abandonment
+        return settle_planning_unknown_administrative_abandonment(self, authority_context=authority_context)
+
     def _build_portal_failure_settlement_receipt(
         self,
         attempt: DatabaseTaskAttempt,
@@ -76905,8 +76912,8 @@ class DatabaseImplementationDaemon:
             != DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA
             or normalized.get("operation")
             != "database_task_claim_failure"
-            or normalized.get("failure_kind")
-            != "terminal_portal_bridge_error"
+            or normalized.get("failure_kind") not in {
+                "terminal_portal_bridge_error", "administrative_operator_stop_outcome_unknown"}
             or not settlement_id
             or content_identity(normalized) != settlement_id
         ):
@@ -76972,6 +76979,9 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     "Portal failure settlement execution evidence changed"
                 )
+        if normalized["failure_kind"] == "administrative_operator_stop_outcome_unknown":
+            from .planning_unknown_abandonment_settlement import validate_failure
+            validate_failure(self, attempt, normalized)
         return normalized
 
     def _portal_failure_phase_receipt(
@@ -77358,6 +77368,10 @@ class DatabaseImplementationDaemon:
                 == DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA
             ]
             if not failure_phases:
+                continue
+            if failure_phases[-1]["body"].get("failure_kind") == "administrative_operator_stop_outcome_unknown":
+                # A separate explicit administrative API owns this closeout.
+                # Ordinary reconciliation never grants UNKNOWN recovery/rearm.
                 continue
             receipt = self._validate_portal_failure_settlement_receipt(
                 failure_phases[-1]["body"],
