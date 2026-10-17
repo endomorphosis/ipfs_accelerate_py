@@ -217,6 +217,70 @@ def _base(status="unknown", reason="observation_unavailable") -> dict:
         "task_correctness_established": False}
 
 
+def _add_rendered_input_census(result, *, model_prompt, workspace_advisory, invocation_id,
+                              input_representation=None):
+    """Append bounded optional metadata after the caller's exact input checks."""
+    census = result["rendered_input_census"]
+    identity = _sha(invocation_id.encode("utf-8"))
+    if any(row["invocation_id_sha256"] == identity
+           for row in (*census["observations"], *census["unavailable"])):
+        return
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.rendered_input_census import SCHEMA, census_rendered_input
+        options = {} if input_representation is None else {"input_representation": input_representation}
+        observation = census_rendered_input(model_prompt=model_prompt,
+            workspace_advisory=workspace_advisory, invocation_id=invocation_id, **options)
+        if (type(observation) is not dict or observation.get("schema") != SCHEMA
+                or observation.get("invocation_id_sha256") != identity
+                or observation.get("model_prompt_sha256") != _sha(model_prompt.encode("utf-8"))
+                or type(observation.get("model_prompt_bytes")) is not int
+                or observation["model_prompt_bytes"] != len(model_prompt.encode("utf-8"))
+                or observation.get("input_representation") != input_representation):
+            raise ValueError("census result binding unavailable")
+        rows = [*census["observations"], observation]
+        if (len(rows) > MAX_RECEIPTS
+                or sum(len(json.dumps(row, sort_keys=True, allow_nan=False).encode())
+                       for row in rows) > MAX_CENSUS_BYTES):
+            raise ValueError("census result budget unavailable")
+    except Exception:
+        census["unavailable"].append({"invocation_id_sha256": identity,
+            "reason": "census_bound_or_input_unavailable"})
+    else:
+        census["observations"].append(observation)
+
+
+def _finish_rendered_input_census(result):
+    """Bound optional census output across routes without changing audit verdicts."""
+    census = result.get("rendered_input_census")
+    if census is None:
+        return result
+    verified = {_sha(row["invocation_id"].encode("utf-8")) for row in result["invocations"]
+                if row.get("model_input_verified") is True}
+    census["verified_invocation_count"] = len(verified)
+    known = {row["invocation_id_sha256"] for row in (*census["observations"], *census["unavailable"])}
+    census["unavailable"].extend({"invocation_id_sha256": identity,
+        "reason": "census_bound_or_input_unavailable"} for identity in sorted(verified - known))
+    while True:
+        census["observed_invocation_count"] = len(census["observations"])
+        if census["observations"]:
+            census["status"] = ("complete_for_verified_inputs"
+                if len(census["observations"]) == len(verified) else "partial_for_verified_inputs")
+            census["reason"] = "one_observation_per_exact_verified_router_invocation"
+        elif verified:
+            census["status"], census["reason"] = "unavailable", "census_bound_or_input_unavailable"
+        if (not census["observations"] or (
+                sum(len(json.dumps(row, sort_keys=True).encode()) for row in census["observations"])
+                    <= MAX_CENSUS_BYTES
+                and len(json.dumps(result, sort_keys=True).encode()) <= MAX_RESULT_BYTES)):
+            break
+        removed = census["observations"].pop()
+        census["unavailable"].append({"invocation_id_sha256": removed["invocation_id_sha256"],
+            "reason": "audit_result_budget_unavailable"})
+    if len(json.dumps(result, sort_keys=True).encode()) > MAX_RESULT_BYTES:
+        result.pop("rendered_input_census")
+    return result
+
+
 def _open_directory(path: Path) -> int:
     """Open every absolute directory component without following a symlink."""
     path = Path(path).absolute()
@@ -816,9 +880,8 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         source_view_binding=receipt.get("source_view_advisory_policy"),
         repository_source_binding=receipt.get("repository_source_policy"))
     if receipt.get("repository_source_policy") is not None:
-        from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp
-        source = Path(repository_source_mcp.__file__).read_bytes()
-        checks["repository_source_helper_source"] = _sha(source) == receipt["repository_source_policy"]["helper_sha256"]
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import helper_sources_match
+        checks["repository_source_helper_source"] = helper_sources_match(receipt["repository_source_policy"])
     if receipt.get("source_view_advisory_policy") is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime import code_source_view
         source = Path(code_source_view.__file__).read_bytes()
@@ -1466,7 +1529,7 @@ def _audit_legacy_terminal_context(*, state: Path, receipts: list[dict], workspa
             if "semantic_prompt_components" in row else {})} for row in parsed]
     root_fd = _open_directory(state)
     originals = []
-    census_seen, census_bytes = set(), 0
+    census_seen = set()
     try:
         expected_raw = _read_at(root_fd, "context-result.json")
         prepared_raw = _read_at(root_fd, "prepared.json")
@@ -1510,22 +1573,8 @@ def _audit_legacy_terminal_context(*, state: Path, receipts: list[dict], workspa
                     # are distinct; duplicate stored capsules are not deliveries.
                     if match["model_input_verified"] and receipt["invocation_id"] not in census_seen:
                         census_seen.add(receipt["invocation_id"])
-                        try:
-                            from ipfs_accelerate_py.agent_supervisor.runtime.rendered_input_census import census_rendered_input
-                            census = census_rendered_input(model_prompt=model,
-                                workspace_advisory=advisory, invocation_id=receipt["invocation_id"])
-                            size = len(json.dumps(census, sort_keys=True).encode())
-                            if census_bytes + size > MAX_CENSUS_BYTES:
-                                raise ValueError("census result budget unavailable")
-                        except Exception:
-                            # Diagnostic limits must not demote verified input or
-                            # change usage, success, completion or provider work.
-                            result["rendered_input_census"]["unavailable"].append({
-                                "invocation_id_sha256": _sha(receipt["invocation_id"].encode()),
-                                "reason": "census_bound_or_input_unavailable"})
-                        else:
-                            census_bytes += size
-                            result["rendered_input_census"]["observations"].append(census)
+                        _add_rendered_input_census(result, model_prompt=model,
+                            workspace_advisory=advisory, invocation_id=receipt["invocation_id"])
             except Exception as error:
                 result["read_errors"].append({"kind": "capsule", "error_type": type(error).__name__})
     finally:
@@ -1566,28 +1615,7 @@ def _audit_legacy_terminal_context(*, state: Path, receipts: list[dict], workspa
         else "verified_some_observed_model_inputs" if result["any_model_input_verified"]
         else "verified_native_input_only" if result["any_native_input_verified"] else "unverified")
     result["reason"] = "per_invocation_context_and_input_comparison"
-    census = result["rendered_input_census"]
-    census["verified_invocation_count"] = len(census_seen)
-    while True:
-        census["observed_invocation_count"] = len(census["observations"])
-        if census["observations"]:
-            census["status"] = ("complete_for_verified_inputs" if len(census["observations"]) == len(census_seen)
-                else "partial_for_verified_inputs")
-            census["reason"] = "one_observation_per_exact_verified_router_invocation"
-        elif census_seen:
-            census["status"], census["reason"] = "unavailable", "census_bound_or_input_unavailable"
-        # Enrichment yields its budget before the collector's existing bound;
-        # never replace an otherwise available input audit with census output.
-        if not census["observations"] or len(json.dumps(result, sort_keys=True).encode()) <= MAX_RESULT_BYTES:
-            break
-        removed = census["observations"].pop()
-        census["unavailable"].append({"invocation_id_sha256": removed["invocation_id_sha256"],
-            "reason": "audit_result_budget_unavailable"})
-    if len(json.dumps(result, sort_keys=True).encode()) > MAX_RESULT_BYTES:
-        # Even an empty diagnostic envelope may exceed the remaining space.
-        # Its absence leaves the existing audit report and verdict intact.
-        result.pop("rendered_input_census")
-    return result
+    return _finish_rendered_input_census(result)
 
 
 def _validate_decision_report(value):
@@ -1631,8 +1659,11 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
     result["world_packet_replays"] = world_result["world_packet_replays"]
     if "semantic_decision_inputs" in legacy_result:
         result["semantic_decision_inputs"] = legacy_result["semantic_decision_inputs"]
-    if "rendered_input_census" in legacy_result:
-        result["rendered_input_census"] = legacy_result["rendered_input_census"]
+    for route in (legacy_result, world_result):
+        census = route.get("rendered_input_census")
+        if census is not None:
+            for field in ("observations", "unavailable"):
+                result["rendered_input_census"][field].extend(census[field])
     result["coding_receipts_seen"] = len(receipts)
     result["usable_coding_receipts"] = sum(row.get("usable_coding_receipts", 0)
         for row in (legacy_result, world_result))
@@ -1655,7 +1686,7 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
         else "verified_some_observed_model_inputs" if result["any_model_input_verified"]
         else "verified_native_input_only" if result["any_native_input_verified"] else "unverified")
     result["reason"] = "per_invocation_context_and_input_comparison"
-    return result
+    return _finish_rendered_input_census(result)
 
 
 def collect_terminal_context_audit(*, state: Path, receipts: list[dict],

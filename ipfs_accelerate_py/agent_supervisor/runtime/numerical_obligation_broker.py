@@ -160,12 +160,16 @@ class NumericalObligationBroker:
                                self.protocol.DIGEST_FLAG, self.descriptor_sha256]
             self._listener.listen(4)
             self._thread = threading.Thread(target=self._serve, name=self.file_prefix + "-reader", daemon=True)
-            self._thread.start()
+            self._start_service_thread()
         except BaseException:
             self._listener.close()
             _unlink_same(self.socket_path, self._socket_identity)
             _unlink_same(self.descriptor_path, self._descriptor_identity)
             raise
+
+    def _start_service_thread(self):
+        """Launch hook for services that must retain native cleanup custody."""
+        self._thread.start()
 
     def note_spawned(self, process):
         if self._closed or self._registered.is_set() or process.poll() is not None:

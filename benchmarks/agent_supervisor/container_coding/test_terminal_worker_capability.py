@@ -53,6 +53,14 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     assert value['terminal_semantic_scope_schema'] == 'terminal-public-task-semantic-scope@1'
     assert set(value['source_sha256']) == {
         'source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_owner_observation.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_owner_audit.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_owner_lifecycle.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_worker_forwarding.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_worker_receipts.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_retirement.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_monitor.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_lifecycle.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py',

@@ -217,10 +217,13 @@ def _partition(value, budget, canonical_size):
     return result
 
 
-def census_rendered_input(*, model_prompt: str, workspace_advisory: str, invocation_id: str) -> dict:
+def census_rendered_input(*, model_prompt: str, workspace_advisory: str, invocation_id: str,
+                          input_representation: str | None = None) -> dict:
     """Measure one exact, caller-verified user message; never a session total.
 
     The JSON prefix is the literal router context after its exact advisory.
+    Explicit world input additionally separates its fixed guidance and checks
+    the canonical envelope; the caller still owns complete packet validation.
     Canonical subtree and long-string equality are independently nonadditive
     observations. Output contains no caller-provided keys, paths or bodies.
     """
@@ -229,18 +232,44 @@ def census_rendered_input(*, model_prompt: str, workspace_advisory: str, invocat
     identity = _utf8(invocation_id, 512)
     if not model or not identity or not model_prompt.startswith(workspace_advisory):
         _invalid()
+    if input_representation is not None and (
+            type(input_representation) is not str or input_representation != "world_task_packet"):
+        _invalid()
     router = model_prompt[len(workspace_advisory):]
+    guidance = b""
+    if input_representation == "world_task_packet":
+        from .repository_world_packet import GUIDANCE, SCHEMA as WORLD_SCHEMA
+        from ..prompt.delta_task_packet import PROVIDER_FACING_PACKET_SCHEMA
+        preamble = GUIDANCE + "\n"
+        if not router.startswith(preamble):
+            _invalid()
+        guidance = preamble.encode("utf-8")
+        router = router[len(preamble):]
     value, prefix, suffix = _json_prefix(router)
+    if input_representation == "world_task_packet":
+        packet = value.get("packet")
+        if (set(value) != {"schema", "delivery_mode", "packet"}
+                or value["schema"] != WORLD_SCHEMA or value["delivery_mode"] != "self_contained"
+                or type(packet) is not dict or packet.get("schema") != PROVIDER_FACING_PACKET_SCHEMA
+                or type(packet.get("members")) is not list or len(packet["members"]) > 512
+                or any(type(member) is not dict for member in packet["members"])
+                or any(packet.get(name) is not False for name in (
+                    "semantic_authority", "write_authority", "completion_authority",
+                    "contains_credentials", "contains_secrets"))):
+            _invalid()
     budget = _EncodingBudget()
     structured, long_strings, nodes = _overlaps(value, budget)
     canonical = budget.encode(value)
+    if input_representation == "world_task_packet" and prefix.encode("utf-8") != canonical:
+        _invalid()
     partition = _partition(value, budget, len(canonical))
     prefix_raw, suffix_raw = prefix.encode(), suffix.encode()
     result = {"schema": SCHEMA, "invocation_id_sha256": _sha(identity),
         "model_prompt_sha256": _sha(model), "model_prompt_bytes": len(model),
         "disjoint_byte_partition": {"workspace_advisory": len(advisory),
+            **({"world_packet_guidance": len(guidance)} if input_representation is not None else {}),
             "json_prefix": len(prefix_raw), "router_suffix": len(suffix_raw)},
-        "byte_partition_reconciles": len(advisory) + len(prefix_raw) + len(suffix_raw) == len(model),
+        "byte_partition_reconciles": len(advisory) + len(guidance) + len(prefix_raw) + len(suffix_raw) == len(model),
         "json_prefix": {"sha256": _sha(prefix_raw), "bytes": len(prefix_raw),
             "canonical_bytes": len(canonical), "is_canonical": prefix_raw == canonical},
         "canonical_byte_partition": partition,
@@ -253,6 +282,33 @@ def census_rendered_input(*, model_prompt: str, workspace_advisory: str, invocat
         "scope": "one verified router user message; excludes CLI/system context and later tool history",
         "nested_json_strings_inspected": False, "literal_duplicate_substrings_mined": False,
         "overlap_totals_are_additive": False, "token_savings_established": False}
+    if input_representation is not None:
+        result.update(input_representation=input_representation,
+            world_packet_guidance={"sha256": _sha(guidance), "bytes": len(guidance)})
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_RESULT_BYTES:
         _invalid()
+    # This is the already selected, caller-verified message. Observing its
+    # declared raw-source slots never restores an omitted candidate or searches
+    # arbitrary source-like text. Optional enrichment yields its budget before
+    # the existing census, and cannot change the input audit's verdict.
+    try:
+        from .inline_source_observation import observe_inline_sources, observe_world_inline_sources
+        options = dict(model_prompt=model_prompt, workspace_advisory=workspace_advisory,
+                       invocation_id=invocation_id)
+        inline = (observe_world_inline_sources(**options)
+                  if input_representation == "world_task_packet" else observe_inline_sources(**options))
+        enriched = {**result, "inline_sources": inline}
+        if input_representation == "world_task_packet":
+            # Repetition accounting never decodes nested strings. The optional
+            # source join can inspect one declared complete semantic artifact;
+            # an unavailable result does not establish whether it was decoded.
+            enriched.update(nested_json_strings_inspected=True if inline["status"] == "observed" else None,
+                nested_json_inspection_scope="declared_complete_semantic_context_only",
+                repetition_census_nested_json_strings_inspected=False)
+        if len(json.dumps(enriched, sort_keys=True, allow_nan=False).encode()) <= MAX_RESULT_BYTES:
+            result = enriched
+    except Exception:
+        # Content-bearing exceptions remain private. Absence is unknown to the
+        # downstream join, never an empty source population.
+        pass
     return result

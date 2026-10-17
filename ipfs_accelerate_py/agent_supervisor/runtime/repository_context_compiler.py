@@ -124,14 +124,28 @@ supervisor-side until an explicitly charged discovery or expansion is sent.
         from ipfs_datasets_py.logic.software_contracts.codebase_resources import acquire_codebase_resources
 
         # Native fences release their own leases before compiler admission.
-        # Never hold a root lease while asking the same scheduler for another.
+        # Borrow the index's parent when supplied, so compilation does not
+        # acquire an independent root beneath an admitted caller's envelope.
+        from .repository_source_index import NativeRepositoryIndex
+
+        index = self.session._index
         deadline = time.monotonic() + 30.0
-        with acquire_codebase_resources(scheduler=getattr(self.session._index, "_scheduler", None),
-                                        timeout_seconds=10.0, memory_mb=256) as lease:
-            _require(not lease.cancelled, "context_compilation_cancelled")
+        inherited = getattr(self.session, "_deadline_monotonic", None)
+        if inherited is not None:
+            deadline = min(deadline, inherited)
+        if isinstance(index, NativeRepositoryIndex) and index._deadline_monotonic is not None:
+            deadline = min(deadline, index._deadline_monotonic)
+        controls = (NativeRepositoryIndex._resource_options(index) if isinstance(index, NativeRepositoryIndex)
+                    else dict(scheduler=getattr(index, "_scheduler", None)))
+        remaining = deadline - time.monotonic()
+        _require(remaining > 0, "context_compilation_timeout")
+        with acquire_codebase_resources(**controls,
+                                        timeout_seconds=min(10.0, remaining), memory_mb=256) as lease:
+            cancelled = lease.combined_cancellation_signal(controls.get("cancel_event"))
+            _require(not cancelled.is_set(), "context_compilation_cancelled")
             _require(time.monotonic() < deadline, "context_compilation_timeout")
             result = getattr(self.compiler, method)(*args, **arguments)
-            _require(not lease.cancelled, "context_compilation_cancelled")
+            _require(not cancelled.is_set(), "context_compilation_cancelled")
             _require(time.monotonic() < deadline, "context_compilation_timeout")
             return result
 
@@ -141,7 +155,27 @@ supervisor-side until an explicitly charged discovery or expansion is sent.
                  "repository_context_parent_limit")
         required = {v.reference_id: v for v in capsule.evidence if v.required}
         _require(required == state.required, "required_context_changed")
-        self._parents[capsule.capsule_id] = replace(state, capsule=capsule)
+        # Parent bookkeeping must not publish a result that crossed the
+        # inherited deadline while canonicalizing or copying its evidence.
+        from .repository_source_index import NativeRepositoryIndex
+
+        def checkpoint():
+            self.session._checkpoint()
+            if isinstance(self.session._index, NativeRepositoryIndex):
+                NativeRepositoryIndex._resource_options(self.session._index)
+
+        replacement = replace(state, capsule=capsule)
+        checkpoint()
+        previous = self._parents.get(capsule.capsule_id)
+        self._parents[capsule.capsule_id] = replacement
+        try:
+            checkpoint()
+        except BaseException:
+            if previous is None:
+                self._parents.pop(capsule.capsule_id, None)
+            else:
+                self._parents[capsule.capsule_id] = previous
+            raise
 
     def _parent(self, parent, generation):
         _require(isinstance(parent, ContextCapsule), "invalid_context_parent")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import hashlib
 import json
 import tarfile
 from pathlib import Path
@@ -31,6 +32,9 @@ def _inputs(tmp_path):
     bench = roots["source"] / "benchmarks/agent_supervisor/container_coding"
     bench.mkdir(parents=True)
     (bench / "worker.py").write_text("VALUE = 2\n")
+    checkout = Path(__file__).resolve().parents[3]
+    for name in ("benchmarks/__init__.py", "benchmarks/agent_supervisor/__init__.py"):
+        (roots["source"] / name).write_bytes((checkout / name).read_bytes())
     extensions = tmp_path / "extensions"
     extensions.mkdir()
     for name in ("ducklake", "httpfs", "quack"):
@@ -39,15 +43,19 @@ def _inputs(tmp_path):
 
 
 def _supervisor_inputs(tmp_path):
-    """Packaging fixture with the exact worker capability sources.
+    """Packaging fixture with the exact worker capability and deadline sources.
 
     This remains a hermetic archive fixture, not an executable full runtime.
-    Generic packaging tests deliberately retain the seven-file _inputs fixture.
+    Generic packaging tests retain the nine-file _inputs fixture.
     """
     from .terminal_worker_capability import SOURCE_PATHS
+    from .full_supervisor_benchmark import TIMEOUT_RUNTIME_SOURCE_NAMES, TIMEOUT_RUNTIME_ARCHIVE_PREFIX
     inputs = _inputs(tmp_path)
     checkout = Path(__file__).resolve().parents[3]
-    for name in SOURCE_PATHS:
+    required = set(SOURCE_PATHS) | {
+        TIMEOUT_RUNTIME_ARCHIVE_PREFIX.removeprefix("source/") + name
+        for name in TIMEOUT_RUNTIME_SOURCE_NAMES}
+    for name in sorted(required):
         target = inputs["source"] / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((checkout / name).read_bytes())
@@ -63,14 +71,20 @@ def _supervisor_manifest(manifest):
     """
     import copy
     from .terminal_worker_capability import KEY, _current_capability
+    from .full_supervisor_benchmark import TIMEOUT_RUNTIME_SOURCE_NAMES, TIMEOUT_RUNTIME_ARCHIVE_PREFIX
     value = copy.deepcopy(manifest)
     capability = _current_capability()
     checkout = Path(__file__).resolve().parents[3]
+    required = dict(capability["source_sha256"])
+    for name in TIMEOUT_RUNTIME_SOURCE_NAMES:
+        source = Path(__file__).with_name(name)
+        required[TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name] = hashlib.sha256(source.read_bytes()).hexdigest()
     value["files"] = [row for row in value.get("files", [])
-                      if row.get("path") not in capability["source_sha256"]]
+                      if row.get("path") not in required]
     value["files"].extend({"path": name, "sha256": digest, "mode": 0o644,
                           "bytes": (checkout / name.removeprefix("source/")).stat().st_size}
-                          for name, digest in capability["source_sha256"].items())
+                          for name, digest in required.items())
+    value.setdefault("schema", "terminal-supervisor-runtime-archive@1")
     value[KEY] = capability
     return value
 
@@ -79,8 +93,10 @@ def test_archive_contains_only_explicit_runtime_sources_and_native_assets(tmp_pa
     result = build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
     with tarfile.open(tmp_path / "bundle/runtime.tar.gz") as archive:
         names = archive.getnames()
-        assert len(names) == 7
+        assert len(names) == 9
         assert "source/ipfs_accelerate_py/__init__.py" in names
+        assert "source/benchmarks/__init__.py" in names
+        assert "source/benchmarks/agent_supervisor/__init__.py" in names
         assert all(not name.startswith("/") and ".." not in Path(name).parts for name in names)
         assert not any("auth.json" in name or ".env" in name for name in names)
         assert all(x.uid == 0 and x.gid == 0 and x.isfile() for x in archive.getmembers())
