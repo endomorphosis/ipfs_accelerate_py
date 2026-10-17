@@ -1,0 +1,1 @@
+174 cold controls of frozen pairedG3/H3/C:80H35C17boundary42G, under genuine finite owner; no Docker/provider/native test grant or originaltask attempt. V01 failed169/170 and correctedV02passed170/170 are preserved; this new run additionally covers the scoped trusted executable and fixed readonly mount source joins. Runtime productive mount/provider execution remains separate.

@@ -1,0 +1,31 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 1548,
+      "path": "README.txt",
+      "sha256": "2baa4cf89771b90f4dfb59c7defa91d6d86954da9fb739bcd083387f69e9ec67"
+    },
+    {
+      "bytes": 30462,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "sha256": "0b76675f07959164adb5ef442e7df2218148674bad739379adb528ec1b2cc574"
+    },
+    {
+      "bytes": 7937,
+      "path": "report_only_native_host-v03.patch",
+      "sha256": "c2f60cadf6728962bb2a98d322216ce66ba9b23f4b699300d689b539f9e5ef54"
+    }
+  ],
+  "full_host_qualified": false,
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v02/SOURCE_MANIFEST.json": "16e7f7dd18a40dc7678906161083fbcdc04b98365120188882a62e69e56f333d",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/daemon-integration-v03/ASSEMBLY.json": "d8d458b9bb0bd8cd2394de19224d1be8ec3fabce615196af325103d4882f89eb",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/settlement-audit-v01/SOURCE_MANIFEST.json": "1b87282f401c03c8c84aba2b2bfef6698016590060b27d10218897f1101b7671"
+  },
+  "production_hook_deployed": false,
+  "qualification": "authored; controls and actual fixtures recorded separately",
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-host-source@2"
+}

@@ -1,0 +1,64 @@
+{
+  "assembly_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/daemon-integration-v03/ASSEMBLY.json",
+  "assembly_sha256": "d8d458b9bb0bd8cd2394de19224d1be8ec3fabce615196af325103d4882f89eb",
+  "freeze_input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/build_patch.py": "6b87e6f63b42b970265daa3131042c9651b5fa9319f97314b3490ab478e2b7e4",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/borrowed-state-v01/SOURCE_MANIFEST.json": "d836fc4545d5f86de2f2913fe194f79a2fd9e48b95eef96b212d12b1f8494c21",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/borrowed-state-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py": "a500b6d2f9153177e462a714cdea43d0f878fae62c1927ee0820a483c0af72c4",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v02/SOURCE_MANIFEST.json": "2690f6df93740dcfcd7457c33a1f57dcc0a78c86a09cc710baa8484adb97a3fa",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v02/build_patch.py": "38e1fa5c63800a6e10c9ba54788010c75710daad867d41704cc7084677d46870",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/freezer-board-v04/SOURCE_MANIFEST.json": "a36463f140a3e9ee35cf29ecdaa51e37ac50348f8f99c9eda5b3e23485630297",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/freezer-board-v04/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py": "0ec248e806c17c901186543fec5946f13657e17284a470f22a9e96749f55f23e",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v02/SOURCE_MANIFEST.json": "16e7f7dd18a40dc7678906161083fbcdc04b98365120188882a62e69e56f333d",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py": "238d21021f2701475c9152c86952396df7050ffce6c56736622ab005625b3b8d",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/daemon-integration-v03/ASSEMBLY.json": "d8d458b9bb0bd8cd2394de19224d1be8ec3fabce615196af325103d4882f89eb",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/daemon-integration-v03/SOURCE_MANIFEST.json": "e6b8f41e39fc27686e1eebafcf0da4efc6229b6541db704fe865051c3406a6a9",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/daemon-integration-v03/build_patch.py": "f5199a384dfc8ab642582bb68fe78765f61b6958471597180aab4f25c270006e",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/native-host-v03/SOURCE_MANIFEST.json": "81c91a866c9ae2bfb4502facce6c4a755d92f22e06be2e24dce7722b7f8430a0",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/native-host-v03/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py": "0b76675f07959164adb5ef442e7df2218148674bad739379adb528ec1b2cc574",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/repository-fixture-v02/parent_attachment_gate.py": "dba5662443619358e2225d0cf7ccaa2e2b6c5bf51b0a60d2d1809004d1667fb3",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/settlement-audit-v01/SOURCE_MANIFEST.json": "1b87282f401c03c8c84aba2b2bfef6698016590060b27d10218897f1101b7671",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/settlement-audit-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/original_finalizer_continuations.py": "e871a383d6ae60161ac081a0379f0f4146ed7fc0b1166e01303f70290d9a8a6b",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+  },
+  "overrides": [
+    {
+      "bytes": 67238,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "sha256": "238d21021f2701475c9152c86952396df7050ffce6c56736622ab005625b3b8d",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
+    },
+    {
+      "bytes": 3309445,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "4984370456bd304dd9d89550c05e2d364fd9f0ca4849db560cb10caddfe3f407",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-full-daemon-capsule-20261017-r02/assembled-daemon.py"
+    },
+    {
+      "bytes": 11456,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/original_finalizer_continuations.py",
+      "sha256": "e871a383d6ae60161ac081a0379f0f4146ed7fc0b1166e01303f70290d9a8a6b",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/settlement-audit-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/original_finalizer_continuations.py"
+    },
+    {
+      "bytes": 38029,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "a500b6d2f9153177e462a714cdea43d0f878fae62c1927ee0820a483c0af72c4",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/borrowed-state-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py"
+    },
+    {
+      "bytes": 73487,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "sha256": "0ec248e806c17c901186543fec5946f13657e17284a470f22a9e96749f55f23e",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/freezer-board-v04/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py"
+    },
+    {
+      "bytes": 30462,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "sha256": "0b76675f07959164adb5ef442e7df2218148674bad739379adb528ec1b2cc574",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/native-host-v03/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py"
+    }
+  ],
+  "schema": "legal-ir-full-host-capsule-reviewed-source-spec@1",
+  "target_capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-full-daemon-capsule-20261017-r02/capsule"
+}

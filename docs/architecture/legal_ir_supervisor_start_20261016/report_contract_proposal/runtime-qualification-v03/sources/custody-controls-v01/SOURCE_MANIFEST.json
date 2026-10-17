@@ -1,0 +1,22 @@
+{
+  "acceptance_authority": false,
+  "author_review": "AST and stable exact source bytes only; no tests or runtime executed.",
+  "completion_authority": false,
+  "expected_controlled_testcases": 35,
+  "files": [
+    {
+      "bytes": 9660,
+      "path": "qualify_custody_controls.py",
+      "sha256": "4699106a1fd37a50c7a14e4cb1559d2301d2ef43105e0665c7eadf9fa075f207"
+    },
+    {
+      "bytes": 1142,
+      "path": "README.md",
+      "sha256": "0c845d05c9ac043ad5bd7182792cd84bf3c2f2b77d80fcab5142d49c5a31eacc"
+    }
+  ],
+  "native_Docker_provider_jobs_performed_by_author": false,
+  "schema": "legal-ir-ordinary-custody-controls-source@1",
+  "source_manifest_path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/SOURCE_MANIFEST.json",
+  "source_manifest_sha256": "36742d137ef138fd720ffc9db0521e0107bb7616ef9c95494f785b21ef238ceb"
+}

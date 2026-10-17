@@ -1,0 +1,72 @@
+{
+  "acceptance_authority": false,
+  "canonical_task_attempts": 0,
+  "controlled_testcases": 132,
+  "deployed": false,
+  "external_integration_requirement": "Separately frozen G3 and actual complete source closure; no future digest invented",
+  "files": [
+    {
+      "bytes": 2196,
+      "path": "README.txt",
+      "sha256": "2504a88c1d14487c0918a4d73d656f525bc515be93360f993c991e289f59d395"
+    },
+    {
+      "bytes": 3262,
+      "path": "ordinary_success_handoff.py.patch",
+      "sha256": "a7f78e7eca105bd0312914cc64f77cfe9fbc0125309ee648381b4d19a022acb8"
+    },
+    {
+      "bytes": 16803,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb"
+    },
+    {
+      "bytes": 54117,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "sha256": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a"
+    },
+    {
+      "bytes": 5019,
+      "path": "test_callable_handoff_refusals.py",
+      "sha256": "4cfc8cba5faf8b49b183941b0701a427e07c9d5eb06d1c43781c578b414eb9c2"
+    },
+    {
+      "bytes": 10639,
+      "path": "test_custody_hold_memory.py",
+      "sha256": "12e8c6afc9b67bfc72f264c563ca128a6be7571661e37e6d51311c50a1708c9b"
+    },
+    {
+      "bytes": 17625,
+      "path": "test_handoff_memory.py",
+      "sha256": "7cd74495d3221461fc39ec656e30c3b518de27b3de7f4de61757e8bef947a24a"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 2741,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/SOURCE_MANIFEST.json",
+      "role": "immutable_H_C_V02_context",
+      "sha256": "f7d06829c5c49b45171baf8a5d80c9f28b91fb49950a4b42f6ca11f117693b18"
+    },
+    {
+      "bytes": 9124,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/SOURCE_MANIFEST.json",
+      "role": "immutable_G_V02_API_context",
+      "sha256": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e"
+    },
+    {
+      "bytes": 1410,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/memory-controls-root-observation-r02.json",
+      "role": "genuine_predecessor_controls_observation",
+      "sha256": "111c481c3fbe4b05558b6dcaf4ab6c08d19a9f1083a3d0294841b06e43f1565f"
+    }
+  ],
+  "provider_calls": 0,
+  "pure_control_breakdown": {
+    "cold_boundary": 17,
+    "preserved_C": 35,
+    "preserved_H_with_one_prerequisite_migration": 80
+  },
+  "qualification_status": "source_reviewed_not_runtime_qualified",
+  "schema": "legal-ir-callable-handoff-source@3"
+}

@@ -1,0 +1,34 @@
+{
+  "acceptance_authority": false,
+  "author_canonical_tasks_accepted": 0,
+  "author_existing_sources_modified": false,
+  "author_provider_calls_performed": false,
+  "author_runtime_or_tests_executed": false,
+  "completion_authority": false,
+  "embedded_barrier_ast_valid": true,
+  "files": [
+    {
+      "bytes": 4348,
+      "path": "README.md",
+      "sha256": "fe83360665720df91c37a35273a5545b0b83e0df8787a956c661f5b78ab1ffed"
+    },
+    {
+      "bytes": 21708,
+      "path": "qualify_candidate_observer.py",
+      "sha256": "63c804b6facd6b68455476ff00a5007f5f3f139decbbda6c068f97ffabfa7fbd"
+    },
+    {
+      "bytes": 6352,
+      "path": "request-v01.json",
+      "sha256": "545a2eaf693d35783c6cd421f452d4933e01b6b20946ff9587170c20964fcba3"
+    }
+  ],
+  "original_authoring_sha256": "66ebc6a95adde4fc717dd19ffaf5f03387f909662d1a47eccbb5c2a51857e9e6",
+  "original_board_sha256": "5244288f69562663f44b00d27add1ee6ef338f977fed1c0e1c8855725ff372c7",
+  "previous_manifest_sha256": "ba7d24aeb5d6ece55bbd831b08b69c16ed28d1a343f84f802bf6e8d9513b0eb0",
+  "previous_qualifier_generation_and_failed_attempt_modified": false,
+  "qualified_observer_schema": "legal-ir-real-candidate-binding-observation@3",
+  "qualified_observer_source_manifest_sha256": "829d35224fc21fa40bd63e50b8d9073e3e66e58dd332710fc85d29caa214be97",
+  "schema": "legal-ir-candidate-observer-qualification-source-manifest@2",
+  "status": "source_only_not_executed"
+}

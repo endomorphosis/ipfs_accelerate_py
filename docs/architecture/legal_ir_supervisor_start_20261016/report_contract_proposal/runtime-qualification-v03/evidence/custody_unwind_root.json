@@ -1,0 +1,383 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 0,
+  "actual_exec_session": 19063,
+  "actual_native_terminal": {
+    "Docker_started": false,
+    "OS_process_children_created": false,
+    "acceptance_authority": false,
+    "actual_consumer_renew_after_cancellation": [
+      true,
+      true
+    ],
+    "actual_consumer_rows_drained": true,
+    "actual_disk_owner_statuses": {
+      "ad37d37b3ec54a219fb7f68e62cc375d": {
+        "fresh_finalization_profile": {
+          "global_accounting_seconds": 17.387802752899006,
+          "global_inventory_count": 1,
+          "ledger_lock_wait_seconds": 0.0004455328453332186,
+          "process_check_seconds": 2.639833837747574e-06,
+          "schema_version": "daemon-resource-finalization-profile/v1",
+          "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+          "strict_attempt_inventory_count": 1,
+          "strict_attempt_inventory_seconds": 0.0002404551487416029
+        },
+        "native_lease_id": "9981c2a9d90a4915b9aa024604b19e3a",
+        "native_lease_released": true,
+        "status": "released"
+      },
+      "fe8bdf9e8bf3498ab3a2a489921e9622": {
+        "fresh_finalization_profile": {
+          "global_accounting_seconds": 17.20589664299041,
+          "global_inventory_count": 1,
+          "ledger_lock_wait_seconds": 0.0004494599997997284,
+          "process_check_seconds": 3.0400697141885757e-06,
+          "schema_version": "daemon-resource-finalization-profile/v1",
+          "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+          "strict_attempt_inventory_count": 1,
+          "strict_attempt_inventory_seconds": 0.00025254697538912296
+        },
+        "native_lease_id": "79688ce3d7ba4b7eba4c51d811209e85",
+        "native_lease_released": true,
+        "status": "released"
+      }
+    },
+    "actual_owner_contexts_unwound": true,
+    "actual_phase_release_requested": true,
+    "actual_provider_execution_qualified": false,
+    "canonical_tasks_accepted": 0,
+    "capacity_retained_after_cancellation": true,
+    "capacity_retained_after_unwind": true,
+    "completion_authority": false,
+    "dispatch_authority": false,
+    "fixture_only": true,
+    "host_process_death_survival_guaranteed": false,
+    "models_called": 0,
+    "native_identifiers": {
+      "consumer_0": "aa1335b7121b4741800b51ef31995d8d",
+      "consumer_1": "f6f4d3254cc44898834392081d149c32",
+      "owner_0": "9981c2a9d90a4915b9aa024604b19e3a",
+      "owner_1": "79688ce3d7ba4b7eba4c51d811209e85",
+      "phase": "50fbafa8f13945638fe443bac178deeb",
+      "root": "b2fee600018c433189f8a0656b30bfda"
+    },
+    "observations": {
+      "actual_hold_forget_after_acknowledgement": {
+        "Docker_quiescence_verified": false,
+        "acceptance_authority": false,
+        "cleanup_verified": false,
+        "completion_authority": false,
+        "dispatch_authority": false,
+        "hold_references_forgotten": true,
+        "independent_cleanup_not_authenticated_by_this_helper": true,
+        "native_consumers_acknowledged_and_absent": true,
+        "native_leases_released_by_this_helper": false,
+        "observation_only": true,
+        "productive_authority_granted": false,
+        "provider_execution_qualified": false,
+        "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+      },
+      "actual_inventory_before_acknowledgement": {
+        "consumer_0": {
+          "cancelled": true,
+          "lease_id": "aa1335b7121b4741800b51ef31995d8d",
+          "record_present": true,
+          "release_requested": false
+        },
+        "consumer_1": {
+          "cancelled": true,
+          "lease_id": "f6f4d3254cc44898834392081d149c32",
+          "record_present": true,
+          "release_requested": false
+        },
+        "owner_0": {
+          "cancelled": true,
+          "lease_id": "9981c2a9d90a4915b9aa024604b19e3a",
+          "record_present": true,
+          "release_requested": false
+        },
+        "owner_1": {
+          "cancelled": true,
+          "lease_id": "79688ce3d7ba4b7eba4c51d811209e85",
+          "record_present": true,
+          "release_requested": false
+        },
+        "phase": {
+          "cancelled": true,
+          "lease_id": "50fbafa8f13945638fe443bac178deeb",
+          "record_present": true,
+          "release_requested": true
+        }
+      },
+      "actual_parent_inventory_after_unwind": {
+        "owner_0": {
+          "cancelled": false,
+          "lease_id": "9981c2a9d90a4915b9aa024604b19e3a",
+          "record_present": true,
+          "release_requested": false
+        },
+        "owner_1": {
+          "cancelled": false,
+          "lease_id": "79688ce3d7ba4b7eba4c51d811209e85",
+          "record_present": true,
+          "release_requested": false
+        }
+      },
+      "after_cancelled_consumer_renew": {
+        "Docker_quiescence_verified": false,
+        "acceptance_authority": false,
+        "capacity_records_retained": true,
+        "cleanup_verified": false,
+        "completion_authority": false,
+        "consumer_ancestry_cancelled": [
+          true,
+          true
+        ],
+        "consumer_native_lease_ids": [
+          "aa1335b7121b4741800b51ef31995d8d",
+          "f6f4d3254cc44898834392081d149c32"
+        ],
+        "consumer_objects_released": [
+          false,
+          false
+        ],
+        "consumer_records_present": [
+          true,
+          true
+        ],
+        "dispatch_authority": false,
+        "host_process_death_survival_guaranteed": false,
+        "independent_stopped_cleanup_required_before_acknowledgement": true,
+        "no_extra_global_root_allocation": true,
+        "observation_only": true,
+        "owner_pid": 1766584,
+        "productive_ancestry_retained": false,
+        "productive_authority_granted": false,
+        "provider_execution_qualified": false,
+        "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+      },
+      "after_phase_release_before_renew": {
+        "Docker_quiescence_verified": false,
+        "acceptance_authority": false,
+        "capacity_records_retained": true,
+        "cleanup_verified": false,
+        "completion_authority": false,
+        "consumer_ancestry_cancelled": [
+          true,
+          true
+        ],
+        "consumer_native_lease_ids": [
+          "aa1335b7121b4741800b51ef31995d8d",
+          "f6f4d3254cc44898834392081d149c32"
+        ],
+        "consumer_objects_released": [
+          false,
+          false
+        ],
+        "consumer_records_present": [
+          true,
+          true
+        ],
+        "dispatch_authority": false,
+        "host_process_death_survival_guaranteed": false,
+        "independent_stopped_cleanup_required_before_acknowledgement": true,
+        "no_extra_global_root_allocation": true,
+        "observation_only": true,
+        "owner_pid": 1766584,
+        "productive_ancestry_retained": false,
+        "productive_authority_granted": false,
+        "provider_execution_qualified": false,
+        "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+      },
+      "after_unwind": {
+        "Docker_quiescence_verified": false,
+        "acceptance_authority": false,
+        "capacity_records_retained": true,
+        "cleanup_verified": false,
+        "completion_authority": false,
+        "consumer_ancestry_cancelled": [
+          false,
+          false
+        ],
+        "consumer_native_lease_ids": [
+          "aa1335b7121b4741800b51ef31995d8d",
+          "f6f4d3254cc44898834392081d149c32"
+        ],
+        "consumer_objects_released": [
+          false,
+          false
+        ],
+        "consumer_records_present": [
+          true,
+          true
+        ],
+        "dispatch_authority": false,
+        "host_process_death_survival_guaranteed": false,
+        "independent_stopped_cleanup_required_before_acknowledgement": true,
+        "no_extra_global_root_allocation": true,
+        "observation_only": true,
+        "owner_pid": 1766584,
+        "productive_ancestry_retained": true,
+        "productive_authority_granted": false,
+        "provider_execution_qualified": false,
+        "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+      },
+      "before_unwind": {
+        "Docker_quiescence_verified": false,
+        "acceptance_authority": false,
+        "capacity_records_retained": true,
+        "cleanup_verified": false,
+        "completion_authority": false,
+        "consumer_ancestry_cancelled": [
+          false,
+          false
+        ],
+        "consumer_native_lease_ids": [
+          "aa1335b7121b4741800b51ef31995d8d",
+          "f6f4d3254cc44898834392081d149c32"
+        ],
+        "consumer_objects_released": [
+          false,
+          false
+        ],
+        "consumer_records_present": [
+          true,
+          true
+        ],
+        "dispatch_authority": false,
+        "host_process_death_survival_guaranteed": false,
+        "independent_stopped_cleanup_required_before_acknowledgement": true,
+        "no_extra_global_root_allocation": true,
+        "observation_only": true,
+        "owner_pid": 1766584,
+        "productive_ancestry_retained": true,
+        "productive_authority_granted": false,
+        "provider_execution_qualified": false,
+        "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+      },
+      "known_unstarted_before_acknowledgement": {
+        "actual_original_owner_records_and_attempts": [
+          {
+            "attempt_device": 66306,
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-custody-unwind-20261017-r01/primary",
+            "attempt_inode": 75255967,
+            "child": null,
+            "prior_children": [],
+            "private_files": [
+              "known-unstarted.txt"
+            ],
+            "reservation_id": "ad37d37b3ec54a219fb7f68e62cc375d",
+            "status": "retained"
+          },
+          {
+            "attempt_device": 66306,
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-custody-unwind-20261017-r01/watchdog",
+            "attempt_inode": 75255968,
+            "child": null,
+            "prior_children": [],
+            "private_files": [
+              "known-unstarted.txt"
+            ],
+            "reservation_id": "fe8bdf9e8bf3498ab3a2a489921e9622",
+            "status": "retained"
+          }
+        ],
+        "classification": "exact_source_known_unstarted_no_external_process_or_Docker_allocation",
+        "independent_Docker_closeout_exercised": false,
+        "independent_kernel_process_closeout_exercised": false
+      },
+      "known_unstarted_before_unwind": {
+        "actual_original_owner_records_and_attempts": [
+          {
+            "attempt_device": 66306,
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-custody-unwind-20261017-r01/primary",
+            "attempt_inode": 75255967,
+            "child": null,
+            "prior_children": [],
+            "private_files": [
+              "known-unstarted.txt"
+            ],
+            "reservation_id": "ad37d37b3ec54a219fb7f68e62cc375d",
+            "status": "active"
+          },
+          {
+            "attempt_device": 66306,
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-custody-unwind-20261017-r01/watchdog",
+            "attempt_inode": 75255968,
+            "child": null,
+            "prior_children": [],
+            "private_files": [
+              "known-unstarted.txt"
+            ],
+            "reservation_id": "fe8bdf9e8bf3498ab3a2a489921e9622",
+            "status": "active"
+          }
+        ],
+        "classification": "exact_source_known_unstarted_no_external_process_or_Docker_allocation",
+        "independent_Docker_closeout_exercised": false,
+        "independent_kernel_process_closeout_exercised": false
+      }
+    },
+    "passed": true,
+    "production_hook_deployed": false,
+    "productive_authority_after_cancellation": false,
+    "productive_authority_granted": false,
+    "provider_calls_performed": false,
+    "refusals": [
+      {
+        "control": "forget_before_context_unwind",
+        "reason": "unacknowledged_native_consumers_still_held",
+        "type": "CustodyHoldRefusal"
+      },
+      {
+        "control": "primary_productive_finalize_before_context_unwind",
+        "reason": "native consumers must finish and release before finalization",
+        "type": "DaemonResourceError"
+      },
+      {
+        "control": "watchdog_productive_finalize_before_context_unwind",
+        "reason": "native consumers must finish and release before finalization",
+        "type": "DaemonResourceError"
+      },
+      {
+        "control": "primary_stopped_release_after_context_unwind",
+        "reason": "native consumers must finish and release before finalization",
+        "type": "DaemonResourceError"
+      },
+      {
+        "control": "watchdog_stopped_release_after_context_unwind",
+        "reason": "native consumers must finish and release before finalization",
+        "type": "DaemonResourceError"
+      },
+      {
+        "control": "forget_after_ancestry_cancellation",
+        "reason": "unacknowledged_native_consumers_still_held",
+        "type": "CustodyHoldRefusal"
+      },
+      {
+        "control": "primary_stopped_release_after_ancestry_cancellation",
+        "reason": "native consumers must finish and release before finalization",
+        "type": "DaemonResourceError"
+      },
+      {
+        "control": "watchdog_stopped_release_after_ancestry_cancellation",
+        "reason": "native consumers must finish and release before finalization",
+        "type": "DaemonResourceError"
+      }
+    ],
+    "root_and_phase_rows_drained": true,
+    "schema": "legal-ir-ordinary-custody-unwind-terminal@1",
+    "scope": "genuine_native_no_external_process_unwind_fixture_only",
+    "source_manifest_sha256": "f33996f2f67101bde026200094a87df3489ac839bac420f8511b64468dcbc17b",
+    "source_request_sha256": "3cea535db852a7e91149090ffda312a20ca6e5a9b33c2bb1c48cc2f263b90cb4"
+  },
+  "canonical_tasks_accepted": 0,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-native-mechanical-root-observation@1",
+  "source_manifest_sha256": "f33996f2f67101bde026200094a87df3489ac839bac420f8511b64468dcbc17b",
+  "source_request_sha256": "3cea535db852a7e91149090ffda312a20ca6e5a9b33c2bb1c48cc2f263b90cb4",
+  "source_scope": "custody-unwind-v01",
+  "terminal_provenance": "Exact actual final stdout JSON from session19063 after actual exec exit0 and original native owners/root/phase public release and observed row drain.",
+  "terminal_sha256": "0517314f9e3dad67493cdca332e46547c38c694ae0370ae7ceb52f4dc6d6d188"
+}

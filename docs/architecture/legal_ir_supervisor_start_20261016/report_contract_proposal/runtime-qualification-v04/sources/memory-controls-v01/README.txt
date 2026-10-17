@@ -1,0 +1,1 @@
+170 finite cold controls: preserved H80/C35, new H/C boundary15, G input/parser/source40. Genuine enclosing native admission required. No native test grant, container, provider, canonical attempt, deployment, acceptance or training accuracy proof. Outputs remain in the charged private attempt. Author freeze precedes execution; result must retain actual failures.

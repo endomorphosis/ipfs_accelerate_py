@@ -1,0 +1,111 @@
+{
+  "schema": "legal-ir-attempt-disposition-journal-contract@1",
+  "status": "source_authored_requires_private_filesystem_qualification_and_original_host_integration",
+  "runtime_enabled": false,
+  "author_tests_executed": 0,
+  "authored_control_cases": 33,
+  "actual_original_object_join_positive_cases": 0,
+  "quarantine_invocations_performed": 0,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "implemented_source": [
+    "Stdlib immutable private journal with closed bounded canonical JSON, content identity, no-clobber link publication, actual file/directory fsync, exact idempotence and conflicting-byte refusal.",
+    "Stable revision filename from repo_root,state_path,canonical_task_cid,board_namespace. Attempt ordinal, display alias and board digest cannot create a new key. Changed immutable provenance at that key refuses rather than returning absence.",
+    "Strict owned0700 unaliased journal directory and owned0600 single-link regular records; bounded population256 and record64KiB; unknown entries, pending temporaries, hard links, symlinks, malformed/noncanonical JSON or directory replacement fail closed.",
+    "Coarse state-lane denial independent of later ordinals. Empty read returns None, never a grant/token/lease. A read-only owned canonical lifecycle namespace preflight stops after 4096 entries before calling the original strict inventory, then verifies stable namespace afterward; at most 256 verified quarantine receipts are supported.",
+    "Source-owned OriginalDispositionScope accepts actual installed original modules, exact PortalImplementationDaemon and original lifecycle store, current PID/thread and bounded source pins including this helper.",
+    "Actual task revision derivation uses original PortalTask and original identity producer plus exact original legal board bytes. Original attempt binding checks actual state type, consumed counters by display ID/CID, active exact lifecycle capture/current process birth and exact loaded original record.",
+    "Failure journal publication and read-only joining of an existing actual original strict lifecycle quarantine receipt. Joining returns denial diagnostics while keeping the original borrow retained."
+  ],
+  "stable_public_apis": [
+    {
+      "api": "OriginalDispositionScope(daemon_module, lifecycle_module, daemon, *, source_sha256)",
+      "input_contract": "Actual installed original modules and exact current original objects, not paths or projected class names as authority. Source pins must include both actual original module files and this helper.",
+      "meaning": "Binds source/PID/thread/object association only; creates no journal directory and grants no cleanup, state transition, native lease or connection ownership."
+    },
+    {
+      "api": "scope.revision_for_task(actual_PortalTask)",
+      "meaning": "Derives canonical task revision using the original producer and exact legal board hash. Returns denial metadata only."
+    },
+    {
+      "api": "scope.assert_no_denials_for_state()",
+      "meaning": "Read-only coarse original lane gate. Reads all bounded matching journals and always inspects original strict quarantine inventory even if the journal directory is absent. A matching denial, malformed/unreadable storage or inconsistent source raises before caller productivity. Absence is not admission.",
+      "scope": "The supported single-ordinary-attempt original state lane is wholly deferred if any revision associated with its state path is parked. This version does not pretend every independent task writer is integrated."
+    },
+    {
+      "api": "scope.bind_attempt(actual_task, actual_state, actual_captured_lifecycle)",
+      "meaning": "Retains actual references and checks original current-state/consumed-ordinal/lifecycle association. Does not prove original borrowed database connection or physical native stopped custody; the actual retained host must supply those independent checks before any journal publication."
+    },
+    {
+      "api": "binding.publish_failure(reason_code=...)"
+      ,"meaning": "Publishes an immutable deny-only failure journal in the preexisting, originally charged private state subdirectory. Never refunds attempts, raises caps, invokes quarantine or marks implementation finished."
+    },
+    {
+      "api": "binding.quarantine_authority()",
+      "meaning": "Returns exact already durable denial provenance for the existing original deny-only quarantine API. The dictionary is never lifecycle or scheduler authority. A later original caller must use module.QUARANTINE_REASON as the fixed quarantine reason; detailed original failure stays in reason_code."
+    },
+    {
+      "api": "binding.join_original_quarantine()",
+      "meaning": "Reads the original strict receipt for the actual captured workspace, checks exact lifecycle/authority association and all original denial flags, and reports observed parking IDs with original_borrow_retained=True. It neither publishes quarantine nor closes borrowing."
+    },
+    {
+      "api": "DispositionJournal(private_directory)",
+      "meaning": "Low-level real filesystem deny storage for the source-owned wrapper and privateFS tests. Supplied JSON never substitutes for original daemon/state/lifecycle/connection/native objects."
+    }
+  ],
+  "storage_and_crash_boundaries": [
+    "Caller creates and charges state_path.parent/report-only-attempt-dispositions as an owned0700 directory before dispatch; helper does not create arbitrary parent paths.",
+    "Publication writes a fresh owned pending file, fsyncs its content, links without replacing the final revision name, unlinks only the same owned temporary inode and fsyncs the directory. Concurrent/conflicting final bytes are preserved.",
+    "A crash before temporary removal can leave a pending entry or a two-link target. Both fail closed on read; no automatic unlink, overwrite or absence inference occurs.",
+    "A directory-fsync failure after link preserves final bytes and reports uncertainty. An explicit finite deny-only retry of exact bytes may fsync the existing directory; no provider retry or new native grant follows.",
+    "The read-only gate is not an atomic global admission transaction. Supported host orchestration must serialize original attempt/disposition production. Broader concurrent writers require a separately reviewed lock/entry integration contract.",
+    "Original quarantine receipts are immutable deny metadata, not reconstructed live authority after process death."
+  ],
+  "source_owned_original_API_references": [
+    "Original todo_daemon/implementation_daemon.py:10561 _identity_for_task; :10764 _task_attempt_count; :11976 _record_task_attempt.",
+    "Original merge/worktree_lifecycle.py:1765 quarantine_current_owner; :1785 exact current-owner CAS producer; :1062 load_quarantine; :1099 iter_quarantines.",
+    "Original todo_daemon/implementation_daemon.py:61223 task claim release intentionally returns True for a retained genuine protected fence; resource batch release61196 can return False after partial cleanup.",
+    "Original merge/workspace_quarantine.py:552 mutation_boundary holds shared guards; exclusive whole-root freeze465 requires those frames to unwind and may include repository-wide claim metadata. This helper never invokes that broader freeze."
+  ],
+  "earliest_integration_hooks_required": [
+    {
+      "target": "Original PortalImplementationDaemon.run_once at line15223",
+      "requirement": "Run the source-owned coarse deny gate before host productive phase renewal/profile admission, original retained-capacity observation, _run_once maintenance/selection/state writes and provider readiness. Do not catch denial/errors and fall through.",
+      "status": "additional_original_daemon_patch_required_not_supplied_by_this_bundle"
+    },
+    {
+      "target": "Proposed ReportOnlyNativeHost.guard_pass_entry and repeated require_attempt_profile calls",
+      "requirement": "Use a separate one-pass entry state machine with sticky pending/disposition denial. Keep repeated in-pass profile validation separate so normal attempt checks do not consume another pass entry. Existing pending ContextVar binding must not allow a new public daemon.run_once.",
+      "status": "separate_sticky_host_successor_required"
+    },
+    {
+      "target": "Supported direct/private execution entrypoints and older runtime writers",
+      "requirement": "Audit all supported callers. Original _run_implementation is already wrapped by a mutation decorator, so placing a gate only inside its body is too late to claim zero earlier sidecar effects. Unsupported older or direct compositions must refuse activation.",
+      "status": "whole_runtime_entrypoint_qualification_pending"
+    },
+    {
+      "target": "Actual retained host stopped closeout",
+      "requirement": "Verify original borrowed connection identity and independently stopped physical custody, publish journal, call actual original quarantine_current_owner with actual capture and exact denial provenance, join its receipt, then drain exact original finalizers and classify claim outcomes. Keep disposition latch monotonic.",
+      "status": "host_quarantine_invocation_and_borrow_closeout_not_implemented_here"
+    }
+  ],
+  "remaining_supervisor_tasks": [
+    {"id":"DISPOSITION-01","status":"partial_source_available","criteria":"Qualify exact original source/task/state/lifecycle binding and original connection association with real private objects."},
+    {"id":"DISPOSITION-02","status":"journal_and_gate_helper_authored_unqualified","criteria":"Run privateFS controls, then wire earliest original coarse lane gate without fallback."},
+    {"id":"DISPOSITION-03","status":"receipt_join_authored_invocation_pending","criteria":"Invoke and qualify actual original current-owner quarantine after independent stopped proof; no fabricated protected incident."},
+    {"id":"DISPOSITION-04","status":"prior_continuation_component_available","criteria":"Drain exact stopped original finalizers at most once; classify retained/replaced/absent/partial claims without replay."},
+    {"id":"DISPOSITION-05","status":"not_implemented","criteria":"Design explicit actual parked-borrow closeout; no clearing pending/disposition merely to bypass guards."},
+    {"id":"DISPOSITION-06","status":"candidate_handoff_pending","criteria":"Bind candidate from actual original success objects, independently observe commit/tree/report/source associations and define new validator admission. Reserved candidate_pending_validation denial metadata grants nothing and is not actual candidate support."},
+    {"id":"DISPOSITION-07","status":"privateFS_controls_authored_actual_host_pending","criteria":"Qualify real private original daemon/DB/lifecycle/native cancellation and crash cases; do not substitute fake positive grants."},
+    {"id":"DISPOSITION-08","status":"source_manifest_prepared_after_authoring","criteria":"Publish exact proposed source/evidence/readiness while runtime remains disabled and GitHub qualification is skipped."},
+    {"id":"DISPOSITION-09","status":"sticky_entry_separate_source_successor_required","criteria":"Refuse new public pass when any pending/disposition latch is retained, before productive renewal and selection; separate repeated in-pass profile validation."}
+  ],
+  "qualification_claims_not_made": [
+    "Actual original-object join or quarantine publication success",
+    "Original borrowed database scope settlement",
+    "Full supervisor/provider callback or native admin accounting",
+    "Candidate validation, task acceptance or canonical counter changes",
+    "Training accuracy, legal/source fidelity, logic-family correctness or Lean4 build"
+  ],
+  "github_qualification": "skipped_by_user"
+}

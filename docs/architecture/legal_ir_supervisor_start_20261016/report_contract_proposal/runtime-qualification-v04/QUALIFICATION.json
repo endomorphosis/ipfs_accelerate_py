@@ -1,0 +1,292 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "checks": [
+    {
+      "name": "memory-controls-r01",
+      "passed": false,
+      "producer": "generic_memory_controls",
+      "receipt_role": "memory-controls-r01-receipt.json",
+      "request_role": "memory-controls-r01-request.json",
+      "result_role": "memory-controls-r01-result.json",
+      "root_role": "memory-controls-r01-root.json",
+      "scope": "170 cold input/source controls; original failed necessary-condition control retained.",
+      "source_bundle": "memory-controls-v01"
+    },
+    {
+      "name": "memory-controls-r02",
+      "passed": true,
+      "producer": "generic_memory_controls",
+      "receipt_role": "memory-controls-r02-receipt.json",
+      "request_role": "memory-controls-r02-request.json",
+      "result_role": "memory-controls-r02-result.json",
+      "root_role": "memory-controls-r02-root.json",
+      "scope": "170 cold input/source controls after the source control migration; zero provider or test-native admissions.",
+      "source_bundle": "memory-controls-v02"
+    },
+    {
+      "name": "memory-controls-r03",
+      "passed": true,
+      "producer": "generic_memory_controls",
+      "receipt_role": "memory-controls-r03-receipt.json",
+      "request_role": "memory-controls-r03-request.json",
+      "result_role": "memory-controls-r03-result.json",
+      "root_role": "memory-controls-r03-root.json",
+      "scope": "174 cold input/source controls for paired G3/H3/C; zero provider or test-native admissions.",
+      "source_bundle": "memory-controls-v03"
+    },
+    {
+      "name": "capsule-preparation-r01",
+      "passed": true,
+      "producer": "generic_capsule_preparation",
+      "receipt_role": "capsule-preparation-r01-receipt.json",
+      "request_role": "capsule-preparation-r01-request.json",
+      "result_role": "capsule-preparation-r01-result.json",
+      "root_role": "capsule-preparation-r01-root.json",
+      "scope": "Read-only fsynced 2807-Python-file G2/H2/C capsule preparation; no provider path qualification.",
+      "source_bundle": "capsule-preparation-v01"
+    },
+    {
+      "name": "capsule-preparation-r02",
+      "passed": true,
+      "producer": "generic_capsule_preparation",
+      "receipt_role": "capsule-preparation-r02-receipt.json",
+      "request_role": "capsule-preparation-r02-request.json",
+      "result_role": "capsule-preparation-r02-result.json",
+      "root_role": "capsule-preparation-r02-root.json",
+      "scope": "Read-only fsynced 2807-Python-file G3/H3/C capsule preparation; no provider path qualification.",
+      "source_bundle": "capsule-preparation-v02"
+    },
+    {
+      "name": "freezer-controls-r01",
+      "passed": false,
+      "producer": "generic_freezer_controls",
+      "receipt_role": "freezer-controls-r01-receipt.json",
+      "request_role": "freezer-controls-r01-request.json",
+      "result_role": "freezer-controls-r01-result.json",
+      "root_role": "freezer-controls-r01-root.json",
+      "scope": "68 pure/source controls; original 67-pass/1-failure source-selector observation retained.",
+      "source_bundle": "report-freezer-controls-v01"
+    },
+    {
+      "name": "freezer-controls-r02",
+      "passed": true,
+      "producer": "generic_freezer_controls",
+      "receipt_role": "freezer-controls-r02-receipt.json",
+      "request_role": "freezer-controls-r02-request.json",
+      "result_role": "freezer-controls-r02-result.json",
+      "root_role": "freezer-controls-r02-root.json",
+      "scope": "68 pure/source controls with corrected source selector; no public freezer invocation or actual Git in these controls.",
+      "source_bundle": "report-freezer-controls-v02"
+    },
+    {
+      "name": "freezer-git-r01",
+      "passed": false,
+      "producer": "direct_freezer_git",
+      "receipt_role": null,
+      "request_role": "freezer-git-r01-request.json",
+      "result_role": "freezer-git-r01-terminal.json",
+      "root_role": "freezer-git-r01-root.json",
+      "scope": "Actual isolated synthetic Git component failed with actual_git_command_failed; genuine owner/root/phase released. No completed component case suite or public provider/freezer qualification is inferred.",
+      "source_bundle": "report-freezer-git-component-v01"
+    },
+    {
+      "name": "public-wrapper-prestart-r02",
+      "passed": true,
+      "producer": "direct_public_wrapper",
+      "receipt_role": null,
+      "request_role": "public-wrapper-prestart-r02-request.json",
+      "result_role": "public-wrapper-prestart-r02-terminal.json",
+      "root_role": "public-wrapper-prestart-r02-root.json",
+      "scope": "Actual original16slot public H wrapper prestart/known-unstarted and four early refusals:5/5, actual consumers/owners/root/phase drained. No G._run, Docker/model/auth call, finish, success callback or provider outcome.",
+      "source_bundle": "public-wrapper-prestart-v01"
+    },
+    {
+      "name": "freezer-git-r02",
+      "passed": false,
+      "producer": "direct_freezer_git",
+      "receipt_role": null,
+      "request_role": "freezer-git-r02-request.json",
+      "result_role": "freezer-git-r02-terminal.json",
+      "root_role": "freezer-git-r02-root.json",
+      "scope": "Actual corrected isolated Git component failed at command17 with native reservation child-history bound; original actual Git process reaped-9, owner/root/phase released. No29-command/11-case completion or public provider/freezer qualification claimed.",
+      "source_bundle": "report-freezer-git-component-v02"
+    },
+    {
+      "name": "dual-pipe-r02",
+      "passed": true,
+      "producer": "direct_dual_pipe",
+      "receipt_role": null,
+      "request_role": "dual-pipe-r02-request.json",
+      "result_role": "dual-pipe-r02-terminal.json",
+      "root_role": "dual-pipe-r02-root.json",
+      "scope": "Actual corrected13slot confined nonmodel dual-pipe mechanical fixture: both physical cases passed;1245184bytes drained each, exact within capture,65536byte cap+expected refusal after reap. Independent Docker/kernel/groups/paths stopped, all four owners/root/phase released. No G._run/full wrapper/finish/provider callback/model or admin attachment/hard-quota qualification.",
+      "source_bundle": "dual-pipe-native-v04"
+    },
+    {
+      "name": "freezer-git-r03",
+      "passed": true,
+      "producer": "direct_freezer_git",
+      "receipt_role": null,
+      "request_role": "freezer-git-r03-request.json",
+      "result_role": "freezer-git-r03-terminal.json",
+      "root_role": "freezer-git-r03-root.json",
+      "scope": "Actual synthetic Git/lock/shared-tail mechanics:13 cold controls,11 Git cases/29 commands,33 Popen objects/4 SDK group attachments, all groups/consumers/owner/root/phase released. Separate known-live inert hold refused acknowledgement until original stdin stop, then drained/forgot/idempotent close. No full daemon, public freezer, real provider, native validation or task acceptance.",
+      "source_bundle": "report-freezer-git-component-v03"
+    }
+  ],
+  "document_status": "closed_scoped_engineering_evidence_production_integration_pending",
+  "historical_guarded_cancellation_observations": [
+    {
+      "name": "waiting-wrapper-cancellation-r01",
+      "native_owner_finalized": true,
+      "passed": false,
+      "receipt_role": "cancellation-r01-receipt.json",
+      "request_role": "cancellation-v02-request.json",
+      "result_role": "cancellation-r01-result.json",
+      "root_role": "cancellation-r01-root.json",
+      "scope": "Actual guarded controller refused FileNotFound after original wrapper completed. Its own native owner finalized; no signal, target reset or target cleanup is claimed. This producer is historical evidence, not an enumerated qualification check.",
+      "signals_sent": 0,
+      "source_bundle": "pending-fixture-cancellation-v02",
+      "target_cancellation_performed": false
+    }
+  ],
+  "historical_native_incomplete_runs": [
+    {
+      "actual_trace_role": "dual-pipe-r01-actual-trace.json",
+      "name": "dual-pipe-r01-pretransport-source-refusal",
+      "native_finalization_observed": false,
+      "observation_role": "dual-pipe-r01-failure-observation.json",
+      "qualification_passed": false,
+      "request_role": "dual-pipe-r01-request.json",
+      "scope": "Actual exit1 before Docker/transport at H._verify_sources; original request hook subset omitted actual C source key. Root observed former process absent and zero active native rows; no actual leaf finalization/cleanup claim follows.",
+      "source_bundle": "dual-pipe-native-v02",
+      "structured_final_terminal_present": false
+    }
+  ],
+  "historical_preflight_failures": [
+    {
+      "name": "freezer-git-preflight-r01",
+      "native_admission_reached": false,
+      "passed": false,
+      "request_role": "freezer-git-preflight-r01-request.json",
+      "root_role": "freezer-git-preflight-r01-root.json",
+      "scope": "Actual mandatory-source-closure refusal before native import/admission; no native closeout inferred. Additive corrected request is separate.",
+      "source_bundle": "report-freezer-git-component-v01"
+    }
+  ],
+  "historical_publication_failures": [
+    {
+      "actual_exec_exit_code": 1,
+      "actual_exec_session_id": 44003,
+      "evidence_role": "publication-r01-precheck-failure.json",
+      "name": "publication-precheck-r01",
+      "native_owner_finalized": true,
+      "owned_group_quiescent": true,
+      "passed": false,
+      "repository_Git_or_writes_performed": false,
+      "runtime_qualification_changed": false,
+      "scope": "Actual publisher load_configuration refused old controlled_component_cases field against exact component source@3 controlled_cases11. The native owner finalized without repository Git/writes; this is publication interface failure, not a regression of any source or mechanical qualification.",
+      "source_bundle": "publication-v03"
+    }
+  ],
+  "latest_source_control_counts": {
+    "anchor_v03_cold_controls": 13,
+    "corrected_freezer_v02_source_controls": 68,
+    "historical_revision_runs_not_added_to_latest_total": true,
+    "native_admission_by_cold_test_cases": false,
+    "paired_G3_H3_C": 174,
+    "total_distinct_selected_source_cases": 255
+  },
+  "limitations": [
+    "Source and fixture results grant no productive/native/acceptance authority.",
+    "Capsule producer result is written before native closeout; the separately retained root and actual receipt establish later finalization.",
+    "No model, auth, training, semantic legal fidelity, full logic-family coverage or Lean4 build was performed by this campaign.",
+    "The original two consumed attempts remain consumed; this campaign authorizes no third original task attempt."
+  ],
+  "original_waiting_fixture_sources": [],
+  "pending_checks": [],
+  "production_hook_deployed": false,
+  "provider_calls": 0,
+  "real_provider_path_qualified": false,
+  "schema": "legal-ir-callable-runtime-qualification@1",
+  "separate_nonmodel_mechanical_counts": {
+    "actual_Git_component_cases": 11,
+    "actual_dual_pipe_physical_cases": 2,
+    "actual_public_wrapper_prestart_cases": 5,
+    "not_legal_accuracy_or_provider_success_metrics": true,
+    "separate_deliberate_known_live_inert_custody_probe": 1
+  },
+  "source_budget_review": {
+    "dual-pipe-native-v03": {
+      "actual_leaf_process_slots": [
+        8,
+        4
+      ],
+      "original16slot_source_and_waiting_request_preserved": true,
+      "root_phase_process_slots": 12,
+      "smaller_safe_budget_qualified": false,
+      "status": "unqualified_do_not_execute",
+      "unaccounted_scope": "Actual synchronous trusted-controller Docker administration outside both attached owner groups."
+    },
+    "dual-pipe-native-v04": {
+      "actual_mechanical_cases_passed": 2,
+      "admin_native_child_attachment_qualified": false,
+      "audit_role": "dual-pipe-admin-source-audit-v01.json",
+      "budget_equation": "8 primary +4 watchdog +1 cooperative trusted-controller admin",
+      "hard_admin_quota": false,
+      "original16slot_source_preserved": true,
+      "real_provider_execution_qualified": false,
+      "root_phase_process_slots": 13,
+      "same_process_actual_phase_required": true,
+      "status": "actual_two_case_nonmodel_mechanics_passed"
+    }
+  },
+  "source_only_rejected_or_superseded_generations": [
+    {
+      "executed": false,
+      "reason": "12 slots omitted the controller admin allowance.",
+      "source_bundle": "dual-pipe-native-v03",
+      "source_unqualified": true
+    },
+    {
+      "executed": false,
+      "reason": "Peer bounded-stream source-reader issue corrected additively before execution; no runtime failure fabricated.",
+      "source_bundle": "pending-fixture-cancellation-v01"
+    },
+    {
+      "source_bundle": "public-wrapper-prestart-v02",
+      "status": "additive_source_no_actual_result_selected"
+    },
+    {
+      "source_bundle": "pending-fixture-cancellation-v02",
+      "status": "actual_guarded_refusal_after_target_completed_signals0_own_native_finalized"
+    }
+  ],
+  "unexecuted_request_history": [
+    {
+      "actual_result_selected": false,
+      "reason": "Original16slot wrapper completed;12slot replacement was not launched.",
+      "request_role": "wrapper12-r03-unexecuted-request.json",
+      "source_bundle": "public-wrapper-prestart-v02"
+    },
+    {
+      "actual_result_selected": false,
+      "reason": "Rejected omitted admin allowance; not launched.",
+      "request_role": "dual12-r02-rejected-request.json",
+      "source_bundle": "dual-pipe-native-v03"
+    },
+    {
+      "actual_result_selected": false,
+      "reason": "Earlier13slot request omitted the actual C hook pin and was not launched; distinct corrected r02-v03 request later passed both physical cases.",
+      "request_role": "dual13-r02-source-request.json",
+      "source_bundle": "dual-pipe-native-v04"
+    },
+    {
+      "actual_result_selected": false,
+      "reason": "Bounded-reader issue corrected before root execution.",
+      "request_role": "cancellation-v01-unexecuted-request.json",
+      "source_bundle": "pending-fixture-cancellation-v01"
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "Git_or_network_mutations_performed_by_author": false,
+  "acceptance_authority": false,
+  "actual_V01_case_outcomes_source": "Original root-observed final terminal preserves False/True/False, not invented all-failed cases.",
+  "actual_native_V02_outcome_assumed": false,
+  "author_checks": [
+    "Python AST parses and names are unique.",
+    "Fourteen V05/V04 helper definitions unchanged.",
+    "Explicit unobserved-null templates, no future V02 outcome claimed.",
+    "Seven frozen source manifests and actual V01/unwind terminal digest pins match.",
+    "Independent source-only backend review found no concrete blocker."
+  ],
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "configuration_frozen": false,
+  "expected_accelerator_head": "06eff5086b8653f0a58f5013cc781482693886c5",
+  "files": [
+    {
+      "bytes": 65855,
+      "path": "publish_handoff.py",
+      "sha256": "61167cba86fb6f155b73c809d4dc49d766b9dceaa013252667124f688c276ada"
+    },
+    {
+      "bytes": 5058,
+      "path": "README.md",
+      "sha256": "0061d8e93028ece2b8672d9a32fddff41dbdb5c3481bee171713d083753c0301"
+    },
+    {
+      "bytes": 832,
+      "path": "QUALIFICATION_TEMPLATE.json",
+      "sha256": "3536763d8d8ce05a7a1365708f0627ddcb19d76d485efb72a0bceacc6b03ea1e"
+    },
+    {
+      "bytes": 2069,
+      "path": "READINESS_TEMPLATE.json",
+      "sha256": "c4743f5ed9d63acf643d1dea8b942cde67086326314343bebb9c35c5dd87013c"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 11227,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/SOURCE_MANIFEST.json",
+      "role": "exact_frozen_source_generation",
+      "sha256": "59761cd0b0ea3395efb82ef27c6bb9e3fdbe33ce7a118afb8827bea76e2fa5b9"
+    },
+    {
+      "bytes": 2775,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/SOURCE_MANIFEST.json",
+      "role": "exact_frozen_source_generation",
+      "sha256": "36742d137ef138fd720ffc9db0521e0107bb7616ef9c95494f785b21ef238ceb"
+    },
+    {
+      "bytes": 948,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/capsule-preparation-v01/SOURCE_MANIFEST.json",
+      "role": "exact_frozen_source_generation",
+      "sha256": "13653fd01ea820e4d229b85bf387fb321754c600f99219da421ea79c8649abb1"
+    },
+    {
+      "bytes": 886,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/custody-controls-v01/SOURCE_MANIFEST.json",
+      "role": "exact_frozen_source_generation",
+      "sha256": "c1a54ab8fe1ce307e283e6c29f3293ff0b958e04332e6d78ea676bb0462e182f"
+    },
+    {
+      "bytes": 11937,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-v01/SOURCE_MANIFEST.json",
+      "role": "exact_frozen_source_generation",
+      "sha256": "4f92449615d3df1e10d3dcd2ec6652877ee5db0f46cf94cefc87fbd9650e9634"
+    },
+    {
+      "bytes": 16846,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-v02/SOURCE_MANIFEST.json",
+      "role": "exact_frozen_source_generation",
+      "sha256": "688dfdffe9c318118d922d3adfa9c7a29f8b8bd7a5ec68e0b1884e510fb19fa7"
+    },
+    {
+      "bytes": 6424,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/custody-unwind-v01/SOURCE_MANIFEST.json",
+      "role": "exact_frozen_source_generation",
+      "sha256": "f33996f2f67101bde026200094a87df3489ac839bac420f8511b64468dcbc17b"
+    },
+    {
+      "bytes": 3558,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/handoff-publication-v05/SOURCE_MANIFEST.json",
+      "role": "unchanged_unexecuted_predecessor_source",
+      "sha256": "732003b65920f2d01718a88981a08c982eeebe7088f0ef94c0923f8623d61c54"
+    },
+    {
+      "bytes": 19113,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-root-observation-r01.json",
+      "role": "actual_original_mixed_V01_outcome_metadata_not_authority",
+      "sha256": "704a3822774bca4acc937b92d44c50c93f010621a6d74af636723e8cb1e19a35"
+    },
+    {
+      "bytes": 13777,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-r01-terminal.jsonl",
+      "role": "actual_original_V01_terminal_metadata_not_authority",
+      "sha256": "6660be7b18f7b550775d0ba06050e8717de104ba35406bb95b806806b1eab2f6"
+    },
+    {
+      "bytes": 14968,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/custody-unwind-root-observation-r01.json",
+      "role": "actual_original_unwind_outcome_metadata_not_authority",
+      "sha256": "9c521254a4670328c64e8bceaca55d24cdfb5c587f2a822c3fce732f805f3ba5"
+    },
+    {
+      "bytes": 11042,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/custody-unwind-r01-terminal.jsonl",
+      "role": "actual_original_unwind_terminal_metadata_not_authority",
+      "sha256": "0517314f9e3dad67493cdca332e46547c38c694ae0370ae7ceb52f4dc6d6d188"
+    }
+  ],
+  "optional_complete_V02_evidence_roles": 3,
+  "production_hook_deployed": false,
+  "public_artifact_policy": "At most18 fixed campaign-r01/r02 case JSON files; strict unique Env key/value equality preserves raw order. Full capsule metadata only.",
+  "required_evidence_roles": 23,
+  "schema": "legal-ir-native-handoff-publication-source@2",
+  "status": "frozen_source_only_pending_root_review_and_selected_actual_V02_terminal",
+  "target_generation": "runtime-qualification-v03",
+  "tests_or_native_Docker_provider_jobs_performed_by_author": false
+}

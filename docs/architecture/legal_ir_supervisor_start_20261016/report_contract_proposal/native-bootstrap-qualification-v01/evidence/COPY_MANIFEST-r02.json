@@ -1,0 +1,93 @@
+{
+  "acceptance_authority": false,
+  "files": [
+    {
+      "bytes": 638,
+      "inert_documentation_not_resource_authority": true,
+      "path": "native-admin-controls/receipt.json",
+      "sha256": "3dfc4e11f2c8441d0d4e856c1506973b47d032a52004a529ce416f0e6f0b5309",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-admin-source-controls-20261017-r01/receipt.json"
+    },
+    {
+      "bytes": 1529,
+      "inert_documentation_not_resource_authority": true,
+      "path": "native-admin-controls/native-admin-source-controls.json",
+      "sha256": "bd41ce8b7445b407cbbf85fb96f3ee3e76f161819f14b3c29f2646ef03998e36",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-admin-source-controls-20261017-r01/native-admin-source-controls.json"
+    },
+    {
+      "bytes": 4750,
+      "inert_documentation_not_resource_authority": true,
+      "path": "native-admin-controls/native-admin-source-controls.xml",
+      "sha256": "9a893db762abbd834d1fefda2b063456e7d982483deba06d3517a15c3e0c227a",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-admin-source-controls-20261017-r01/native-admin-source-controls.xml"
+    },
+    {
+      "bytes": 639,
+      "inert_documentation_not_resource_authority": true,
+      "path": "bootstrap-hook-controls/receipt.json",
+      "sha256": "388658d02b1ceef5457907604e1c760dc66dd198cccebf254498319c22eb6b4e",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-bootstrap-hook-source-controls-20261017-r01/receipt.json"
+    },
+    {
+      "bytes": 1501,
+      "inert_documentation_not_resource_authority": true,
+      "path": "bootstrap-hook-controls/bootstrap-hook-source-controls.json",
+      "sha256": "f11b63da5d378923d86c82253da2f58b7fc36ae5d10b277406523102d1b81f6b",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-bootstrap-hook-source-controls-20261017-r01/bootstrap-hook-source-controls.json"
+    },
+    {
+      "bytes": 3657,
+      "inert_documentation_not_resource_authority": true,
+      "path": "bootstrap-hook-controls/bootstrap-hook-source-controls.xml",
+      "sha256": "634431d5703c22b0a2f67055212757ba260ebd4b1feb32b5e0cacaea47bbf75a",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-bootstrap-hook-source-controls-20261017-r01/bootstrap-hook-source-controls.xml"
+    },
+    {
+      "bytes": 639,
+      "inert_documentation_not_resource_authority": true,
+      "path": "preparation/receipt.json",
+      "sha256": "3e0047df41daca6de5278925169a2f86b03892e222024df4e8b63a55635e14dc",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/receipt.json"
+    },
+    {
+      "bytes": 1587,
+      "inert_documentation_not_resource_authority": true,
+      "path": "preparation/full-host-preparation.json",
+      "sha256": "39b535519084ded94598ede3efc13bd29507a80b001db3f9d05c93923e56ae6f",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/full-host-preparation.json"
+    },
+    {
+      "bytes": 2758,
+      "inert_documentation_not_resource_authority": true,
+      "path": "preparation/GIT_SEED_MANIFEST.json",
+      "sha256": "54ca6d9159afb41bcdaa41cf5b069aea79798e256318c551f4fabf53c6467449",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/GIT_SEED_MANIFEST.json"
+    },
+    {
+      "bytes": 565774,
+      "inert_documentation_not_resource_authority": true,
+      "path": "preparation/capsule__SOURCE_MANIFEST.json",
+      "sha256": "4cb5b370274eaa81efe6f80af2fd66c1ebcb3b31032b4ec30047e96f4a10d715",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/capsule/SOURCE_MANIFEST.json"
+    },
+    {
+      "bytes": 22214,
+      "inert_documentation_not_resource_authority": true,
+      "path": "same-pid-host-final-stdout.json",
+      "sha256": "6aca53033e1664b38370d96bc0689d692cc0f768d26fbdfd780a715f4fe63a94",
+      "source": "actual original direct owner stdout captured by root after exec exit0"
+    },
+    {
+      "bytes": 16409,
+      "inert_documentation_not_resource_authority": true,
+      "path": "same-pid-host-pre-finalization-result.json",
+      "sha256": "15686fff3ab05792a92d17507b787aa6f4634136a0c50ced4e1c78cf049f6c8f",
+      "source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-same-pid-full-host-20261017-r01/data/full-host-qualification.json"
+    }
+  ],
+  "native_finalization_authority": false,
+  "prior_inventory_sha256": "974669d085ffb2b9549faf360ff1ad2daeec5c53e5da87068eb3e7ea281fbbde",
+  "schema": "legal-ir-native-bootstrap-inert-evidence-copies@1",
+  "supersedes_inventory_only": "COPY_MANIFEST-r01.json"
+}

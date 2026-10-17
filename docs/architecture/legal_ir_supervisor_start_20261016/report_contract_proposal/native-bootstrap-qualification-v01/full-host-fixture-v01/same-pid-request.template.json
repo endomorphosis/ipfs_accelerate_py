@@ -1,0 +1,41 @@
+{
+  "schema": "legal-ir-full-host-same-PID-request-template@1",
+  "status": "inert_draft_not_executable",
+  "wait_for": "Actual capsule+seed preparation, original native finalization and independently authored root observation",
+  "native_profile": {
+    "root_cpu_slots": 3,
+    "root_memory_mb": 4096,
+    "root_child_process_slots": 16,
+    "phase_same_profile": true,
+    "final_same_PID": true
+  },
+  "future_command": [
+    "/usr/bin/python3.12",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/legal-ir-native-bootstrap-20261017-01/full-host-fixture-v01/run_same_pid_owner.py",
+    "<FUTURE_EXACT_REQUEST_PATH>",
+    "<FUTURE_EXACT_REQUEST_SHA256>"
+  ],
+  "future_request_schema": "legal-ir-full-host-same-PID-qualification-request@1",
+  "required_future_fields": [
+    "name",
+    "duration_seconds",
+    "attempt_directory",
+    "fixture_source_manifest_sha256",
+    "preparation_root_observation_path",
+    "preparation_root_observation_sha256",
+    "capsule_root",
+    "capsule_manifest_sha256",
+    "seed_root",
+    "seed_manifest_path",
+    "seed_manifest_sha256",
+    "protected_source_sha256",
+    "custody_source_sha256",
+    "admin_source_sha256"
+  ],
+  "genuine_generic_owner_must_not_launch_this_command": true,
+  "runtime_enabled": false,
+  "canonical_configured_attempt_cap": 2,
+  "canonical_tasks_accepted": 0,
+  "acceptance_authority": false
+}

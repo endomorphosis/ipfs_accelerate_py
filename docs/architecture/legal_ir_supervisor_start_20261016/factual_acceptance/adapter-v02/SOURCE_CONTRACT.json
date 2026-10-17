@@ -1,0 +1,89 @@
+{
+  "schema": "legal-ir-factual-acceptance-source-contract@1",
+  "status": "isolated_source_proposal_not_integrated_or_executed",
+  "task_id": "LIR-9001",
+  "report_contract_revision_required": true,
+  "candidate_schema": "legal-ir-source-factual-candidate@1",
+  "factual_check_id": "legal-ir-source-factual-correspondence-v1",
+  "population": {
+    "tasks": 64,
+    "goals": 34,
+    "ordered_dependency_edges": 115,
+    "legacy_parents": 24,
+    "frozen_source_files": 18
+  },
+  "standalone_completion_cli_exit": 3,
+  "native_issue_api": "native_acceptance.issue_native_acceptance",
+  "manual_completion_api": "controller_coordinator.complete_accepted_legacy_task",
+  "native_validation_owner": {
+    "module": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.validation_run_resources",
+    "class": "ValidationResourceReservation",
+    "exact_type_required": true,
+    "lane": "validation",
+    "workload": "canonical_validation",
+    "live_public_methods": [
+      "guard",
+      "heartbeat",
+      "check_limits(full=True)",
+      "to_dict",
+      "seal_results",
+      "finalize(artifacts_durable=True)"
+    ],
+    "child": "actual isolated direct Popen child attached behind startup barrier, then stopped/reaped",
+    "input_pins": "all predicate sources, owner implementation closure, report and actual host observation/outcome receipts",
+    "handle": "same-interpreter nonserializable one-use capability after actual finalization",
+    "handle_lifetime_seconds": 900
+  },
+  "native_controller_owner": {
+    "module": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources",
+    "class": "ParentedPhaseResourceReservation",
+    "exact_type_required": true,
+    "lane": "orchestration",
+    "workload": "canonical_parented_phase",
+    "purpose": "controller_preparation",
+    "ancestry": "actual same-process ResourceLease root -> phase -> native disk child",
+    "live_public_methods": [
+      "heartbeat",
+      "check_usage(directory, full=True)",
+      "native_lease",
+      "account_external_bytes"
+    ],
+    "legacy_mutation_primitives": [
+      "locked_taskboard",
+      "replace_locked_taskboard"
+    ],
+    "publication": "exact pinned board bytes CAS while lock held; durable intent, one status change, readback and event",
+    "failed_or_unknown_publication": "retain evidence and inspect; never reset counters or recreate/replay handle"
+  },
+  "provider_routes": [
+    {
+      "provider": "grok_cli",
+      "model": "grok-4.7",
+      "trigger": "primary"
+    },
+    {
+      "provider": "codex",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "trigger": "primary_quota_exhausted"
+    }
+  ],
+  "future_tasks": {
+    "blocked": 63,
+    "LIR-9002_activated": false,
+    "fresh_reviewed_projection_and_implemented_validator_required": true
+  },
+  "grants": {
+    "legal_truth": false,
+    "semantic_review": false,
+    "training": false,
+    "teacher_or_gold_admission": false,
+    "lean_admission": false,
+    "provider_execution": false
+  },
+  "actual_validation_required": [
+    "36 controlled tests under genuine native owner",
+    "finite genuine native issuance/finalization/handle integration using isolated fixture only",
+    "actual real provider candidate and exact host dispatch binding before real factual task completion"
+  ]
+}

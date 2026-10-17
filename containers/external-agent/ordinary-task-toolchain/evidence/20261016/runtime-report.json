@@ -1,0 +1,119 @@
+{
+  "checks": [
+    {
+      "details": {
+        "python_version": "3.12.3",
+        "uid": 1000
+      },
+      "name": "identity_and_python_isolation",
+      "ok": true
+    },
+    {
+      "details": {
+        "import_origins": {
+          "_cffi_backend": "/opt/ipfs-validation-site-packages/_cffi_backend.cpython-312-aarch64-linux-gnu.so",
+          "_duckdb": "/opt/ipfs-validation-site-packages/_duckdb.cpython-312-aarch64-linux-gnu.so",
+          "cffi": "/opt/ipfs-validation-site-packages/cffi/__init__.py",
+          "cryptography": "/opt/ipfs-validation-site-packages/cryptography/__init__.py",
+          "cryptography.hazmat.bindings._rust": "/opt/ipfs-validation-site-packages/cryptography/hazmat/bindings/_rust.abi3.so",
+          "duckdb": "/opt/ipfs-validation-site-packages/duckdb/__init__.py",
+          "iniconfig": "/opt/ipfs-validation-site-packages/iniconfig/__init__.py",
+          "packaging": "/opt/ipfs-validation-site-packages/packaging/__init__.py",
+          "pluggy": "/opt/ipfs-validation-site-packages/pluggy/__init__.py",
+          "pycparser": "/opt/ipfs-validation-site-packages/pycparser/__init__.py",
+          "pygments": "/opt/ipfs-validation-site-packages/pygments/__init__.py",
+          "pytest": "/opt/ipfs-validation-site-packages/pytest/__init__.py"
+        },
+        "installed_files": {
+          "manifest_sha256": "7c12b6c92a982ccd407058b7f1eae73fd90ce085c984331794f5fb36bca8a79d",
+          "python_startup_hooks": 0,
+          "scope": "approved_package_root_only_host_python_overlay_excluded",
+          "unmanifested_entries": 0,
+          "verified_bytes": 75688247,
+          "verified_files": 692
+        },
+        "versions": {
+          "cffi": "2.1.0",
+          "cryptography": "49.0.0",
+          "duckdb": "1.5.2",
+          "iniconfig": "2.3.0",
+          "packaging": "26.2",
+          "pluggy": "1.6.0",
+          "pycparser": "3.0",
+          "pygments": "2.19.2",
+          "pytest": "9.0.3"
+        }
+      },
+      "name": "approved_package_closure",
+      "ok": true
+    },
+    {
+      "details": {
+        "changed_message_rejected": true,
+        "sign_verify": true
+      },
+      "name": "native_ed25519",
+      "ok": true
+    },
+    {
+      "details": {
+        "in_memory_parameterized_aggregation": true
+      },
+      "name": "native_duckdb",
+      "ok": true
+    },
+    {
+      "details": {
+        "writable": [
+          "/workspace",
+          "/tmp"
+        ],
+        "writes_denied": [
+          "/opt",
+          "/opt/ipfs-validation-site-packages",
+          "/usr"
+        ]
+      },
+      "name": "filesystem_permissions",
+      "ok": true
+    },
+    {
+      "details": {
+        "git": {
+          "output_bytes": 19,
+          "output_sha256": "25f3602b5caaf92437be1e76b53698e8d73f14a6c71c2e91c8d5875f923ab29f",
+          "path": "/usr/bin/git",
+          "returncode": 0
+        },
+        "python": "/opt/ipfs-task-tools/bin/python",
+        "rg": {
+          "output_bytes": 129,
+          "output_sha256": "8b444fd0580510b993b47286c31f6b7fa8c8ffb30bbb156d1e020d91ea58a475",
+          "path": "/usr/bin/rg",
+          "returncode": 0
+        }
+      },
+      "name": "python_git_rg_tools",
+      "ok": true
+    },
+    {
+      "details": {
+        "isolated_python": true,
+        "output_bytes": 98,
+        "output_sha256": "fa9cd0e25dcc1e230610463c80c04cc48c6c326debe3521403b94a8e7f25f4ae",
+        "plugin_autoload_disabled": true,
+        "returncode": 0,
+        "test_count": 2
+      },
+      "name": "isolated_pytest_subprocess",
+      "ok": true
+    }
+  ],
+  "elapsed_seconds": 0.594,
+  "lean_qualified": false,
+  "network_calls": 0,
+  "ok": true,
+  "provider_calls": 0,
+  "schema": "legal-ir-ordinary-worker-runtime-qualification@1",
+  "scope": "ordinary_worker_mounted_python_runtime_only"
+}

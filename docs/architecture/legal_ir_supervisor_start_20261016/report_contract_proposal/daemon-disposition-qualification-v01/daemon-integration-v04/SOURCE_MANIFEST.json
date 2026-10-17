@@ -1,0 +1,38 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 426,
+      "path": "ASSEMBLY.json",
+      "sha256": "00626960fda131f854cc6487b8e45aadb412a97b1fff722228dd56d83bd6b30c"
+    },
+    {
+      "bytes": 408,
+      "path": "README.txt",
+      "sha256": "234d1bb32668f095eeff9f558ed979f441852438a4155f0001a39b4e178fc0b0"
+    },
+    {
+      "bytes": 3151,
+      "path": "build_patch.py",
+      "sha256": "cb51877fca1785f8a54de8c7c01c5d9f4fe87c0465afa2ddd45283b364b7a47b"
+    },
+    {
+      "bytes": 1208,
+      "path": "disposition-entry-successor.patch",
+      "sha256": "fd9e5db186dcff398851df3328dc199d1f4fde7e66bcaaf8a33e95354b7e808a"
+    },
+    {
+      "bytes": 19703,
+      "path": "implementation_daemon.patch",
+      "sha256": "057d1b474c4379930e9ee93ac0d9554bc5f77aa8be7c7af5c1f0f46b6725e337"
+    }
+  ],
+  "full_host_qualified": false,
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/daemon-integration-v03/SOURCE_MANIFEST.json": "e6b8f41e39fc27686e1eebafcf0da4efc6229b6541db704fe865051c3406a6a9"
+  },
+  "qualification": "authored; execution evidence separate",
+  "runtime_enabled": false,
+  "schema": "legal-ir-disposition-source-proposal@1"
+}

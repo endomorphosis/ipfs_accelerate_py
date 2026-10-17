@@ -1,0 +1,400 @@
+--- report-freezer-v02/report_only_candidate_freezer.py
++++ report-freezer-v03/report_only_candidate_freezer.py
+@@ -508,35 +508,259 @@
+     owner.check_usage(owner.directory, full=True)
+ 
+ 
++# This body replaces only _Git's process topology. All commit/staging/source
++# guards remain in the original source-pinned public delegate.
++ANCHOR = """import os,resource,select
++for k,v in ((resource.RLIMIT_CPU,30),(resource.RLIMIT_AS,268435456),(resource.RLIMIT_FSIZE,16777216),(resource.RLIMIT_NOFILE,64)):
++ resource.setrlimit(k,(v,v))
++if not select.select([0],[],[],3600)[0]: raise SystemExit(125)
++if os.read(0,1)!=b'': raise SystemExit(125)
++"""
++_RETAINED_GIT_CUSTODY = {}
++
++
++class GitCustodyPending(ReportFreezerRefusal):
++    """Original same-process refs, never a portable cleanup/admission token."""
++    def __init__(self, session, cause):
++        super().__init__("actual_git_group_cleanup_pending")
++        self.actual_session = session
++        self.actual_owner = session.owner
++        self.actual_anchor = session.anchor
++        self.actual_processes = tuple(session.processes)
++        self.actual_consumer = session.consumer
++        self.actual_cause = cause
++
++
++def _git_process(pid):
++    try:
++        text = (Path('/proc') / str(pid) / 'stat').read_text()
++    except (FileNotFoundError, ProcessLookupError):
++        return None
++    fields = text.rsplit(')', 1)[1].split()
++    need(len(fields) >= 22, "bounded_actual_git_process_identity_required")
++    return dict(pid=pid, state=fields[0], parent_pid=int(fields[1]), group_pid=int(fields[2]),
++                session_pid=int(fields[3]), birth=fields[19])
++
++
++def check_git_anchor_projection(row, *, pid, birth, parent_pid, session_pid):
++    """Pure necessary shape checks; only actual internal observations use it."""
++    need(type(row) is dict and row.get('pid') == pid and row.get('birth') == birth
++         and row.get('state') != 'Z' and row.get('parent_pid') == parent_pid
++         and row.get('group_pid') == pid and row.get('session_pid') == session_pid,
++         "actual_original_git_anchor_identity_required")
++
++
++def _git_group_members(group_pid):
++    entries = list(Path('/proc').iterdir())
++    need(len(entries) <= 100000, "bounded_actual_git_group_census_required")
++    rows = []
++    for entry in entries:
++        if entry.name.isdecimal():
++            row = _git_process(int(entry.name))
++            if row is not None and row['group_pid'] == group_pid and row['state'] != 'Z':
++                rows.append(row)
++    return rows
++
++
+ class _Git:
+-    """Actual finite attached children. Never a caller-supplied command runner."""
++    """One genuine attached PGID anchor; finite actual joined Git children.
++
++    The anchor is a direct child and isolated process-group leader in the
++    caller's session (process_group=0). This intentionally differs from the
++    SDK doc's start_new_session=True example. Actual SDK checks are unchanged:
++    direct PPID, PGID==anchorPID and retained birth, with public group sampling.
++    """
+     def __init__(self, owner, workspace):
+         self.owner, self.workspace, self.count = owner, workspace, 0
++        self.anchor, self.anchor_birth, self.consumer = None, None, None
++        self.processes, self._closed, self._failed, self._pending = [], False, False, None
++        self._anchor_start_attempted = False
++        self._host_pid, self._host_session = os.getpid(), os.getsid(0)
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, kind, error, traceback):
++        if error is not None and not self._closed:
++            self._stop_failed(error)
++        else:
++            self.close()
++        return False
++
++    def _native_owner(self):
++        native = importlib.import_module(NATIVE + 'parented_phase_resources')
++        need(type(self.owner) is native.ParentedPhaseResourceReservation,
++             "actual_git_parented_native_owner_required")
++        public = self.owner.to_dict()
++        lease = self.owner.native_lease.to_dict()
++        need(public.get('status') == 'active' and lease.get('owner_pid') == os.getpid()
++             and lease.get('lane') == 'orchestration' and lease.get('cpu_slots') == 1
++             and lease.get('child_process_slots') == 4 and lease.get('memory_mb', 0) >= 512
++             and lease.get('released') is False and lease.get('cancelled') is False,
++             "actual_one_cpu_four_slot_git_owner_required")
++        need(self.owner.heartbeat(), "actual_git_owner_heartbeat_failed")
++        if self.consumer is not None:
++            resource = importlib.import_module(NATIVE + 'resource_scheduler')
++            need(type(self.consumer) is resource.ResourceLease and self.consumer.owner_pid == self._host_pid
++                 and self.consumer.parent_lease_id == self.owner.native_lease.lease_id
++                 and self.consumer.cpu_slots == 1 and self.consumer.memory_mb == 1
++                 and self.consumer.child_process_slots == 0 and not self.consumer.released
++                 and not self.consumer.cancelled, 'actual_original_git_consumer_required')
++            need(self.consumer.renew() and not self.consumer.cancelled,
++                 'original_git_consumer_not_productively_live')
++
++    @staticmethod
++    def _environment():
++        return {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
++                "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0",
++                "GIT_OPTIONAL_LOCKS": "0", "GIT_NO_REPLACE_OBJECTS": "1", "GIT_NO_LAZY_FETCH": "1",
++                "GIT_LITERAL_PATHSPECS": "1"}
++
++    def _anchor_identity(self, *, input_open=True):
++        need(type(self.anchor) is subprocess.Popen and self.anchor.poll() is None
++             and self.anchor_birth is not None and self.anchor.stdin is not None
++             and (not input_open or not self.anchor.stdin.closed)
++             and os.getpid() == self._host_pid and os.getsid(0) == self._host_session,
++             "live_original_git_anchor_object_required")
++        row = _git_process(self.anchor.pid)
++        check_git_anchor_projection(row, pid=self.anchor.pid, birth=self.anchor_birth,
++            parent_pid=self._host_pid, session_pid=self._host_session)
++        need(os.getpgrp() != self.anchor.pid, "git_anchor_must_not_be_host_group")
++        return row
++
++    def _anchor_only(self):
++        self._native_owner()
++        self._anchor_identity()
++        usage = self.owner.check_usage(self.owner.directory)
++        need(usage['group_rss']['live_processes'] == 1,
++             "exact_anchor_only_group_required_between_git_commands")
++        members = _git_group_members(self.anchor.pid)
++        need(len(members) == 1 and members[0]['pid'] == self.anchor.pid
++             and members[0]['birth'] == self.anchor_birth,
++             "actual_original_anchor_only_census_required")
++        need(all(type(p.poll()) is int for p in self.processes), "prior_actual_git_not_reaped")
++
++    def _start(self):
++        need(not self._closed and not self._failed and self._pending is None,
++             "git_group_session_cannot_restart_after_close_or_failure")
++        if self.anchor is not None:
++            self._anchor_only()
++            return
++        self._native_owner()
++        need(self.owner.check_usage(self.owner.directory, full=True)['group_rss']['live_processes'] == 0,
++             "prior_git_group_not_quiescent_before_anchor")
++        need(len(_RETAINED_GIT_CUSTODY) < 16, "bounded_retained_git_custody_inventory_required")
++        # This actual child consumer holds original ancestry even if Popen or
++        # native attachment has an unknown outcome. It is never a new root.
++        self.consumer = self.owner.native_lease.acquire_child(lane='orchestration', cpu_slots=1,
++            memory_mb=1, child_process_slots=0, timeout=30, request_id='report-freezer-git-group-hold')
++        self._anchor_start_attempted = True
++        self.anchor = subprocess.Popen([str(PYTHON), '-I', '-S', '-B', '-c', ANCHOR],
++            cwd=self.workspace, env=self._environment(), stdin=subprocess.PIPE,
++            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, process_group=0)
++        actual = _git_process(self.anchor.pid)
++        need(actual is not None, "actual_git_anchor_birth_unavailable")
++        self.anchor_birth = actual['birth']
++        self._anchor_identity()
++        attached = self.owner.check_usage(self.owner.directory, child_pid=self.anchor.pid, full=True)
++        need(attached['group_rss']['live_processes'] == 1, "native_anchor_attachment_not_exactly_one")
++        child = self.owner.to_dict()['record'].get('child')
++        need(child == {'pid': self.anchor.pid, 'birth': self.anchor_birth},
++             "actual_native_anchor_attachment_identity_changed")
++        self._anchor_only()
++
++    def _known_stopped(self):
++        if self.anchor is None:
++            return not self._anchor_start_attempted and not self.processes
++        need(type(self.anchor) is subprocess.Popen, "retained_actual_anchor_required")
++        if self.anchor.poll() is None or any(p.poll() is None for p in self.processes):
++            return False
++        leader = _git_process(self.anchor.pid)
++        need(leader is None or leader['birth'] == self.anchor_birth, "original_git_anchor_pid_reused")
++        return not _git_group_members(self.anchor.pid)
++
++    def _release_consumer(self):
++        need(self._known_stopped(), "actual_original_git_group_not_stopped")
++        if self.consumer is not None:
++            self.consumer.release()
++            need(self.consumer.released, "actual_git_consumer_release_not_observed")
++
++    def _retain(self, cause):
++        self._failed = True
++        if self._pending is None:
++            self._pending = GitCustodyPending(self, cause)
++            _RETAINED_GIT_CUSTODY[id(self)] = self
++        raise self._pending from cause
++
++    def _stop_failed(self, cause):
++        if self._pending is not None:
++            raise self._pending
++        self._failed = True
++        try:
++            if self.anchor is None:
++                need(not self._anchor_start_attempted, "actual_anchor_creation_outcome_unknown")
++            elif self.anchor.poll() is None:
++                # The only group signal uses the still-live original actual
++                # anchor Popen/birth and exact isolated group, never a receipt.
++                self._anchor_identity(input_open=False)
++                os.killpg(self.anchor.pid, signal.SIGKILL)
++            for process in [*self.processes, *([self.anchor] if self.anchor is not None else [])]:
++                process.wait(timeout=5)
++                for stream in (process.stdin, process.stdout, process.stderr):
++                    if stream is not None and not stream.closed:
++                        stream.close()
++            need(self._known_stopped(), "actual_git_group_cleanup_unknown")
++            self._release_consumer()
++            self._closed = True
++        except BaseException as cleanup_error:
++            self._retain(cleanup_error)
++
++    def close(self):
++        if self._closed:
++            return
++        if self._pending is not None:
++            raise self._pending
++        try:
++            if self.anchor is not None:
++                self._anchor_only()
++                self.anchor.stdin.close()
++                need(self.anchor.wait(timeout=5) == 0, "actual_git_anchor_close_failed")
++                need(self.owner.check_usage(self.owner.directory)['group_rss']['live_processes'] == 0,
++                     "actual_git_group_not_quiescent_at_close")
++            self._release_consumer()
++            self._closed = True
++        except BaseException as error:
++            self._stop_failed(error)
++            raise
+ 
+     def run(self, arguments, maximum=65536):
+-        self.count += 1
+-        need(self.count <= MAX_GIT_CHILDREN, "finite_git_command_bound_exceeded")
+-        argv = [str(GIT), "--no-optional-locks", "--no-replace-objects", "-c", "core.hooksPath=/dev/null",
+-                "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "commit.gpgsign=false",
+-                "-c", "tag.gpgsign=false", "-c", "credential.helper=", "-c", "gc.auto=0",
+-                "-c", "maintenance.auto=false", "-c", "diff.external=", *arguments]
+-        environment = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
+-                       "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0",
+-                       "GIT_OPTIONAL_LOCKS": "0", "GIT_NO_REPLACE_OBJECTS": "1", "GIT_NO_LAZY_FETCH": "1",
+-                       "GIT_LITERAL_PATHSPECS": "1"}
+-        need(self.owner.check_usage(self.owner.directory, full=True)["group_rss"]["live_processes"] == 0,
+-             "prior_git_group_not_quiescent_before_next_launch")
+-        need(self.owner.heartbeat(), "actual_git_owner_heartbeat_failed")
+-        process = subprocess.Popen([str(PYTHON), "-I", "-S", "-B", "-c", BARRIER, json.dumps(argv)],
+-            cwd=self.workspace, env=environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+-            stderr=subprocess.PIPE, start_new_session=True)
+-        selector = selectors.DefaultSelector()
+-        buffers = {"stdout": bytearray(), "stderr": bytearray()}
++        process, selector = None, None
++        buffers = {'stdout': bytearray(), 'stderr': bytearray()}
+         try:
+-            attached = self.owner.check_usage(self.owner.directory, child_pid=process.pid, full=True)
+-            need(attached["group_rss"]["live_processes"] <= 4, "actual_git_group_exceeded_four_slots")
+-            need(self.owner.heartbeat(), "native_git_attachment_heartbeat_failed")
+-            process.stdin.write(b"G")
++            self.count += 1
++            need(self.count <= MAX_GIT_CHILDREN, 'finite_git_command_bound_exceeded')
++            selector = selectors.DefaultSelector()
++            argv = [str(GIT), "--no-optional-locks", "--no-replace-objects", "-c", "core.hooksPath=/dev/null",
++                    "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "commit.gpgsign=false",
++                    "-c", "tag.gpgsign=false", "-c", "credential.helper=", "-c", "gc.auto=0",
++                    "-c", "maintenance.auto=false", "-c", "diff.external=", *arguments]
++            self._start()
++            self._anchor_only()
++            process = subprocess.Popen([str(PYTHON), '-I', '-S', '-B', '-c', BARRIER, json.dumps(argv)],
++                cwd=self.workspace, env=self._environment(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE, process_group=self.anchor.pid)
++            self.processes.append(process)
++            actual = _git_process(process.pid)
++            need(actual is not None and actual['parent_pid'] == self._host_pid
++                 and actual['group_pid'] == self.anchor.pid and actual['session_pid'] == self._host_session
++                 and actual['state'] != 'Z', "actual_gated_git_must_join_original_anchor_group")
++            self._anchor_identity()
++            usage = self.owner.check_usage(self.owner.directory)
++            need(usage['group_rss']['live_processes'] == 2, "exact_anchor_plus_gated_git_required_before_input")
++            members = _git_group_members(self.anchor.pid)
++            need({row['pid'] for row in members} == {self.anchor.pid, process.pid},
++                 "actual_preinput_git_group_members_changed")
++            process.stdin.write(b'G')
+             process.stdin.close()
+             for label in buffers:
+                 stream = getattr(process, label)
+@@ -546,35 +770,32 @@
+             while selector.get_map() or process.poll() is None:
+                 need(time.monotonic() < deadline, "actual_git_deadline_exceeded")
+                 if time.monotonic() >= sample:
++                    self._native_owner()
++                    self._anchor_identity()
+                     usage = self.owner.check_usage(self.owner.directory)
+-                    need(usage["group_rss"]["live_processes"] <= 4, "actual_git_group_exceeded_four_slots")
+-                    need(self.owner.heartbeat(), "actual_git_owner_heartbeat_failed")
+-                    sample = time.monotonic() + 0.5
+-                for key, _ in selector.select(0.1):
++                    need(1 <= usage['group_rss']['live_processes'] <= 4, "actual_git_group_exceeded_four_slots")
++                    sample = time.monotonic() + .5
++                for key, _ in selector.select(.1):
+                     chunk = os.read(key.fileobj.fileno(), 65536)
+                     if not chunk:
+                         selector.unregister(key.fileobj)
+                         continue
+                     buffers[key.data].extend(chunk)
+-                    need(len(buffers[key.data]) <= (maximum if key.data == "stdout" else 16384), "actual_git_output_bound_exceeded")
++                    need(len(buffers[key.data]) <= (maximum if key.data == 'stdout' else 16384),
++                         "actual_git_output_bound_exceeded")
+             need(process.wait(timeout=1) == 0, "actual_git_command_failed")
+-            need(self.owner.check_usage(self.owner.directory)["group_rss"]["live_processes"] == 0,
+-                 "actual_git_group_not_quiescent")
+-            return bytes(buffers["stdout"])
++            self._anchor_only()
++            return bytes(buffers['stdout'])
++        except BaseException as error:
++            self._stop_failed(error)
++            raise
+         finally:
+-            try:
+-                if process.poll() is None:
+-                    try:
+-                        os.killpg(process.pid, signal.SIGKILL)
+-                    except ProcessLookupError:
+-                        pass
+-                    process.wait(timeout=5)
+-            finally:
++            if selector is not None:
+                 selector.close()
++            if process is not None and process.poll() is not None:
+                 for stream in (process.stdin, process.stdout, process.stderr):
+-                    stream.close()
+-                need(self.owner.check_usage(self.owner.directory)["group_rss"]["live_processes"] == 0,
+-                     "git_failure_requires_retained_native_custody")
++                    if stream is not None and not stream.closed:
++                        stream.close()
+ 
+     def commit_runner(self, arguments, *, cwd):
+         need(Path(cwd) == self.workspace, "shared_commit_tail_workspace_changed")
+@@ -584,6 +805,24 @@
+                  "user.email=implementation-daemon@example.invalid", "commit"]
+              and arguments[5] == "-m" and arguments[7] == "-m"), "unexpected_shared_commit_tail_command")
+         return subprocess.CompletedProcess(arguments, 0, stdout=self.run(arguments).decode(), stderr="")
++
++
++def acknowledge_stopped_git_custody(pending):
++    """Observe only original retained objects; never signal/retry/acquire."""
++    need(type(pending) is GitCustodyPending and type(pending.actual_session) is _Git,
++         "actual_same_process_git_custody_required")
++    session = pending.actual_session
++    need(_RETAINED_GIT_CUSTODY.get(id(session)) is session and session._pending is pending
++         and pending.actual_owner is session.owner and pending.actual_anchor is session.anchor
++         and pending.actual_consumer is session.consumer,
++         "actual_original_retained_git_custody_identity_required")
++    if not session._known_stopped():
++        return False
++    session._release_consumer()
++    session._closed = True
++    session._pending = None
++    del _RETAINED_GIT_CUSTODY[id(session)]
++    return True
+ 
+ 
+ def _index_snapshot(gitdir):
+@@ -621,22 +860,21 @@
+     _guard_owner(freezer_owner, outcome.owner, fresh=True)
+     gitdir, common = _discover_git_storage(capture.workspace)
+     _check_storage(freezer_owner, capture.workspace, gitdir, common, declared_external_storage)
+-    git = _Git(freezer_owner, capture.workspace)
+-    need(git.run(["rev-parse", "--show-toplevel"]).decode().strip() == str(capture.workspace)
+-         and git.run(["rev-parse", "--absolute-git-dir"]).decode().strip() == str(gitdir)
+-         and git.run(["rev-parse", "--path-format=absolute", "--git-common-dir"]).decode().strip() == str(common),
+-         "actual_original_repository_or_git_storage_changed")
+-    lock_module = importlib.import_module(MERGE + "git_checkout_transaction")
+-    lock = getattr(lock_module, "checkout_git_directory_mutation", None)
+-    need(callable(lock), "native_observed_original_checkout_lock_api_absent")
+-    def dispatch():
+-        with lock(gitdir):
+-            return _freeze_locked(daemon, capture, outcome, freezer_owner, protected_source_sha256,
+-                                  declared_external_storage, git, gitdir, common)
+-    return daemon._decision_runtime_mutation("commit", {
+-        "operation": "freeze_report_only_candidate", "task_id": TASK_ID, "attempt": capture.before.attempt,
+-        "worktree_path": str(capture.workspace)}, dispatch)
+-
++    with _Git(freezer_owner, capture.workspace) as git:
++        need(git.run(["rev-parse", "--show-toplevel"]).decode().strip() == str(capture.workspace)
++             and git.run(["rev-parse", "--absolute-git-dir"]).decode().strip() == str(gitdir)
++             and git.run(["rev-parse", "--path-format=absolute", "--git-common-dir"]).decode().strip() == str(common),
++             "actual_original_repository_or_git_storage_changed")
++        lock_module = importlib.import_module(MERGE + "git_checkout_transaction")
++        lock = getattr(lock_module, "checkout_git_directory_mutation", None)
++        need(callable(lock), "native_observed_original_checkout_lock_api_absent")
++        def dispatch():
++            with lock(gitdir):
++                return _freeze_locked(daemon, capture, outcome, freezer_owner, protected_source_sha256,
++                                      declared_external_storage, git, gitdir, common)
++        return daemon._decision_runtime_mutation("commit", {
++            "operation": "freeze_report_only_candidate", "task_id": TASK_ID, "attempt": capture.before.attempt,
++            "worktree_path": str(capture.workspace)}, dispatch)
+ 
+ def _freeze_locked(daemon, capture, outcome, owner, pins, storage, git, gitdir, common):
+     # Every candidate/index/baseline assertion and the original commit tail is

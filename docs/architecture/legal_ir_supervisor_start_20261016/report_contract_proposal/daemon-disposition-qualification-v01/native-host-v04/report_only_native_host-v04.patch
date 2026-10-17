@@ -1,0 +1,130 @@
+--- native-host-v03/report_only_native_host.py
++++ native-host-v04/report_only_native_host.py
+@@ -52,7 +52,9 @@
+     host = _HOST.get()
+     need(type(host) is ReportOnlyNativeHost and getattr(daemon, '_report_only_native_host', None) is host,
+          'explicit_same_process_native_host_required')
+-    host._identity(daemon)
++    # The public daemon resolves its host before guard_pass_entry. Keep this
++    # accessor effect-free so sticky refusal precedes borrowed DB witnesses.
++    host._binding_identity(daemon)
+     return host
+ 
+ 
+@@ -80,6 +82,9 @@
+         self.task, self.state, self.command, self.args, self.workspace, self.invocation = (None,)*6
+         self.result, self.bound, self.finished = None, False, False
+         self.disposition_pending = False
++        self._execution_attempted = False
++        self._pass_entry_attempted = False
++        self._pass_entry_validated = False
+         self.finalizers = None
+         self.storage_roots = None
+         self.dispatch_attempted = False
+@@ -144,9 +149,13 @@
+              and root.get('cpu_slots') == 3 and root.get('memory_mb') == 4096 and root.get('child_process_slots') == 16,
+              'original_unchanged_root_phase_profile_required')
+ 
+-    def _identity(self, daemon):
++    def _binding_identity(self, daemon):
++        # Pure actual-object/process identity only; no source import or SQL.
+         need(daemon is self.daemon and self.pid == os.getpid() and self.thread == threading.get_ident()
+              and self.bound and not self.finished, 'actual_same_PID_thread_host_scope_required')
++
++    def _identity(self, daemon):
++        self._binding_identity(daemon)
+         try:
+             state = self._module(TODO+'portal_task_state_control_plane')
+             need(state.require_borrowed_task_state_connection(daemon.state_path, connection=self.connection) is self.connection,
+@@ -156,7 +165,11 @@
+             raise
+ 
+     def execute_daemon_once(self):
+-        need(not self.bound and self.token is None and _HOST.get() is None, 'fresh_single_host_pass_required')
++        need(self.pending is None and self.disposition_pending is False,
++             'retained_host_cannot_start_productive_execution')
++        need(self._execution_attempted is False and not self.bound and not self.finished
++             and self.token is None and _HOST.get() is None, 'fresh_single_host_pass_required')
++        self._execution_attempted = True
+         self._phase_live()
+         state = self._module(TODO+'portal_task_state_control_plane')
+         self.borrow = state.borrow_task_state_connection(self.daemon.state_path, connection=self.connection, target=self.target)
+@@ -192,6 +205,25 @@
+         _RETAINED.pop(id(self),None)
+ 
+     def guard_pass_entry(self, daemon):
++        # execute_daemon_once's fresh-binding check is not enough: a retained
++        # pending host remains bound, so public daemon.run_once can resolve it
++        # again without entering execute_daemon_once. Never renew that pass.
++        need(self.pending is None and self.disposition_pending is False,
++             'retained_host_cannot_enter_productive_pass')
++        need(self._pass_entry_attempted is False and self._pass_entry_validated is False,
++             'original_single_public_pass_already_attempted')
++        # Latch BEFORE any fallible source, borrowed DB or phase checks. A
++        # refused/failed first check cannot become another productive pass.
++        self._pass_entry_attempted = True
++        need(self._execution_attempted is True, 'original_execute_scope_required_before_public_pass')
++        self._validate_in_pass_profile(daemon)
++        self._pass_entry_validated = True
++
++    def _validate_in_pass_profile(self, daemon):
++        # Repeated checks inside the already admitted pass must not consume or
++        # reset its one-pass latch. Pending custody always stops productivity.
++        need(self.pending is None and self.disposition_pending is False,
++             'retained_host_cannot_validate_productive_profile')
+         self._identity(daemon); self._phase_live()
+         need(daemon.report_only_candidate_freezing is True and daemon.max_task_attempts == 3
+              and type(daemon.max_task_attempts) is int and daemon.preserve_task_attempts is True
+@@ -203,8 +235,19 @@
+             plan_revision_store=daemon.plan_revision_store, require_active_plan_revision=daemon.require_active_plan_revision,
+             configured_parallel_execution_plan=daemon._configured_parallel_execution_plan, active_plan_binding=daemon._active_plan_binding)
+ 
++    def _require_validated_in_pass(self, daemon):
++        # Necessary original in-memory conditions, never a portable pass grant.
++        # Check denial/latches before borrowed DB witnesses or native renewal.
++        need(self.pending is None and self.disposition_pending is False,
++             'retained_host_cannot_perform_productive_in_pass_effect')
++        need(self._execution_attempted is True and self._pass_entry_attempted is True
++             and self._pass_entry_validated is True,
++             'actual_original_pass_must_be_entered_and_validated')
++        self._binding_identity(daemon)
++
+     def require_attempt_profile(self, daemon, task, state):
+-        self.guard_pass_entry(daemon)
++        self._require_validated_in_pass(daemon)
++        self._validate_in_pass_profile(daemon)
+         module = self._module(TODO+'implementation_daemon')
+         need(type(task) is module.PortalTask and type(state) is module.PortalTaskState
+              and (self.task is None or self.task is task and self.state is state), 'original_single_task_state_objects_required')
+@@ -223,6 +266,7 @@
+             task_claim_metadata=task_claim_metadata,resource_claims=acquired_resource_claims,lock_path=lock_path,lock_metadata=lock_metadata))
+ 
+     def _owner(self, role, memory, slots, storage):
++        self._require_validated_in_pass(self.daemon)
+         self._phase_live()
+         self.root.mkdir(mode=0o700,exist_ok=True)
+         path = self.root/role; path.mkdir(mode=0o700,exist_ok=False)
+@@ -236,6 +280,7 @@
+         return owner
+ 
+     def _storage(self, owner, roots):
++        self._require_validated_in_pass(self.daemon)
+         helper = self._module(TODO+'report_only_candidate_freezer')
+         roots = tuple(canonical(path) for path in roots)
+         need(0 < len(roots) <= 3 and len(set(roots)) == len(roots)
+@@ -284,6 +329,7 @@
+         self._release(owner)
+ 
+     def dispatch_provider(self, daemon, *, state, task, attempt, prompt, environment, log_path, command):
++        self._require_validated_in_pass(daemon)
+         self._identity(daemon)
+         need(self.task is task and self.state is state and command == self.command and self.workspace is not None
+              and self.invocation is None and not self.dispatch_attempted, 'original_preflight_command_and_single_dispatch_required')
+@@ -322,6 +368,7 @@
+         return self.result
+ 
+     def _freeze(self, outcome):
++        self._require_validated_in_pass(self.daemon)
+         handoff = self._module(RUNTIME+'ordinary_success_handoff')
+         capture = handoff.authenticate_ordinary_callback_for_freezer(outcome)  # Only12 owner slots, spare admin capacity.
+         owner = None

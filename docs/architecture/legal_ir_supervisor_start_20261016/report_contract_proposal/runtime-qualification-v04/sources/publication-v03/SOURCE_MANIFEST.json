@@ -1,0 +1,98 @@
+{
+  "acceptance_authority": false,
+  "author_runtime_jobs_performed": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 2498,
+      "path": "README.txt",
+      "sha256": "4549770382ad2eb9a81e5da96aab682d41ece9478e753382581583446bf3da3d"
+    },
+    {
+      "bytes": 6689,
+      "path": "publication_helpers.py",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 32955,
+      "path": "publish_callable.py",
+      "sha256": "8ae434e217e3356c429f8713e20bee298861a0d193b1806ceae2ff98f0f08941"
+    }
+  ],
+  "functional_changes": [
+    "Maximum selected source bundles24\u219228.",
+    "Archived publisher self-role publication-v02\u2192publication-v03."
+  ],
+  "global_resource_policy_changed": false,
+  "helpers_byte_identical_to_V02": true,
+  "input_pins": [
+    {
+      "bytes": 65855,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/handoff-publication-v06/publish_handoff.py",
+      "role": "immutable_original_V06_helper_source",
+      "sha256": "61167cba86fb6f155b73c809d4dc49d766b9dceaa013252667124f688c276ada"
+    },
+    {
+      "bytes": 1712,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/README.txt",
+      "role": "immutable_original_publication_V01_source_lineage",
+      "sha256": "543501f25f163a78efab156639ae031c302fed69f6f9f33149a5b7bb4287e8b4"
+    },
+    {
+      "bytes": 1027,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/SOURCE_MANIFEST.json",
+      "role": "immutable_original_publication_V01_source_lineage",
+      "sha256": "31d50912481b8c2a574086869e76cbfc492fc2145c8a0d6df15f2e91029aadaf"
+    },
+    {
+      "bytes": 6689,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/publication_helpers.py",
+      "role": "immutable_original_publication_V01_source_lineage",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 32955,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/publish_callable.py",
+      "role": "immutable_original_publication_V01_source_lineage",
+      "sha256": "574550c605e3b67e222a43988b3e42d866b30e30cac0330a39c380152e1a6d11"
+    },
+    {
+      "bytes": 2336,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/README.txt",
+      "role": "immutable_original_publication_V02_source_lineage",
+      "sha256": "37585dab4642c302c56d4069f819845de2e5d0474b6a5f175b44b408b24168fa"
+    },
+    {
+      "bytes": 2934,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/SOURCE_MANIFEST.json",
+      "role": "immutable_original_publication_V02_source_lineage",
+      "sha256": "c8b43b7965f3ac39e5f6ff0c3859ae0d70918d517b06c9707d509c57bb9c4b08"
+    },
+    {
+      "bytes": 6689,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/publication_helpers.py",
+      "role": "immutable_original_publication_V02_source_lineage",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 32955,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/publish_callable.py",
+      "role": "immutable_original_publication_V02_source_lineage",
+      "sha256": "a634a34ee49766a3eb23b17696aaed4d6bc224536314ad942bf99540f4018b3d"
+    }
+  ],
+  "inverse_two_literal_substitutions_restore_V02_worker_bytes": true,
+  "production_hook_deployed": false,
+  "provider_calls": 0,
+  "schema": "legal-ir-callable-publication-source@3",
+  "status": "source_authored_pending_independent_review_not_executed",
+  "successor_of_manifest_sha256": "c8b43b7965f3ac39e5f6ff0c3859ae0d70918d517b06c9707d509c57bb9c4b08",
+  "unchanged_bounds": {
+    "evidence_files": 64,
+    "historical_preflight_failures": 8,
+    "output_bytes": 67108864,
+    "output_paths": 256,
+    "protected_source_pins": 256,
+    "qualification_checks": 16
+  }
+}

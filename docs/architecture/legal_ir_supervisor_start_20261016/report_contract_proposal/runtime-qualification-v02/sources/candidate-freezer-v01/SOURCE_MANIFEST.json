@@ -1,0 +1,28 @@
+{
+  "acceptance_authority": false,
+  "author_canonical_tasks_accepted": 0,
+  "author_existing_sources_modified": false,
+  "author_provider_calls_performed": false,
+  "author_runtime_or_tests_executed": false,
+  "completion_authority": false,
+  "embedded_barrier_ast_valid": null,
+  "files": [
+    {
+      "bytes": 10231,
+      "path": "README.md",
+      "sha256": "e90aa3d2519db9497332e690624f1f6bb1c25f3e4eadecc35f7edd15b352e3ef"
+    },
+    {
+      "bytes": 4262,
+      "path": "SOURCE_REVIEW.json",
+      "sha256": "e7d18d383522b53118ec41d6d21302b7a8169ed243b95cee996f7472ff490217"
+    },
+    {
+      "bytes": 8507,
+      "path": "UPSTREAM_HOOK_TASKS.json",
+      "sha256": "5f81e780f2cb9eaa3787b1e46aea9d76749543e7a25eb46b4593f7ecf66416f6"
+    }
+  ],
+  "schema": "legal-ir-candidate-freezer-source-review-manifest@1",
+  "status": "source_only_not_executed"
+}

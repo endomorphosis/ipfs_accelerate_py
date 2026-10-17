@@ -1,0 +1,51 @@
+{
+  "author_performed_git_mutations": false,
+  "author_performed_native_admission": false,
+  "author_performed_provider_calls": false,
+  "author_performed_runtime_tests": false,
+  "base_memory_cases_retained_with_corrected_actual_inventory_fixture": 31,
+  "base_v02_manifest_sha256": "1699b077d97ba65edb354826123d1785d38631d35651140f919432bb61b4827e",
+  "bounded_reader_cases_byte_identical_to_v02": 23,
+  "controlled_testcase_counts": {
+    "test_binding_memory.py": 36,
+    "test_binding_readers.py": 23,
+    "test_public_parser_regression.py": 1
+  },
+  "controlled_testcases": 60,
+  "files": [
+    {
+      "bytes": 3382,
+      "path": "README.md",
+      "sha256": "3d0cb6777ae0ef8287ccffd5afa3e2e0d1013487300cf2be87c3614d248f399d"
+    },
+    {
+      "bytes": 1129,
+      "path": "REVISION_PROVENANCE.json",
+      "sha256": "e6b65d7bdaa986bdeb689eb2d1edd6c3a20a96ec48df36c2ff3b6b26ba9051c2"
+    },
+    {
+      "bytes": 22459,
+      "path": "real_candidate_binding.py",
+      "sha256": "0f1b6a583f5b21afca2f47c4d88a399aa6c2273b7ee3616956823a8788947ba2"
+    },
+    {
+      "bytes": 12673,
+      "path": "test_binding_memory.py",
+      "sha256": "e2836819715a4704e025d0e2440807192d3f726e8625f3403c4f90ddde517b87"
+    },
+    {
+      "bytes": 6902,
+      "path": "test_binding_readers.py",
+      "sha256": "668795a688925e16ad398cf3fbed5b4ad22ee9f85f0cc0e14106df7c377b38aa"
+    },
+    {
+      "bytes": 5360,
+      "path": "test_public_parser_regression.py",
+      "sha256": "75b2c284644c68d2b5da6d86b8acd07a949a0962476a8cb032005bba2b8c26b6"
+    }
+  ],
+  "new_actual_inventory_cases": 5,
+  "new_actual_public_parser_cases": 1,
+  "schema": "legal-ir-real-candidate-binding-source-manifest@3",
+  "status": "source_authored_pending_root_controlled_and_native_execution"
+}

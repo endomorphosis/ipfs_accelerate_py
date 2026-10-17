@@ -1,0 +1,57 @@
+{
+  "actual_full_native_docker_qualification_claimed": false,
+  "author_generator_or_test_execution": false,
+  "existing_real_source_dependencies": {
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/CURRENT_SOURCE_BINDINGS.json": "accf4a04048be3090e727cc28eab6bddc66a651c77916e7f76fa407e86a6864f",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/authoring/README.md": "87ad482e07cc1e21e8b93467015588f500232ef397d9a1d67b3fd32ba09a2df8",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/authoring/campaign.json": "37e78a51a9a70d0b1f3f2efb8f3e032d5872e63c6165b905e28861534912837f",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/authoring/goals.objectives.md": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/authoring/source_baseline.json": "ebbec529f9f52a3ebce46c48c1b973d658a1880155c2daf631e4160b0f475a28",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/authoring/tasks.json": "66ebc6a95adde4fc717dd19ffaf5f03387f909662d1a47eccbb5c2a51857e9e6",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/authoring/tasks.todo.md": "a0ca9420e38a507cad4b8c2998a31a39b9b019c7b95bbbef2e4e710d0c37a7de",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/authoring/validate_plan.py": "97b18bae969936a7449ad2a7265ff7bfbdc592375f03215c540efcbc5f4f90f4",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/evidence/legal-ir-retained-source-correspondence-20261015/retained-inputs.json": "fbd75a2b03d322ccd32daa747c11a53fb6eef5ca51f2d52c19b292d4aa5b7736",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/evidence/legal-ir-typed-semantic-integration-20261015/retained-typed-join-inputs.json": "f65694fd8e2c63e77fa24d2c36e08977e5f5156b62d06f464c539a8661ee125c",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_asset_reconciliation_20261016.md": "cbe6857dcf9502401aacfd0799b76a31cbbce3803d0ea3bd892e524c423f6f4c",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_decoder_output_integration_20261016.md": "c8fe81472f637cf99f30a9b8bc218b1a7d1fcd80982bfccdb8edc6fededea1a6",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md": "fe4ec5697ad38b341116c0f6bac892fccff6e747a261a4d53079eb68068cf42a",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md": "5f26e211cb2d4a7ecf62d81b4e40654bfacd09bda807a6e33de0b8ad957e4215",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_relational_decoder_target_contract_v1.md": "c7b7c17c130605cc54de1c7417bdbf90fa1c9d57ae52d75e416d35fcbf19cdea",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/legal_statutory_definition_correspondence_pilot.md": "866a094791476f22058a743e039d10cb47367e717b7f0605465e3f13a71f1a4b",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/pilots/uscode_definition_component/README.md": "550bbaefe436c4cde13f5905b4a28c753a9bce56b0d120f88d48554172243f57",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/pilots/uscode_definition_component/pilot_spec.json": "dd08f3de9ab0ea9cbf5a57cf52b1cdf8517ed41fa0d25f61a3e2753475a25279",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/context/datasets/docs/autoencoders/pilots/uscode_definition_component/pilot_spec.schema.json": "562d44725a0f83c3185e3afec3d402eda93e1fdd4b81ee2e86ecfd92b88ade18",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/adapter-v02/controller_coordinator.py": "fb07c65561d93452aa8f7e8afc526dc1112ef205dcd2ef2521add18d086204d4",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/adapter-v02/factual_candidate.py": "2de6652156cca7f5098fce544e9c02b6cae0097f8dc78399d11764a5e7c1dfb1",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/adapter-v02/native_acceptance.py": "af7a14e1f8b32e852d0268036a4b9346fe827868386e8143c4ecf1e6accfc2d7",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json": "d8f9de44cfcf522009f3c1180d9dfc0938642c0822224751a0490299f4b5b902",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/source-copy-manifest.json": "c100315a2a4b0c102eae6e681a4e7d7ed600dd336ecb7f2eef5d8174def6561c",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/tasks.execution.json": "9f7234bc6c185ea3ddb1cf94c1ca8facf42c08a187dfe130360c42b60ae951c9",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/tasks.todo.md": "5244288f69562663f44b00d27add1ee6ef338f977fed1c0e1c8855725ff372c7",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py": "4168c617ba079ca8fbeb2346931d4c7fcfb6516a09e5ddc7079434fb3541654e"
+  },
+  "files": [
+    {
+      "bytes": 30113,
+      "path": "packet_generator.py",
+      "sha256": "179303cee51fd14c63f34418c8ad93d002db7f7a80180e659d3b43db8604c911"
+    },
+    {
+      "bytes": 15924,
+      "path": "test_packet_contract_memory.py",
+      "sha256": "1df15451018f1526ae9a3462251818b104063c4a025646359b4889c53679471c"
+    },
+    {
+      "bytes": 7118,
+      "path": "README.md",
+      "sha256": "dc0a55b2a61dd07f9064d0725034f6feccfff5c047147baae315c3393d920bb6"
+    }
+  ],
+  "generated_checker_ast_valid": true,
+  "materialization_or_dispatch_performed": false,
+  "pure_contract_unittest_cases": 21,
+  "qualification_limit": "Controlled tests qualify transformations/static gates only; real-context native provider/candidate integration remains unsupported.",
+  "schema": "legal-ir-real-report-packet-proposal-source-manifest@1",
+  "status": "source_only_non_dispatchable_not_executed",
+  "task_or_counter_writes_performed": false
+}

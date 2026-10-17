@@ -1,0 +1,64 @@
+{
+  "acceptance_authority": false,
+  "author_executed_tests": false,
+  "canonical_cap_mutated": false,
+  "canonical_counter_mutated": false,
+  "canonical_tasks_accepted": 0,
+  "cold_negative_cases": 22,
+  "completion_authority": false,
+  "expected_testcases": 30,
+  "expected_testcases_by_file": {
+    "test_sticky_pass_refusals.py": 30
+  },
+  "files": [
+    {
+      "bytes": 3747,
+      "path": "README.txt",
+      "sha256": "cae726145729d9fbb22261373eeab6773d71012129f07b5ef7bddf8e16e1cdbb"
+    },
+    {
+      "bytes": 1295,
+      "path": "RESOURCE_PLAN.json",
+      "sha256": "012a8a395c403acbcbeea9b0e27a4bdd5c99ac9170cfafd94329ac7da8b10f46"
+    },
+    {
+      "bytes": 33273,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "sha256": "965009a7de709c67b2ef796ab34cec30288c85b08c0fd2ace6631abcef995260"
+    },
+    {
+      "bytes": 8164,
+      "path": "qualify_controls.py",
+      "sha256": "07a1d67d47a67229b33383a20395305abb1b382e888f189ebffa61372fc44ae0"
+    },
+    {
+      "bytes": 7240,
+      "path": "report_only_native_host-v04.patch",
+      "sha256": "eb003a8cb9a4b190bc8486d17e7ed1801180f2139fd58f3464255914f2e3690a"
+    },
+    {
+      "bytes": 13740,
+      "path": "test_sticky_pass_refusals.py",
+      "sha256": "5852699d886f69a30ae2f250233aeb5d51e1c649cf4deecea31bae0eab9e7d55"
+    }
+  ],
+  "full_original_host_qualified": false,
+  "genuine_in_pass_profile_qualified": false,
+  "github_qualification": "skipped_by_user",
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/NEXT_DISPOSITION_DESIGN.json": "1bddcee61473c3dd9dc585845327173e64b306b372b0af0cacd0f328b2613bda",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/READINESS.md": "34670ee77ac5118f3442d392bc74f718b44d20f3b9709dac00150fa5126881cd",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/TASKS.json": "9e987f57ef1fb5b5b528d94b9727d1617379a44005db740fd29cd47480b4860a",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/native-host-v03/SOURCE_MANIFEST.json": "81c91a866c9ae2bfb4502facce6c4a755d92f22e06be2e24dce7722b7f8430a0",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/native-host-v03/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py": "0b76675f07959164adb5ef442e7df2218148674bad739379adb528ec1b2cc574",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/repository-fixture-v02/parent_attachment_gate.py": "dba5662443619358e2225d0cf7ccaa2e2b6c5bf51b0a60d2d1809004d1667fb3"
+  },
+  "original_daemon_source_sha256": "4984370456bd304dd9d89550c05e2d364fd9f0ca4849db560cb10caddfe3f407",
+  "positive_original_host_faked": false,
+  "provider_calls_performed": false,
+  "reviewed_proposed_host_sha256": "965009a7de709c67b2ef796ab34cec30288c85b08c0fd2ace6631abcef995260",
+  "runtime_enabled": false,
+  "schema": "legal-ir-sticky-host-source-controls@1",
+  "source_only_authoring": true,
+  "source_preservation_cases": 8
+}

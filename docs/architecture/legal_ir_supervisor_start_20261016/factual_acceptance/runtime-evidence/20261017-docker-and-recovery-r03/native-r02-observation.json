@@ -1,0 +1,19 @@
+{
+  "schema": "legal-ir-native-fixture-r02-root-observation@1",
+  "actual_exec_session": 53907,
+  "actual_exec_exit_code": 1,
+  "source_request_sha256": "361801e74ed038742291a8b6c8026b9ee568b1c59b12ae153a6ce00a762a06a9",
+  "actual_native_terminal": {
+    "schema": "legal-ir-native-docker-fixture-entry-terminal@4",
+    "passed": false,
+    "error_type": "DaemonResourceError",
+    "real_LIR_task_accepted": false,
+    "provider_calls_performed": false
+  },
+  "observed_blocker": "native validation admission metadata exceeded disk ledger 8 MiB serialization bound",
+  "actual_selected_native_leases_after_exit": [],
+  "native_lease_observation_api": "open_existing_scheduler.active_leases",
+  "checker_started": false,
+  "failed_run_rewritten": false,
+  "policy_changed": false
+}

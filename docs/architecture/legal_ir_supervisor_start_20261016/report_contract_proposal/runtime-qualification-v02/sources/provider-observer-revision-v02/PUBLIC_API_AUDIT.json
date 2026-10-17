@@ -1,0 +1,318 @@
+{
+  "all_authority_flags_false": true,
+  "api_findings": [
+    {
+      "authority_problem": "Many return paths evaluate before finally; appending a callback after return is unreachable. A reviewable wrapper/refactor must run typed success handoff only after successful known cleanup, preserve failures, and bind consumed attempt identity.",
+      "does_not_observe": "No public typed successful provider/Popen/Docker-closeout handoff is exposed today.",
+      "lines": [
+        633,
+        5519,
+        5807,
+        7104,
+        7138
+      ],
+      "observes": "Trusted source-pinned parent owns actual route_plan, model and selected branch, calls native CLI helpers, and closes its Docker lease in finally.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "symbol": "build_grok_quota_routed_agent_command -> grok_cli_runner._run"
+    },
+    {
+      "authority_problem": "The actual Docker client Popen is not the model worker PID. Protected termination-fence objects cannot be rebranded as ordinary A91 observations or recovered from arbitrary JSON. A new ordinary hook needs its actual own container identity/cleanup observation.",
+      "does_not_observe": "Public host-native successful outcome object; ordinary legacy helper also omits protected lease argument.",
+      "lines": [
+        4672,
+        4680,
+        4692,
+        10331,
+        16313
+      ],
+      "observes": "Private helper retains actual Docker-start Popen; protected Docker lease captures initPID/birth/cgroup before provider input.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "symbol": "_run_grok_with_typed_failure_capture / _DockerContainerLease.capture_running_termination_fence"
+    },
+    {
+      "authority_problem": "Callback receives a JSON roundtrip; ordinary Exceptions are diagnostic and swallowed. Calling this callback from arbitrary code is not genuine outcome observation.",
+      "does_not_observe": "Actual provider Popen/model-container birth or complete Docker cleanup. This is a separate benchmark/shared-router entry, not proof of current ordinary runner dispatch.",
+      "lines": [
+        809,
+        845,
+        1443,
+        1880
+      ],
+      "observes": "Runner-local receipt dictionary after the router invocation; invocation UUID is generated in that runner.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "symbol": "router_implementation_runner.run(receipt_observer=...)"
+    },
+    {
+      "authority_problem": "CompletedProcess is reconstructible metadata; retaining the actual Popen plus a private same-process lifecycle registry is necessary. Group absence is not whole Docker custody.",
+      "does_not_observe": "Actual selected route invocation UUID/model/trigger or exact Docker watchdog/CID cleanup.",
+      "lines": [
+        1117,
+        1247,
+        1482,
+        1519
+      ],
+      "observes": "Actual child Popen before stdin dispatch, wait/reap, and process-group quiescence before CompletedProcess return.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "symbol": "run_process_group_stream(on_started=...)"
+    },
+    {
+      "authority_problem": "Private sealed path deliberately returns None for unscoped ordinary route; removing this gate would widen authority.",
+      "does_not_observe": "An ordinary unscoped route birth receipt or public successful outcome object.",
+      "lines": [
+        34470,
+        34514,
+        34673,
+        34825
+      ],
+      "observes": "Daemon-owned sealed runner birth, exact cmdline/executable/descriptor and active latch.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "symbol": "PortalImplementationDaemon._provider_runner_started_callback"
+    },
+    {
+      "authority_problem": "The issuing branch explicitly requires nonzero exit and private database attempt authority; cannot reuse for acceptance success.",
+      "does_not_observe": "Successful ordinary candidate generation.",
+      "lines": [
+        33900,
+        34006,
+        34038
+      ],
+      "observes": "Private consumed actual waited process custody for a database-provider nonzero failure.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "symbol": "PortalImplementationDaemon._take_database_provider_exit"
+    },
+    {
+      "authority_problem": "The protected route owns this store. Public complete() requires the actual same-process effect owner and completion secret. Reading terminal JSON cannot grant ordinary A91 authority.",
+      "does_not_observe": "Effect-winner capability or current same-process actual process custody.",
+      "lines": [
+        3804,
+        3813
+      ],
+      "observes": "Exact private published record through public bounded lockless read.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "symbol": "DurableProviderAttemptCAS.observe"
+    },
+    {
+      "authority_problem": "set_last_cli_observation accepts arbitrary mappings; metadata values are not independently authenticated host facts.",
+      "does_not_observe": "A nonserializable host process/outcome capability.",
+      "lines": [
+        170,
+        190,
+        252
+      ],
+      "observes": "Sanitized mutable thread/global diagnostics, including parsed provider stdout.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "symbol": "get_last_cli_observation / remember_cli_run"
+    },
+    {
+      "authority_problem": "Legacy fallback is gpt-6.1-sol medium. Its receipt dataclass must not be substituted for requested high fallback.",
+      "does_not_observe": "The requested v3 fallback high route or actual successful provider effect.",
+      "lines": [
+        19,
+        70,
+        142
+      ],
+      "observes": "Legacy compatibility route policy metadata.",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "symbol": "legacy ProviderAttemptReceipt / evaluate_quota_fallback"
+    },
+    {
+      "authority_problem": "Expected digest/CID arguments are pins, not missing provider observations.",
+      "does_not_observe": "Provider outcome, attempt consumption or route execution.",
+      "lines": [
+        243
+      ],
+      "observes": "Actual candidate/board/report correspondence under genuine admitted source-pinned host preparation owner.",
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/real-candidate-binding-v01/real_candidate_binding.py",
+      "symbol": "observe_real_candidate_binding"
+    }
+  ],
+  "audit_kind": "source_review_only",
+  "canonical_tasks_accepted": 0,
+  "capability_issued": false,
+  "historical_observation_pins": [
+    {
+      "bytes": 1168,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch03/receipt.json",
+      "sha256": "1123e06b124327d0dd8b287bc4e2bc4cb0b8dc1739c757106e6b44bb35628e8c"
+    },
+    {
+      "bytes": 478,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch03/provider-docker-cleanup.json",
+      "sha256": "a9962f08f0d5545d0c5ffe5c2eddf94f8fdc75c89a20a2805fff6c9b7d36c078"
+    },
+    {
+      "bytes": 667,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch03/provider-docker-observations.json",
+      "sha256": "97e75898e5294b5d21e4fe46463b2b4ebf34c4fe6d3c5ea2de8a03f8be3421b6"
+    }
+  ],
+  "historical_scope": "Historical launch03 receipt explicitly declares completion_authority:false and cleanup pending; cleanup observer recorded one absent container but one remaining lease directory, with ProcessLookupError. These retained failure records cannot prove a fresh dispatch/outcome or supply any acceptance handle.",
+  "native_admission_claimed": false,
+  "native_validation_qualified": false,
+  "outcome": "missing_public_successful_provider_handoff",
+  "provider_calls_performed": false,
+  "public_effectful_observer_implemented": false,
+  "recommended_minimal_patch": "Add opt-in typed successful lifecycle hook in trusted ordinary grok_cli_runner path, with actual process/native Docker objects and source-pinned actual caller ownership; invoke independent native checker after known provider closeout in the same trusted interpreter. No portable token, JSON authority loader, guessed execution ID or always-refusing stub.",
+  "required_context_facts": [
+    {
+      "field": "task_cid / task_revision",
+      "source": "Actual fresh board read plus public parse_task_text, task_declared_output_paths and canonical_task_identity; separately retain exact board_sha256.",
+      "status": "public candidate binding observer available; not executed by this source audit"
+    },
+    {
+      "field": "attempt ordinal",
+      "source": "Actual host dispatch state transition and consumed attempt ordinal, observed before provider release and rechecked at fenced successful closeout.",
+      "status": "daemon internal state available; public success handoff missing"
+    },
+    {
+      "field": "native_attempt_id",
+      "source": "Actual host dispatch attempt authority, with documented public mapping to native reservation and attempt ordinal.",
+      "status": "no established ordinary outcome projection; do not synthesize from directory/PID/namespace"
+    },
+    {
+      "field": "provider_id / model_id / reasoning_effort / provider_trigger",
+      "source": "Actual source-pinned trusted router decision immediately before dispatch; fallback requires exact existing primary_quota_exhausted authority and high effort.",
+      "status": "decision exists inside route runner; public same-process successful projection missing"
+    },
+    {
+      "field": "provider_execution_id",
+      "source": "Actual current trusted route invocation binding when one exists; otherwise add a reviewed host-generated execution identity convention before actual dispatch and preserve it through closeout.",
+      "status": "Current ordinary path does not expose a canonical successful execution ID. Benchmark router UUID and legacy failure nonce are different role-specific identities; do not substitute PID, native reservation, nonce or benchmark UUID."
+    },
+    {
+      "field": "provider_worker_pid / PID birth",
+      "source": "Actual untrusted model CLI birth observed before input; on Docker, exact model/container-init host PID and birth joined to daemon/CID/image/cgroup. Retain actual Docker attach Popen separately.",
+      "status": "Actual outer-runner Popen callback exists; private protected init/cgroup fence exists. Neither automatically supplies public ordinary model-process/outcome authority."
+    },
+    {
+      "field": "provider_receipt_path / sha256",
+      "source": "A freshly produced, host-private, fsynced factual outcome of this actual exact execution after observed provider and Docker closeout.",
+      "status": "no complete ordinary outcome owner receipt; historical or worker JSON insufficient"
+    },
+    {
+      "field": "controller_observation_path / sha256",
+      "source": "Actual host-owned fresh dispatch, task revision, consumed ordinal, process birth, fenced closeout and candidate/report correspondence observation.",
+      "status": "new bounded source-pinned owner integration required"
+    },
+    {
+      "field": "candidate_commit / report_path / report_sha256",
+      "source": "Actual provider output followed by separately owned report-only candidate producer and fresh public candidate binding observer.",
+      "status": "candidate binding public observer proposal exists; producer and outcome join pending"
+    },
+    {
+      "field": "orchestration_namespace / source_root",
+      "source": "Actual immutable current scheduler plan/source generation; preserve namespace and old board frontier.",
+      "status": "available as exact current configuration pins; not proof of execution"
+    }
+  ],
+  "roles": [
+    {
+      "authority": "Owns native resource reservations, source pins and separate validation/acceptance control.",
+      "identity": "Actual admitted owner/controller process",
+      "role": "native host coordinator"
+    },
+    {
+      "authority": "Owns host route plan, fallback argv/auth and Docker lease; model does not choose fallback directly.",
+      "identity": "Actual source-pinned grok_cli_runner._run process",
+      "not_provider_worker_pid": true,
+      "role": "trusted route runner"
+    },
+    {
+      "authority": "Transport child only; successful wait is not actual model PID or whole Docker cleanup.",
+      "identity": "Actual subprocess.Popen running docker start --attach",
+      "not_provider_worker_pid": true,
+      "role": "Docker attach client"
+    },
+    {
+      "authority": "Creates candidate report; no validation or completion authority.",
+      "identity": "Actual model CLI process; for Docker, exact recorded container init host PID/birth and cgroup, not a PID namespace alias.",
+      "native_context_provider_worker_pid": true,
+      "role": "untrusted model CLI"
+    },
+    {
+      "authority": "Its receipt_observer is runner-local diagnostic, not inherently in a model container. No evidence this is the exact ordinary command path.",
+      "identity": "router_implementation_runner.run; separate optional runner API",
+      "role": "benchmark router runner"
+    }
+  ],
+  "runtime_executed": false,
+  "schema": "legal-ir-ordinary-provider-public-api-audit@2",
+  "source_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/acceptance-adapter/adapter-v02/native_acceptance.py": {
+      "bytes": 17412,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/acceptance-adapter/adapter-v02/native_acceptance.py",
+      "sha256": "af7a14e1f8b32e852d0268036a4b9346fe827868386e8143c4ecf1e6accfc2d7"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/real-candidate-binding-v01/real_candidate_binding.py": {
+      "bytes": 18030,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/real-candidate-binding-v01/real_candidate_binding.py",
+      "sha256": "a9b8de8e0b496360e3e828e0bae84aa2b60b6b9643c165b9878462388095a896"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json": {
+      "bytes": 6970,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json",
+      "sha256": "d8f9de44cfcf522009f3c1180d9dfc0938642c0822224751a0490299f4b5b902"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py": {
+      "bytes": 342403,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+      "sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py": {
+      "bytes": 147774,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "sha256": "b58aafdbfaae5d1acc1551db3aa9fe911cf92779856973cf18b8d0d3c6bb7c27"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py": {
+      "bytes": 599,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/entrypoints/provider_attempt_store.py",
+      "sha256": "9dc2fab85344d5b5bea24d0cb2685f86fbd1d9e0d932ebefeda755e71fd9fdfc"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py": {
+      "bytes": 17110,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "sha256": "10ccf765fd096f610e64152f33d1b21deb0e1427e6a9749e232fb9f8351eedf8"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py": {
+      "bytes": 20000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py",
+      "sha256": "ed0efb8eb22314031729a9f46b1dc8780d605eabbb00f5fdb229b428e4f85d15"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": {
+      "bytes": 634605,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "e613c9b63f68412d6516872054645d691dda8d54de94ad862b4ec277d7c18308"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_provider_cleanup.py": {
+      "bytes": 9005,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_provider_cleanup.py",
+      "sha256": "a1a328c2ffc597507237f9df0cfbe7115fa505b0f8b075764c0142d75cf1fd5a"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 127170,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9ae28cd52298f5b9d1202e6e4c56ce3891f67fbab6b66dad6387b6980b4d3799"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3300743,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": {
+      "bytes": 90512,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "sha256": "71c3099e6981d605ce3a6e98ff25298731cc2a295b86a89e9aa55698913894d5"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/cli_runtime/cli_metadata.py": {
+      "bytes": 8429,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "sha256": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/cli_runtime/process_runner.py": {
+      "bytes": 49054,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/cli_runtime/process_runner.py",
+      "sha256": "e29be147e21c1428460920bcd335fb87248701e03948ba87321623db98a11759"
+    }
+  },
+  "supersedes_v01_scope": "V01 correctly identifies missing public successful provider handoff, but overemphasizes benchmark router runner UUID. Current ordinary daemon dispatches trusted grok_cli_runner._run; do not use the benchmark UUID as ordinary provider_execution_id."
+}

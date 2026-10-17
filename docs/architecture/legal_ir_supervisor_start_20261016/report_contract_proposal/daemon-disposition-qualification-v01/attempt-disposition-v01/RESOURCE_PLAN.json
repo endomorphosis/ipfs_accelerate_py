@@ -1,0 +1,43 @@
+{
+  "schema": "legal-ir-attempt-disposition-resource-plan@1",
+  "qualification_executed": false,
+  "purpose": "controller_preparation",
+  "selected_original_owner": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+  "expected_testcases": 33,
+  "profile": {
+    "cpu_slots": 1,
+    "memory_mb": 4096,
+    "child_process_slots": 8,
+    "storage_bytes": 134217728,
+    "duration_seconds": 900,
+    "external_charges": [],
+    "additional_worker_native_admissions": 0
+  },
+  "outputs": {
+    "private_JUnit_max_bytes": 16777216,
+    "private_result_JSON_max_bytes": 262144,
+    "private_test_fixtures": "Pytest basetemp inside the original charged attempt only; canonical small journals, symlink/hardlink/refusal fixtures, directory-fsync uncertainty and reduced finite namespace bound case.",
+    "expected_fixture_apparent_bytes_upper_bound": 4194304,
+    "expected_logs_bytes_upper_bound": 4194304,
+    "bytecode_outputs": "Disabled before any helper/test import"
+  },
+  "pre_helper_import_gate": {
+    "source": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/repository-fixture-v02/parent_attachment_gate.py",
+    "sha256": "dba5662443619358e2225d0cf7ccaa2e2b6c5bf51b0a60d2d1809004d1667fb3",
+    "timeout_seconds": 60,
+    "meaning": "Read-only join of actual original generic parent request/process/receipt/native ancestry/storage/attached worker ordering; portable observation grants no authority"
+  },
+  "scope": "Actual private filesystem denial semantics and source controls only. Synthetic journal metadata is deny-only and is never accepted as an actual daemon, lifecycle, connection or native owner.",
+  "excluded_effects": [
+    "Target daemon or lifecycle module import/instantiation",
+    "Actual source-object join positive qualification",
+    "Quarantine publication, lifecycle transition or borrow exit",
+    "Provider/model/authentication, Git or Docker command",
+    "Database connection, canonical board/counter/cap mutation",
+    "GitHub qualification or runtime activation"
+  ],
+  "full_original_host_qualified": false,
+  "runtime_enabled": false,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0
+}

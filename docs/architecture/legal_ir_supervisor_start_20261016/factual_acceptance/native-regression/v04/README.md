@@ -1,0 +1,40 @@
+# Native factual acceptance fixture: V04 Docker backend
+
+This source-only generation qualifies the engineering factual acceptance path with the existing, immutable ordinary-worker A91 image. It preserves the genuine native validation owner, private one-use acceptance handle, and separate native orchestration coordinator. It does not dispatch a provider, accept a real Legal IR task, evaluate legal truth, or produce training labels. Earlier frozen generations and failed runtime artifacts remain historical evidence.
+
+The previous actual V03 execution failed before the factual predicate ran because the host rejected Bubblewrap's isolated loopback setup (`Failed RTM_NEWADDR: Operation not permitted`). V04 preserves network isolation with source-reviewed system Docker. It does not change AppArmor, user-namespace policy, scheduler capacity, the protected image74 route, task counters, or manual acceptance gates.
+
+## Exact source and runtime authority
+
+The only image is `sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e`, checked independently for Linux/arm64 and label `org.ipfs-accelerate.ordinary-worker=2026-10-16-ordinary-v1`. The actual system daemon ID is supplied in the frozen engineering request and checked against `/usr/bin/docker`, endpoint `unix:///var/run/docker.sock`, root `/var/lib/docker`, Linux, and aarch64. No tag, environment-selected image, acquisition, authentication, provider command, model call, or Docker socket mount is allowed.
+
+`prepare_entry_request.py` only authors a request and hashes source; it does not import the native SDK or execute Docker. `entry.py` checks the exact request hash, all adapter/V04/common/native/runner/controller source pins, and creates every actual SDK object in the same interpreter. It opens the existing policy and ledger; it never initializes or reconfigures either. The adapter is V02 (`c9042090f0a9772c666dfa7b15f321a6c495989fbefcda8de30bd792dc0d6d5b`); common fixture helpers are frozen V03 (`8240d5562e88c89bd4079e1b5605d4f57b8da7e8a3315d2942c5d31a5ee63c9a`).
+
+## Actual ownership and barriers
+
+1. A genuine ORCHESTRATION root, child phase, and `ParentedPhaseResourceReservation` own preparation, the synthetic fixture, frozen requests, redacted public admission receipts, and the supported legacy EOF lease/watchdog. Preparation creates one inert container; this is administrative allocation and is not checker execution.
+2. The separate, initially empty validation attempt is admitted by the actual `ValidationResourceReservation`. The frozen validation request describes the actual Docker start argv and Docker runtime contract; no Bubblewrap/Hermetic runtime identity is claimed. The actual direct `Popen` child waits behind the host attachment gate until `attach_child` and actual native heartbeat succeed.
+3. The started container waits behind a second gate in a small read-only directory. The host observes the actual daemon, CID/name/image, init PID/birth, all declared config and confinement, and exact mounts before creating its one-byte release file. Mutable gates are excluded from immutable source pins. The source-pinned inner checker imports only the factual predicate and writes the actual factual evidence to the validation attempt.
+4. The host reaps its actual direct child and independently requires selected-container exit0, no OOM kill, and unchanged confinement. Before `issue_native_acceptance` or any caller-controlled validation context exit, it proves container absence by exact CID/name, actual watchdog birth gone and child reaped, and EOF lease/home/prompt paths absent. The SDK's own `open()` may internally close on admission failure; the container remains inert under the still-live preparation owner until this outer owner fences it.
+5. Only after successful cleanup does the real issuer recompute facts, seal results, and finalize the native validation grant. Its nonserializable, one-use, same-process handle expires after900 seconds. Default `handles_only` consumes it without publication. Optional `isolated_fixture_publication` obtains a new genuine ORCHESTRATION root/phase/disk admission and calls the public locked legacy-board coordinator for the synthetic fixture only. Exactly one fixture task can complete;63 remain blocked. Real canonical LIR identity, history, counters, and task statuses are untouched.
+
+Cleanup invokes the actual EOF lease close at most once. `preserve_for_recovery` is not proof of cleanup. Any unresolved actual daemon/CID/watchdog/path observation retains native custody and emits inert status; it cannot issue acceptance or release through the caller's finally block. A Docker create timeout is ambiguous: one early absent-name result does not prove the daemon cannot finish creation later. Preparation holds custody until the exact matching inert create result is observed, or actual separate recovery resolves it. Early public receipts preserve attributable native/daemon/container/lease identities without credentials or capability keys.
+
+## Confinement and accounting
+
+The container uses network `none`, a read-only root, nonroot UID/GID, no capabilities, no-new-privileges, private cgroup and IPC namespaces, no extra devices/groups/ports/tmpfs, no restart, and no log driver. Exact inspected binds are host `/usr` read-only, pinned host Python read-only at the qualified image overlay, predicate/read-only inner checker/request, gate directory, synthetic source/report, and the sole read-write validation attempt at `/workspace`. No host handle, controller, scheduler ledger, credentials, provider home, or Docker socket is mounted.
+
+The container has independently verified CPU1, memory256MiB with no additional swap, and pids4 cgroup limits. SDK sampling covers the attached host process group; it does not sample a combined host-plus-container process tree. Native validation declares512MiB and four cooperative child-group slots. The host barrier applies child-only CPU120, FSIZE2MiB, and NOFILE64 limits immediately before exec. It deliberately omits AS for the Go Docker client and NPROC because that limit counts the whole UID; no per-job NPROC or hard combined-memory claim is made.
+
+Preparation has32MiB/1024MiB/CPU1/four slots and a2400-second lifecycle. Validation has32MiB/512MiB/CPU1/four slots and a900-second lifecycle. Each attachment barrier is180 seconds; productive checker time remains120 seconds. Optional controller lifecycle is900 seconds,8MiB storage and2MiB external fixture-board precharge. Real native policy admission and refusal remain authoritative. Docker daemon metadata under `/var/lib/docker` is an explicitly authorized administrative allocation outside the SDK named-root ledger: no daemon storage quota or SDK coverage is claimed. There are no pulls, writable image root, extra tmpfs, or daemon logs; checker outputs/cache/temp remain in the sole declared attempt.
+
+## Finite native execution recipe
+
+The root agent supplies an actually observed daemon ID and authors a fresh immutable request outside the new run root:
+
+```text
+/usr/bin/python3.12 -I -B prepare_entry_request.py --name legal-ir-native-acceptance-fixture-20261017-r02 --run-root ABSOLUTE_NAMED_ROOT/legal-ir-native-acceptance-fixture-20261017-r02 --mode isolated_fixture_publication --daemon-id ACTUALLY_OBSERVED_SYSTEM_DAEMON_ID --output ABSOLUTE_FROZEN_REQUEST
+/usr/bin/python3.12 -I -B entry.py ABSOLUTE_FROZEN_REQUEST EXPECTED_REQUEST_SHA256
+```
+
+Use the full absolute source paths. The run root must be fresh, canonical, unaliased, beneath one of the declared named roots, and outside `/tmp`; never reuse the failed r01 namespace. The terminal success line is emitted only after actual preparation finalization. The durable pre-closeout file explicitly says preparation closeout is pending and cannot independently prove release. An actual failure retains its genuine failed/retained ownership evidence. Pure controlled container-contract tests are independently authored in the sibling `v04-tests` generations; they do not substitute for this genuine native integration run.

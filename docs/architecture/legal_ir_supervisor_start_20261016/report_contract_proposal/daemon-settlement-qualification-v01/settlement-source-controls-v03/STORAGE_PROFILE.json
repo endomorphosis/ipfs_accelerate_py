@@ -1,0 +1,39 @@
+{
+  "acceptance_authority": false,
+  "author_executed_tests_or_jobs": false,
+  "canonical_caps_counters_or_tasks_changed": false,
+  "changed_worker_constants": [
+    "ATTEMPT r03",
+    "REQUEST request-r03.json",
+    "NAME r03",
+    "STORAGE32MiB"
+  ],
+  "external_charges": [],
+  "github_qualification": "skipped_by_user",
+  "limits_precision": "JUnit and result guards are existing source checks. Log4MiB is an allowance, not an independently enforced aggregate log limit; original V05 log stream has a64KiB per-line bound. Native aggregate32MiB checks are cooperative polling, not a hard filesystem quota. No logging/test implementation was changed to reduce this budget.",
+  "new_native_admissions_from_worker": 0,
+  "original_parent_attachment_gate_unchanged": true,
+  "planning_bytes": {
+    "JUnit_post_write_read_guard": 16777216,
+    "pytest_and_parent_log_allowance": 4194304,
+    "receipt_and_native_local_overhead_allowance": 12320768,
+    "result_JSON_serialization_guard": 262144
+  },
+  "planning_total_bytes": 33554432,
+  "predecessor_manifest_sha256": "1a4e54353ee1c3f22910b517d667cd1f04fdcc1fd04a2bb661b649c8111c4b54",
+  "predecessor_request_sha256": "c8cdc64f6f7ca7716a9095b4b6a44f7a615a5059dcab45c0bb4527bb31ec081f",
+  "previous_storage_bytes": 134217728,
+  "runtime_source_changed": false,
+  "schema": "legal-ir-settlement-source-controls-storage-only-successor@1",
+  "source_cases": 38,
+  "source_cases_by_file": {
+    "../settlement-audit-v01/test_continuation_refusals.py": 17,
+    "test_settlement_source.py": 21
+  },
+  "storage_bytes": 33554432,
+  "tests_and_checker_unchanged": {
+    "SELECTOR_CORRECTION.json": "7104cbb83d4adb424fcfe33a943095cf223ba8eac845923444a3498fd20be57d",
+    "check_finalizer_body_preservation.py": "5caf537bd23a09b7f1e03a0152de971dc9b06f9a9b22a925d44c3abdbe690d37",
+    "test_settlement_source.py": "0e9cc77c63c6d7cc0917b66a61694dca33f382c10d02347a6bc5581750f469c1"
+  }
+}

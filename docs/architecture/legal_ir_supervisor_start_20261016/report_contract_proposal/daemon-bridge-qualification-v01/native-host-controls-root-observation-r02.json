@@ -1,0 +1,19 @@
+{
+  "acceptance_authority": false,
+  "actual_completion_chunk": "3dc15b",
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 71092,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 18,
+  "full_host_qualified": false,
+  "github_qualification_skipped": true,
+  "native_finalized": true,
+  "original_runtime_bundle_manifest_sha256": "b74455cd469cbf78892d6fda2b09c8234cd5922b7e72f741c845c2b0c2f8f0d8",
+  "passed": true,
+  "preserved_r01_harness_failure_before_tests": true,
+  "qualification_sha256": "953a6621c3c9804d20039f6f8b515fa7e7f533645f222fc1b207d55bf5a04ce0",
+  "receipt_sha256": "6d959dadfe585a873f3a7d433273d9fcdb2d0f7a10424bab668e8c65421048e5",
+  "runtime_H4_and_host_match_original_frozen_bundle": true,
+  "schema": "legal-ir-native-host-controls-root-observation@1",
+  "source_manifest_sha256": "b5645966092fbef77522f501869430c18db5f18d7f5321edc593bfba35d4eef7"
+}

@@ -1,0 +1,39 @@
+{
+  "controlled_testcases": 170,
+  "files": [
+    {
+      "bytes": 656,
+      "path": "README.txt",
+      "sha256": "6774d0ade3ecc7a73b9a54c249f59f8ab2de87ccb205ad9dca11e89194dc9ccc"
+    },
+    {
+      "bytes": 5847,
+      "path": "qualify_controls.py",
+      "sha256": "6db2bca7ad844f439b849b0b8fc2b5d03329ca53de947fcda84dceb3ed3b1603"
+    },
+    {
+      "bytes": 1534,
+      "path": "test-migration.patch",
+      "sha256": "67af2624e61271388a7742e1b75f0e3e0ea08379fe39c9392602beab5ca379d7"
+    },
+    {
+      "bytes": 17644,
+      "path": "test_handoff_memory.py",
+      "sha256": "2e7b3a93e28f55746f56679580eb5bf18ff350a5f394e930709e4427db4e08cd"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 1408,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/memory-controls-root-observation-r01.json",
+      "sha256": "dfd73bf9d3a47acca83013b1c5ff1edd1821d18f59fc50bd868c02d7d173bc6d"
+    },
+    {
+      "bytes": 437,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/memory-controls-v01/SOURCE_MANIFEST.json",
+      "sha256": "2228232eebf78b5680b230b81f1a897c01f04d57a40b2c2864a053e64850ecb0"
+    }
+  ],
+  "schema": "legal-ir-callable-memory-controls-source@2",
+  "source_review_only": true
+}

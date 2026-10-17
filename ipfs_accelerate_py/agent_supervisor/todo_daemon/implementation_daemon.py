@@ -5088,6 +5088,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         manual_completion_authority_required_task_ids: Sequence[str] = (),
         manual_completion_authority_epoch_id: str = "",
         manual_completion_authority_revalidation_only: bool = False,
+        preserve_task_attempts: bool = False,
         objective_path: Path | None = None,
         objective_bundle_dir: Path | None = None,
         generated_status_paths: Sequence[Path | str] = (),
@@ -5309,6 +5310,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.manual_completion_authority_epoch_id = str(
             manual_completion_authority_epoch_id or ""
         ).strip()
+        if not isinstance(preserve_task_attempts, bool):
+            raise ValueError("preserve_task_attempts must be boolean")
+        self.preserve_task_attempts = preserve_task_attempts
         self.manual_completion_authority_revalidation_only = bool(
             manual_completion_authority_revalidation_only
         )
@@ -10929,6 +10933,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Consume completed repair receipts once in each durable lane."""
 
+        if self.preserve_task_attempts:
+            return [], []
+
         latest_repairs: dict[str, tuple[PortalTask, str]] = {}
         tasks_by_id = {task.task_id: task for task in tasks}
         excluded = {str(task_id) for task_id in excluded_task_ids}
@@ -11156,6 +11163,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         authority transitions remain gated on the repair's validated merge and
         board completion receipt.
         """
+
+        if self.preserve_task_attempts:
+            return []
 
         revision = str(recovery_revision or "").strip()
         if self.max_task_attempts <= 0 or not revision:
@@ -11538,6 +11548,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         it from scratch.
         """
 
+        if self.preserve_task_attempts:
+            return []
+
         revision = str(recovery_revision or "").strip()
         if (
             self.max_task_attempts <= 0
@@ -11813,6 +11826,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         without operator counter surgery. Each recovery revision rearms a
         canonical task at most once.
         """
+
+        if self.preserve_task_attempts:
+            return []
 
         revision = str(recovery_revision or "").strip()
         if self.max_task_attempts <= 0 or not revision:
@@ -12192,6 +12208,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         validation. Prefer re-dispatching the unfinished attempt number.
         """
 
+        if self.preserve_task_attempts:
+            return {
+                "consumed": True,
+                "released": False,
+                "attempt": max(0, int(attempt or 0)),
+                "task_id": str(task_id or "").strip(),
+                "reason": "preserve_task_attempts",
+            }
+
         task_id = str(task_id or "").strip()
         attempt_number = max(0, int(attempt or 0))
         if not task_id or attempt_number <= 0:
@@ -12391,8 +12416,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state: PortalTaskState,
         task: PortalTask,
         attempt: int,
+        *,
+        zero_provider_execution: bool = False,
     ) -> None:
         """Restore the pre-launch count for a confirmed non-consuming deferral."""
+
+        if self.preserve_task_attempts:
+            if zero_provider_execution is not True:
+                return
 
         requested = max(0, int(attempt or 0))
         identity = self._identity_for_task(task)
@@ -18179,7 +18210,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 selectable_tasks = fallback_tasks
         recovery_runtime_revision = (
             ""
-            if self.manual_completion_authority_revalidation_only
+            if (
+                self.manual_completion_authority_revalidation_only
+                or self.preserve_task_attempts
+            )
             else self._retry_budget_repair_runtime_revision()
         )
         stale_proposal_replay_rearms = (
@@ -18630,6 +18664,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "manual_completion_authority_revalidation_only": (
                         self.manual_completion_authority_revalidation_only
                     ),
+                    "preserve_task_attempts": self.preserve_task_attempts,
                     "ordinary_provider_dispatch_allowed": (
                         not self.manual_completion_authority_revalidation_only
                     ),
@@ -18700,6 +18735,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "manual_completion_authority_revalidation_only": (
                 self.manual_completion_authority_revalidation_only
             ),
+            "preserve_task_attempts": self.preserve_task_attempts,
             "ordinary_provider_dispatch_allowed": (
                 not self.manual_completion_authority_revalidation_only
             ),
@@ -19984,6 +20020,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         receipt clears the scheduler backpressure so the task can run.
         """
 
+        if self.preserve_task_attempts:
+            return []
+
         now = time.time()
         cooled: list[tuple[str, Any]] = []
         for entry in self.task_queue.entries.values():
@@ -20080,6 +20119,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         including an empty completion-gap scope, keeps its cooldown.
         """
 
+        if self.preserve_task_attempts:
+            return []
+
         note = "ValueError: " + DETERMINISTIC_DECLARED_OUTPUT_TARGET_REQUIRED
         now = time.time()
         cooled: list[tuple[str, Any]] = []
@@ -20172,6 +20214,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         The repair is now the source task's read-only check. A validation
         failure recorded after that change keeps the cooldown.
         """
+
+        if self.preserve_task_attempts:
+            return []
 
         note = "validation_or_implementation_failed"
         now = time.time()
@@ -20279,6 +20324,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         and the venv's plugins were missing. A real test failure recorded after
         the launcher fix keeps its cooldown.
         """
+
+        if self.preserve_task_attempts:
+            return []
 
         note = "validation_or_implementation_failed"
         now = time.time()
@@ -20568,7 +20616,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if worktree_path is not None:
             state.last_implementation_worktree_path = str(worktree_path)
         state.last_implementation_branch = branch_name
-        self._restore_task_attempt(state, task, max(0, attempt - 1))
+        self._restore_task_attempt(
+            state, task, max(0, attempt - 1), zero_provider_execution=True,
+        )
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.selection_idle_reason = "provider_capacity_backoff"
         state.save(self.state_path)
@@ -21610,6 +21660,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         state,
                         task,
                         max(0, attempt - 1),
+                        zero_provider_execution=(
+                            ephemeral_result.get("provider_dispatched") is False
+                        ),
                     )
                     if not state.implementation_in_progress:
                         self._clear_active_execution_state(
@@ -21685,6 +21738,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     state,
                     task,
                     max(0, attempt - 1),
+                    zero_provider_execution=True,
                 )
                 if not state.implementation_in_progress:
                     self._clear_active_execution_state(
@@ -31752,6 +31806,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             state,
                             task,
                             max(0, attempt - 1),
+                            zero_provider_execution=(provider_dispatched is False),
                         )
                     finished_at = utc_now()
                     state.last_implementation_started_at = started_at
@@ -33320,7 +33375,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
         else:
-            self._restore_task_attempt(state, task, max(0, attempt - 1))
+            self._restore_task_attempt(
+                state, task, max(0, attempt - 1),
+                zero_provider_execution=(
+                    provider_dispatched is False
+                    and (
+                        lifecycle_setup_deferral
+                        or lifecycle_race_exception
+                        or typed_pre_dispatch_deferral
+                        or submodule_setup_deferral
+                        or dependency_setup_deferral
+                    )
+                ),
+            )
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -71392,6 +71459,7 @@ class DatabaseImplementationDaemon:
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         require_real_execution: bool = False,
         max_task_attempts: int = 0,
+        preserve_task_attempts: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
         close_task_source: bool = False,
@@ -71617,6 +71685,9 @@ class DatabaseImplementationDaemon:
         self.require_real_execution = bool(require_real_execution)
         if type(max_task_attempts) is not int or not 0 <= max_task_attempts <= 10000:
             raise DatabaseImplementationAuthorityError("max_task_attempts must be an integer in [0, 10000]")
+        if not isinstance(preserve_task_attempts, bool):
+            raise DatabaseImplementationAuthorityError("preserve_task_attempts must be boolean")
+        self.preserve_task_attempts = preserve_task_attempts
         self.max_task_attempts = max_task_attempts
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -78493,6 +78564,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--preserve-task-attempts",
+        action="store_true",
+        help=(
+            "Preserve consumed task attempts: disable automatic exhaustion "
+            "rearming, completed-repair resets, retry cooldown repairs, and "
+            "unknown vanished-worker rollback. Only confirmed zero-provider "
+            "prelaunch deferrals retain their non-consuming behavior."
+        ),
+    )
+    parser.add_argument(
         "--manual-completion-authority-revalidation-only",
         action="store_true",
         help=(
@@ -78905,6 +78986,7 @@ def main(argv: list[str] | None = None) -> None:
             queue_path=None,
             require_real_execution=bool(args.implement),
             max_task_attempts=int(args.max_task_attempts),
+            preserve_task_attempts=args.preserve_task_attempts,
             execution_slice_task_cids=tuple(args.execution_slice_task_cid),
             execution_slice_task_ids=tuple(args.execution_slice_task_id),
             task_prefix=str(getattr(args, "task_prefix", "") or ""),
@@ -78984,6 +79066,7 @@ def main(argv: list[str] | None = None) -> None:
             manual_completion_authority_revalidation_only=(
                 args.manual_completion_authority_revalidation_only
             ),
+            preserve_task_attempts=args.preserve_task_attempts,
             objective_path=args.objective_path,
             objective_bundle_dir=args.objective_bundle_dir,
             generated_status_paths=args.generated_status_path,

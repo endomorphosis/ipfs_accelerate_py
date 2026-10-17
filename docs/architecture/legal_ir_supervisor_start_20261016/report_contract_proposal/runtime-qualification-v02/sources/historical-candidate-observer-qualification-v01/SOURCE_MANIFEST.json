@@ -1,0 +1,28 @@
+{
+  "acceptance_authority": false,
+  "author_canonical_tasks_accepted": 0,
+  "author_existing_sources_modified": false,
+  "author_provider_calls_performed": false,
+  "author_runtime_or_tests_executed": false,
+  "completion_authority": false,
+  "embedded_barrier_ast_valid": true,
+  "files": [
+    {
+      "bytes": 3531,
+      "path": "README.md",
+      "sha256": "a0e2708a1d624316cd1479ffbd8dee513b4b9238c6a6048c87b56f3cefb7e36b"
+    },
+    {
+      "bytes": 21708,
+      "path": "qualify_candidate_observer.py",
+      "sha256": "23bb11af8a76645aa3d1bbfa5f5b1094d1075ad7b496bc453ce4ad8b98f5da53"
+    },
+    {
+      "bytes": 6123,
+      "path": "request-v01.json",
+      "sha256": "9b00dfd75f99b40737f26feadc9c754f2c1dc94fcb548bb3c81b5920dfea3530"
+    }
+  ],
+  "schema": "legal-ir-candidate-observer-qualification-source-manifest@1",
+  "status": "source_only_not_executed"
+}

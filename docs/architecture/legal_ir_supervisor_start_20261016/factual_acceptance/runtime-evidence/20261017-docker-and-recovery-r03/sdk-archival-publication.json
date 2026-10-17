@@ -1,0 +1,10 @@
+{
+  "actual_deployed_controlled_testcases_passed": 65,
+  "canonical_tasks_accepted": 0,
+  "dataset_commit": "7e0c4c380a578ab9875b86a77ebafb1681a4ab29",
+  "private_snapshot_published": false,
+  "provider_calls_performed": false,
+  "public_archival_observation_preserved": true,
+  "pushed": true,
+  "schema": "legal-ir-ledger-archival-source-publication@1"
+}

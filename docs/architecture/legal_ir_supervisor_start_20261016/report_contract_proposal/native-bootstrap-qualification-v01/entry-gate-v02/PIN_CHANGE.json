@@ -1,0 +1,14 @@
+{
+  "acceptance_authority": false,
+  "new_daemon_sha256": "39fc698864435ad9668ee88fcf86390ab2b34d048663a1096d08851b7abcca9d",
+  "old_daemon_sha256": "67f4959c391776a1361a98f2a5f8d137e86ea5651e9ced0ab96fca3eb91f15a0",
+  "original_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/entry-gate-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_disposition_gate.py",
+  "original_sha256": "7d68b6d26b538c3cc7be4454bdbdb353f0e4c12452f6c06b190141031a10cead",
+  "positive_host_qualification": false,
+  "proposed_bytes": 2194,
+  "proposed_path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_disposition_gate.py",
+  "proposed_sha256": "63bedb42176a195e5c9ab7c78079ef3498bccef34058462b1a07b41cbc3ab74f",
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-bootstrap-daemon-pin-successor@1",
+  "sole_change": "DAEMON_SHA literal; complete module AST otherwise identical."
+}

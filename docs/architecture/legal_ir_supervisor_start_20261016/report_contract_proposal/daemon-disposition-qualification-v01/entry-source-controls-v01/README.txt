@@ -1,0 +1,1 @@
+Six source composition controls: entire daemon AST preservation after removing only two exact new read-only checks; original finally bodies; public/private-body ordering; nativehost V05 exact AST except baked pin; gate no grant/effects; source pin agreement. No target module runtime, actual host, connection or provider. Execute only under original native owner and attached group.

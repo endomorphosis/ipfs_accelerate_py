@@ -1,0 +1,36 @@
+--- before/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -57944,16 +57944,29 @@
+     def _git_ref_exists(self, ref: str) -> bool:
+         if not ref:
+             return False
+-        try:
+-            result = subprocess.run(
++        from ipfs_accelerate_py.agent_supervisor.runtime.native_admin_execution import (
++            native_admin_execution_is_bound,
++            run_bound_native_admin_if_present,
++        )
++        if native_admin_execution_is_bound():
++            result = run_bound_native_admin_if_present(
+                 ["git", "rev-parse", "--verify", "--quiet", ref],
+                 cwd=self.repo_root,
+                 text=True,
+                 capture_output=True,
+                 check=False,
+             )
+-        except OSError:
+-            return False
++        else:
++            try:
++                result = subprocess.run(
++                    ["git", "rev-parse", "--verify", "--quiet", ref],
++                    cwd=self.repo_root,
++                    text=True,
++                    capture_output=True,
++                    check=False,
++                )
++            except OSError:
++                return False
+         return result.returncode == 0
+ 
+     def _implementation_lock_path(self) -> Path:

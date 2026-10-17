@@ -1,0 +1,28 @@
+{
+  "schema": "legal-ir-native-fixture-r03-root-observation@1",
+  "actual_exec_session": 1571,
+  "actual_exec_exit_code": 1,
+  "source_request_sha256": "28a3266cbb1d6adc65ec871f8bc5bf3e278ba5be796d4bacf59474e20c18f47d",
+  "actual_native_terminal": {
+    "schema": "legal-ir-native-docker-fixture-entry-terminal@4",
+    "passed": false,
+    "error_type": "LeaseTimeoutError",
+    "real_LIR_task_accepted": false,
+    "provider_calls_performed": false
+  },
+  "observed_blocker": "actual native validation proof admission refused host CPU pressure; gate and cap unchanged",
+  "actual_public_scheduler_refusal": {
+    "gate": "envelope",
+    "reason": "proof_cpu_stall",
+    "observed_cpu_stall_percent": 51.1,
+    "cpu_stall_percent_threshold": 50.0,
+    "historical_sample": true
+  },
+  "actual_scheduler_selected_namespace_active_leases_after_exit": [],
+  "actual_scheduler_all_active_lease_count_after_exit": 0,
+  "checker_started": false,
+  "container_and_watchdog_cleanup_evidence": "legal-ir-native-acceptance-fixture-20261017-r03/preparation/docker-factual-control/actual-docker-cleanup.json",
+  "failed_run_rewritten": false,
+  "policy_changed": false,
+  "canonical_tasks_accepted": 0
+}

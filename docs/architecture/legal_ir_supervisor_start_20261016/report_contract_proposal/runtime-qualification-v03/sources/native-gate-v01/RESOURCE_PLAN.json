@@ -1,0 +1,21 @@
+{
+  "schema": "legal-ir-native-handoff-mechanical-resource-plan@1",
+  "native_policy_changed": false,
+  "root_and_phase": {"lane": "orchestration", "cpu_slots": 3, "memory_mb": 4096, "child_process_slots": 16},
+  "each_case_primary": {"cpu_slots": 1, "memory_mb": 1024, "child_process_slots": 8, "storage_bytes": 536870912},
+  "each_case_watchdog": {"cpu_slots": 1, "memory_mb": 512, "child_process_slots": 4, "storage_bytes": 134217728},
+  "actual_remaining_phase_admin_budget": {"cpu_slots": 1, "memory_mb": 2560, "child_process_slots": 4},
+  "each_preacquired_consumer": {"cpu_slots": 1, "memory_mb": 1, "child_process_slots": 0},
+  "primary_external_capsule_promise_bytes": 134217728,
+  "primary_external_temporary_promise_bytes": 134217728,
+  "container": {"cpus": 1, "memory_bytes": 268435456, "memory_swap_bytes": 268435456, "pids": 4, "cpu_ulimit_seconds": 120, "file_size_ulimit_bytes": 2097152, "nofile_ulimit": 64},
+  "cases": ["positive", "wrong_marker", "partial_eof"],
+  "maximum_case_owner_deadline_seconds": 1800,
+  "deadline_can_be_extended_by_heartbeat": false,
+  "unknown_cleanup": "Retain actual native context frames/consumer objects and observe only; no productive restart/reclose/regrant. Genuine external recovery may remain necessary.",
+  "daemon_storage_outside_named_roots": true,
+  "hard_daemon_disk_quota_claimed": false,
+  "models_called": 0,
+  "canonical_tasks_accepted": 0,
+  "acceptance_authority": false
+}

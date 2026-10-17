@@ -1,0 +1,329 @@
+{
+  "acceptance_authority": false,
+  "author_runtime_effects_performed": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "existing_exact_apis": [
+    {
+      "helper_reference": "merge/worktree_lifecycle.py:1785 _quarantine_current_owner under the existing shared workspace mutation guard",
+      "id": "API-CURRENT-OWNER-PARK",
+      "idempotency": "The exact captured record, same closed JSON fence_authority and same reason return the existing matching receipt. A changed capture, index, process birth, reason or authority refuses. No dead-owner reconstruction or terminal transition is inferred.",
+      "implemented_semantics": "Existing deny-only current-owner producer. Requires original exact nonterminal WorkspaceLifecycleRecord, matching current live process birth, matching repository/workspace, exact record and task-index CAS. Publishes an immutable per-workspace receipt with cleanup_allowed, reuse_allowed, evidence_reuse_allowed and terminalized all False.",
+      "preferred_use": "Preserve one real failed-attempt or validation-pending candidate workspace without inventing a protected-path mutation incident. The authority dictionary records denial provenance; it grants no productive capability.",
+      "reference": "merge/worktree_lifecycle.py:1765 quarantine_current_owner(captured, *, fence_authority, reason)"
+    },
+    {
+      "id": "API-STRICT-PARK-READ",
+      "implemented_semantics": "Strict immutable receipt reads and a stable bounded inventory. Task-attempt lookup survives loss of mutable workspace/index projections and serializes original acquisition against quarantine publication for the same tuple.",
+      "limitation": "The exact task-attempt lookup does not by itself deny a later attempt ordinal for the same task revision. A new report-only task-revision parking gate is still required. Inventory already has a large finite source bound; choose a smaller admitted supported-profile bound for the new host rather than scanning arbitrary populations.",
+      "reference": "merge/worktree_lifecycle.py:1062 load_quarantine; :1071 quarantines_for_task_attempt; :1099 iter_quarantines"
+    },
+    {
+      "id": "API-LIFECYCLE-CAS",
+      "implemented_semantics": "An explicit expected_record binds full current record and exact task index under locks, as well as fence and lease. Authoritative transitions increment the fence. Strict compare-and-delete requires the exact terminal record/index; absent rows do not prove this caller deleted them.",
+      "limitation": "A quarantined workspace refuses ordinary lifecycle mutation. Do not terminalize or delete parked ownership as a substitute for a candidate handoff.",
+      "reference": "merge/worktree_lifecycle.py:2384 transition; :2569 mark_active; :2585 mark_settling; :2601 mark_terminal; :3006 compare_and_delete"
+    },
+    {
+      "id": "API-CLAIM-RELEASE",
+      "implemented_semantics": "Existing lease-id compare-and-delete under serialized_lock_update. A real protected fence can deliberately retain a task claim. A replacement owner must never be removed.",
+      "reference": "todo_daemon/implementation_daemon.py:61174 resource claim release; :61196 resource batch release; :61223 task claim release; :61249 implementation lock release",
+      "serialization_reference": "merge/checkout_lock.py:451 serialized_lock_update composes workspace_quarantine.claim_update before the adjacent advisory guard"
+    },
+    {
+      "id": "API-PROTECTED-FENCE",
+      "implemented_semantics": "Actual protected-path snapshots and actual incidents protect shared maintenance and task claims.",
+      "limitation": "Never fabricate an incident, provider-capacity failure, protected provider latch or recovery flag to represent a report-only parking decision. Keep any genuine incident/snapshot unchanged until its original policy handles it.",
+      "reference": "todo_daemon/implementation_daemon.py:1157 implementation_task_claim_protected_fence_paths; :7046 active snapshot persistence; :7099 protected incident latch; :8476 protected fence finalization; :9203 reconciliation"
+    },
+    {
+      "id": "API-ORIGINAL-DENY-PATTERN",
+      "implemented_semantics": "An existing separate provider-capacity domain reads durable deny custody before maintenance/another callback and can recover it from matching immutable lifecycle-quarantine authority.",
+      "proposed_use": "Use its ordering and fail-closed read pattern for a DISTINCT new report-only disposition journal/gate. Do not reuse its schema, failure classification or provider-capacity semantics.",
+      "reference": "todo_daemon/implementation_daemon.py:20722 _retained_provider_capacity_deferral"
+    },
+    {
+      "breadth_constraint": "Initial census can include every matching claim in the repository claim directories because claim metadata generally names repo_root. A private worktree_root inside a shared repository is insufficient isolation. Use only a separately admitted isolated owned repository with a proven owned-only census, if this broader fallback is ever selected.",
+      "continuation_constraint": "After whole-root freeze, original claim-release CAS is denied and original continuations cannot be called released. Per-workspace current-owner quarantine is the preferred narrow parking primitive.",
+      "id": "API-WHOLE-ROOT-FREEZE",
+      "implemented_semantics": "Durable exclusive whole-configured-root freeze over exact pool/lifecycle/claim metadata census, bounded to 8192 files/16MiB and 256 records. Frozen claims remain occupied after owner death and claim CAS is denied.",
+      "ordering_constraint": "Original @mutation_boundary(pool=True) frames retain shared repository guards. Those frames must unwind before this exclusive freeze; installing it inside the active shared scopes can deadlock or time out.",
+      "reference": "merge/workspace_quarantine.py:451 plan; :465 freeze(repo_root,worktree_root,expected=plan_result['snapshot']); :536 verify"
+    }
+  ],
+  "full_original_host_qualified": false,
+  "github_qualification": "skipped_by_user",
+  "goal": {
+    "id": "PI-P04-DISPOSITION",
+    "objective": "After independently stopped original custody, park a failed report-only attempt or preserve an inert candidate with durable deny-only task and workspace fences; release the caller-owned borrowed scope only after exact original finalizers and durable parking are independently established.",
+    "subgoals": [
+      {
+        "id": "DISPOSITION-S1",
+        "tasks": [
+          "DISPOSITION-01",
+          "DISPOSITION-02",
+          "DISPOSITION-03"
+        ],
+        "title": "Freeze exact ownership and durable deny producers"
+      },
+      {
+        "id": "DISPOSITION-S2",
+        "tasks": [
+          "DISPOSITION-04",
+          "DISPOSITION-05"
+        ],
+        "title": "Settle original cleanup without losing parked ownership"
+      },
+      {
+        "id": "DISPOSITION-S3",
+        "tasks": [
+          "DISPOSITION-06",
+          "DISPOSITION-07",
+          "DISPOSITION-08"
+        ],
+        "title": "Separate candidate validation and qualify recovery boundaries"
+      }
+    ]
+  },
+  "idempotent_cases": [
+    {
+      "case": "Journal absent, exact actual original host/capture, stopped proof current",
+      "required_behavior": "Publish fresh deny journal with O_EXCL/no-clobber equivalent and fsync before quarantine or scope exit."
+    },
+    {
+      "case": "Existing journal exact same immutable body and identity",
+      "required_behavior": "Return observed existing denial; do not reset timestamps, deadlines, counters, native grants or model execution."
+    },
+    {
+      "case": "Existing journal differs or is malformed/unreadable",
+      "required_behavior": "Retain original borrowed scope and custody references, report conflict, perform no overwrite or retry."
+    },
+    {
+      "case": "Journal durable, quarantine not yet published",
+      "required_behavior": "New earliest gate denies all task execution; original same live host may retry ONLY the original deny-only quarantine publication under an explicit finite closeout contract."
+    },
+    {
+      "case": "Original quarantine already matches exact capture, reason and authority",
+      "required_behavior": "Use existing original quarantine_current_owner idempotent return and verify immutable bytes; do not advance lifecycle fence or terminalize."
+    },
+    {
+      "case": "Quarantine record/index/fence/owner changed",
+      "required_behavior": "Keep durable denial and original host retained. Never reconstruct ownership from workspace path or incoming JSON; do not call dead-owner quarantine for a live original owner."
+    },
+    {
+      "case": "Original finalizer already done",
+      "required_behavior": "Never rerun it. Observe current exact claim outcomes without deleting replacements; keep existing source-registry done status."
+    },
+    {
+      "case": "Original finalizer partially failed",
+      "required_behavior": "Preserve failure and actual closure references; no automatic replay. A later recovery contract must distinguish which original lease-id CAS operations completed."
+    },
+    {
+      "case": "Task-claim release returned True with genuine protected fence",
+      "required_behavior": "Classify retained_fence, preserve original claim and genuine fence, and do not describe it as absent or settled."
+    },
+    {
+      "case": "Strict terminal lifecycle/index absent after an uncertain previous delete",
+      "required_behavior": "Absence is not proof of this caller's CAS deletion. Keep pending recovery; never infer success from path absence."
+    },
+    {
+      "case": "Host dies after durable parking",
+      "required_behavior": "New source gate and immutable quarantine deny productivity. A future independently qualified recovery path may inspect original journal/quarantine; their JSON never reconstructs live scheduler/connection/cleanup capabilities."
+    }
+  ],
+  "journal_design_constraints": [
+    "Proposed new schema: report-only-attempt-disposition-denial@1; kinds parked_failure and candidate_pending_validation. No implementation of this schema is authorized or supplied by this design file.",
+    "Derive every task/CID/attempt/workspace/lifecycle fence/source/board/baseline/candidate field from actual original retained objects. Do not accept caller-selected task, candidate, baseline or ordinal inputs.",
+    "Keep denial provenance separate from productive authority. Include retry_authorized=False, settlement_authority=False, completion_authority=False, cleanup_allowed=False and acceptance_authority=False; never include private scheduler grants or authentication secrets.",
+    "Hash a closed immutable denial body to parking_id. The original current-owner quarantine authority contains that body/parking_id and original state association. Avoid a circular hash that requires knowing the later quarantine timestamp or quarantine_id before publication.",
+    "A missing journal does not prove no parking: the new gate must also inspect original strict quarantine inventory for matching new-schema denial provenance. Missing, malformed, changed, conflicting or unreadable inputs fail closed before original pass effects.",
+    "Declare bounded journal/quarantine output storage before dispatch. Cancellation/expiry does not mint a new productive lease, extend deadlines, authorize a retry or restore model authority; review deny-only durable closeout against the existing public stopped cleanup contract.",
+    "Do not add a second DuckDB open, migration or global connection pool. Any final state bookkeeping must use the original borrowed connection and preserve original attempt/task-CID counts exactly.",
+    "A journal that blocks maintenance/selection must be recognized by every supported writer of that state/repository. Unsupported older runtime compositions must refuse activation rather than ignore the new deny path."
+  ],
+  "original_source_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor",
+  "proposed_ordering_barriers": [
+    {
+      "barrier": "Capture exact original same-host task/state/ordinal/baseline/command/invocation/claims/lifecycle and registered source-defined finalizers before fallible observations. Keep the original borrowed connection, root/phase, output descriptors and custody objects alive.",
+      "order": 1
+    },
+    {
+      "barrier": "Independently observe original stopped Git/provider/watchdog custody, consumer drain and public owner closeout. On any uncertainty retain all actual references and perform no task/claim/lifecycle disposition, retry or ordinal rollback.",
+      "order": 2
+    },
+    {
+      "barrier": "Publish a DISTINCT bounded deny-only report-only disposition journal in the originally precharged private state area, with no overwrite of conflicting bytes. Fsync journal and parent directory before any new source path allows original scope exit. The original daemon's new earliest gate must read it before maintenance, selection, task-state save, attempt consumption or provider readiness.",
+      "order": 3
+    },
+    {
+      "barrier": "Call actual original lifecycle.quarantine_current_owner with the exact retained capture and a closed deny-only authority projection bound to the journal parking identity. Verify its immutable receipt with the original strict reader. If this fails, retain original host/borrow; the already durable journal still denies dispatch.",
+      "order": 4
+    },
+    {
+      "barrier": "Drain only authenticated original finalizer continuations inner then outer, at most once, after stopped proof. Record actual outcomes separately: absent; unchanged retained genuine fence; replaced; unreadable; or partial/unknown. Never unlink a replacement and never treat release True as absence. Failed continuation blocks automatic scope exit.",
+      "order": 5
+    },
+    {
+      "barrier": "Re-read journal, original immutable quarantine and original state/counter projection using the same caller-owned usable borrowed connection. A separate reviewed parked-closeout API may unregister borrowing only after durable denial, preserved lifecycle, all physical custody stopped and exact original finalizers complete. The existing disposition_pending latch stays monotonic; it is never cleared merely to pass an old guard.",
+      "order": 6
+    },
+    {
+      "barrier": "Candidate input remains inert under quarantine and deny gate. Any independent validation uses a separately reviewed admitted read/copy and validator contract; journal or quarantine JSON grants no permission to mutate, reuse evidence, merge, complete a task or invoke another provider.",
+      "order": 7
+    }
+  ],
+  "runtime_enabled": false,
+  "schema": "legal-ir-next-attempt-disposition-design@1",
+  "source_pins": {
+    "composed_daemon_integration_V03": "4984370456bd304dd9d89550c05e2d364fd9f0ca4849db560cb10caddfe3f407",
+    "original_finalizer_continuations_V01": "e871a383d6ae60161ac081a0379f0f4146ed7fc0b1166e01303f70290d9a8a6b",
+    "original_implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+    "original_merge/workspace_quarantine.py": "5a470ee8265f8d7b18daa44d2f0075569aaca287ff194a046823d6f576860b03",
+    "original_merge/worktree_lifecycle.py": "b7f8508b4b4b50d5bc259c186b55c4c6f87e938d99689a913383a8a35130249f",
+    "proposed_native_host_V03": "0b76675f07959164adb5ef442e7df2218148674bad739379adb528ec1b2cc574"
+  },
+  "status": "source_design_only_requires_review_and_qualification",
+  "tasks": [
+    {
+      "completion_criteria": [
+        "Pin the actual composed daemon, host, finalizer helper, lifecycle and original state APIs; leave prior frozen generations intact.",
+        "Bind actual same-process task/state/ordinal/claims/lifecycle/connection and candidate if present. Reject source projections, caller overrides, lost ownership and unsupported repositories before disposition effects.",
+        "Separate physical custody stopped, original-finalizer drain and durable task/candidate disposition in every API/result."
+      ],
+      "dependencies": [],
+      "id": "DISPOSITION-01",
+      "status": "required_source_design",
+      "title": "Define exact parked-attempt binding and supported profile"
+    },
+    {
+      "completion_criteria": [
+        "Bounded no-clobber canonical journal, stable owned-file reads and fsync durability; same-body publication idempotent and conflicts retain actual host.",
+        "Gate original run_once and supported direct task entry before maintenance/selection/state save/provider readiness. Match task revision across later ordinals, and recover denial from strict lifecycle quarantine if journal is missing.",
+        "No fabricated protected incident/provider-capacity/protected-attempt semantics, no original board changes, no attempt refund/reset/cap raise, no new database connection."
+      ],
+      "dependencies": [
+        "DISPOSITION-01"
+      ],
+      "id": "DISPOSITION-02",
+      "status": "required_not_implemented",
+      "title": "Implement distinct durable deny-only journal and earliest original dispatch gate"
+    },
+    {
+      "completion_criteria": [
+        "Call original quarantine_current_owner with exact actual nonterminal capture and deny-only journal-bound provenance after stopped proof; verify original immutable receipt.",
+        "Keep lifecycle, checkout, branch and genuine protected fences intact. Changed record/index/fence/process owner conflicts remain pending.",
+        "If considering whole-root fallback, first prove isolated owned repository/census and unwind original shared mutation guards before its exclusive freeze; never freeze canonical shared metadata."
+      ],
+      "dependencies": [
+        "DISPOSITION-01",
+        "DISPOSITION-02"
+      ],
+      "id": "DISPOSITION-03",
+      "status": "required_not_implemented",
+      "title": "Use actual original current-owner quarantine for exact workspace preservation"
+    },
+    {
+      "completion_criteria": [
+        "Retain existing original caller/code/globals/freevar authentication and inner-before-outer at-most-once behavior.",
+        "Stopped proof is current before any drain. Distinguish absent, genuine retained fence, foreign replacement, unreadable and partial failure outcomes.",
+        "Preserve original finally body AST and lease-id CAS producers; no dictionary-driven cleanup, replacement unlink, acceptance call or counter mutation."
+      ],
+      "dependencies": [
+        "DISPOSITION-02",
+        "DISPOSITION-03"
+      ],
+      "id": "DISPOSITION-04",
+      "status": "required_partial_component_available",
+      "title": "Drain exact original finalizers and observe claim outcomes without replay"
+    },
+    {
+      "completion_criteria": [
+        "A source-defined actual parked binding, retained by the original host, proves durable journal/quarantine, exact original state association, native stopped closeout and completed original continuations.",
+        "Use a separate reviewed parked-closeout method; never set disposition_pending=False to bypass existing guards. Unregister original borrow once and never close/reopen caller connection.",
+        "Keep counters/CID attempt identities unchanged; no completion, merge, cleanup, provider retry or productive renewal. Any failed proof keeps the original host/borrow retained."
+      ],
+      "dependencies": [
+        "DISPOSITION-02",
+        "DISPOSITION-03",
+        "DISPOSITION-04"
+      ],
+      "id": "DISPOSITION-05",
+      "status": "required_not_implemented",
+      "title": "Add explicit parked-borrow closeout without clearing the pending latch"
+    },
+    {
+      "completion_criteria": [
+        "Treat original candidate commit/tree/report bytes as untrusted validation input. Independently bind baseline/parent/path set/report blob/task revision/source association without reusing a portable success receipt as authority.",
+        "Respect quarantine cleanup/reuse/evidence-reuse denials. Design an explicit reviewed read/copy or recovery API before any transfer; never delete the quarantine marker or revive terminal ownership to unblock work.",
+        "New native admission and storage declarations belong to independent validators. Establish report schema, legal/source fidelity, logic-family checking and Lean4 build criteria before any acceptance design.",
+        "No candidate validation outcome in this phase automatically merges code or completes a canonical task."
+      ],
+      "dependencies": [
+        "DISPOSITION-03",
+        "DISPOSITION-05"
+      ],
+      "id": "DISPOSITION-06",
+      "status": "blocked_pending_separate_validation_contract",
+      "title": "Define independent candidate observation and validation handoff"
+    },
+    {
+      "completion_criteria": [
+        "Use an isolated owned repository, actual source-pinned PortalImplementationDaemon, actual original lifecycle store/current process birth, real private borrowed DuckDB connection and original finite native admission.",
+        "Exercise crash barriers before/after journal fsync, exact quarantine repeat/conflict, changed task index/fence, replaced claim, unreadable deny journal, partial finalizer failure and cancellation; preserve all failed evidence.",
+        "A new original pass refuses before state save/provider readiness when durable denial exists, across later attempt ordinals and after original process exit. No fake positive native grant or daemon stand-in.",
+        "Verify original caps/counters/board unchanged, no provider/model/authentication calls and exact public native finalization."
+      ],
+      "dependencies": [
+        "DISPOSITION-02",
+        "DISPOSITION-03",
+        "DISPOSITION-04",
+        "DISPOSITION-05"
+      ],
+      "id": "DISPOSITION-07",
+      "status": "required_not_executed",
+      "title": "Qualify parking and cancellation using genuine private original objects"
+    },
+    {
+      "completion_criteria": [
+        "Document exact source pins, actual test counts, failures/recovery cases and distinction between stopped cleanup, parked disposition, independent validation and canonical acceptance.",
+        "Contribute only reviewed source/evidence/task updates to the owned draft effort. Skip GitHub qualification as requested; runtime activation still requires all separately enumerated genuine full-host/provider/admin/validation gaps.",
+        "Report no training accuracy, legal fidelity or Lean4 success without corresponding independent measurements."
+      ],
+      "dependencies": [
+        "DISPOSITION-07"
+      ],
+      "id": "DISPOSITION-08",
+      "status": "required_after_qualification",
+      "title": "Publish exact parked-disposition readiness and keep activation separate"
+    },
+    {
+      "acceptance_authority": false,
+      "acceptance_criteria": [
+        "Actual retained host direct public run_once refuses before original body/state writes",
+        "Repeat calls preserve original pending handle and source/caller DB references",
+        "Required same-pass profile checks still work without resetting one-pass identity",
+        "Retained stopped cleanup remains callable through the exact original host"
+      ],
+      "finding": "Native host V03 intentionally keeps ContextVar and daemon binding on a pending BaseException. execute_daemon_once denies a fresh binding, but public daemon.run_once can still call guard_pass_entry with that existing binding. The current guard has no explicit pending/disposition/one-pass latch. This disabled proposal therefore still needs an explicit sticky pass-entry deny.",
+      "goal": "Refuse repeated public daemon passes while the actual host retains pending custody or attempt disposition",
+      "id": "LIR-DISP-STICKY-PUBLIC-PASS-DENY",
+      "implementation_constraints": [
+        "Check sticky retained state before original productive pass, phase renewal or selection",
+        "Separate pass-entry admission from profile validation: require_attempt_profile currently calls guard_pass_entry repeatedly within the same original pass",
+        "Do not block the exact retained stopped observer or original finalizer drain",
+        "Do not clear pending/disposition as a side effect of refusing reentry",
+        "Keep current canonical board, counter and cap unchanged"
+      ],
+      "runtime_fixed": false,
+      "status": "required_source_gap"
+    }
+  ],
+  "why_current_observations_do_not_settle_disposition": [
+    "Native stopped proof authenticates the original physical processes/containers/consumers. It does not transfer the original task claim, lifecycle, candidate, state row or caller connection.",
+    "The original task-claim release returns True while deliberately retaining a genuine protected-path fence claim. False can mean absence, replacement or refusal. The resource batch release catches per-claim errors and returns False; the unchanged original finally does not use that return value.",
+    "Original finally continuations are at most once. A successful callback only proves that original source body ran; a failed callback may already have released some claims and must not be replayed blindly.",
+    "A protected-path active snapshot may be cleared by unchanged crash reconciliation. A same-process task claim may be reusable. Neither is an indefinite report-only no-retry parking contract.",
+    "The original common ephemeral completion tail is bypassed by the candidate-only return. Clearing active state or terminalizing/deleting its lifecycle requires an explicit parking or ownership-transfer result.",
+    "Provider returncode zero, a candidate commit, syntax validity and a portable JSON record do not establish native validation, legal fidelity, supported logic families or Lean4 build correctness."
+  ]
+}

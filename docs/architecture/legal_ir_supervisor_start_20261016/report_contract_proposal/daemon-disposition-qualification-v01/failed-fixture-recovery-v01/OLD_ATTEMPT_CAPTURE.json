@@ -1,0 +1,5944 @@
+{
+  "captured_by": "readonly source authoring; no removal, fsync, product import or recovery operation executed",
+  "directories": [
+    {
+      "metadata": {
+        "ctime_ns": 1792258084377043038,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274210,
+        "mode": 16832,
+        "mtime_ns": 1792258084377043038,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "."
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084286043625,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274215,
+        "mode": 16832,
+        "mtime_ns": 1792258084286043625,
+        "nlink": 30,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084268043741,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277246,
+        "mode": 16832,
+        "mtime_ns": 1792258084268043741,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_actual_file_fsync_precede0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084272043715,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277248,
+        "mode": 16832,
+        "mtime_ns": 1792258084272043715,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_actual_file_fsync_precede0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084216044077,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274237,
+        "mode": 16832,
+        "mtime_ns": 1792258084216044077,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_board_status_digest_chang0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084220044051,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274239,
+        "mode": 16832,
+        "mtime_ns": 1792258084220044051,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_board_status_digest_chang0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084240043922,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274246,
+        "mode": 16832,
+        "mtime_ns": 1792258084240043922,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_changed_content_identity_0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084240043922,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274248,
+        "mode": 16832,
+        "mtime_ns": 1792258084240043922,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_changed_content_identity_0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084277043683,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277250,
+        "mode": 16832,
+        "mtime_ns": 1792258084277043683,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_directory_fsync_failure_p0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084281043657,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277252,
+        "mode": 16832,
+        "mtime_ns": 1792258084281043657,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_directory_fsync_failure_p0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084207044135,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274233,
+        "mode": 16832,
+        "mtime_ns": 1792258084207044135,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_display_alias_cannot_chan0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084211044109,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274235,
+        "mode": 16832,
+        "mtime_ns": 1792258084211044109,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_display_alias_cannot_chan0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084224044025,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274241,
+        "mode": 16832,
+        "mtime_ns": 1792258084224044025,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_distinct_revision_records0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084235043954,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274243,
+        "mode": 16832,
+        "mtime_ns": 1792258084235043954,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_distinct_revision_records0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084242043909,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274253,
+        "mode": 16832,
+        "mtime_ns": 1792258084242043909,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_duplicate_JSON_keys_are_n0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084242043909,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274255,
+        "mode": 16832,
+        "mtime_ns": 1792258084242043909,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_duplicate_JSON_keys_are_n0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084176044335,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274221,
+        "mode": 16832,
+        "mtime_ns": 1792258084176044335,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_exact_publication_is_idem0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084180044309,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274223,
+        "mode": 16832,
+        "mtime_ns": 1792258084180044309,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_exact_publication_is_idem0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084246776358,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274275,
+        "mode": 16832,
+        "mtime_ns": 1792258084246776358,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_hard_link_record_is_refus0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084246043883,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274277,
+        "mode": 16832,
+        "mtime_ns": 1792258084246043883,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_hard_link_record_is_refus0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084247043877,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274279,
+        "mode": 16832,
+        "mtime_ns": 1792258084247043877,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_incomplete_publication_ma0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084247043877,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274281,
+        "mode": 16832,
+        "mtime_ns": 1792258084247043877,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_incomplete_publication_ma0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084261167434,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274306,
+        "mode": 16832,
+        "mtime_ns": 1792258084261167434,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084267845134,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274308,
+        "mode": 16832,
+        "mtime_ns": 1792258084267845134,
+        "nlink": 2,
+        "size": 32768,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084249697876,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274299,
+        "mode": 16832,
+        "mtime_ns": 1792258084249697876,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_journal_missing_state_is_0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084249697876,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274301,
+        "mode": 16832,
+        "mtime_ns": 1792258084249697876,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_journal_missing_state_is_0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084241114091,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274251,
+        "mode": 16832,
+        "mtime_ns": 1792258084241114091,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_missing_original_attempt_0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084242313715,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274257,
+        "mode": 16832,
+        "mtime_ns": 1792258084242313715,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_noncanonical_existing_JSO0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084243043903,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274259,
+        "mode": 16832,
+        "mtime_ns": 1792258084243043903,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_noncanonical_existing_JSO0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084244114040,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274265,
+        "mode": 16832,
+        "mtime_ns": 1792258084244114040,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_nonprivate_directory_is_r0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084244114040,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274267,
+        "mode": 16877,
+        "mtime_ns": 1792258084244114040,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_nonprivate_directory_is_r0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084249697876,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274295,
+        "mode": 16832,
+        "mtime_ns": 1792258084249697876,
+        "nlink": 4,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_open_directory_r0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084249697876,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274298,
+        "mode": 16832,
+        "mtime_ns": 1792258084249697876,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_open_directory_r0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084249697876,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274297,
+        "mode": 16832,
+        "mtime_ns": 1792258084249090216,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_open_directory_r0/old-journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084286043625,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277254,
+        "mode": 16832,
+        "mtime_ns": 1792258084286043625,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_store_namespace_0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084286043625,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277256,
+        "mode": 16832,
+        "mtime_ns": 1792258084286043625,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_store_namespace_0/native-store"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084260043793,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274302,
+        "mode": 16832,
+        "mtime_ns": 1792258084260043793,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_oversized_existing_journa0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084261043786,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274304,
+        "mode": 16832,
+        "mtime_ns": 1792258084261043786,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_oversized_existing_journa0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084240043922,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274249,
+        "mode": 16832,
+        "mtime_ns": 1792258084240043922,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_positive_authority_flag_i0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084164357882,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274217,
+        "mode": 16832,
+        "mtime_ns": 1792258084164357882,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_real_private_immutable_pu0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084169044380,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274219,
+        "mode": 16832,
+        "mtime_ns": 1792258084169044380,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_real_private_immutable_pu0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084248043870,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274287,
+        "mode": 16832,
+        "mtime_ns": 1792258084248043870,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_directory_entry_is0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084248043870,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274289,
+        "mode": 16832,
+        "mtime_ns": 1792258084248043870,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_directory_entry_is0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084248043870,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274290,
+        "mode": 16832,
+        "mtime_ns": 1792258084248043870,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_directory_entry_is0/journals/6c37d34a6e5e77d453f9d1f44da8f010051dbb7b50bdc5544245218dddbba378.json"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084248840841,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274291,
+        "mode": 16832,
+        "mtime_ns": 1792258084248840841,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_mode_change_fails_0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084248840841,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274293,
+        "mode": 16832,
+        "mtime_ns": 1792258084248840841,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_mode_change_fails_0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084198044193,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274229,
+        "mode": 16832,
+        "mtime_ns": 1792258084198044193,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_revision_denial_is_not_fi0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084202044167,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274231,
+        "mode": 16832,
+        "mtime_ns": 1792258084202044167,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_revision_denial_is_not_fi0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084189044251,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274225,
+        "mode": 16832,
+        "mtime_ns": 1792258084189044251,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_same_revision_conflict_pr0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084192044232,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274227,
+        "mode": 16832,
+        "mtime_ns": 1792258084192044232,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_same_revision_conflict_pr0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084245043890,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274268,
+        "mode": 16832,
+        "mtime_ns": 1792258084245043890,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_symlink_directory_is_refu0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084245034514,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274270,
+        "mode": 16832,
+        "mtime_ns": 1792258084245034514,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_symlink_directory_is_refu0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084245043890,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274271,
+        "mode": 16832,
+        "mtime_ns": 1792258084245043890,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_symlink_record_is_refused0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084245932092,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274273,
+        "mode": 16832,
+        "mtime_ns": 1792258084245932092,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_symlink_record_is_refused0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084247226036,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274283,
+        "mode": 16832,
+        "mtime_ns": 1792258084247226036,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_unknown_directory_populat0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084247226036,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274285,
+        "mode": 16832,
+        "mtime_ns": 1792258084247226036,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_unknown_directory_populat0/journals"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084243175422,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274261,
+        "mode": 16832,
+        "mtime_ns": 1792258084243175422,
+        "nlink": 3,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_wrong_revision_filename_i0"
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084243175422,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274263,
+        "mode": 16832,
+        "mtime_ns": 1792258084243175422,
+        "nlink": 2,
+        "size": 4096,
+        "uid": 1000
+      },
+      "path": "pytest/test_wrong_revision_filename_i0/journals"
+    }
+  ],
+  "entry_count": 368,
+  "exact_framework_aliases": [
+    {
+      "metadata": {
+        "ctime_ns": 1792258084268043741,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277247,
+        "mode": 41471,
+        "mtime_ns": 1792258084268043741,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_actual_file_fsync_precedecurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_actual_file_fsync_precede0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75277246,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_actual_file_fsync_precede0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084215044083,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274238,
+        "mode": 41471,
+        "mtime_ns": 1792258084215044083,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_board_status_digest_changcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_board_status_digest_chang0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274237,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_board_status_digest_chang0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084240043922,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274247,
+        "mode": 41471,
+        "mtime_ns": 1792258084240043922,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_changed_content_identity_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_changed_content_identity_0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274246,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_changed_content_identity_0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084277043683,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277251,
+        "mode": 41471,
+        "mtime_ns": 1792258084277043683,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_directory_fsync_failure_pcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_directory_fsync_failure_p0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75277250,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_directory_fsync_failure_p0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084207044135,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274234,
+        "mode": 41471,
+        "mtime_ns": 1792258084207044135,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_display_alias_cannot_chancurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_display_alias_cannot_chan0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274233,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_display_alias_cannot_chan0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084224044025,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274242,
+        "mode": 41471,
+        "mtime_ns": 1792258084224044025,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_distinct_revision_recordscurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_distinct_revision_records0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274241,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_distinct_revision_records0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084242041285,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274254,
+        "mode": 41471,
+        "mtime_ns": 1792258084242041285,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_duplicate_JSON_keys_are_ncurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_duplicate_JSON_keys_are_n0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274253,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_duplicate_JSON_keys_are_n0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084176044335,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274222,
+        "mode": 41471,
+        "mtime_ns": 1792258084176044335,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_exact_publication_is_idemcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_exact_publication_is_idem0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274221,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_exact_publication_is_idem0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084246043883,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274276,
+        "mode": 41471,
+        "mtime_ns": 1792258084246043883,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_hard_link_record_is_refuscurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_hard_link_record_is_refus0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274275,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_hard_link_record_is_refus0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084246776358,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274280,
+        "mode": 41471,
+        "mtime_ns": 1792258084246776358,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_incomplete_publication_macurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_incomplete_publication_ma0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274279,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_incomplete_publication_ma0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084261167434,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274307,
+        "mode": 41471,
+        "mtime_ns": 1792258084261167434,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_inventory_overflow_fails_0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274306,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_inventory_overflow_fails_0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084249697876,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274300,
+        "mode": 41471,
+        "mtime_ns": 1792258084249697876,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_journal_missing_state_is_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_journal_missing_state_is_0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274299,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_journal_missing_state_is_0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084241594280,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274252,
+        "mode": 41471,
+        "mtime_ns": 1792258084241594280,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_missing_original_attempt_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_missing_original_attempt_0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274251,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_missing_original_attempt_0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084242313715,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274258,
+        "mode": 41471,
+        "mtime_ns": 1792258084242313715,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_noncanonical_existing_JSOcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_noncanonical_existing_JSO0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274257,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_noncanonical_existing_JSO0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084244114040,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274266,
+        "mode": 41471,
+        "mtime_ns": 1792258084244114040,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_nonprivate_directory_is_rcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_nonprivate_directory_is_r0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274265,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_nonprivate_directory_is_r0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084249090216,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274296,
+        "mode": 41471,
+        "mtime_ns": 1792258084249090216,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_open_directory_rcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_original_open_directory_r0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274295,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_original_open_directory_r0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084286043625,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277255,
+        "mode": 41471,
+        "mtime_ns": 1792258084286043625,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_store_namespace_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_original_store_namespace_0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75277254,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_original_store_namespace_0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084260043793,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274303,
+        "mode": 41471,
+        "mtime_ns": 1792258084260043793,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_oversized_existing_journacurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_oversized_existing_journa0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274302,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_oversized_existing_journa0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084241114091,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274250,
+        "mode": 41471,
+        "mtime_ns": 1792258084241114091,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_positive_authority_flag_icurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_positive_authority_flag_i0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274249,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_positive_authority_flag_i0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084164357882,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274218,
+        "mode": 41471,
+        "mtime_ns": 1792258084164357882,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_real_private_immutable_pucurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_real_private_immutable_pu0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274217,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_real_private_immutable_pu0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084248043870,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274288,
+        "mode": 41471,
+        "mtime_ns": 1792258084248043870,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_directory_entry_iscurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_record_directory_entry_is0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274287,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_record_directory_entry_is0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084248840841,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274292,
+        "mode": 41471,
+        "mtime_ns": 1792258084248840841,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_mode_change_fails_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_record_mode_change_fails_0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274291,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_record_mode_change_fails_0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084198044193,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274230,
+        "mode": 41471,
+        "mtime_ns": 1792258084198044193,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_revision_denial_is_not_ficurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_revision_denial_is_not_fi0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274229,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_revision_denial_is_not_fi0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084188044257,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274226,
+        "mode": 41471,
+        "mtime_ns": 1792258084188044257,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_same_revision_conflict_prcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_same_revision_conflict_pr0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274225,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_same_revision_conflict_pr0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084245034514,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274269,
+        "mode": 41471,
+        "mtime_ns": 1792258084245034514,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_symlink_directory_is_refucurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_symlink_directory_is_refu0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274268,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_symlink_directory_is_refu0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084245043890,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274272,
+        "mode": 41471,
+        "mtime_ns": 1792258084245043890,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_symlink_record_is_refusedcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_symlink_record_is_refused0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274271,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_symlink_record_is_refused0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084247226036,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274284,
+        "mode": 41471,
+        "mtime_ns": 1792258084247226036,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_unknown_directory_populatcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_unknown_directory_populat0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274283,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_unknown_directory_populat0"
+      }
+    },
+    {
+      "metadata": {
+        "ctime_ns": 1792258084243175422,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274262,
+        "mode": 41471,
+        "mtime_ns": 1792258084243175422,
+        "nlink": 1,
+        "size": 202,
+        "uid": 1000
+      },
+      "path": "pytest/test_wrong_revision_filename_icurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_wrong_revision_filename_i0",
+      "target_directory": {
+        "device": 66306,
+        "inode": 75274261,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_wrong_revision_filename_i0"
+      }
+    }
+  ],
+  "expected_record_sha256": "3672394aedfcb7ffdc026c19acff92a7c5c0626b2d2017deaf4237a6c3ee05f1",
+  "framework_alias_count": 28,
+  "ledger_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-daemon-resource-control/disk-reservations.json",
+  "old_artifacts_durable_asserted": false,
+  "old_attempt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02",
+  "old_attempt_identity": {
+    "device": 66306,
+    "inode": 75274210,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02"
+  },
+  "old_child": {
+    "birth": "127615740",
+    "pid": 750376
+  },
+  "old_control_evidence": {
+    "controlled_testcases": 33,
+    "full_original_host_qualified": false,
+    "original_attempt_disposition_settled": false,
+    "original_native_finalization": "failed_after_completed_worker_receipt; retained/context_failed ledger record; no original native_finalized success claimed",
+    "original_receipt_owned_group_quiescent": true,
+    "original_receipt_status": "completed",
+    "passed": true,
+    "passed_testcases": 33,
+    "returncode": 0
+  },
+  "old_external_charges": {},
+  "old_owner_pid": 740900,
+  "old_retention_reason": "context_failed",
+  "old_storage_bytes": 134217728,
+  "regular_file_bytes": 103004,
+  "regular_file_count": 283,
+  "regular_files": [
+    {
+      "bytes": 1281,
+      "metadata": {
+        "ctime_ns": 1792258084315646842,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277261,
+        "mode": 33152,
+        "mtime_ns": 1792258084315646842,
+        "nlink": 1,
+        "size": 1281,
+        "uid": 1000
+      },
+      "path": "attempt-disposition-controls.json",
+      "sha256": "9dc7ca125d4669b2c9a7d07542c842ac6a54d46b1c6ef84889e81be89e332a87"
+    },
+    {
+      "bytes": 4457,
+      "metadata": {
+        "ctime_ns": 1792258084312043457,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277260,
+        "mode": 33152,
+        "mtime_ns": 1792258084290719355,
+        "nlink": 1,
+        "size": 4457,
+        "uid": 1000
+      },
+      "path": "attempt-disposition-controls.xml",
+      "sha256": "23b64ebae1a0e29147a2916eeb46f1c95a54ce253a0b7809bc682d2976fb0d33"
+    },
+    {
+      "bytes": 1276,
+      "metadata": {
+        "ctime_ns": 1792258084319043412,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274212,
+        "mode": 33152,
+        "mtime_ns": 1792258084319043412,
+        "nlink": 1,
+        "size": 1276,
+        "uid": 1000
+      },
+      "path": "child.sanitized.log",
+      "sha256": "7e158ef93d3ea271aee7160cbcdd30e6eaf7d3c5bca06daaef3a7507cebd592f"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084272999837,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277249,
+        "mode": 33152,
+        "mtime_ns": 1792258084269255061,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_actual_file_fsync_precede0/journals/3613d7c95a311291f4f148b1bb0f00fbe352a4bca36b586ec430cf1d48e54eae.json",
+      "sha256": "0f19929c2123b2f9138c20a625df73941f8700cba47c38a1fb0e4effc519c24e"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084220187986,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274240,
+        "mode": 33152,
+        "mtime_ns": 1792258084216679513,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_board_status_digest_chang0/journals/b1555b863eb48dafd36bba89663213ee669506e56293301f9fb2db124df966cd.json",
+      "sha256": "e94a36a29d181cd3aec3f9432dd7b1184aa6aad5e073da0674b41d29728afb6e"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084281836660,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277253,
+        "mode": 33152,
+        "mtime_ns": 1792258084278120604,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_directory_fsync_failure_p0/journals/a61cd51cd59eeec8edd436612fa4df5e555539ed16654921a8483385cee1e3f7.json",
+      "sha256": "7a7bfac11d289decd88bfbdf110d0103e2eafe3d6d66b8973b876ac5593140c0"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084211778168,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274236,
+        "mode": 33152,
+        "mtime_ns": 1792258084208219695,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_display_alias_cannot_chan0/journals/4dbf581f441cb6440cfbd5469fe2b69a70dccb21c77b413dc4c6dd74569e8485.json",
+      "sha256": "39cdc49fd2d7e985bca6a1af627eac5268acba27b1861df5b02fad453c70ee81"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084228480973,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274244,
+        "mode": 33152,
+        "mtime_ns": 1792258084225456560,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_distinct_revision_records0/journals/31ad9d50b51918b513407b82197f169516b069c3d302774b7848106c126a985d.json",
+      "sha256": "69c1ca9b0b869dfbca9f455c29ec8e738b14a0b0db0983952399161020c5bc43"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084235598015,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274245,
+        "mode": 33152,
+        "mtime_ns": 1792258084232086549,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_distinct_revision_records0/journals/5bc0c287ee228d1c6f9bf2bed1f01db8edb0169fd2e20ef37f19157c2602c279.json",
+      "sha256": "2475c70fa877e3152cc8644eb336f14e53fca453fa8ef6c8e68832884b7263af"
+    },
+    {
+      "bytes": 1823,
+      "metadata": {
+        "ctime_ns": 1792258084242313715,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274256,
+        "mode": 33152,
+        "mtime_ns": 1792258084242313715,
+        "nlink": 1,
+        "size": 1823,
+        "uid": 1000
+      },
+      "path": "pytest/test_duplicate_JSON_keys_are_n0/journals/a93f24dde819d61d219c30bc4b17cb0bfb8def5b3cd92e9bc1ff8404a46b49d0.json",
+      "sha256": "18cb725d37b322af9e419701c9e163c0d52e1a36d222d60d93f4a24e8d369d15"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084181018159,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274224,
+        "mode": 33152,
+        "mtime_ns": 1792258084176945945,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_exact_publication_is_idem0/journals/2df3e830f6e9655337fa2893dbedba181960d14cf7b5c5d337a04b2db8d2e782.json",
+      "sha256": "9712ad22d2eb77876395930e03137cc9b28e6e567da155296236d1980dee2194"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084246776358,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274278,
+        "mode": 33152,
+        "mtime_ns": 1792258084246417177,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_hard_link_record_is_refus0/journals/5a1f3032b25a297ac2c30a469c69b4a97e9ce2d145db8f3cb3ce59fef3e9f832.json",
+      "sha256": "ce3828b4462b38ba4f858eb3fac59f6890eb30b1daab0718fa4718c6de9a4f14"
+    },
+    {
+      "bytes": 7,
+      "metadata": {
+        "ctime_ns": 1792258084247226036,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274282,
+        "mode": 33152,
+        "mtime_ns": 1792258084247226036,
+        "nlink": 1,
+        "size": 7,
+        "uid": 1000
+      },
+      "path": "pytest/test_incomplete_publication_ma0/journals/.pending-11111111111111111111111111111111",
+      "sha256": "9834a14ab9bcaa0f6a8da71073617eac8f004e596a3fa11d807b84631b825d9d"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262095492,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274309,
+        "mode": 33204,
+        "mtime_ns": 1792258084262095492,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000000.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262116643,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274310,
+        "mode": 33204,
+        "mtime_ns": 1792258084262116643,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000001.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262139443,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274311,
+        "mode": 33204,
+        "mtime_ns": 1792258084262139443,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000002.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262158051,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274312,
+        "mode": 33204,
+        "mtime_ns": 1792258084262158051,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000003.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262173875,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274313,
+        "mode": 33204,
+        "mtime_ns": 1792258084262173875,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000004.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262190707,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274314,
+        "mode": 33204,
+        "mtime_ns": 1792258084262190707,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000005.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262207539,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274315,
+        "mode": 33204,
+        "mtime_ns": 1792258084262207539,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000006.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262223139,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274316,
+        "mode": 33204,
+        "mtime_ns": 1792258084262223139,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000007.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262240483,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274317,
+        "mode": 33204,
+        "mtime_ns": 1792258084262240483,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000008.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262256963,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274318,
+        "mode": 33204,
+        "mtime_ns": 1792258084262256963,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000009.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262273074,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274319,
+        "mode": 33204,
+        "mtime_ns": 1792258084262273074,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000000a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262290530,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274320,
+        "mode": 33204,
+        "mtime_ns": 1792258084262290530,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000000b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262310114,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274321,
+        "mode": 33204,
+        "mtime_ns": 1792258084262310114,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000000c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262327362,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274322,
+        "mode": 33204,
+        "mtime_ns": 1792258084262327362,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000000d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262342754,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274323,
+        "mode": 33204,
+        "mtime_ns": 1792258084262342754,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000000e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262360418,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274324,
+        "mode": 33204,
+        "mtime_ns": 1792258084262360418,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000000f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262376690,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274325,
+        "mode": 33204,
+        "mtime_ns": 1792258084262376690,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000010.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262393890,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274326,
+        "mode": 33204,
+        "mtime_ns": 1792258084262393890,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000011.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262411362,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274327,
+        "mode": 33204,
+        "mtime_ns": 1792258084262411362,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000012.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262427585,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274328,
+        "mode": 33204,
+        "mtime_ns": 1792258084262427585,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000013.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262443825,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274329,
+        "mode": 33204,
+        "mtime_ns": 1792258084262443825,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000014.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262462449,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274330,
+        "mode": 33204,
+        "mtime_ns": 1792258084262462449,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000015.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262480657,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274331,
+        "mode": 33204,
+        "mtime_ns": 1792258084262480657,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000016.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262498097,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274332,
+        "mode": 33204,
+        "mtime_ns": 1792258084262498097,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000017.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262513745,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274333,
+        "mode": 33204,
+        "mtime_ns": 1792258084262513745,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000018.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262530753,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274334,
+        "mode": 33204,
+        "mtime_ns": 1792258084262530753,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000019.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262554689,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274335,
+        "mode": 33204,
+        "mtime_ns": 1792258084262554689,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000001a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262570513,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274336,
+        "mode": 33204,
+        "mtime_ns": 1792258084262570513,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000001b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262590032,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274337,
+        "mode": 33204,
+        "mtime_ns": 1792258084262590032,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000001c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262605440,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274338,
+        "mode": 33204,
+        "mtime_ns": 1792258084262605440,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000001d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262623072,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274339,
+        "mode": 33204,
+        "mtime_ns": 1792258084262623072,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000001e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262640160,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274340,
+        "mode": 33204,
+        "mtime_ns": 1792258084262640160,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000001f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262657168,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274341,
+        "mode": 33204,
+        "mtime_ns": 1792258084262657168,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000020.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262674736,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274342,
+        "mode": 33204,
+        "mtime_ns": 1792258084262674736,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000021.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262691616,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274343,
+        "mode": 33204,
+        "mtime_ns": 1792258084262691616,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000022.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262708320,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274344,
+        "mode": 33204,
+        "mtime_ns": 1792258084262708320,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000023.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262724192,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274345,
+        "mode": 33204,
+        "mtime_ns": 1792258084262724192,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000024.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262740095,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274346,
+        "mode": 33204,
+        "mtime_ns": 1792258084262740095,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000025.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262756191,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274347,
+        "mode": 33204,
+        "mtime_ns": 1792258084262756191,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000026.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262772863,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274348,
+        "mode": 33204,
+        "mtime_ns": 1792258084262772863,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000027.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262791183,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274349,
+        "mode": 33204,
+        "mtime_ns": 1792258084262791183,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000028.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262806943,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274350,
+        "mode": 33204,
+        "mtime_ns": 1792258084262806943,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000029.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262824303,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274351,
+        "mode": 33204,
+        "mtime_ns": 1792258084262824303,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000002a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262841215,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274352,
+        "mode": 33204,
+        "mtime_ns": 1792258084262841215,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000002b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262859151,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274353,
+        "mode": 33204,
+        "mtime_ns": 1792258084262859151,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000002c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262878063,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274354,
+        "mode": 33204,
+        "mtime_ns": 1792258084262878063,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000002d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262896718,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274355,
+        "mode": 33204,
+        "mtime_ns": 1792258084262896718,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000002e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262914334,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274356,
+        "mode": 33204,
+        "mtime_ns": 1792258084262914334,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000002f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262931310,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274357,
+        "mode": 33204,
+        "mtime_ns": 1792258084262931310,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000030.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262947934,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274358,
+        "mode": 33204,
+        "mtime_ns": 1792258084262947934,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000031.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084262983246,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274359,
+        "mode": 33204,
+        "mtime_ns": 1792258084262983246,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000032.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263002142,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274360,
+        "mode": 33204,
+        "mtime_ns": 1792258084263002142,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000033.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263019566,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274361,
+        "mode": 33204,
+        "mtime_ns": 1792258084263019566,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000034.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263042078,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274362,
+        "mode": 33204,
+        "mtime_ns": 1792258084263042078,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000035.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263059053,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274363,
+        "mode": 33204,
+        "mtime_ns": 1792258084263059053,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000036.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263077997,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274364,
+        "mode": 33204,
+        "mtime_ns": 1792258084263077997,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000037.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263096573,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274365,
+        "mode": 33204,
+        "mtime_ns": 1792258084263096573,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000038.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263114781,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274366,
+        "mode": 33204,
+        "mtime_ns": 1792258084263114781,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000039.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263138221,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274367,
+        "mode": 33204,
+        "mtime_ns": 1792258084263138221,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000003a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263155405,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274368,
+        "mode": 33204,
+        "mtime_ns": 1792258084263155405,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000003b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263173069,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274369,
+        "mode": 33204,
+        "mtime_ns": 1792258084263173069,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000003c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263192077,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274370,
+        "mode": 33204,
+        "mtime_ns": 1792258084263192077,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000003d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263208140,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274371,
+        "mode": 33204,
+        "mtime_ns": 1792258084263208140,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000003e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263224780,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274372,
+        "mode": 33204,
+        "mtime_ns": 1792258084263224780,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000003f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263242444,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274373,
+        "mode": 33204,
+        "mtime_ns": 1792258084263242444,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000040.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263260252,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274374,
+        "mode": 33204,
+        "mtime_ns": 1792258084263260252,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000041.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263278012,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274375,
+        "mode": 33204,
+        "mtime_ns": 1792258084263278012,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000042.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263295228,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274376,
+        "mode": 33204,
+        "mtime_ns": 1792258084263295228,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000043.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263312780,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274377,
+        "mode": 33204,
+        "mtime_ns": 1792258084263312780,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000044.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263329804,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274378,
+        "mode": 33204,
+        "mtime_ns": 1792258084263329804,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000045.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263347372,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274379,
+        "mode": 33204,
+        "mtime_ns": 1792258084263347372,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000046.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263364859,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274380,
+        "mode": 33204,
+        "mtime_ns": 1792258084263364859,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000047.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263381899,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274381,
+        "mode": 33204,
+        "mtime_ns": 1792258084263381899,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000048.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263400059,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274382,
+        "mode": 33204,
+        "mtime_ns": 1792258084263400059,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000049.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263417499,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274383,
+        "mode": 33204,
+        "mtime_ns": 1792258084263417499,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000004a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263436267,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274384,
+        "mode": 33204,
+        "mtime_ns": 1792258084263436267,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000004b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263453899,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274385,
+        "mode": 33204,
+        "mtime_ns": 1792258084263453899,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000004c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263470747,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274386,
+        "mode": 33204,
+        "mtime_ns": 1792258084263470747,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000004d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263489243,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274387,
+        "mode": 33204,
+        "mtime_ns": 1792258084263489243,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000004e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263507082,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274388,
+        "mode": 33204,
+        "mtime_ns": 1792258084263507082,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000004f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263524362,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274389,
+        "mode": 33204,
+        "mtime_ns": 1792258084263524362,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000050.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263542202,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274390,
+        "mode": 33204,
+        "mtime_ns": 1792258084263542202,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000051.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263564106,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274391,
+        "mode": 33204,
+        "mtime_ns": 1792258084263564106,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000052.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263581738,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274392,
+        "mode": 33204,
+        "mtime_ns": 1792258084263581738,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000053.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263599066,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274393,
+        "mode": 33204,
+        "mtime_ns": 1792258084263599066,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000054.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263616426,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274394,
+        "mode": 33204,
+        "mtime_ns": 1792258084263616426,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000055.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263633978,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274395,
+        "mode": 33204,
+        "mtime_ns": 1792258084263633978,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000056.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263652378,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274396,
+        "mode": 33204,
+        "mtime_ns": 1792258084263652378,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000057.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263670889,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274397,
+        "mode": 33204,
+        "mtime_ns": 1792258084263670889,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000058.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263687945,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274398,
+        "mode": 33204,
+        "mtime_ns": 1792258084263687945,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000059.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263706201,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274399,
+        "mode": 33204,
+        "mtime_ns": 1792258084263706201,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000005a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263725193,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274400,
+        "mode": 33204,
+        "mtime_ns": 1792258084263725193,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000005b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263743961,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274401,
+        "mode": 33204,
+        "mtime_ns": 1792258084263743961,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000005c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263772761,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274402,
+        "mode": 33204,
+        "mtime_ns": 1792258084263772761,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000005d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263791177,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274403,
+        "mode": 33204,
+        "mtime_ns": 1792258084263791177,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000005e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263808280,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274404,
+        "mode": 33204,
+        "mtime_ns": 1792258084263808280,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000005f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263825096,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274405,
+        "mode": 33204,
+        "mtime_ns": 1792258084263825096,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000060.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263842824,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274406,
+        "mode": 33204,
+        "mtime_ns": 1792258084263842824,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000061.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263860296,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274407,
+        "mode": 33204,
+        "mtime_ns": 1792258084263860296,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000062.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263877320,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274408,
+        "mode": 33204,
+        "mtime_ns": 1792258084263877320,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000063.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263895784,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274409,
+        "mode": 33204,
+        "mtime_ns": 1792258084263895784,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000064.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263912920,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274410,
+        "mode": 33204,
+        "mtime_ns": 1792258084263912920,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000065.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263929736,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274411,
+        "mode": 33204,
+        "mtime_ns": 1792258084263929736,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000066.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263945864,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274412,
+        "mode": 33204,
+        "mtime_ns": 1792258084263945864,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000067.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263962615,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274413,
+        "mode": 33204,
+        "mtime_ns": 1792258084263962615,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000068.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263981767,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274414,
+        "mode": 33204,
+        "mtime_ns": 1792258084263981767,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000069.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084263998055,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274415,
+        "mode": 33204,
+        "mtime_ns": 1792258084263998055,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000006a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264016071,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274416,
+        "mode": 33204,
+        "mtime_ns": 1792258084264016071,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000006b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264034903,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274417,
+        "mode": 33204,
+        "mtime_ns": 1792258084264034903,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000006c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264051639,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274418,
+        "mode": 33204,
+        "mtime_ns": 1792258084264051639,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000006d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264073847,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274419,
+        "mode": 33204,
+        "mtime_ns": 1792258084264073847,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000006e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264104311,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274420,
+        "mode": 33204,
+        "mtime_ns": 1792258084264104311,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000006f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264122150,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274421,
+        "mode": 33204,
+        "mtime_ns": 1792258084264122150,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000070.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264145206,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274422,
+        "mode": 33204,
+        "mtime_ns": 1792258084264145206,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000071.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264162886,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274423,
+        "mode": 33204,
+        "mtime_ns": 1792258084264162886,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000072.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264179318,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274424,
+        "mode": 33204,
+        "mtime_ns": 1792258084264179318,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000073.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264196966,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274425,
+        "mode": 33204,
+        "mtime_ns": 1792258084264196966,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000074.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264214262,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274426,
+        "mode": 33204,
+        "mtime_ns": 1792258084264214262,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000075.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264231206,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274427,
+        "mode": 33204,
+        "mtime_ns": 1792258084264231206,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000076.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264248070,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274428,
+        "mode": 33204,
+        "mtime_ns": 1792258084264248070,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000077.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264264342,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274429,
+        "mode": 33204,
+        "mtime_ns": 1792258084264264342,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000078.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264279733,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274430,
+        "mode": 33204,
+        "mtime_ns": 1792258084264279733,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000079.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264297397,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274431,
+        "mode": 33204,
+        "mtime_ns": 1792258084264297397,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000007a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264314037,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274432,
+        "mode": 33204,
+        "mtime_ns": 1792258084264314037,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000007b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264333573,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274433,
+        "mode": 33204,
+        "mtime_ns": 1792258084264333573,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000007c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264350741,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274434,
+        "mode": 33204,
+        "mtime_ns": 1792258084264350741,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000007d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264367173,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274435,
+        "mode": 33204,
+        "mtime_ns": 1792258084264367173,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000007e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264383973,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274436,
+        "mode": 33204,
+        "mtime_ns": 1792258084264383973,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000007f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264401445,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274437,
+        "mode": 33204,
+        "mtime_ns": 1792258084264401445,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000080.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264419813,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274438,
+        "mode": 33204,
+        "mtime_ns": 1792258084264419813,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000081.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264436500,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274439,
+        "mode": 33204,
+        "mtime_ns": 1792258084264436500,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000082.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264454468,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274440,
+        "mode": 33204,
+        "mtime_ns": 1792258084264454468,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000083.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264471492,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274441,
+        "mode": 33204,
+        "mtime_ns": 1792258084264471492,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000084.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264488532,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274442,
+        "mode": 33204,
+        "mtime_ns": 1792258084264488532,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000085.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264504692,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274443,
+        "mode": 33204,
+        "mtime_ns": 1792258084264504692,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000086.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264520996,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274444,
+        "mode": 33204,
+        "mtime_ns": 1792258084264520996,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000087.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264537956,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274445,
+        "mode": 33204,
+        "mtime_ns": 1792258084264537956,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000088.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264556356,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274446,
+        "mode": 33204,
+        "mtime_ns": 1792258084264556356,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000089.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264573028,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274447,
+        "mode": 33204,
+        "mtime_ns": 1792258084264573028,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000008a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084264595123,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274448,
+        "mode": 33204,
+        "mtime_ns": 1792258084264595123,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000008b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265043761,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274449,
+        "mode": 33204,
+        "mtime_ns": 1792258084265043761,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000008c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265327119,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274450,
+        "mode": 33204,
+        "mtime_ns": 1792258084265327119,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000008d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265344207,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274451,
+        "mode": 33204,
+        "mtime_ns": 1792258084265344207,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000008e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265360990,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274452,
+        "mode": 33204,
+        "mtime_ns": 1792258084265360990,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000008f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265378206,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274453,
+        "mode": 33204,
+        "mtime_ns": 1792258084265378206,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000090.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265395582,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274454,
+        "mode": 33204,
+        "mtime_ns": 1792258084265395582,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000091.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265414702,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274564,
+        "mode": 33204,
+        "mtime_ns": 1792258084265414702,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000092.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265432142,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274565,
+        "mode": 33204,
+        "mtime_ns": 1792258084265432142,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000093.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265450286,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274566,
+        "mode": 33204,
+        "mtime_ns": 1792258084265450286,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000094.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265467406,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274567,
+        "mode": 33204,
+        "mtime_ns": 1792258084265467406,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000095.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265484654,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274568,
+        "mode": 33204,
+        "mtime_ns": 1792258084265484654,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000096.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265500734,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274569,
+        "mode": 33204,
+        "mtime_ns": 1792258084265500734,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000097.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265517245,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274570,
+        "mode": 33204,
+        "mtime_ns": 1792258084265517245,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000098.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265536109,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274804,
+        "mode": 33204,
+        "mtime_ns": 1792258084265536109,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000099.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265552397,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274805,
+        "mode": 33204,
+        "mtime_ns": 1792258084265552397,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000009a.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265571005,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274806,
+        "mode": 33204,
+        "mtime_ns": 1792258084265571005,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000009b.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265796780,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277109,
+        "mode": 33204,
+        "mtime_ns": 1792258084265796780,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000009c.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084265814572,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277125,
+        "mode": 33204,
+        "mtime_ns": 1792258084265814572,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000009d.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266096234,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277139,
+        "mode": 33204,
+        "mtime_ns": 1792258084266096234,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000009e.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266113834,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277141,
+        "mode": 33204,
+        "mtime_ns": 1792258084266113834,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/000000000000000000000000000000000000000000000000000000000000009f.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266132329,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277142,
+        "mode": 33204,
+        "mtime_ns": 1792258084266132329,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a0.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266149961,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277143,
+        "mode": 33204,
+        "mtime_ns": 1792258084266149961,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a1.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266169321,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277144,
+        "mode": 33204,
+        "mtime_ns": 1792258084266169321,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a2.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266187241,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277145,
+        "mode": 33204,
+        "mtime_ns": 1792258084266187241,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a3.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266204489,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277146,
+        "mode": 33204,
+        "mtime_ns": 1792258084266204489,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a4.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266223145,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277154,
+        "mode": 33204,
+        "mtime_ns": 1792258084266223145,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a5.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266239801,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277155,
+        "mode": 33204,
+        "mtime_ns": 1792258084266239801,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a6.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266257545,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277156,
+        "mode": 33204,
+        "mtime_ns": 1792258084266257545,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a7.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266274217,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277157,
+        "mode": 33204,
+        "mtime_ns": 1792258084266274217,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a8.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266291224,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277158,
+        "mode": 33204,
+        "mtime_ns": 1792258084266291224,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000a9.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266308136,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277159,
+        "mode": 33204,
+        "mtime_ns": 1792258084266308136,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000aa.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266324984,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277160,
+        "mode": 33204,
+        "mtime_ns": 1792258084266324984,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ab.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266342536,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277161,
+        "mode": 33204,
+        "mtime_ns": 1792258084266342536,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ac.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266365848,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277162,
+        "mode": 33204,
+        "mtime_ns": 1792258084266365848,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ad.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266384792,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277163,
+        "mode": 33204,
+        "mtime_ns": 1792258084266384792,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ae.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266402088,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277164,
+        "mode": 33204,
+        "mtime_ns": 1792258084266402088,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000af.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266419400,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277165,
+        "mode": 33204,
+        "mtime_ns": 1792258084266419400,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b0.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266436376,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277166,
+        "mode": 33204,
+        "mtime_ns": 1792258084266436376,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b1.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266455335,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277167,
+        "mode": 33204,
+        "mtime_ns": 1792258084266455335,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b2.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266474375,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277168,
+        "mode": 33204,
+        "mtime_ns": 1792258084266474375,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b3.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266492615,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277169,
+        "mode": 33204,
+        "mtime_ns": 1792258084266492615,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b4.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266513191,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277170,
+        "mode": 33204,
+        "mtime_ns": 1792258084266513191,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b5.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266530679,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277171,
+        "mode": 33204,
+        "mtime_ns": 1792258084266530679,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b6.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266548263,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277172,
+        "mode": 33204,
+        "mtime_ns": 1792258084266548263,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b7.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266566775,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277173,
+        "mode": 33204,
+        "mtime_ns": 1792258084266566775,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b8.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266583527,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277174,
+        "mode": 33204,
+        "mtime_ns": 1792258084266583527,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000b9.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266601078,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277175,
+        "mode": 33204,
+        "mtime_ns": 1792258084266601078,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ba.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266618998,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277176,
+        "mode": 33204,
+        "mtime_ns": 1792258084266618998,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000bb.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266635574,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277177,
+        "mode": 33204,
+        "mtime_ns": 1792258084266635574,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000bc.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266653206,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277178,
+        "mode": 33204,
+        "mtime_ns": 1792258084266653206,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000bd.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266670662,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277179,
+        "mode": 33204,
+        "mtime_ns": 1792258084266670662,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000be.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266690374,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277180,
+        "mode": 33204,
+        "mtime_ns": 1792258084266690374,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000bf.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266708934,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277181,
+        "mode": 33204,
+        "mtime_ns": 1792258084266708934,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c0.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266725446,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277182,
+        "mode": 33204,
+        "mtime_ns": 1792258084266725446,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c1.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266745670,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277183,
+        "mode": 33204,
+        "mtime_ns": 1792258084266745670,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c2.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266779189,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277184,
+        "mode": 33204,
+        "mtime_ns": 1792258084266779189,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c3.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266795781,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277185,
+        "mode": 33204,
+        "mtime_ns": 1792258084266795781,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c4.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266812869,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277186,
+        "mode": 33204,
+        "mtime_ns": 1792258084266812869,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c5.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266842293,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277187,
+        "mode": 33204,
+        "mtime_ns": 1792258084266842293,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c6.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266859957,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277188,
+        "mode": 33204,
+        "mtime_ns": 1792258084266859957,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c7.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266878133,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277189,
+        "mode": 33204,
+        "mtime_ns": 1792258084266878133,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c8.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266895749,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277190,
+        "mode": 33204,
+        "mtime_ns": 1792258084266895749,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000c9.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266919588,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277191,
+        "mode": 33204,
+        "mtime_ns": 1792258084266919588,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ca.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266936772,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277192,
+        "mode": 33204,
+        "mtime_ns": 1792258084266936772,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000cb.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266952884,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277193,
+        "mode": 33204,
+        "mtime_ns": 1792258084266952884,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000cc.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266970708,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277194,
+        "mode": 33204,
+        "mtime_ns": 1792258084266970708,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000cd.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084266989124,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277195,
+        "mode": 33204,
+        "mtime_ns": 1792258084266989124,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ce.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267006724,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277196,
+        "mode": 33204,
+        "mtime_ns": 1792258084267006724,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000cf.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267023124,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277197,
+        "mode": 33204,
+        "mtime_ns": 1792258084267023124,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d0.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267039972,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277198,
+        "mode": 33204,
+        "mtime_ns": 1792258084267039972,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d1.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267057700,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277199,
+        "mode": 33204,
+        "mtime_ns": 1792258084267057700,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d2.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267075747,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277200,
+        "mode": 33204,
+        "mtime_ns": 1792258084267075747,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d3.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267093523,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277201,
+        "mode": 33204,
+        "mtime_ns": 1792258084267093523,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d4.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267110627,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277202,
+        "mode": 33204,
+        "mtime_ns": 1792258084267110627,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d5.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267140819,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277203,
+        "mode": 33204,
+        "mtime_ns": 1792258084267140819,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d6.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267157411,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277204,
+        "mode": 33204,
+        "mtime_ns": 1792258084267157411,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d7.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267173043,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277205,
+        "mode": 33204,
+        "mtime_ns": 1792258084267173043,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d8.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267189619,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277206,
+        "mode": 33204,
+        "mtime_ns": 1792258084267189619,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000d9.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267207523,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277207,
+        "mode": 33204,
+        "mtime_ns": 1792258084267207523,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000da.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267224914,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277208,
+        "mode": 33204,
+        "mtime_ns": 1792258084267224914,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000db.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267242002,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277209,
+        "mode": 33204,
+        "mtime_ns": 1792258084267242002,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000dc.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267259378,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277210,
+        "mode": 33204,
+        "mtime_ns": 1792258084267259378,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000dd.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267276370,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277211,
+        "mode": 33204,
+        "mtime_ns": 1792258084267276370,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000de.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267292498,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277212,
+        "mode": 33204,
+        "mtime_ns": 1792258084267292498,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000df.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267310322,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277213,
+        "mode": 33204,
+        "mtime_ns": 1792258084267310322,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e0.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267327570,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277214,
+        "mode": 33204,
+        "mtime_ns": 1792258084267327570,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e1.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267345218,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277215,
+        "mode": 33204,
+        "mtime_ns": 1792258084267345218,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e2.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267362082,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277216,
+        "mode": 33204,
+        "mtime_ns": 1792258084267362082,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e3.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267379297,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277217,
+        "mode": 33204,
+        "mtime_ns": 1792258084267379297,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e4.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267395729,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277218,
+        "mode": 33204,
+        "mtime_ns": 1792258084267395729,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e5.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267412833,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277219,
+        "mode": 33204,
+        "mtime_ns": 1792258084267412833,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e6.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267429633,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277220,
+        "mode": 33204,
+        "mtime_ns": 1792258084267429633,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e7.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267452065,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277221,
+        "mode": 33204,
+        "mtime_ns": 1792258084267452065,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e8.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267469569,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277222,
+        "mode": 33204,
+        "mtime_ns": 1792258084267469569,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000e9.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267487505,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277223,
+        "mode": 33204,
+        "mtime_ns": 1792258084267487505,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ea.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267506385,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277224,
+        "mode": 33204,
+        "mtime_ns": 1792258084267506385,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000eb.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267523121,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277225,
+        "mode": 33204,
+        "mtime_ns": 1792258084267523121,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ec.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267540112,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277226,
+        "mode": 33204,
+        "mtime_ns": 1792258084267540112,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ed.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267557072,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277227,
+        "mode": 33204,
+        "mtime_ns": 1792258084267557072,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ee.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267573360,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277228,
+        "mode": 33204,
+        "mtime_ns": 1792258084267573360,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ef.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267590160,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277229,
+        "mode": 33204,
+        "mtime_ns": 1792258084267590160,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f0.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267607072,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277230,
+        "mode": 33204,
+        "mtime_ns": 1792258084267607072,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f1.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267624352,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277231,
+        "mode": 33204,
+        "mtime_ns": 1792258084267624352,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f2.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267642112,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277232,
+        "mode": 33204,
+        "mtime_ns": 1792258084267642112,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f3.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267662256,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277233,
+        "mode": 33204,
+        "mtime_ns": 1792258084267662256,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f4.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267679184,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277234,
+        "mode": 33204,
+        "mtime_ns": 1792258084267679184,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f5.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267695423,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277235,
+        "mode": 33204,
+        "mtime_ns": 1792258084267695423,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f6.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267711519,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277236,
+        "mode": 33204,
+        "mtime_ns": 1792258084267711519,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f7.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267727823,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277237,
+        "mode": 33204,
+        "mtime_ns": 1792258084267727823,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f8.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267744431,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277238,
+        "mode": 33204,
+        "mtime_ns": 1792258084267744431,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000f9.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267760975,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277239,
+        "mode": 33204,
+        "mtime_ns": 1792258084267760975,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000fa.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267776927,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277240,
+        "mode": 33204,
+        "mtime_ns": 1792258084267776927,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000fb.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267794159,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277241,
+        "mode": 33204,
+        "mtime_ns": 1792258084267794159,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000fc.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267811759,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277242,
+        "mode": 33204,
+        "mtime_ns": 1792258084267811759,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000fd.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267828079,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277243,
+        "mode": 33204,
+        "mtime_ns": 1792258084267828079,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000fe.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267845134,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277244,
+        "mode": 33204,
+        "mtime_ns": 1792258084267845134,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/00000000000000000000000000000000000000000000000000000000000000ff.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 3,
+      "metadata": {
+        "ctime_ns": 1792258084267861566,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277245,
+        "mode": 33204,
+        "mtime_ns": 1792258084267861566,
+        "nlink": 1,
+        "size": 3,
+        "uid": 1000
+      },
+      "path": "pytest/test_inventory_overflow_fails_0/journals/0000000000000000000000000000000000000000000000000000000000000100.json",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    {
+      "bytes": 1987,
+      "metadata": {
+        "ctime_ns": 1792258084243175422,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274260,
+        "mode": 33152,
+        "mtime_ns": 1792258084243175422,
+        "nlink": 1,
+        "size": 1987,
+        "uid": 1000
+      },
+      "path": "pytest/test_noncanonical_existing_JSO0/journals/9263452e9a2214cab0277e1222065ce9180ddb8c1698166de3e42f1b732cf7a3.json",
+      "sha256": "2893e18423c17a67697bc6471910f17881de4f329055b14ab4dfe0d726570843"
+    },
+    {
+      "bytes": 0,
+      "metadata": {
+        "ctime_ns": 1792258084286043625,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277257,
+        "mode": 33204,
+        "mtime_ns": 1792258084286043625,
+        "nlink": 1,
+        "size": 0,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_store_namespace_0/native-store/one",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "metadata": {
+        "ctime_ns": 1792258084286043625,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277259,
+        "mode": 33204,
+        "mtime_ns": 1792258084286043625,
+        "nlink": 1,
+        "size": 0,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_store_namespace_0/native-store/three",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "metadata": {
+        "ctime_ns": 1792258084286043625,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277258,
+        "mode": 33204,
+        "mtime_ns": 1792258084286043625,
+        "nlink": 1,
+        "size": 0,
+        "uid": 1000
+      },
+      "path": "pytest/test_original_store_namespace_0/native-store/two",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 65537,
+      "metadata": {
+        "ctime_ns": 1792258084261167434,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274305,
+        "mode": 33152,
+        "mtime_ns": 1792258084261167434,
+        "nlink": 1,
+        "size": 65537,
+        "uid": 1000
+      },
+      "path": "pytest/test_oversized_existing_journa0/journals/3e3ab4c2e4eb9a55a320ab9bef75bcb9ce9f1eb043cc419717dae1c32bdea6e3.json",
+      "sha256": "1abe08ebecf1c18cab71f6fe28aaddf20268f85bad78bb9a72f88ca47c874662"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084169687000,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274220,
+        "mode": 33152,
+        "mtime_ns": 1792258084165063990,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_real_private_immutable_pu0/journals/c023b57fcbd86fd32d978f3ac29270985ceb02c26d1f44c5770e6ca53e95240e.json",
+      "sha256": "945df5f43c5416da1a75d35d4743fa57a19700c10ceda3aba52973475d5b40f3"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084249090216,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274294,
+        "mode": 33188,
+        "mtime_ns": 1792258084249090216,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_record_mode_change_fails_0/journals/7c0b3845ce434a768b47ef690472e59f476e5e911ebe9cda7eba75be52fb4d19.json",
+      "sha256": "ec72e40efbb60e8f459577ab8a0bab25a4965232f9c97ebbe1b075587a81dafa"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084202500980,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274232,
+        "mode": 33152,
+        "mtime_ns": 1792258084198725469,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_revision_denial_is_not_fi0/journals/1125f22341b9ee0b6c8ab73e342c4a83b9f0b2b8be8e276fb25491f8beb11a27.json",
+      "sha256": "15034ae3adaa87dc2bd924c139c52bc74b354c0b7d73fa91ea3372928a37567a"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084193096001,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274228,
+        "mode": 33152,
+        "mtime_ns": 1792258084189627879,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_same_revision_conflict_pr0/journals/1b19792b319b66e660e19a6592025d7d9417ee13d407c93a76c554d377931f20.json",
+      "sha256": "7cc2676c67ab86e68a0f429fcfe146bad16fd4226ecb7740e79caba96c40c8cf"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084245655790,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274274,
+        "mode": 33152,
+        "mtime_ns": 1792258084245655790,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_symlink_record_is_refused0/outside",
+      "sha256": "a7e9b0b6ab6796dfe97b7298ec2eac2399382fe71fa099096df5a48cba80db24"
+    },
+    {
+      "bytes": 1,
+      "metadata": {
+        "ctime_ns": 1792258084247828272,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274286,
+        "mode": 33204,
+        "mtime_ns": 1792258084247828272,
+        "nlink": 1,
+        "size": 1,
+        "uid": 1000
+      },
+      "path": "pytest/test_unknown_directory_populat0/journals/unexpected",
+      "sha256": "8a8de823d5ed3e12746a62ef169bcf372be0ca44f0a1236abc35df05d96928e1"
+    },
+    {
+      "bytes": 1802,
+      "metadata": {
+        "ctime_ns": 1792258084244114040,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75274264,
+        "mode": 33152,
+        "mtime_ns": 1792258084244114040,
+        "nlink": 1,
+        "size": 1802,
+        "uid": 1000
+      },
+      "path": "pytest/test_wrong_revision_filename_i0/journals/0000000000000000000000000000000000000000000000000000000000000000.json",
+      "sha256": "4ad801e322cd7abad049ff2345d447b4232e2dbc174da4d6db774970b8e56287"
+    },
+    {
+      "bytes": 636,
+      "metadata": {
+        "ctime_ns": 1792258084377043038,
+        "dev": 66306,
+        "gid": 1000,
+        "ino": 75277262,
+        "mode": 33152,
+        "mtime_ns": 1792258084374120737,
+        "nlink": 1,
+        "size": 636,
+        "uid": 1000
+      },
+      "path": "receipt.json",
+      "sha256": "86b1b1e613c77a42a2bb51138fe66e79ed0815886660e3b37ff765c4832bc9e7"
+    }
+  ],
+  "reservation_id": "0c6581ac42d74eb3a181ab5094680658",
+  "schema": "legal-ir-failed-fixture-recovery-capture@1",
+  "source_only_capture": true
+}

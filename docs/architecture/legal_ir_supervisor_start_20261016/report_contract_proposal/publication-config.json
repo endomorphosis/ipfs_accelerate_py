@@ -1,0 +1,40 @@
+{
+  "additional_frozen_bundles": [
+    {
+      "manifest_sha256": "8ef2a9764206819e2980114e662cc24c194aac7651420c085d28fd6c709008d7",
+      "qualification_observation": {
+        "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/handoff-controls-publication-observation-v01.json",
+        "bytes": 758,
+        "sha256": "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604"
+      },
+      "role": "real-candidate-binding-v01"
+    },
+    {
+      "manifest_sha256": "d5049a12a0622c7f4b9462db7657c3920130ed4c59a17919a0f2e440bb372313",
+      "qualification_observation": {
+        "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/handoff-controls-publication-observation-v01.json",
+        "bytes": 758,
+        "sha256": "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604"
+      },
+      "role": "native-regression-v05"
+    },
+    {
+      "manifest_sha256": "d22b69c666ba89c97956c02794aaed9db4849cc6129bec7392c15428c970c1a4",
+      "qualification_observation": {
+        "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/handoff-controls-publication-observation-v01.json",
+        "bytes": 758,
+        "sha256": "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604"
+      },
+      "role": "native-regression-v05-tests"
+    }
+  ],
+  "expected_accelerator_head": "064fa68164a399876fa3a2e9413a7ed0a6c67126",
+  "expected_branch": "agent/legal-ir-ordinary-worker-20261016",
+  "packet_observation": {
+    "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/packet-controls-root-observation-v01.json",
+    "bytes": 1256,
+    "sha256": "656c5f23430881effad6062cd502c02584d1475895534d7437b3a15be4b182d1"
+  },
+  "push": true,
+  "schema": "legal-ir-packet-proposal-publication-config@1"
+}

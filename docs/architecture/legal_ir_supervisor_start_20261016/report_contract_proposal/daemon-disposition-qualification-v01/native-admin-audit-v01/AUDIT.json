@@ -1,0 +1,56 @@
+{
+  "acceptance_authority": false,
+  "author_executed_tests_Git_Docker_providers_auth_or_native_jobs": 0,
+  "canonical_tasks_accepted": 0,
+  "critical_remaining_blockers": [
+    "A1CPU8generic child cannot own the current same-PID3CPU16host phase.",
+    "Original eager import and constructor use direct subprocess.run without native group-leader hooks.",
+    "Qualified freezer _Git is a private todo_daemon helper, is success-only, and cannot be imported as a runtime bootstrap dependency.",
+    "H4 spare-slot observation does not attach its CLI queries. A new fixed readonly Unix HTTP observer could remove only its three query forms; direct G3 image/create/inspect/rm producers still need native coverage.",
+    "Fourth admin owner with provider/watchdog/freezer would request4CPU20slots and is invalid.",
+    "Normal third-owner swaps alone do not resolve post-freezer CLI observations after revocation. The new H4-only in-process readonly observer design avoids that child-grant requirement but remains unimplemented/unqualified.",
+    "Existing public stopped release does not authorize new cleanup children or restore productive authority."
+  ],
+  "github_qualification": "skipped_by_user",
+  "implementation_decision": "Design and exact source contracts only. A safe usable generic adapter needs a new concrete native executor plus four original hook sites; current private freezer executor cannot cover eager import or preserve nonzero CompletedProcess semantics. No partial unresolved runtime hook was authored or installed.",
+  "limitations": [
+    "No new native admin implementation or runtime qualification is claimed.",
+    "Static constructor6+2+1call breakdown needs actual future callsite trace.",
+    "Same-session anchor is an explicitly documented SDK-doc variance already used by qualified freezer; no hard quota claim.",
+    "Host death durability and productive cleanup after revocation remain outside established evidence.",
+    "READONLY_DOCKER_OBSERVER.json is a narrow source-only alternative, not an existing native SDK authority or a qualified HTTP transport; shared protected G3 query/wait callers are excluded."
+  ],
+  "minimal_bootstrap_original_functions": 4,
+  "next_safe_qualification": "First implement the four original Git hooks/concrete admin executor, then genuinely admit3CPU16in the final host PID and qualify real bound-host cap2 refusal with a private actual DuckDB connection; no provider or canonical task consumption.",
+  "original_public_apis": [
+    {
+      "api": "ResourceLease.acquire_child",
+      "line": 953,
+      "meaning": "Actual retained parent capability; native source validates positiveCPU and parent/child envelopes.",
+      "source": "resource_scheduler.py"
+    },
+    {
+      "api": "ParentedPhaseResourceReservation.__init__",
+      "line": 45,
+      "meaning": "Exact real ResourceLease phase, same owner PID, finite3600s maximum, named roots/storage.",
+      "source": "parented_phase_resources.py"
+    },
+    {
+      "api": "ParentedPhaseResourceReservation.check_usage",
+      "line": 182,
+      "meaning": "Actual direct-owned PGID leader attachment, one current group, retained birth, maximum16group attachments including history.",
+      "source": "parented_phase_resources.py"
+    },
+    {
+      "api": "ParentedPhaseResourceReservation.release",
+      "line": 253,
+      "meaning": "Stopped cleanup after revocation only after actual group0 and native child-consumer drain; no new execution authority.",
+      "source": "parented_phase_resources.py"
+    }
+  ],
+  "original_runtime_enabled": false,
+  "preferred_small_readonly_successor": "Implement only the three typed H4 observations with fixed bounded AF_UNIX GETs in the actual retained observer, after freezer guard exit; no subprocess, native attachment or productive transport replacement.",
+  "schema": "legal-ir-native-admin-audit@1",
+  "source_only": true,
+  "status": "source_audit_complete_runtime_design_unimplemented"
+}

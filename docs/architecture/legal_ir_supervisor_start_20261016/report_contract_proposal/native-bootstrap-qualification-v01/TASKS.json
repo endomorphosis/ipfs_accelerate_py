@@ -1,0 +1,385 @@
+{
+  "acceptance_authority": false,
+  "canonical_configured_attempt_cap": 2,
+  "canonical_historical_consumed_attempts": 2,
+  "canonical_task_count": 64,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "counter_or_cap_mutation_authority": false,
+  "draft": false,
+  "engineering_evidence": {
+    "core_controls": {
+      "actual_native_executor_qualified": false,
+      "actual_parent_finalized": true,
+      "actual_root_phase_owner_rows_drained": true,
+      "disk_status": "released",
+      "final_attempt_bytes": 8497,
+      "native_finalized": true,
+      "observation": "native-admin-controls-root-observation-r01.json",
+      "passed_testcases": 36,
+      "sha256": "12b558739e1faa56ce9953979db34f7c04224e5a803056b20cf659385e7e8a57"
+    },
+    "current_phase_native_finalized_source_cold_control_cases": 62,
+    "hook_controls": {
+      "actual_parent_finalized": true,
+      "actual_positive_bootstrap_qualified": false,
+      "actual_root_phase_owner_rows_drained": true,
+      "disk_status": "released",
+      "final_attempt_bytes": 7277,
+      "native_finalized": true,
+      "observation": "bootstrap-hook-controls-root-observation-r01.json",
+      "passed_testcases": 26,
+      "sha256": "d24f5f2eb23a6a83548cd09fb74f83844973a700e49987da8049c7a531da7c6e"
+    },
+    "immutable_evidence_copies": {
+      "copied_files": 12,
+      "copied_payload_bytes": 622095,
+      "copies_do_not_establish_native_outcomes": true,
+      "manifest": "evidence/COPY_MANIFEST-r02.json",
+      "retained_predecessor_manifest": "evidence/COPY_MANIFEST-r01.json",
+      "retained_predecessor_sha256": "974669d085ffb2b9549faf360ff1ad2daeec5c53e5da87068eb3e7ea281fbbde",
+      "sha256": "b60c659251fe074c2fc5e53f949482fc386f041b9a8dcca8bdc06099a6b33bf9",
+      "source_copy_only": true
+    },
+    "preparation": {
+      "actual_parent_finalized": true,
+      "actual_root_phase_owner_rows_drained": true,
+      "disk_status": "released",
+      "final_attempt_bytes": 111365166,
+      "full_host_qualification_implied": false,
+      "native_finalization_confirmed": true,
+      "original_owner_and_child_gone": true,
+      "root_observation": "preparation-root-observation-r01.json",
+      "root_observation_sha256": "772011f4ab4065459314d8af319f9bd6a06473573361145623de0263203dc3c5",
+      "root_reported_session": 79554,
+      "seed_payload_bytes": 1158,
+      "seed_payload_files": 11,
+      "source_payload_bytes": 106984106,
+      "source_payload_files": 2813,
+      "status": "passed_native_finalized_independently_verified"
+    },
+    "same_PID_full_host": {
+      "Docker_or_provider_or_model_work_qualified": false,
+      "Git_command_count": 37,
+      "SELECT_witnesses_during_refusal": 4,
+      "SQL_writes_during_refusal": 0,
+      "V01_preparation_remains_separately_valid": true,
+      "actual_Popen_count": 38,
+      "actual_configured_cap_two_host_refusal_qualified": true,
+      "actual_consumed_ordinal_qualified": false,
+      "actual_full_original_import_constructor_qualified": true,
+      "actual_owner_PID": 1518884,
+      "actual_owner_exited": true,
+      "actual_parent_finalized": true,
+      "actual_positive_native_Git_bootstrap_qualified": true,
+      "actual_root_phase_owner_rows_drained": true,
+      "actual_same_PID_root_and_phase": true,
+      "admin_disk_status": "released",
+      "admin_final_attempt_bytes": 0,
+      "all_38_observed_child_PIDs_exited": true,
+      "all_five_selected_native_leases_absent": true,
+      "caller_raw_handle_and_original_lock_closed_after_refusal": true,
+      "canonical_task_selection_or_cap_exhaustion_qualified": false,
+      "capacity_observation_is_not_standing_admission": true,
+      "completed_nonzero_check_false_and_check_true_qualified": true,
+      "data_disk_status": "released",
+      "data_final_attempt_bytes": 1651903,
+      "data_final_attempt_files": 18,
+      "final_stdout_copy": "evidence/same-pid-host-final-stdout.json",
+      "final_stdout_copy_sha256": "6aca53033e1664b38370d96bc0689d692cc0f768d26fbdfd780a715f4fe63a94",
+      "final_stdout_original_native_closeout_pending": false,
+      "host_finished_without_pending": true,
+      "legal_logic_Lean_training_qualified": false,
+      "native_finalized": true,
+      "persistent_anchor_attachments": 1,
+      "private_counter_row_unchanged": true,
+      "real_revocation_timeout_pending_failures_qualified": false,
+      "request": "full-host-fixture-v02/same-pid-request-r01.json",
+      "request_sha256": "9f7414d0132e167352e9e2e7fbb66cbb221b88eb81ac67fb4842b0215af4ae98",
+      "root_and_phase_each": {
+        "child_process_slots": 16,
+        "cpu_slots": 3,
+        "memory_mb": 4096
+      },
+      "root_observation": "full-host-root-observation-r01.json",
+      "root_observation_sha256": "d13191ad610313c49874f305fb6877a77cc407faf6090ea00a4bdeb6174a20c7",
+      "runtime_enabled": false,
+      "same_borrow_identity_observations": 1,
+      "selected_final_owner_successor": "full-host-fixture-v02",
+      "sequential_byte_text_semantic_queries": 20,
+      "source_manifest": "full-host-fixture-v02/SOURCE_MANIFEST.json",
+      "source_manifest_sha256": "69120e5a91ad1c9932e5236c9420ecb1591cda0e9a32139f7e8aab584eb21b68",
+      "status": "passed_native_finalized_independently_verified",
+      "superseded_unexecuted_final_owner": "full-host-fixture-v01/run_same_pid_owner.py",
+      "worker_pre_finalization_copy": "evidence/same-pid-host-pre-finalization-result.json",
+      "worker_pre_finalization_copy_sha256": "15686fff3ab05792a92d17507b787aa6f4634136a0c50ced4e1c78cf049f6c8f",
+      "worker_saved_pre_finalization_true_is_honest": true
+    }
+  },
+  "explicitly_unqualified": [
+    "real timeout/revocation/pending cleanup until NADM-03-FAULTS",
+    "unknown root/phase acquisition and failed or incomplete caller-close fault paths",
+    "arbitrary Git compatibility or complete clean-repository capsule materialization",
+    "positive cap3 productive dispatch, canonical task selection or cap-exhaustion proof",
+    "H4 readonly HTTP observer",
+    "ordinary productive Docker ownership",
+    "provider/model/authentication and llm_router fallback",
+    "actual consumed-attempt join and parked borrowed closeout",
+    "independent candidate acceptance",
+    "legal source fidelity and logic-family equivalence",
+    "lake build legal and Lean trust policy",
+    "8D/384D/768D decoder accuracy/training gains"
+  ],
+  "github_qualification": "skipped_by_user",
+  "goal": {
+    "id": "NADM-G1",
+    "status": "initial_readonly_Git_bootstrap_and_configured_cap_two_refusal_native_finalized_broader_gaps_open",
+    "subgoals": [
+      {
+        "id": "NADM-S1",
+        "tasks": [
+          {
+            "actual_evidence": "full-host-root-observation-r01.json",
+            "actual_native_executor_qualified": true,
+            "completion_criteria": [
+              "Use the actual original same-PID phase and already-entered admin owner, exact original global ledger/named roots/source policy and a retained actual pre-start native consumer; no new root or reconstructed keys.",
+              "Keep one attached same-session PGID anchor and finite joined real Git commands, bounded initial-size source hashing/output/deadlines and the original CompletedProcess.args/nonzero/check/text behavior.",
+              "Bound resource/timeout/kwargs/source failures escape legacy Exception catches; original actual objects survive unknown creation/cleanup/release. Source controls cannot qualify these genuine native paths."
+            ],
+            "depends_on": [],
+            "id": "NADM-01",
+            "passed_testcases": 36,
+            "qualification_scope": "Initial finite readonly Git profile and ordinary successful stopped closeout only; real timeout/revocation/pending/fault and wider productive paths remain unqualified.",
+            "source": "native-admin-v01/SOURCE_MANIFEST.json",
+            "source_control_evidence": "native-admin-controls-root-observation-r01.json",
+            "status": "complete_initial_readonly_Git_profile_source_and_genuine_same_PID_qualified_runtime_uninstalled",
+            "title": "Author the concrete original-native Git bootstrap executor"
+          },
+          {
+            "actual_evidence": "full-host-root-observation-r01.json",
+            "actual_positive_bootstrap_qualified": true,
+            "completion_criteria": [
+              "Patch only route._agent_git_output, checkout_lock.git_common_dir, board_control_plane.control_plane_git_common_dir and PortalImplementationDaemon._git_ref_exists.",
+              "Use the canonical pure binding discriminator before bound argv evaluation. Bound execution stays outside legacy fallback catches; original unbound bodies/validators and every other module definition remain preserved.",
+              "Maintain exact composed daemon/host/entry source associations and separately measure actual full import/constructor behavior."
+            ],
+            "depends_on": [
+              "NADM-01"
+            ],
+            "id": "NADM-02",
+            "passed_testcases": 26,
+            "qualification_scope": "Initial finite readonly Git profile and ordinary successful stopped closeout only; real timeout/revocation/pending/fault and wider productive paths remain unqualified.",
+            "source": "bootstrap-hooks-v01/SOURCE_MANIFEST.json",
+            "source_control_evidence": "bootstrap-hook-controls-root-observation-r01.json",
+            "status": "complete_initial_readonly_Git_profile_source_and_genuine_same_PID_qualified_runtime_uninstalled",
+            "title": "Add four narrow original Git hooks without altering the unbound bodies"
+          }
+        ],
+        "title": "Freeze and qualify the narrow source implementation"
+      },
+      {
+        "id": "NADM-S2",
+        "tasks": [
+          {
+            "actual_evidence": "preparation-root-observation-r01.json",
+            "completion_criteria": [
+              "Use the reviewed original V05 attachment gate and128MiB/no external charges before preparation effects. Copy the complete2813-file proposed Python capsule with exact modes/hashes and preserve its2812-file predecessor provenance.",
+              "Build an inert private seed with the actual pinned Git binary, no alternates/hardlinks/symlinks/submodules and exact branch/head/tree/input identities. Charge all assembly/capsule/seed/metadata bytes.",
+              "Root independently verifies actual parent native finalization, payload population/modes and drained original owner/phase/root rows before freezing a later host request."
+            ],
+            "depends_on": [
+              "NADM-01",
+              "NADM-02"
+            ],
+            "id": "NADM-03-PREP",
+            "source": "full-host-fixture-v01/prepare_capsule_and_seed.py",
+            "source_generation_disposition": "V01 preparation remains valid; its final-owner script is separately unexecuted/superseded by V02",
+            "status": "passed_native_finalized_independently_verified",
+            "title": "Prepare the complete immutable capsule and self-contained private Git seed"
+          },
+          {
+            "actual_configured_cap_two_host_refusal_qualified": true,
+            "actual_evidence": "full-host-root-observation-r01.json",
+            "actual_positive_native_Git_bootstrap_qualified": true,
+            "canonical_task_selection_or_cap_exhaustion_qualified": false,
+            "completion_criteria": [
+              "Use actual original root3CPU4096MiB16slots and matching phase in the final main PID. Admit sibling data1CPU3072MiB8slots128MiB and admin1CPU512MiB4slots32MiB; never nest a substitute under generic1CPU8.",
+              "Exercise20+real sequential readonly Git commands with one original native attachment and real byte/text/nonzero/check results; import the complete original daemon and run its original constructor under the same actual executor.",
+              "Stop/reap/independently prove the original admin group empty, drain consumer, fsync and use original public release before actual host construction.",
+              "Use actual private DuckDB/borrow identities and cap2. Permit measured SELECT witnesses but refuse before SQL writes/new connection/reconnect/caller close, productive bodies, task selection/start, provider/model or Docker work.",
+              "Distinguish exact proven pre-write admission refusal from unknown ledger/native outcomes. Retain every original pending object identity without replacing it by receipts; unknown host/borrow/connection holds do not unwind.",
+              "Retain the actual scheduler and acquisition-error frames on unknown root/phase admission outcomes. Capture caller raw/lock identities immediately after construction; any failed, poisoned or incomplete close retains those actual references.",
+              "Prove caller close is closed/unpoisoned with cleared raw/lock fields and a completed original lock generator, and require selected ancestor rows absent before failure closeout. These source safeguards are not real fault-case qualification.",
+              "Root verifies actual selected owner records released, original processes/groups gone and root/phase/native rows drained; a worker result or returned projection alone does not prove closeout."
+            ],
+            "consumed_original_attempt_positive_qualified": false,
+            "depends_on": [
+              "NADM-03-PREP"
+            ],
+            "id": "NADM-03",
+            "real_revocation_timeout_pending_failures_qualified": false,
+            "source": "full-host-fixture-v02",
+            "status": "passed_native_finalized_independently_verified",
+            "superseded_unexecuted_final_owner": "full-host-fixture-v01/run_same_pid_owner.py",
+            "title": "Qualify the original same-PID bootstrap and real bound-host cap2 refusal"
+          },
+          {
+            "actual_evidence": null,
+            "completion_criteria": [
+              "Use genuinely admitted original owners and real finite child topology, not mocked positive SDK objects or producer replacement.",
+              "Exercise requested timeout, absolute expiry, output overflow, before/after Popen or attachment uncertainty, revocation and dead-anchor/live-descendant cases. Verify resource refusal never becomes original eager-import fallback.",
+              "Show actual pending executor/owner/phase/consumer/anchor/process references remain held on unknown outcomes; public stopped acknowledgement performs no signal/retry/new admission and cannot release borrowed/disposition state.",
+              "Qualify genuine unknown root/phase acquisition and caller close failures separately: actual scheduler/error frames and original raw connection/lock survive uncertainty, and no ancestor release relies on an ambiguous admission or suppressed close failure.",
+              "Record real independent native/disk/ancestor finalization for each settled case and preserve unresolved original custody honestly. No quota/cap/key/canonical-counter change."
+            ],
+            "depends_on": [
+              "NADM-03"
+            ],
+            "id": "NADM-03-FAULTS",
+            "status": "unqualified_source_paths_only",
+            "title": "Qualify the real Git deadline, cancellation and retained-cleanup boundaries"
+          }
+        ],
+        "title": "Establish genuine same-PID original composition and failure boundaries"
+      },
+      {
+        "id": "NADM-S3",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Implement only original H4 daemon ID and exact allocated ID/name absence observations with fixed bounded AF_UNIX GET /info and exact owned container inspect endpoints.",
+              "Use actual retained same-PID cleanup context, daemon/socket identity, strict present/404 semantics, bounded bytes/time/counts and public-field projection only. No Env/Auth/raw container or error-body publication.",
+              "No new Popen/owner/slot/history or productive grant after cancellation; no socket observation while actual authenticated freezer guard is active.",
+              "Preserve shared G3 protected Codex inspect/recovery/7200-second wait and productive create/start/wait contracts. HTTP absence alone cannot settle native/process/path/borrow/finalizer custody."
+            ],
+            "depends_on": [
+              "NADM-03"
+            ],
+            "id": "NADM-04",
+            "source_design": "https://github.com/endomorphosis/ipfs_accelerate_py/blob/be5547c51a0237c643287df2aecc357c1f5a15fb/docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/daemon-disposition-qualification-v01/native-admin-audit-v01/READONLY_DOCKER_OBSERVER.json",
+            "status": "design_only_unimplemented_unqualified",
+            "title": "Implement the three fixed H4 readonly Docker observations"
+          },
+          {
+            "completion_criteria": [
+              "Cover actual ordinary G3 image/startability/execution inspection, inert create and host fallback removal producers with actual native owner/groups; retain existing watchdog descendants under their original attached group.",
+              "Preserve protected74, canonical providers and original kernel/transport source checks. Initial Git-only component is not an arbitrary Docker executor.",
+              "Keep provider8+watchdog4+admin4 then provider8+watchdog4+freezer4 within3CPU16slots; admin drains/releases before freezer. Never claim provider+watchdog+freezer+admin4 fits.",
+              "Authenticate actual charged scopes instead of a phantom spare+1 check. Revocation never restores productive authority or admits a fresh replacement owner."
+            ],
+            "depends_on": [
+              "NADM-03",
+              "NADM-04"
+            ],
+            "id": "NADM-05",
+            "status": "not_implemented_unqualified",
+            "title": "Own the remaining original ordinary Docker administration and freezer transitions"
+          },
+          {
+            "completion_criteria": [
+              "Use actual existing inert images/owned containers with original source/native admission and no model/provider/authentication/canonical attempt.",
+              "Qualify exact owned present200/removed404, replacement-name presence, wrong daemon/socket, malformed/overflow/timeout/disconnect and secret-projection failures; unknown stays pending.",
+              "Exercise before/during/after-freezer cancellation, forbid all Docker observations while freezer is active, and verify actual native consumer/group/owner release without new grants.",
+              "Require actual independent public native/disk finalization per case; cold/source controls or JSON metadata are not genuine positive evidence."
+            ],
+            "depends_on": [
+              "NADM-04",
+              "NADM-05",
+              "NADM-03-FAULTS"
+            ],
+            "id": "NADM-06",
+            "status": "unqualified",
+            "title": "Qualify real inert Docker custody, observer identity and cancellation"
+          }
+        ],
+        "title": "Complete ordinary Docker/freezer custody"
+      },
+      {
+        "id": "NADM-S4",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Retain actual original task/state/lifecycle/source/claims, caller connection/borrow, finalizer and admin object references before generic unwind.",
+              "Join independently stopped native custody to the wider plan's actual consumed-state association, deny-only parking and exact original continuations; never clear a pending flag to bypass guards.",
+              "Implement a reviewed parked borrowed-scope closeout that unregisters exactly once and never closes/reconnects caller-owned DB; original counter/cap/task acceptance remains unchanged.",
+              "A candidate still needs independent legal/source/family/Lean validation from the wider plan; native pipeline settlement is not semantic acceptance."
+            ],
+            "depends_on": [
+              "NADM-06"
+            ],
+            "id": "NADM-07",
+            "status": "not_implemented_joint_original_positive_path_unqualified",
+            "title": "Integrate native administration with original disposition and finalizer holds",
+            "wider_plan_task_ids": [
+              "DISPOSITION-01",
+              "DISPOSITION-03",
+              "DISPOSITION-04",
+              "DISPOSITION-05",
+              "DISPOSITION-06",
+              "DISPOSITION-07",
+              "ENTRY-ALL-WRITERS"
+            ]
+          },
+          {
+            "completion_criteria": [
+              "Root has recorded actual preparation and narrow same-PID host outcomes, source pins and independent native closeout; final READINESS/TASKS and their resolved acyclic task graph are ready for exact publication freeze.",
+              "Freeze a separate additive owned documentation inventory/packet/request without recursive input cycles, preserve historical failed/unexecuted source generations and original runtime/board/cap/counters.",
+              "Publish only through reviewed actual original native custody on the owned draft effort. No runtime install, PR merge, CI or GitHub qualification; independently verify actual publication and final native closeout.",
+              "Explicitly retain all unqualified revocation/timeout/pending, Docker/provider/consumed-join and legal/logic/Lean/training claims; source publication alone does not complete these tasks."
+            ],
+            "depends_on": [
+              "NADM-03"
+            ],
+            "id": "NADM-08",
+            "status": "final_exact_documents_ready_publication_pending",
+            "title": "Publish exact reviewed source and engineering outcomes with remaining gaps"
+          }
+        ],
+        "title": "Join original settlement and publish precise evidence"
+      }
+    ],
+    "title": "Qualify original native bootstrap before ordinary administration and full autoformalization transport"
+  },
+  "provider_dispatch_authority": false,
+  "publication": {
+    "packet_frozen": false,
+    "request_frozen": false,
+    "runtime_installation_in_scope": false,
+    "status": "final_documents_ready_not_yet_published"
+  },
+  "root_final_outcomes_recorded": true,
+  "root_must_update_final_outcomes_before_publication": false,
+  "root_review_and_source_freeze_required": true,
+  "runtime_enabled": false,
+  "runtime_status": "proposed_uninstalled",
+  "schema": "legal-ir-native-bootstrap-supervisor-goals@1",
+  "source_generation": {
+    "composed_daemon_sha256": "39fc698864435ad9668ee88fcf86390ab2b34d048663a1096d08851b7abcca9d",
+    "native_admin_sha256": "12d96d89b1dfafffa1ca198510284c2c340741bb60774ec01c5011ef576697d3",
+    "original_runtime_installed": false,
+    "pin_only_entry_V02_sha256": "63bedb42176a195e5c9ab7c78079ef3498bccef34058462b1a07b41cbc3ab74f",
+    "pin_only_host_V06_sha256": "1fb433c29462fc65c15a2ea6be74cfc4c0f816c04d9a4ff95f3fc88a3e47ac0c"
+  },
+  "task_graph_review": {
+    "actual_task_execution_by_document_author": 0,
+    "acyclic": true,
+    "dependency_edges": 13,
+    "dependency_references_valid": true,
+    "merged_current_and_wider_acyclic": true,
+    "merged_current_and_wider_dependency_edges": 55,
+    "merged_current_and_wider_unique_task_ids": 31,
+    "source_only_review": true,
+    "unique_task_ids": 10,
+    "wider_explicit_task_ids": 21,
+    "wider_linked_native_admin_task_ids": 8,
+    "wider_plan_info_references_resolved": 7,
+    "wider_task_ids_resolved": 29
+  },
+  "wider_plan": {
+    "owned_draft_PR": "https://github.com/endomorphosis/ipfs_accelerate_py/pull/292",
+    "published_commit": "be5547c51a0237c643287df2aecc357c1f5a15fb",
+    "relationship": "This phase advances NADM only; original disposition/all-writer/candidate/semantic/training goals remain in the published wider plan.",
+    "task_count": 29,
+    "task_url": "https://github.com/endomorphosis/ipfs_accelerate_py/blob/be5547c51a0237c643287df2aecc357c1f5a15fb/docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/daemon-disposition-qualification-v01/TASKS.json"
+  }
+}

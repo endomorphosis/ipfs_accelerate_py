@@ -1,0 +1,30 @@
+{
+  "bootstrap_import_order": [
+    "Admit original actual root and phase in the final host PID using original public SDK.",
+    "Import a stdlib-only runtime native_admin_execution module without todo_daemon imports. Runtime DAG explicitly forbids depending on todo_daemon.",
+    "Construct an explicit concrete executor from actual ParentedPhaseResourceReservation and actual source pins; enter its native scope and retain its original native consumer.",
+    "Start/attach real persistent anchor before releasing any actual Git barrier.",
+    "Bind exact executor in one same-PID/main-thread ContextVar scope, then import complete original daemon and run original constructor.",
+    "Stop/reap group, fsync actual outputs, release consumer and original admin owner; then construct genuine ReportOnlyNativeHost with same original phase and private real DuckDB connection."
+  ],
+  "implementation_authored": false,
+  "module": "ipfs_accelerate_py.agent_supervisor.runtime.native_admin_execution",
+  "requirements": [
+    "Exact concrete executor/actual SDK owner type, current PID/thread, live original ancestry, complete reviewed source pins; metadata/source hash alone grants nothing.",
+    "Unbound returnNone preserves original producer branch. Bound call cannot silently fall back after resource refusal/cancellation/unsupported kwargs.",
+    "Preserve original argv/cwd/env/encoding/PIPE/DEVNULL semantics and real nonzero return codes; do not use freezer.run verbatim because it assumes success and returns bytes only.",
+    "Pin actual /usr/bin/git and any separately integrated ordinary Docker CLI producer; preserve original G3 productive isolation/create/cleanup arguments and validations. Do not route the shared G3 query helper through H4 readonly mapping.",
+    "No replacing subprocess/Popen, original methods, package modules, aliases, global CWD/stdin/stdout or source producers.",
+    "Executor/owner/Popen/birth/consumer references are original in-process objects. Refuse copy/pickle/receipt reconstruction.",
+    "Source module must not import todo_daemon/private freezer _Git; reuse its qualified topology in a separately reviewed runtime component.",
+    "Unknown Popen/start/cleanup outcome retains actual owner, consumer, anchor and process refs before raising a dedicated BaseException; original host must register this before any generic cleanup/finalizer.",
+    "Keep role-bound4slot owner through actual commands; close/independently prove empty original group before any owner release. Never reset child history."
+  ],
+  "schema": "legal-ir-native-admin-proposed-ABI@1",
+  "separate_H4_readonly_observer": "A separate typed AF_UNIX observer in READONLY_DOCKER_OBSERVER.json is preferred for the three H4 forms. It is not a generic executor method or native grant; original same-PID retained custody and freezer exclusion remain mandatory.",
+  "signatures": [
+    "NativeAdminExecution(owner, *, source_sha256, allowed_roots, absolute_deadline, maximum_commands)",
+    "bind_native_admin_execution(actual_executor) -> nonportable context manager",
+    "run_bound_native_admin_if_present(original_argv, *, cwd, env, stdin, stdout, stderr, capture_output, text, timeout, check, pass_fds=()) -> CompletedProcess | None"
+  ]
+}

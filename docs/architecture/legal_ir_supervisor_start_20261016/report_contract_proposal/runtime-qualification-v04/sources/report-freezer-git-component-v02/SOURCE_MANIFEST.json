@@ -1,0 +1,62 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "controlled_component_cases": 11,
+  "expected_actual_git_children": 29,
+  "files": [
+    {
+      "bytes": 2629,
+      "path": "README.md",
+      "sha256": "e2f9dc2def98c296a570a620e4bb9b18097f4e60b9a4989b777db84170587052"
+    },
+    {
+      "bytes": 1448,
+      "path": "SOURCE_DIAGNOSIS.json",
+      "sha256": "a8329c4784fc0219a4520d659abffadbb937b4ef7e1698e1418cf6962dfba2d2"
+    },
+    {
+      "bytes": 28528,
+      "path": "qualify_freezer_git.py",
+      "sha256": "22fbdd8fff0a1ab004dbae2f9d340fe6e5a6d4155c3aff5137e144273c515639"
+    }
+  ],
+  "historical_failure_reclassified_as_success": false,
+  "input_pins": [
+    {
+      "bytes": 695,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-v01/SOURCE_MANIFEST.json",
+      "role": "preserved_prior_source_or_actual_failure_metadata",
+      "sha256": "06e5a8b7d96254ad81765f2eb8c3f260ca4e5732d131b3034669a310589f92d6"
+    },
+    {
+      "bytes": 11041,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-request-v01.json",
+      "role": "preserved_prior_source_or_actual_failure_metadata",
+      "sha256": "c29714ef25bc59a095945a4f1dc56e7785da8f45daf585c8b2e158f2665ee7e3"
+    },
+    {
+      "bytes": 11129,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-request-v02.json",
+      "role": "preserved_prior_source_or_actual_failure_metadata",
+      "sha256": "d598f30ac4a28d2bdb04c4e99f1c6dbd3fbcc185bd319864caf91da820995232"
+    },
+    {
+      "bytes": 2212,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-root-observation-r01.json",
+      "role": "preserved_prior_source_or_actual_failure_metadata",
+      "sha256": "13b98b8c3459bb6d750caadc75c16e96db10bace4af4d26d12efd15ba266a0c6"
+    },
+    {
+      "bytes": 1190,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-r01-terminal.json",
+      "role": "preserved_prior_source_or_actual_failure_metadata",
+      "sha256": "ae14af3b4c2aefc2e7fbf1768091fa3754af40b8753262271a43a4ed2d340b61"
+    }
+  ],
+  "native_jobs_started_by_author": false,
+  "provider_calls_performed": false,
+  "public_provider_freezer_exercised": false,
+  "schema": "legal-ir-report-freezer-git-component-source@2",
+  "source_only": true
+}

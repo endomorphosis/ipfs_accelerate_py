@@ -1,0 +1,63 @@
+{
+  "acceptance_authority": false,
+  "actual_provider_execution_qualified": false,
+  "actual_real_provider_to_acceptance_handoff_qualified": false,
+  "board_enabled": false,
+  "canonical_tasks_accepted": 0,
+  "cli_contract": "`--check-report` remains non-accepting at exit 3; native acceptance uses the separate trusted host API.",
+  "completion_authority": false,
+  "failure_policy": "Preserve genuinely observed failed controls and original historical failures without retrospective qualification.",
+  "inert_tasks_not_dispatched": [
+    {
+      "goal": "Complete trusted original-provider handoff",
+      "id": "LIR-HOST-001",
+      "tasks": [
+        "Integrate and qualify the opt-in original primary-provider success callback under two genuine owners.",
+        "Retain actual native capacity and actual object references through uncertain stopped cleanup.",
+        "Implement and independently qualify the requested Codex backup route; V01 supports the primary route only."
+      ]
+    },
+    {
+      "goal": "Bind a real report-only candidate to its original successful provider attempt",
+      "id": "LIR-CANDIDATE-001",
+      "tasks": [
+        "Reuse daemon candidate commit serialization and declared bounded JSON staging.",
+        "Preserve the two historical consumed attempts and require the separately reviewed total cap 3.",
+        "Join actual provider execution, original attempt, exact candidate Git blobs and frozen original task population."
+      ]
+    },
+    {
+      "goal": "Complete real-context validation and original-board acceptance",
+      "id": "LIR-ACCEPT-001",
+      "tasks": [
+        "Run the strict Docker/native real-context checker on the actual frozen candidate.",
+        "Use the separate trusted host one-use acceptance API and original controller CAS.",
+        "Keep all 63 later tasks blocked until the first original task is genuinely accepted."
+      ]
+    },
+    {
+      "goal": "Measure legal autoformalization quality",
+      "id": "LIR-EVAL-001",
+      "tasks": [
+        "Evaluate held-out real US Code source fidelity and span/entity/definition graph consistency.",
+        "Evaluate the actual 8D, 384D and 768D decoder checkpoints by logic family and semantic validity.",
+        "Build the unified Lean 4 corpus with lake build legal and separate syntax success from legal fidelity."
+      ]
+    }
+  ],
+  "observed_engineering_status": {
+    "custody_memory_controls": 35,
+    "historical_nonmodel_gate_v01_passed": false,
+    "no_Docker_custody_unwind_passed": true,
+    "nonmodel_gate_passed": true,
+    "nonmodel_gate_v02_execution_observed": true,
+    "nonmodel_gate_v02_pure_environment_controls": 15,
+    "source_hook_controls": 104
+  },
+  "packet_materialized": false,
+  "production_hook_deployed": false,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-handoff-readiness@3",
+  "source_pipeline_dispatchable": false,
+  "task_attempts_changed": false
+}

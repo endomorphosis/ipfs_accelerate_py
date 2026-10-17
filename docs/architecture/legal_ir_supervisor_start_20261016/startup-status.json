@@ -1,0 +1,151 @@
+{
+  "schema": "legal-ir-ordinary-worker-bootstrap-startup-status@1",
+  "status": "r03_reviewed_total_attempt_cap_two_after_fenced_r02_backpressure_stop",
+  "execution_namespace": "legal-ir-ordinary-worker-bootstrap-20261016-r03",
+  "required_branch": "agent/legal-ir-ordinary-worker-20261016",
+  "required_ancestor": "93cfd32f65cd231df57e53736edf0f78b58af009",
+  "source_package_commit": "d548a9353e5fb26b2ab40fdab0d5a50336bdb9f1",
+  "ordinary_image_qualified": true,
+  "image_profile_path": "containers/external-agent/ordinary-task-toolchain/image-profile.json",
+  "image_profile_observed_sha256": "af9b05224ce4ad7137c13ac9bad12167422b5e90a7e80b751633775d17997ad3",
+  "image_id": "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e",
+  "image_label": "2026-10-16-ordinary-v1",
+  "image_qualification_scope": "Owner-reported genuine mounted runtime, ordinary route integration and normal/crash cleanup controls; source profile inspected by this revision author.",
+  "provider_route": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.7",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-6.1-sol",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 1,
+    "primary_executable": "/home/barberb/.local/bin/grok"
+  },
+  "legal_ir_supervisor_started": false,
+  "provider_task_dispatched": false,
+  "native_preflight_for_this_revision_passed": false,
+  "current_source_bindings_fresh_for_this_revision": false,
+  "independent_acceptance": {
+    "bound": false,
+    "valid_report_cli_exit_code": 3,
+    "reason": "independent_acceptance_capability_not_bound",
+    "self_authored_receipt_override": false
+  },
+  "task_population": {
+    "tasks": 64,
+    "goals": 34,
+    "legacy_parents": 24,
+    "eligible_task_ids": [
+      "LIR-9001"
+    ],
+    "phase_blocked": 63
+  },
+  "historical_startup_status": {
+    "commit": "651d2ea941c720726e234fbe4e319e650ad70f71",
+    "path": "docs/architecture/legal_ir_supervisor_start_20261016/startup-status.json",
+    "sha256": "3b2b057a288556ef5bca63521f77da817bc75973e63e34ec1ac24b39d4adbaad",
+    "scope": "Original native preparation/readiness/missing-image observations remain historical and were not rerun by this author."
+  },
+  "next_actions": [
+    "Preserve stopped r01/r02 evidence and durable attempt history; do not reset counts, delete state or adopt/release prior claims.",
+    "Review and install this explicit r03 revision with two total durable task attempts, fresh namespace/runtime and unchanged remaining bounds.",
+    "Set provider TMPDIR/TMP/TEMP before all native imports to the separately admitted and precharged provider03 directory, keeping strict inventory and shared caps unchanged.",
+    "Populate actual fresh r03 owner source observations, commit controls, freeze source/request hashes and execute new genuine native preflight.",
+    "Start at most one finite source-only LIR-9001 supervisor with genuine native/Docker cleanup custody; observe actual provider/model outcomes without inferring generation absence from earlier failures.",
+    "Keep executable report acceptance exit3, independent factual acceptance unbound and all63 future task blockers unchanged."
+  ],
+  "revision_author_execution": {
+    "product_imports": false,
+    "checker_executed": false,
+    "native_or_provider_jobs": false,
+    "database_or_payload_reads": false,
+    "checkout_or_git_ref_mutations": false
+  },
+  "runtime_root": "workspace/legal-ir-ordinary-worker-20261016-r03",
+  "previous_launch01": {
+    "status": "failed_preserved_stopped_native_generation",
+    "supervisor_started": true,
+    "owner_exit_status_reported": 1,
+    "child_returncode": 2,
+    "failure_type": "DaemonResourceError",
+    "failure_summary": "Strict attempt inventory rejected an ephemeral authentication symlink; final strict inventory retained the disk claim.",
+    "native_stop_verified": true,
+    "all_trees_fenced": true,
+    "owned_group_quiescent": true,
+    "provider_generation_established": false,
+    "disk_claim_retained": true,
+    "disk_claim_adopted_or_released_by_this_revision": false,
+    "receipt": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch01/receipt.json",
+      "bytes": 1436,
+      "sha256": "09835b8c09716cdaa04d30fce9629345d78f885e4bce2be8e1a51525290326b8"
+    },
+    "native_terminal_receipt_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/workspace/legal-ir-ordinary-worker-20261016/state/configured-board-master.pid.terminal.json",
+    "native_terminal_receipt_cid_reported": "baguqeerajy2dw4t3hn4tpunvc7qonncbnvo3xv27mcjz6roprppr5ztk6mna",
+    "scope": "Selected engineering receipt fields observed; controller must authenticate the exact stopped generation before retry. No database or provider payload was read by this author."
+  },
+  "previous_preflight01": {
+    "status": "completed_for_r01_not_r02",
+    "child_returncode": 0,
+    "owned_group_quiescent": true,
+    "receipt": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-preflight01/receipt.json",
+      "bytes": 637,
+      "sha256": "bf450d1a0fe0c65b6310085e8c23cbe1069eaeeb7b630b0d24116d4b673a9e8c"
+    }
+  },
+  "provider_temporary_directory_plan": {
+    "path": "/tmp/pytest-of-barberb/legal-ir-ordinary-worker-bootstrap-20261016-provider03",
+    "outside_strict_attempt_inventory": true,
+    "set_before_native_imports": [
+      "TMPDIR",
+      "TMP",
+      "TEMP"
+    ],
+    "requires_actual_native_external_storage_precharge": true,
+    "admitted_by_this_document": false
+  },
+  "durable_attempt_cap_revision": {
+    "previous_max_task_attempts": 1,
+    "max_task_attempts": 2,
+    "total_durable_attempts_not_per_restart": true,
+    "additional_bounded_engineering_attempts": 1,
+    "preserve_existing_attempt_history": true,
+    "attempt_count_reset_or_history_deleted": false,
+    "implementation_retry_budget": 1,
+    "validation_retry_budget": 1,
+    "merge_retry_budget": 1,
+    "max_restarts": 1
+  },
+  "previous_launch02": {
+    "status": "intentionally_stopped_after_durable_attempt_limit_backpressure",
+    "supervisor_started": true,
+    "owner_stop_requested_by_root": true,
+    "owned_launcher_pid_signaled_by_root": 1414696,
+    "owner_exit_status_reported": 1,
+    "child_returncode": 2,
+    "failure_type": "TimeoutError",
+    "selector_finding": {
+      "reason": "task_attempt_limit_backpressure",
+      "task_id": "LIR-9001",
+      "attempt_count": 1,
+      "max_task_attempts": 1
+    },
+    "productive_provider_dispatch_observed": false,
+    "native_stop_verified": true,
+    "all_trees_fenced": true,
+    "owned_group_quiescent": true,
+    "ordinary_provider_cleanup_verified": true,
+    "observed_provider_containers": 0,
+    "remaining_provider_lease_directories": 0,
+    "native_owner_finalized_reported_by_root": true,
+    "receipt": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-launch02/receipt.json",
+      "bytes": 1328,
+      "sha256": "53c8773998580a2041bb1b0311d42cd670fcb0302b9585d9a075e90c1eef47d3"
+    },
+    "native_terminal_receipt_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/workspace/legal-ir-ordinary-worker-20261016-r02/state/configured-board-master.pid.terminal.json",
+    "native_terminal_receipt_cid_reported": "baguqeeraxav5yn7tb7n64x2gkxaj2mrv7hjxvamayxxkgcapfpsq525j3ava",
+    "scope": "Root confirmed native/Docker STOP and finalization; selected final engineering receipt fields were observed by this source author. No model, database or provider payload was read, and no legal/task success is inferred."
+  }
+}

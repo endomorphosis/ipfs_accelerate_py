@@ -1,0 +1,125 @@
+{
+  "acceptance_authority": false,
+  "actual_controller_import_static_closure_policy": "top-level in-repository Python imports and executed package initializers; lazy/full environment closure not claimed",
+  "canonical_tasks_accepted": 0,
+  "findings": [
+    "Four original lane/board SQL programs open/DDL/close per call; proposal preserves execute ASTs but adds nonowning context.",
+    "PortalTaskState.load legacy JSON migration is refused for missing borrowed rows; separate narrow class patch supplied for root assembly.",
+    "Progress callback performs original state load/save. Current ordinary stream callback is invoked on its polling caller; off-thread accesses now refuse before reopening.",
+    "Canonical DuckDB task-source raw opens bypass the state module; conservative active borrowed profile refuses every non-None task source and all configured plan runtime objects/flags.",
+    "Implicit control-plane resolution can move legacy catalogs. Borrowing requires existing explicit bound/env canonical local target and does not invoke implicit resolvers.",
+    "Internal same-target merge/reopen path refuses before connection acquisition. Wider borrowed task/plan backends are unsupported, not claimed repaired.",
+    "Trusted host must enter in its original connection-owning PID/thread and keep scope alive for unresolved provider or Git custody. Registry metadata is not native/acceptance authority."
+  ],
+  "input_pin_count": 67,
+  "proofs": [
+    {
+      "end_line": 56,
+      "line": 50,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "bind_task_state_control_plane"
+    },
+    {
+      "end_line": 138,
+      "line": 123,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "resolve_control_plane"
+    },
+    {
+      "end_line": 266,
+      "line": 228,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "_connect"
+    },
+    {
+      "end_line": 500,
+      "line": 457,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "_save_board_task_state"
+    },
+    {
+      "end_line": 523,
+      "line": 503,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "_load_board_task_state"
+    },
+    {
+      "end_line": 585,
+      "line": 526,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "save_portal_task_state"
+    },
+    {
+      "end_line": 623,
+      "line": 588,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "load_portal_task_state"
+    },
+    {
+      "end_line": 693,
+      "line": 626,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "save_merge_handoff"
+    },
+    {
+      "end_line": 723,
+      "line": 696,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "load_merge_handoff"
+    },
+    {
+      "end_line": 372,
+      "line": 356,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "symbol": "read_task_state_payload"
+    },
+    {
+      "end_line": 64745,
+      "line": 64712,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "symbol": "_implementation_progress_observer"
+    },
+    {
+      "end_line": 5946,
+      "line": 5923,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "symbol": "_load_tasks"
+    },
+    {
+      "end_line": 67805,
+      "line": 67799,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "symbol": "_plan_runtime_enabled"
+    },
+    {
+      "end_line": 15239,
+      "line": 15223,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "symbol": "run_once"
+    },
+    {
+      "end_line": 77997,
+      "line": 77959,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "symbol": "run_once"
+    }
+  ],
+  "provider_calls_performed": false,
+  "schema": "legal-ir-borrowed-state-source-audit@1",
+  "source_only": true
+}

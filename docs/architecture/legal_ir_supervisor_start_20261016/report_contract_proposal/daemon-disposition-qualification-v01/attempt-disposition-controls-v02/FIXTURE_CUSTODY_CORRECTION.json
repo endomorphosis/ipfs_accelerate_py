@@ -1,0 +1,29 @@
+{
+  "schema": "legal-ir-denial-fixture-custody-correction@1",
+  "predecessor": "../attempt-disposition-v01",
+  "predecessor_launched_by_root": false,
+  "reason": "Prelaunch review found that three refusal fixtures leave symlink or multi-link filesystem entries. The original native owner's final strict storage inventory would refuse release even if pytest passed.",
+  "source_helper_unchanged": {
+    "path": "../attempt-disposition-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/attempt_disposition.py",
+    "sha256": "980597e97d337aaa90c0a93527229be37974db1f6351b0eb33a98c95cc8fe43b"
+  },
+  "test_changes": [
+    "Resolve the unchanged source helper from its original frozen bundle.",
+    "For the symlink-directory test, remove only the same created alias in a finally block.",
+    "For the symlink-record test, remove only the same created link in a finally block; keep the original outside regular file and its bytes.",
+    "For the hard-link refusal test, remove only the extra created link in a finally block; keep the original journal as a single-link regular file.",
+    "Before unlink, compare exact original fixture device, inode, UID and file type and require current UID ownership. An unknown replacement is preserved and fails closed.",
+    "Keep all original refusal assertions and other test bodies unchanged. Preserve ordinary malformed/invalid journals for inspection."
+  ],
+  "fresh_request": "request-r02.json",
+  "expected_testcases": 33,
+  "author_tests_executed": 0,
+  "actual_original_object_join_positive_cases": 0,
+  "original_native_owner_required": true,
+  "pre_test_import_original_parent_attachment_gate_required": true,
+  "runtime_enabled": false,
+  "full_original_host_qualified": false,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "github_qualification": "skipped_by_user"
+}

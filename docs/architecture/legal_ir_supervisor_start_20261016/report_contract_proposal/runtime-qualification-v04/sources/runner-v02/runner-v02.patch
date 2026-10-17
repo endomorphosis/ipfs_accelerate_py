@@ -1,0 +1,1190 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py
+@@ -13,6 +13,9 @@
+ from __future__ import annotations
+ 
+ import argparse
++import builtins
++from dataclasses import dataclass, field
++from types import MappingProxyType
+ import errno
+ import select
+ import socket
+@@ -186,12 +189,257 @@
+     return {"kind": "usage_balance_exhausted", "http_status": 402}
+ 
+ 
++MAX_CALLABLE_PROMPT_BYTES = 2 * 1024 * 1024
++MAX_CALLABLE_ENVIRONMENT_BYTES = 256 * 1024
++MAX_CALLABLE_OUTPUT_BYTES = 16 * 1024 * 1024
++
++
++class OrdinaryCallableRefusal(ValueError):
++    """Explicit caller input or bounded output is unsupported; no grant."""
++
++
++def _callable_need(condition, reason):
++    if not condition:
++        raise OrdinaryCallableRefusal(reason)
++
++
++@dataclass(frozen=True)
++class OrdinaryCallableInvocation:
++    """Immutable explicit inputs, never native or successful-outcome authority.
++
++    Descriptors are borrowed from the trusted caller, who owns their close,
++    private paths and admission/precharge. No descriptor is loaded from CLI,
++    JSON or environment. Environment and prompt must never be logged.
++    """
++    prompt: str = field(repr=False)
++    cwd: Path
++    environment: Mapping[str, str] = field(repr=False)
++    temporary_root: Path
++    stdout_path: Path
++    stderr_path: Path
++    stdout_fd: int
++    stderr_fd: int
++    output_limit_bytes: int = MAX_CALLABLE_OUTPUT_BYTES
++
++    def __post_init__(self):
++        _callable_need(type(self.prompt) is str and bool(self.prompt.strip())
++                       and "\0" not in self.prompt
++                       and len(self.prompt.encode("utf-8")) <= MAX_CALLABLE_PROMPT_BYTES,
++                       "callable_prompt_invalid")
++        _callable_need(isinstance(self.environment, Mapping), "callable_environment_mapping_required")
++        copied = dict(self.environment)
++        _callable_need(0 < len(copied) <= 1024 and all(
++            type(k) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", k)
++            and type(v) is str and "\0" not in v for k, v in copied.items()),
++            "callable_environment_invalid")
++        _callable_need(sum(len(k.encode()) + len(v.encode()) + 2 for k, v in copied.items())
++                       <= MAX_CALLABLE_ENVIRONMENT_BYTES, "callable_environment_too_large")
++        for name in ("HOME", "PATH"):
++            _callable_need(bool(copied.get(name)), "callable_explicit_home_and_path_required")
++        _callable_need(Path(copied["HOME"]).is_absolute() and all(
++            part and Path(part).is_absolute() for part in copied["PATH"].split(os.pathsep)),
++            "callable_absolute_home_and_path_required")
++        for key, value in copied.items():
++            _callable_need(not value.startswith("~"), "callable_environment_tilde_refused")
++        for name in ("GROK_HOME", "CODEX_HOME", "COPILOT_CONFIG_DIR", "GH_CONFIG_DIR",
++                     "GOOSE_CONFIG_DIR", "OPENAI_CONFIG_DIR", "GEMINI_CONFIG_DIR",
++                     "CLAUDE_CONFIG_DIR", "MISTRAL_CONFIG_DIR", "VIBE_HOME", "OLLAMA_CONFIG_DIR",
++                     "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
++                     "SSH_AUTH_SOCK", "GNOME_KEYRING_CONTROL"):
++            _callable_need(not copied.get(name) or Path(copied[name]).is_absolute(),
++                           "callable_relative_environment_path_refused")
++        _callable_need(not copied.get("GPG_AGENT_INFO") or
++                       Path(copied["GPG_AGENT_INFO"].partition(":")[0]).is_absolute(),
++                       "callable_relative_environment_path_refused")
++        for name in ("cwd", "temporary_root", "stdout_path", "stderr_path"):
++            value = getattr(self, name)
++            _callable_need(isinstance(value, Path) and value.is_absolute()
++                           and ".." not in value.parts, "callable_absolute_paths_required")
++        _callable_need(type(self.stdout_fd) is int and type(self.stderr_fd) is int
++                       and min(self.stdout_fd, self.stderr_fd) >= 3
++                       and self.stdout_fd != self.stderr_fd, "callable_borrowed_output_fds_required")
++        _callable_need(type(self.output_limit_bytes) is int
++                       and 0 < self.output_limit_bytes <= MAX_CALLABLE_OUTPUT_BYTES,
++                       "callable_output_bound_invalid")
++        for name in ("TMPDIR", "TMP", "TEMP"):
++            _callable_need(copied.get(name) == str(self.temporary_root),
++                           "callable_explicit_temporary_environment_required")
++        object.__setattr__(self, "environment", MappingProxyType(copied))
++
++    def __reduce__(self):
++        raise OrdinaryCallableRefusal("callable_inputs_with_borrowed_fds_not_serializable")
++
++
++def check_callable_options(args, receipt_fd, invocation, *, ambient_environment=None):
++    """Pure pre-effect scope validation; authentic native admission is H's job."""
++    _callable_need(type(invocation) is OrdinaryCallableInvocation, "exact_callable_invocation_required")
++    _callable_need(type(args) is argparse.Namespace, "parsed_callable_namespace_required")
++    _callable_need(type(receipt_fd) is int and receipt_fd == -1
++                   and getattr(args, "receipt_fd_declared", False) is False,
++                   "callable_receipt_dispatch_refused")
++    environments = (invocation.environment,) if ambient_environment is None else (
++        invocation.environment, ambient_environment)
++    _callable_need(not any(name in env for env in environments for name in (
++        "IPFS_ACCELERATE_GROK_TERMINAL_RECEIPT_FD",
++        "IPFS_ACCELERATE_AGENT_TRUSTED_FAILURE_RECEIPT_FD")),
++        "callable_receipt_environment_refused")
++    _callable_need(str(getattr(args, "codex_fallback_command_json", "") or "").strip() in {"", "[]"}
++                   and not any(str(getattr(args, name, "") or "").strip() for name in (
++                       "grok_failure_receipt_nonce", "agent_implementation_route_json",
++                       "agent_implementation_recovery_json", "invocation_id",
++                       "invocation_binding_sha256"))
++                   and getattr(args, "canonical_legacy_preflight_route", False) is False,
++                   "callable_primary_only_scope_required")
++    _callable_need(getattr(args, "workspace", None) == invocation.cwd
++                   and str(getattr(args, "model", "")) == "grok-4.7"
++                   and Path(str(getattr(args, "grok_bin", ""))).is_absolute(),
++                   "callable_explicit_workspace_model_binary_required")
++    _callable_need(getattr(args, "mode", "agent") == "agent", "callable_agent_mode_required")
++
++
++def _callable_path(path, *, directory):
++    _callable_need(path.resolve(strict=True) == path and not any(
++        component.is_symlink() for component in (path, *path.parents)),
++        "callable_unaliased_paths_required")
++    info = path.lstat()
++    _callable_need(stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode),
++                   "callable_path_type_invalid")
++    return info
++
++
++class _CallableOutput:
++    """Bound total bytes written to exact caller-owned private regular sinks."""
++    def __init__(self, invocation):
++        self.invocation = invocation
++        self.written = self.received = 0
++        self.identities, self.offsets = {}, {}
++        for name in ("stdout", "stderr"):
++            path, fd = getattr(invocation, name + "_path"), getattr(invocation, name + "_fd")
++            current = _callable_path(path, directory=False)
++            opened = os.fstat(fd)
++            flags = fcntl.fcntl(fd, fcntl.F_GETFL)
++            _callable_need((flags & os.O_ACCMODE) in {os.O_WRONLY, os.O_RDWR}
++                           and stat.S_ISREG(opened.st_mode) and opened.st_uid == os.geteuid()
++                           and stat.S_IMODE(opened.st_mode) == 0o600 and opened.st_nlink == 1
++                           and (opened.st_dev, opened.st_ino) == (current.st_dev, current.st_ino)
++                           and opened.st_size == 0 and os.lseek(fd, 0, os.SEEK_CUR) == 0,
++                           "callable_private_empty_writable_output_required")
++            self.identities[name] = (opened.st_dev, opened.st_ino)
++            self.offsets[name] = 0
++        _callable_need(self.identities["stdout"] != self.identities["stderr"],
++                       "callable_distinct_output_files_required")
++
++    def receive(self, data):
++        self.received += len(data)
++
++    def write(self, name, data):
++        _callable_need(type(data) is bytes, "callable_binary_output_required")
++        _callable_need(self.written + len(data) <= self.invocation.output_limit_bytes,
++                       "callable_output_limit_exceeded")
++        fd = getattr(self.invocation, name + "_fd")
++        path = getattr(self.invocation, name + "_path")
++        opened, current = os.fstat(fd), path.lstat()
++        _callable_need((opened.st_dev, opened.st_ino) == self.identities[name]
++                       == (current.st_dev, current.st_ino)
++                       and opened.st_uid == os.geteuid() and opened.st_nlink == 1
++                       and stat.S_IMODE(opened.st_mode) == 0o600
++                       and opened.st_size == self.offsets[name]
++                       and os.lseek(fd, 0, os.SEEK_CUR) == self.offsets[name],
++                       "callable_output_identity_or_offset_changed")
++        offset = 0
++        while offset < len(data):
++            count = os.write(fd, data[offset:])
++            _callable_need(count > 0, "callable_output_short_write")
++            offset += count
++            self.offsets[name] += count
++            self.written += count
++
++    def diagnostic(self, *values, sep=" ", end="\n", file=None, flush=False):
++        self.write("stderr", (sep.join(str(value) for value in values) + end).encode("utf-8"))
++
++
++def _validate_callable_run(args, receipt_fd, invocation):
++    check_callable_options(args, receipt_fd, invocation, ambient_environment=os.environ)
++    _ordinary_handoff.ordinary_callable_context_required(invocation)
++    _callable_path(invocation.cwd, directory=True)
++    temp = _callable_path(invocation.temporary_root, directory=True)
++    _callable_need(temp.st_uid == os.geteuid() and stat.S_IMODE(temp.st_mode) == 0o700
++                   and invocation.cwd != invocation.temporary_root
++                   and invocation.cwd not in invocation.temporary_root.parents
++                   and invocation.temporary_root not in invocation.cwd.parents,
++                   "callable_private_disjoint_temporary_root_required")
++    return _CallableOutput(invocation)
++
++
++def validate_ordinary_callable_invocation(args, receipt_fd, invocation):
++    """Read-only pre-effect validation under the actual active host context.
++
++    Requires H's real caller/custody context, but no watchdog or provider yet.
++    No child, Docker query, model, route, output write or native grant is
++    created here. H may call before its deliberate known-unstarted control;
++    _run repeats the same validation before any productive implementation.
++    """
++    _validate_callable_run(args, receipt_fd, invocation)
++
++
++def _run_callable_transport(command, *, env, invocation, output):
++    """Drain both real pipes on the guarded owner thread; no sink inheritance."""
++    process = subprocess.Popen(list(command), cwd=invocation.cwd, env=env,
++        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
++        **_ordinary_handoff.ordinary_transport_kwargs())
++    try:
++        _ordinary_handoff.ordinary_provider_started(process, command)
++        _callable_need(process.stdout is not None and process.stderr is not None,
++                       "callable_actual_output_pipes_required")
++        streams = {process.stdout: "stdout", process.stderr: "stderr"}
++        retained = bytearray()
++        total = 0
++        overflow = False
++        while streams:
++            _ordinary_handoff.ordinary_provider_guard()
++            ready, _, _ = select.select(tuple(streams), (), (), 0.5)
++            for stream in ready:
++                chunk = os.read(stream.fileno(), 64 * 1024)
++                if not chunk:
++                    streams.pop(stream)
++                    stream.close()
++                    continue
++                output.receive(chunk)
++                # Continue draining until actual exit even after the finite capture
++                # limit. No further sink bytes are written; success is refused.
++                overflow = overflow or output.received > invocation.output_limit_bytes
++                if streams[stream] == "stdout":
++                    if not overflow:
++                        output.write("stdout", chunk)
++                else:
++                    total += len(chunk)
++                    remaining = MAX_GROK_ERROR_BYTES - len(retained)
++                    if remaining > 0:
++                        retained.extend(chunk[:remaining])
++        returncode = int(_ordinary_handoff.ordinary_provider_wait(process))
++        _ordinary_handoff.ordinary_provider_returned(process, returncode)
++        _callable_need(not overflow, "callable_received_output_limit_exceeded")
++        return returncode, bytes(retained), total, total > MAX_GROK_ERROR_BYTES
++
++    finally:
++        for stream in (process.stdout, process.stderr):
++            if stream is not None and not stream.closed:
++                stream.close()
++
++
+ def _run_grok_with_bounded_stderr(
+     command: Sequence[str],
+     *,
+     env: dict[str, str],
++    invocation: OrdinaryCallableInvocation | None = None,
++    output: _CallableOutput | None = None,
+ ) -> tuple[int, bytes, int, bool]:
+-    """Drain child stderr without unbounded memory or disk growth."""
++    """Drain bounded stderr; explicit caller mode also drains bounded stdout."""
++
++    if invocation is not None:
++        _callable_need(type(output) is _CallableOutput and output.invocation is invocation,
++                       "callable_transport_output_required")
++        return _run_callable_transport(command, env=env, invocation=invocation, output=output)
+ 
+     process = subprocess.Popen(
+         list(command),
+@@ -1335,6 +1583,7 @@
+     child_env: dict[str, str],
+     codex_fallback_command: Sequence[str],
+     workspace: Path | None = None,
++    temporary_root: Path | None = None,
+ ) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str], Path, tuple[Path, ...]]:
+     """Create a private Grok home with a machine-resolved custom sandbox.
+ 
+@@ -1344,7 +1593,8 @@
+     the kernel sandbox cannot be installed.
+     """
+ 
+-    temporary_home = tempfile.TemporaryDirectory(prefix="asref-grok-home-")
++    temporary_home = tempfile.TemporaryDirectory(prefix="asref-grok-home-",
++        **({} if temporary_root is None else {"dir": temporary_root}))
+     grok_home = Path(temporary_home.name)
+     try:
+         grok_home.chmod(0o700)
+@@ -1720,10 +1970,11 @@
+     return completed.returncode == 0
+ 
+ 
+-def _docker_isolation_binary() -> str:
++def _docker_isolation_binary(*, environment: Mapping[str, str] | None = None,
++                             temporary_root: Path | None = None) -> str:
+     """Resolve a working Docker CLI with the pinned local isolation image."""
+ 
+-    docker_candidate = shutil.which("docker") or ""
++    docker_candidate = shutil.which("docker", path=None if environment is None else environment["PATH"]) or ""
+     if not docker_candidate:
+         return ""
+     try:
+@@ -1742,7 +1993,8 @@
+     image = DEFAULT_GROK_ISOLATION_IMAGE
+     try:
+         with tempfile.TemporaryDirectory(
+-            prefix="asref-docker-config-probe-"
++            prefix="asref-docker-config-probe-",
++            **({} if temporary_root is None else {"dir": temporary_root})
+         ) as config_root:
+             completed = subprocess.run(
+                 [
+@@ -2046,11 +2298,15 @@
+     }
+ 
+ 
+-def _select_grok_isolation_backend(*, require_container_boundary: bool = False) -> str:
++def _select_grok_isolation_backend(*, require_container_boundary: bool = False,
++                                   environment: Mapping[str, str] | None = None,
++                                   temporary_root: Path | None = None) -> str:
+     """Select an enforceable kernel boundary, never an unsandboxed route."""
+ 
++    docker_options = {} if environment is None and temporary_root is None else dict(
++        environment=environment, temporary_root=temporary_root)
+     if require_container_boundary:
+-        if _docker_isolation_binary():
++        if _docker_isolation_binary(**docker_options):
+             return GROK_ISOLATION_DOCKER
+         raise ValueError(
+             "Default Grok quota route requires the pinned local Docker "
+@@ -2058,7 +2314,7 @@
+         )
+     if _grok_custom_sandbox_available():
+         return GROK_ISOLATION_GROK_SANDBOX
+-    if _docker_isolation_binary():
++    if _docker_isolation_binary(**docker_options):
+         return GROK_ISOLATION_DOCKER
+     raise ValueError(
+         "Grok provider isolation unavailable: bubblewrap cannot create its "
+@@ -2993,6 +3249,7 @@
+ ) -> list[str]:
+     """Create inert Grok container, then bind its exact ID to attached start."""
+ 
++    _ordinary_handoff.ordinary_container_creation_started(docker_lease, tuple(create_command))
+     try:
+         created = subprocess.run(
+             list(create_command),
+@@ -3023,6 +3280,7 @@
+         docker_config=docker_lease.docker_config,
+         container_id=created_fields[0],
+     )
++    _ordinary_handoff.ordinary_container_created(docker_lease, created_fields[0])
+     return [
+         docker_lease.docker_bin,
+         f"--host={_DOCKER_LOCAL_HOST}",
+@@ -5537,7 +5795,12 @@
+         pass
+ 
+ 
+-def _run(args: argparse.Namespace, receipt_fd: int) -> int:
++def _run(args: argparse.Namespace, receipt_fd: int, *,
++         callable_invocation: OrdinaryCallableInvocation | None = None) -> int:
++    output = None if callable_invocation is None else _validate_callable_run(args, receipt_fd, callable_invocation)
++    runner_environment = os.environ if callable_invocation is None else callable_invocation.environment
++    emit = builtins.print if output is None else output.diagnostic
++    diagnostic_stream = sys.stderr if output is None else None
+     from ipfs_accelerate_py.agent_supervisor.control.provider_attempt_store import (
+         DurableProviderAttemptCAS,
+         ProviderAttemptReservation,
+@@ -5568,30 +5831,30 @@
+             ),
+         )
+     except ValueError as exc:
+-        print(str(exc), file=sys.stderr)
++        emit(str(exc), file=diagnostic_stream)
+         return 2
+     if codex_fallback_command and validate_grok_runner_command_binding(
+         args.outer_runner_command
+     ):
+-        print(
++        emit(
+             "command-bound Grok supervision forbids an in-runner Codex "
+             "fallback; the daemon must authorize a fresh retry",
+-            file=sys.stderr,
++            file=diagnostic_stream,
+         )
+         return 2
+     internal_legacy_preflight = bool(
+         args.canonical_legacy_preflight_route
+     )
+     if internal_legacy_preflight and not codex_fallback_command:
+-        print(
++        emit(
+             "canonical legacy preflight requires a Codex fallback command",
+-            file=sys.stderr,
++            file=diagnostic_stream,
+         )
+         return 2
+ 
+     workspace = args.workspace.expanduser().resolve()
+     if not workspace.is_dir():
+-        print(f"workspace is not a directory: {workspace}", file=sys.stderr)
++        emit(f"workspace is not a directory: {workspace}", file=diagnostic_stream)
+         return 2
+     recovery_locator_raw = str(
+         args.agent_implementation_recovery_json or ""
+@@ -5606,9 +5869,9 @@
+             or str(args.model or "").strip()
+             or args.require_command
+         ):
+-            print(
++            emit(
+                 "protected effect recovery forbids provider dispatch options",
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return 2
+         return _run_protected_effect_recovery(
+@@ -5627,21 +5890,21 @@
+         route_plan = None
+         if preflight_nonce:
+             if internal_legacy_preflight:
+-                print(
++                emit(
+                     "canonical legacy preflight cannot be combined with an "
+                     "external nonce or route binding",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return 2
+             if not route_binding_raw:
+-                print(
++                emit(
+                     "typed Grok preflight requires a scoped canonical route "
+                     "binding",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return 2
+             if len(route_binding_raw.encode("utf-8")) > 16 * 1024:
+-                print("agent implementation route binding is oversized", file=sys.stderr)
++                emit("agent implementation route binding is oversized", file=diagnostic_stream)
+                 return 2
+ 
+             def reject_route_duplicate_keys(pairs):
+@@ -5781,11 +6044,11 @@
+                                 terminal_observer=recovery_store,
+                                 terminal_reservation=existing,
+                             )
+-                            print(
++                            emit(
+                                 render_agent_implementation_route_outcome(
+                                     terminal_outcome
+                                 ),
+-                                file=sys.stderr,
++                                file=diagnostic_stream,
+                             )
+                             return terminal_returncode
+                         route_plan = historical_route
+@@ -5800,13 +6063,13 @@
+                         )
+                 route_repository_head = _repository_head(workspace)
+             except (json.JSONDecodeError, OSError, ValueError) as exc:
+-                print(str(exc), file=sys.stderr)
++                emit(str(exc), file=diagnostic_stream)
+                 return 2
+         else:
+             if route_binding_raw:
+-                print(
++                emit(
+                     "legacy quota route forbids an auth/high route binding",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return 2
+             if internal_legacy_preflight:
+@@ -5912,15 +6175,15 @@
+             workspace_index = codex_fallback_command.index("-C") + 1
+             codex_fallback_command[workspace_index] = str(workspace)
+         except ValueError as exc:
+-            print(str(exc), file=sys.stderr)
++            emit(str(exc), file=diagnostic_stream)
+             return 2
+         executable_extensions = _grok_executable_extension_paths(workspace)
+         if executable_extensions:
+-            print(
++            emit(
+                 "Default Grok route refuses project MCP, hook, plugin, or LSP "
+                 "configuration: "
+                 + ", ".join(str(path) for path in executable_extensions),
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return 2
+ 
+@@ -5930,7 +6193,7 @@
+         else str(args.grok_bin).strip() or find_grok_cli() or ""
+     )
+     if not grok_bin and protected_recovery_reservation is None:
+-        print("grok CLI not found on PATH", file=sys.stderr)
++        emit("grok CLI not found on PATH", file=diagnostic_stream)
+         return 127
+     if codex_fallback_command and protected_recovery_reservation is None:
+         grok_bin = _resolve_trusted_grok_bin(
+@@ -5938,18 +6201,18 @@
+             workspace=workspace,
+         )
+         if not grok_bin:
+-            print(
++            emit(
+                 "quota-routed Grok executable must be a pinned executable "
+                 "outside the writable workspace",
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return 2
+ 
+     model = (
+         str(args.model).strip()
+-        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MODEL", "").strip()
+-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
+-        or os.environ.get("GROK_CLI_MODEL", "").strip()
++        or runner_environment.get("IPFS_ACCELERATE_AGENT_GROK_MODEL", "").strip()
++        or runner_environment.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
++        or runner_environment.get("GROK_CLI_MODEL", "").strip()
+         or DEFAULT_GROK_MODEL
+     )
+     if protected_recovery_context is not None:
+@@ -5960,16 +6223,16 @@
+             or ""
+         )
+     if codex_fallback_command and model != DEFAULT_GROK_MODEL:
+-        print(
++        emit(
+             "Default Grok/Codex route requires primary model grok-4.7",
+-            file=sys.stderr,
++            file=diagnostic_stream,
+         )
+         return 2
+     _ordinary_handoff.select_ordinary_route(route_plan, model)
+     max_turns_raw = (
+         str(args.max_turns).strip()
+-        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS", "").strip()
+-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MAX_TURNS", "").strip()
++        or runner_environment.get("IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS", "").strip()
++        or runner_environment.get("ipfs_accelerate_py_GROK_CLI_MAX_TURNS", "").strip()
+         or str(DEFAULT_GROK_MAX_TURNS)
+     )
+     try:
+@@ -5981,17 +6244,17 @@
+         if codex_fallback_command
+         else (
+             str(args.permission_mode).strip()
+-            or os.environ.get(
++            or runner_environment.get(
+                 "IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", ""
+             ).strip()
+-            or os.environ.get(
++            or runner_environment.get(
+                 "ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", ""
+             ).strip()
+             or "bypassPermissions"
+         )
+     )
+ 
+-    prompt: str | None = None
++    prompt: str | None = None if callable_invocation is None else callable_invocation.prompt
+     if (
+         codex_fallback_command
+         and route_plan.invocation_binding is not None
+@@ -6001,10 +6264,10 @@
+         # can be made under a prompt authority that the runner did not receive.
+         prompt = sys.stdin.read()
+         if _agent_prompt_cid(prompt) != route_plan.invocation_binding.prompt_cid:
+-            print(
++            emit(
+                 "Signed invocation does not match the task prompt; provider "
+                 "dispatch is forbidden",
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return 2
+ 
+@@ -6044,7 +6307,7 @@
+             try:
+                 workspace_baseline = _workspace_content_fingerprint(workspace)
+             except ValueError as exc:
+-                print(str(exc), file=sys.stderr)
++                emit(str(exc), file=diagnostic_stream)
+                 return 2
+         if preflight_nonce and protected_recovery_context is None:
+             try:
+@@ -6055,20 +6318,20 @@
+                 ) = (
+                     _run_typed_grok_preflight(
+                         grok_bin=grok_bin,
+-                        base_env=os.environ.copy(),
++                        base_env=dict(runner_environment),
+                         nonce=preflight_nonce,
+                     )
+                 )
+             except (OSError, RuntimeError, ValueError) as exc:
+-                print(
++                emit(
+                     f"unable to run typed Grok preflight: {exc}",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return 2
+             if preflight_receipt:
+-                print(
++                emit(
+                     render_grok_failure_receipt(preflight_receipt),
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+             if preflight_returncode != 0:
+                 decision = decide_agent_implementation_fallback(
+@@ -6091,7 +6354,7 @@
+                     preflight_quota_evidence = (
+                         _independently_verify_grok_quota(
+                             grok_bin=grok_bin,
+-                            base_env=os.environ.copy(),
++                            base_env=dict(runner_environment),
+                             failure_receipt=preflight_receipt,
+                             invocation_binding=(
+                                 route_plan.invocation_binding
+@@ -6119,13 +6382,13 @@
+                     preflight_decision_id = decision.content_id
+                 preflight_verifier_status = decision.verifier_status
+                 if not decision.authorized:
+-                    print(
++                    emit(
+                         "Typed Grok preflight did not authorize fallback; "
+                         "Codex fallback is forbidden",
+-                        file=sys.stderr,
++                        file=diagnostic_stream,
+                     )
+                     if preflight_receipt:
+-                        print(
++                        emit(
+                             render_route_outcome_record(
+                                 route_outcome_record(
+                                     active_route=route_plan,
+@@ -6145,7 +6408,7 @@
+                                     fallback_returncode=None,
+                                 )
+                             ),
+-                            file=sys.stderr,
++                            file=diagnostic_stream,
+                         )
+                     return preflight_returncode
+                 try:
+@@ -6153,15 +6416,15 @@
+                         workspace
+                     )
+                 except ValueError as exc:
+-                    print(str(exc), file=sys.stderr)
++                    emit(str(exc), file=diagnostic_stream)
+                     return preflight_returncode
+                 if workspace_after_preflight != workspace_baseline:
+-                    print(
++                    emit(
+                         "The workspace changed during the typed Grok preflight; "
+                         "Codex fallback is forbidden",
+-                        file=sys.stderr,
++                        file=diagnostic_stream,
+                     )
+-                    print(
++                    emit(
+                         render_route_outcome_record(
+                             route_outcome_record(
+                                 active_route=route_plan,
+@@ -6179,7 +6442,7 @@
+                                 fallback_returncode=None,
+                             )
+                         ),
+-                        file=sys.stderr,
++                        file=diagnostic_stream,
+                     )
+                     return preflight_returncode
+                 preflight_fallback_reason = (
+@@ -6214,10 +6477,10 @@
+                     != invocation_binding.baseline_commit
+                 )
+             ):
+-                print(
++                emit(
+                     "Signed invocation does not match task prompt/workspace baseline; "
+                     "Codex fallback is forbidden",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return preflight_returncode
+             try:
+@@ -6228,7 +6491,7 @@
+                     ),
+                 )
+             except ProviderAttemptStoreError as exc:
+-                print(f"provider attempt CAS is unavailable: {exc}", file=sys.stderr)
++                emit(f"provider attempt CAS is unavailable: {exc}", file=diagnostic_stream)
+                 return preflight_returncode
+ 
+         def validate_effect_boundary() -> None:
+@@ -6416,11 +6679,11 @@
+                         terminal_reservation=terminal,
+                     )
+                     if terminal.terminal_outcome:
+-                        print(
++                        emit(
+                             render_route_outcome_record(
+                                 terminal.terminal_outcome
+                             ),
+-                            file=sys.stderr,
++                            file=diagnostic_stream,
+                         )
+                     return int(terminal.terminal_returncode or 0)
+                 raise ProviderAttemptStoreError(
+@@ -6530,43 +6793,43 @@
+                 terminal_observer=attempt_store,
+                 terminal_reservation=attempt_reservation,
+             )
+-            print(
++            emit(
+                 render_route_outcome_record(terminal_outcome),
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return fallback_returncode
+ 
+         if protected_recovery_reservation is not None:
+             attempt_reservation = protected_recovery_reservation
+             if attempt_reservation.state != "effect_started":
+-                print(
++                emit(
+                     "protected provider recovery state cannot dispatch",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return 125
+-            print(
++            emit(
+                 "Adopted an effect-started provider attempt before provider "
+                 "preflight; replay is forbidden",
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             try:
+                 return adopt_started_effect(attempt_reservation)
+             except (OSError, ProviderAttemptStoreError, ValueError) as exc:
+-                print(
++                emit(
+                     f"unable to adopt exact provider effect: {exc}",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return 125
+ 
+         try:
+             validate_effect_boundary()
+         except _AgentRouteEffectDenied as exc:
+-            print(
++            emit(
+                 "Canonical route authority changed before fallback: "
+                 f"{exc}; Codex fallback is forbidden",
+-                file=sys.stderr,
+-            )
+-            print(
++                file=diagnostic_stream,
++            )
++            emit(
+                 render_route_outcome_record(
+                     route_outcome_record(
+                         active_route=outcome_route,
+@@ -6584,7 +6847,7 @@
+                         fallback_returncode=None,
+                     )
+                 ),
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return preflight_returncode
+ 
+@@ -6596,7 +6859,7 @@
+                     invocation_binding.logical_attempt_id
+                 )
+             except ProviderAttemptStoreError as exc:
+-                print(f"provider attempt recovery denied: {exc}", file=sys.stderr)
++                emit(f"provider attempt recovery denied: {exc}", file=diagnostic_stream)
+                 return preflight_returncode
+             attempt_reservation = existing_reservation
+             if attempt_reservation is not None and attempt_reservation.terminal:
+@@ -6606,35 +6869,35 @@
+                     terminal_reservation=attempt_reservation,
+                 )
+                 if attempt_reservation.terminal_outcome:
+-                    print(
++                    emit(
+                         render_route_outcome_record(
+                             attempt_reservation.terminal_outcome
+                         ),
+-                        file=sys.stderr,
++                        file=diagnostic_stream,
+                     )
+                 return int(attempt_reservation.terminal_returncode or 0)
+             if (
+                 attempt_reservation is not None
+                 and attempt_reservation.state == "effect_started"
+             ):
+-                print(
++                emit(
+                     "Adopted an effect-started provider attempt; Docker replay is forbidden",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 try:
+                     return adopt_started_effect(attempt_reservation)
+                 except (OSError, ProviderAttemptStoreError, ValueError) as exc:
+-                    print(
++                    emit(
+                         f"unable to adopt exact provider effect: {exc}",
+-                        file=sys.stderr,
++                        file=diagnostic_stream,
+                     )
+                     return 125
+ 
+-        print(
++        emit(
+             "Grok "
+             + preflight_fallback_reason
+             + "; invoking the pinned Terra fallback",
+-            file=sys.stderr,
++            file=diagnostic_stream,
+         )
+         try:
+             fallback_runner = (
+@@ -6647,7 +6910,7 @@
+                 workspace=workspace,
+                 prompt=prompt,
+                 prompt_path=prompt_file,
+-                base_env=os.environ.copy(),
++                base_env=dict(runner_environment),
+                 pre_effect_validator=validate_effect_boundary,
+                 effect_claim=(claim_provider_effect if invocation_binding is not None else None),
+                 **(
+@@ -6680,18 +6943,18 @@
+                 fallback_returncode=fallback_returncode,
+                 reservation=attempt_reservation,
+             )
+-            print(
++            emit(
+                 render_route_outcome_record(terminal_outcome),
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return fallback_returncode
+         except _AgentRouteEffectDenied as exc:
+-            print(
++            emit(
+                 "Canonical route authority changed at the provider effect "
+                 f"boundary: {exc}; Codex fallback is forbidden",
+-                file=sys.stderr,
+-            )
+-            print(
++                file=diagnostic_stream,
++            )
++            emit(
+                 render_route_outcome_record(
+                     route_outcome_record(
+                         active_route=outcome_route,
+@@ -6709,11 +6972,11 @@
+                         fallback_returncode=None,
+                     )
+                 ),
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return preflight_returncode
+         except (OSError, ValueError) as exc:
+-            print(f"unable to launch Codex fallback: {exc}", file=sys.stderr)
++            emit(f"unable to launch Codex fallback: {exc}", file=diagnostic_stream)
+             if (
+                 attempt_store is not None
+                 and attempt_reservation is not None
+@@ -6733,13 +6996,13 @@
+                     ProviderAttemptStoreError,
+                     ValueError,
+                 ) as reconciliation_error:
+-                    print(
++                    emit(
+                         "unable to reconcile claimed provider effect: "
+                         f"{reconciliation_error}",
+-                        file=sys.stderr,
++                        file=diagnostic_stream,
+                     )
+                     return 125
+-            print(
++            emit(
+                 render_route_outcome_record(
+                     route_outcome_record(
+                         active_route=outcome_route,
+@@ -6763,7 +7026,7 @@
+                         ),
+                     )
+                 ),
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return (
+                 preflight_returncode
+@@ -6775,7 +7038,7 @@
+     if prompt is None:
+         prompt = sys.stdin.read()
+     if not prompt.strip():
+-        print("empty implementation prompt on stdin", file=sys.stderr)
++        emit("empty implementation prompt on stdin", file=diagnostic_stream)
+         return 2
+ 
+     prompt_path = ""
+@@ -6791,6 +7054,7 @@
+             prefix="asref-grok-prompt-",
+             suffix=".txt",
+             delete=False,
++            **({} if callable_invocation is None else {"dir": callable_invocation.temporary_root}),
+         ) as handle:
+             handle.write(prompt)
+             prompt_path = handle.name
+@@ -6805,13 +7069,13 @@
+             )
+ 
+         required_commands = [
+-            str(os.environ.get(PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV) or ""),
++            str(runner_environment.get(PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV) or ""),
+             *(str(item) for item in args.require_command),
+         ]
+         try:
+             command_environment = command_environment_stack.enter_context(
+                 sealed_provider_command_environment(
+-                    os.environ,
++                    runner_environment,
+                     required_commands=required_commands,
+                 )
+             )
+@@ -6840,7 +7104,7 @@
+                     raise LLMRouterError(
+                         "Grok agent command has no output-format slot"
+                     ) from exc
+-                supervised_env = build_grok_cli_env(base_env=os.environ)
++                supervised_env = build_grok_cli_env(base_env=runner_environment)
+                 supervised_env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
+                     command_environment.wrapper_path
+                 )
+@@ -6885,7 +7149,7 @@
+                     prompt_file=prompt_path,
+                     permission_mode=permission_mode,
+                 )
+-                direct_env = build_grok_cli_env(base_env=os.environ)
++                direct_env = build_grok_cli_env(base_env=runner_environment)
+                 direct_env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
+                     command_environment.wrapper_path
+                 )
+@@ -6900,9 +7164,10 @@
+                 completed = subprocess.run(command, env=direct_env, check=False)
+                 return int(completed.returncode)
+ 
+-            base_env = os.environ.copy()
++            base_env = dict(runner_environment)
+             isolation_backend = _select_grok_isolation_backend(
+                 require_container_boundary=(bool(codex_fallback_command) or _ordinary_handoff.ordinary_requires_docker()),
++                **({} if callable_invocation is None else dict(environment=runner_environment, temporary_root=callable_invocation.temporary_root)),
+             )
+             cmd = build_grok_cli_command(
+                 mode=str(args.mode),
+@@ -6949,7 +7214,9 @@
+                 child_env=child_env,
+                 codex_fallback_command=codex_fallback_command,
+                 workspace=workspace,
+-            )
++                **({} if callable_invocation is None else {"temporary_root": callable_invocation.temporary_root}),
++            )
++            _ordinary_handoff.ordinary_private_allocations_created(isolated_home, Path(prompt_path))
+             env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
+                 command_environment.wrapper_path
+             )
+@@ -6993,7 +7260,8 @@
+                     raise ValueError(
+                         "protected Grok effect requires a qualified native start profile"
+                     )
+-                docker_bin = _docker_isolation_binary()
++                docker_bin = _docker_isolation_binary(**({} if callable_invocation is None else dict(
++                    environment=runner_environment, temporary_root=callable_invocation.temporary_root)))
+                 if not docker_bin:
+                     raise ValueError(
+                         "Docker Grok isolation became unavailable before launch"
+@@ -7003,6 +7271,7 @@
+                     provider="grok",
+                     provider_home=_policy_path.parent,
+                     prompt_path=Path(prompt_path).resolve(strict=True),
++                    **({} if callable_invocation is None else dict(temporary_root=callable_invocation.temporary_root, runner_entry=Path(__file__).resolve())),
+                 )
+                 isolation_image = _docker_ordinary_task_toolchain_image_id(
+                     docker_lease.docker_bin,
+@@ -7058,29 +7327,34 @@
+             RuntimeError,
+             ValueError,
+         ) as exc:
+-            print(str(exc), file=sys.stderr)
++            emit(str(exc), file=diagnostic_stream)
+             return 2
+ 
+-        os.chdir(workspace)
++        if callable_invocation is None:
++            os.chdir(workspace)
+         # Without an authorized Codex fallback, project typed quota receipts and
+         # exit. With a fallback, take the workspace-fenced + independent-verify
+         # path so Terra may run only after verified typed provider evidence.
+         if not codex_fallback_command:
+             child_returncode, error_bytes, error_size, error_overflow = (
+-                _run_grok_with_bounded_stderr(cmd, env=grok_launch_env)
++                _run_grok_with_bounded_stderr(cmd, env=grok_launch_env,
++                    **({} if callable_invocation is None else dict(invocation=callable_invocation, output=output)))
+             )
+             docker_run_finished = True
+             if error_bytes:
+-                sys.stderr.buffer.write(error_bytes)
+-                if not error_bytes.endswith(b"\n"):
+-                    sys.stderr.buffer.write(b"\n")
+-                sys.stderr.buffer.flush()
++                if output is None:
++                    sys.stderr.buffer.write(error_bytes)
++                    if not error_bytes.endswith(b"\n"):
++                        sys.stderr.buffer.write(b"\n")
++                    sys.stderr.buffer.flush()
++                else:
++                    output.write("stderr", error_bytes + (b"" if error_bytes.endswith(b"\n") else b"\n"))
+             if error_overflow:
+-                print(
++                emit(
+                     "grok stderr exceeded the trusted quota-envelope limit "
+                     f"({error_size} > {MAX_GROK_ERROR_BYTES} bytes); "
+                     "quota fallback forbidden",
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return (
+                     1
+@@ -7101,9 +7375,9 @@
+                     "raw_error_size": len(error_bytes),
+                     **quota_error,
+                 }
+-                print(
++                emit(
+                     json.dumps(receipt, sort_keys=True, separators=(",", ":")),
+-                    file=sys.stderr,
++                    file=diagnostic_stream,
+                 )
+                 return GROK_QUOTA_EXHAUSTED_EXIT_CODE
+             return (
+@@ -7139,33 +7413,35 @@
+                 )
+             docker_run_finished = True
+         except (OSError, ValueError) as exc:
+-            print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)
++            emit(f"unable to launch Grok CLI: {exc}", file=diagnostic_stream)
+             return 127
+         if primary_returncode == 0:
+             return primary_returncode
+ 
+         if preflight_nonce:
+-            print(
++            emit(
+                 "Task Grok failed after a successful typed preflight; the "
+                 "canonical pre-effect route does not authorize post-dispatch "
+                 "Codex fallback",
+-                file=sys.stderr,
++                file=diagnostic_stream,
+             )
+             return primary_returncode
+-        print(
++        emit(
+             "Direct no-nonce Grok failure cannot authorize cross-provider "
+             "fallback; use a canonical nonce-bound route",
+-            file=sys.stderr,
++            file=diagnostic_stream,
+         )
+         return primary_returncode
+     finally:
+         command_environment_stack.close()
+-        if docker_lease is not None:
++        allocation_close_permitted = (docker_lease is None or
++            _ordinary_handoff.ordinary_allocation_close_permitted(docker_lease))
++        if docker_lease is not None and allocation_close_permitted:
+             docker_lease.close(docker_run_finished=docker_run_finished)
+-        if isolated_home is not None:
++        if isolated_home is not None and allocation_close_permitted:
+             _robust_remove_runner_temp_tree(Path(isolated_home.name))
+             isolated_home.cleanup()
+-        if prompt_path:
++        if prompt_path and allocation_close_permitted:
+             try:
+                 os.unlink(prompt_path)
+             except OSError:
+@@ -7189,8 +7465,21 @@
+ 
+     return bool(parse_grok_quota_error(str(transcript or "")))
+ 
+-def main(argv: Sequence[str] | None = None) -> int:
+-    parser = argparse.ArgumentParser(
++class _EffectFreeRunnerParser(argparse.ArgumentParser):
++    def error(self, message):
++        raise OrdinaryCallableRefusal("callable_arguments_invalid:" + str(message))
++
++    def exit(self, status=0, message=None):
++        raise OrdinaryCallableRefusal("callable_arguments_exit:" + str(status))
++
++    def _print_message(self, message, file=None):
++        # argparse's --help/invalid arguments may format text but may never
++        # write ambient streams from the public effect-free parsing API.
++        pass
++
++
++def build_runner_parser(*, parser_type=argparse.ArgumentParser):
++    parser = parser_type(
+         description="Authorized Grok CLI agent entry (llm_router.grok_cli)."
+     )
+     parser.add_argument("--workspace", type=Path, required=True)
+@@ -7255,6 +7544,25 @@
+     )
+     parser.add_argument(GROK_INVOCATION_ID_FLAG, default="")
+     parser.add_argument(GROK_INVOCATION_BINDING_FLAG, default="")
++    return parser
++
++
++def parse_runner_arguments(argv: Sequence[str]) -> argparse.Namespace:
++    """Parse explicit bounded argv without any environment/receipt/provider IO."""
++    _callable_need(not isinstance(argv, (str, bytes)) and isinstance(argv, Sequence),
++                   "explicit_callable_argv_required")
++    raw = tuple(argv)
++    _callable_need(len(raw) <= 128 and all(type(item) is str and "\0" not in item for item in raw)
++                   and sum(len(item.encode("utf-8")) for item in raw) <= 64 * 1024,
++                   "bounded_callable_argv_required")
++    args = build_runner_parser(parser_type=_EffectFreeRunnerParser).parse_args(raw)
++    args.outer_runner_command = [sys.executable, str(Path(__file__).resolve()), *raw]
++    args.receipt_fd_declared = False
++    return args
++
++
++def main(argv: Sequence[str] | None = None) -> int:
++    parser = build_runner_parser()
+     raw_argv = list(argv) if argv is not None else sys.argv[1:]
+     args = parser.parse_args(raw_argv)
+     executable = str(Path(__file__).resolve())
+@@ -7462,7 +7770,11 @@
+         provider: str,
+         provider_home: Path,
+         prompt_path: Path,
++        temporary_root: Path | None = None,
++        runner_entry: Path | None = None,
+     ) -> "_LegacyDockerContainerLease":
++        if runner_entry is not None and runner_entry != Path(__file__).resolve():
++            raise ValueError("callable watchdog requires actual pinned runner entry")
+         if provider not in _DOCKER_ISOLATION_PROVIDERS:
+             raise ValueError("Docker isolation provider is invalid")
+         docker_path = Path(docker_bin).resolve(strict=True)
+@@ -7475,7 +7787,8 @@
+         ):
+             raise ValueError("Docker isolation executable is not docker")
+         lease_root = Path(
+-            tempfile.mkdtemp(prefix=f"asref-{provider}-container-")
++            tempfile.mkdtemp(prefix=f"asref-{provider}-container-",
++                **({} if temporary_root is None else {"dir": temporary_root}))
+         ).resolve()
+         cidfile = lease_root / "container.cid"
+         docker_config = lease_root / "docker-config"
+@@ -7486,12 +7799,12 @@
+         read_fd, write_fd = os.pipe()
+         sealed_match = re.fullmatch(
+             r"/proc/self/fd/([0-9]+)",
+-            str(sys.argv[0]),
++            str(sys.argv[0]) if runner_entry is None else "",
+         )
+         runner_entry = (
+             str(sys.argv[0])
+             if sealed_match is not None
+-            else str(Path(__file__).resolve())
++            else str(Path(__file__).resolve() if runner_entry is None else runner_entry)
+         )
+         inherited_control_plane = (
+             (int(sealed_match.group(1)),)

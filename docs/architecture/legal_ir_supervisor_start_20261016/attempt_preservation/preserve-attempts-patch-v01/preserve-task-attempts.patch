@@ -1,0 +1,411 @@
+--- a/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ b/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -5088,6 +5088,7 @@
+         manual_completion_authority_required_task_ids: Sequence[str] = (),
+         manual_completion_authority_epoch_id: str = "",
+         manual_completion_authority_revalidation_only: bool = False,
++        preserve_task_attempts: bool = False,
+         objective_path: Path | None = None,
+         objective_bundle_dir: Path | None = None,
+         generated_status_paths: Sequence[Path | str] = (),
+@@ -5309,6 +5310,9 @@
+         self.manual_completion_authority_epoch_id = str(
+             manual_completion_authority_epoch_id or ""
+         ).strip()
++        if not isinstance(preserve_task_attempts, bool):
++            raise ValueError("preserve_task_attempts must be boolean")
++        self.preserve_task_attempts = preserve_task_attempts
+         self.manual_completion_authority_revalidation_only = bool(
+             manual_completion_authority_revalidation_only
+         )
+@@ -10929,6 +10933,9 @@
+     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+         """Consume completed repair receipts once in each durable lane."""
+ 
++        if self.preserve_task_attempts:
++            return [], []
++
+         latest_repairs: dict[str, tuple[PortalTask, str]] = {}
+         tasks_by_id = {task.task_id: task for task in tasks}
+         excluded = {str(task_id) for task_id in excluded_task_ids}
+@@ -11156,6 +11163,9 @@
+         authority transitions remain gated on the repair's validated merge and
+         board completion receipt.
+         """
++
++        if self.preserve_task_attempts:
++            return []
+ 
+         revision = str(recovery_revision or "").strip()
+         if self.max_task_attempts <= 0 or not revision:
+@@ -11538,6 +11548,9 @@
+         it from scratch.
+         """
+ 
++        if self.preserve_task_attempts:
++            return []
++
+         revision = str(recovery_revision or "").strip()
+         if (
+             self.max_task_attempts <= 0
+@@ -11813,6 +11826,9 @@
+         without operator counter surgery. Each recovery revision rearms a
+         canonical task at most once.
+         """
++
++        if self.preserve_task_attempts:
++            return []
+ 
+         revision = str(recovery_revision or "").strip()
+         if self.max_task_attempts <= 0 or not revision:
+@@ -12192,6 +12208,15 @@
+         validation. Prefer re-dispatching the unfinished attempt number.
+         """
+ 
++        if self.preserve_task_attempts:
++            return {
++                "consumed": True,
++                "released": False,
++                "attempt": max(0, int(attempt or 0)),
++                "task_id": str(task_id or "").strip(),
++                "reason": "preserve_task_attempts",
++            }
++
+         task_id = str(task_id or "").strip()
+         attempt_number = max(0, int(attempt or 0))
+         if not task_id or attempt_number <= 0:
+@@ -12391,8 +12416,14 @@
+         state: PortalTaskState,
+         task: PortalTask,
+         attempt: int,
++        *,
++        zero_provider_execution: bool = False,
+     ) -> None:
+         """Restore the pre-launch count for a confirmed non-consuming deferral."""
++
++        if self.preserve_task_attempts:
++            if zero_provider_execution is not True:
++                return
+ 
+         requested = max(0, int(attempt or 0))
+         identity = self._identity_for_task(task)
+@@ -18179,7 +18210,10 @@
+                 selectable_tasks = fallback_tasks
+         recovery_runtime_revision = (
+             ""
+-            if self.manual_completion_authority_revalidation_only
++            if (
++                self.manual_completion_authority_revalidation_only
++                or self.preserve_task_attempts
++            )
+             else self._retry_budget_repair_runtime_revision()
+         )
+         stale_proposal_replay_rearms = (
+@@ -18630,6 +18664,7 @@
+                     "manual_completion_authority_revalidation_only": (
+                         self.manual_completion_authority_revalidation_only
+                     ),
++                    "preserve_task_attempts": self.preserve_task_attempts,
+                     "ordinary_provider_dispatch_allowed": (
+                         not self.manual_completion_authority_revalidation_only
+                     ),
+@@ -18700,6 +18735,7 @@
+             "manual_completion_authority_revalidation_only": (
+                 self.manual_completion_authority_revalidation_only
+             ),
++            "preserve_task_attempts": self.preserve_task_attempts,
+             "ordinary_provider_dispatch_allowed": (
+                 not self.manual_completion_authority_revalidation_only
+             ),
+@@ -19984,6 +20020,9 @@
+         receipt clears the scheduler backpressure so the task can run.
+         """
+ 
++        if self.preserve_task_attempts:
++            return []
++
+         now = time.time()
+         cooled: list[tuple[str, Any]] = []
+         for entry in self.task_queue.entries.values():
+@@ -20080,6 +20119,9 @@
+         including an empty completion-gap scope, keeps its cooldown.
+         """
+ 
++        if self.preserve_task_attempts:
++            return []
++
+         note = "ValueError: " + DETERMINISTIC_DECLARED_OUTPUT_TARGET_REQUIRED
+         now = time.time()
+         cooled: list[tuple[str, Any]] = []
+@@ -20172,6 +20214,9 @@
+         The repair is now the source task's read-only check. A validation
+         failure recorded after that change keeps the cooldown.
+         """
++
++        if self.preserve_task_attempts:
++            return []
+ 
+         note = "validation_or_implementation_failed"
+         now = time.time()
+@@ -20279,6 +20324,9 @@
+         and the venv's plugins were missing. A real test failure recorded after
+         the launcher fix keeps its cooldown.
+         """
++
++        if self.preserve_task_attempts:
++            return []
+ 
+         note = "validation_or_implementation_failed"
+         now = time.time()
+@@ -20568,7 +20616,9 @@
+         if worktree_path is not None:
+             state.last_implementation_worktree_path = str(worktree_path)
+         state.last_implementation_branch = branch_name
+-        self._restore_task_attempt(state, task, max(0, attempt - 1))
++        self._restore_task_attempt(
++            state, task, max(0, attempt - 1), zero_provider_execution=True,
++        )
+         self._mark_implementation_finished(state, finished_at=finished_at)
+         state.selection_idle_reason = "provider_capacity_backoff"
+         state.save(self.state_path)
+@@ -21610,6 +21660,9 @@
+                         state,
+                         task,
+                         max(0, attempt - 1),
++                        zero_provider_execution=(
++                            ephemeral_result.get("provider_dispatched") is False
++                        ),
+                     )
+                     if not state.implementation_in_progress:
+                         self._clear_active_execution_state(
+@@ -21685,6 +21738,7 @@
+                     state,
+                     task,
+                     max(0, attempt - 1),
++                    zero_provider_execution=True,
+                 )
+                 if not state.implementation_in_progress:
+                     self._clear_active_execution_state(
+@@ -31752,6 +31806,7 @@
+                             state,
+                             task,
+                             max(0, attempt - 1),
++                            zero_provider_execution=(provider_dispatched is False),
+                         )
+                     finished_at = utc_now()
+                     state.last_implementation_started_at = started_at
+@@ -33320,7 +33375,19 @@
+         if attempt_consumed:
+             self._record_task_attempt(state, task, attempt)
+         else:
+-            self._restore_task_attempt(state, task, max(0, attempt - 1))
++            self._restore_task_attempt(
++                state, task, max(0, attempt - 1),
++                zero_provider_execution=(
++                    provider_dispatched is False
++                    and (
++                        lifecycle_setup_deferral
++                        or lifecycle_race_exception
++                        or typed_pre_dispatch_deferral
++                        or submodule_setup_deferral
++                        or dependency_setup_deferral
++                    )
++                ),
++            )
+         state.last_implementation_started_at = started_at
+         state.last_implementation_finished_at = finished_at
+         state.last_implementation_returncode = returncode
+@@ -71392,6 +71459,7 @@
+         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+         require_real_execution: bool = False,
+         max_task_attempts: int = 0,
++        preserve_task_attempts: bool = False,
+         clock_ms: Callable[[], int] | None = None,
+         task_source: Any = None,
+         close_task_source: bool = False,
+@@ -71617,6 +71685,9 @@
+         self.require_real_execution = bool(require_real_execution)
+         if type(max_task_attempts) is not int or not 0 <= max_task_attempts <= 10000:
+             raise DatabaseImplementationAuthorityError("max_task_attempts must be an integer in [0, 10000]")
++        if not isinstance(preserve_task_attempts, bool):
++            raise DatabaseImplementationAuthorityError("preserve_task_attempts must be boolean")
++        self.preserve_task_attempts = preserve_task_attempts
+         self.max_task_attempts = max_task_attempts
+         self._clock_ms = clock_ms or _database_daemon_now_ms
+         self._lock = threading.RLock()
+@@ -78490,6 +78561,16 @@
+         help=(
+             "Content-addressed identity of the verified manual-completion "
+             "seal and policy set used for descendant revalidation."
++        ),
++    )
++    parser.add_argument(
++        "--preserve-task-attempts",
++        action="store_true",
++        help=(
++            "Preserve consumed task attempts: disable automatic exhaustion "
++            "rearming, completed-repair resets, retry cooldown repairs, and "
++            "unknown vanished-worker rollback. Only confirmed zero-provider "
++            "prelaunch deferrals retain their non-consuming behavior."
+         ),
+     )
+     parser.add_argument(
+@@ -78905,6 +78986,7 @@
+             queue_path=None,
+             require_real_execution=bool(args.implement),
+             max_task_attempts=int(args.max_task_attempts),
++            preserve_task_attempts=args.preserve_task_attempts,
+             execution_slice_task_cids=tuple(args.execution_slice_task_cid),
+             execution_slice_task_ids=tuple(args.execution_slice_task_id),
+             task_prefix=str(getattr(args, "task_prefix", "") or ""),
+@@ -78984,6 +79066,7 @@
+             manual_completion_authority_revalidation_only=(
+                 args.manual_completion_authority_revalidation_only
+             ),
++            preserve_task_attempts=args.preserve_task_attempts,
+             objective_path=args.objective_path,
+             objective_bundle_dir=args.objective_bundle_dir,
+             generated_status_paths=args.generated_status_path,
+--- a/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py
++++ b/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py
+@@ -957,6 +957,10 @@
+         )
+ 
+     normalized = dict(payload)
++    preserve_task_attempts = payload.get("preserve_task_attempts", False)
++    if not isinstance(preserve_task_attempts, bool):
++        raise SupervisorSchedulerConfigError("preserve_task_attempts must be boolean")
++    normalized["preserve_task_attempts"] = preserve_task_attempts
+     normalized["taskboard_path"] = _scheduler_config_relative_path(
+         payload.get("taskboard_path"),
+         field_name="taskboard_path",
+@@ -1480,6 +1484,8 @@
+         options.extend(
+             ("--manual-completion-authority-epoch-id", authority_epoch_id)
+         )
++    if profile.get("preserve_task_attempts") is True:
++        options.append("--preserve-task-attempts")
+     return options
+ 
+ 
+@@ -6751,6 +6757,7 @@
+     )
+     manual_completion_authority_epoch_id: str = ""
+     manual_completion_authority_revalidation_only: bool = False
++    preserve_task_attempts: bool = False
+     scheduler_config_path: Path | None = None
+     worktree_reconciliation_enabled: bool = True
+     worktree_reconciliation_max_merges: int = 1
+@@ -6882,6 +6889,8 @@
+     supervisor_script_path: Path | None = None
+ 
+     def __post_init__(self) -> None:
++        if not isinstance(self.preserve_task_attempts, bool):
++            raise ValueError("preserve_task_attempts must be boolean")
+         _validated_validation_max_workers(self.validation_max_workers)
+         if not self.production_provider_policy:
+             if any(
+@@ -22188,6 +22197,8 @@
+                         self.config.manual_completion_authority_epoch_id,
+                     ]
+                 )
++            if self.config.preserve_task_attempts:
++                command.append("--preserve-task-attempts")
+             if self.config.manual_completion_authority_revalidation_only:
+                 command.append(
+                     "--manual-completion-authority-revalidation-only"
+@@ -22614,6 +22625,16 @@
+         if (
+             "--manual-completion-authority-revalidation-only" in tokens
+         ) != self.config.manual_completion_authority_revalidation_only:
++            return False
++        preserve_options = [
++            token for token in tokens
++            if token.startswith("--")
++            and "--preserve-task-attempts".startswith(token.partition("=")[0])
++        ]
++        expected_preserve_options = (
++            ["--preserve-task-attempts"] if self.config.preserve_task_attempts else []
++        )
++        if preserve_options != expected_preserve_options:
+             return False
+         if option_values("--execution-slice-task-id") != set(
+             self.config.execution_slice_task_ids
+@@ -22844,6 +22865,16 @@
+         help=(
+             "Content-addressed identity of the verified manual-completion "
+             "seal and policy set used for descendant revalidation."
++        ),
++    )
++    parser.add_argument(
++        "--preserve-task-attempts",
++        action="store_true",
++        help=(
++            "Preserve consumed task attempts: disable automatic exhaustion "
++            "rearming, completed-repair resets, retry cooldown repairs, and "
++            "unknown vanished-worker rollback. Only confirmed zero-provider "
++            "prelaunch deferrals retain their non-consuming behavior."
+         ),
+     )
+     parser.add_argument(
+@@ -23724,6 +23755,7 @@
+                 False,
+             )
+         ),
++        preserve_task_attempts=bool(getattr(args, "preserve_task_attempts", False)),
+         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
+         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
+         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,
+--- a/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py
++++ b/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py
+@@ -1317,6 +1317,7 @@
+             manual_completion_authority_revalidation_only=bool(
+                 getattr(parsed, "manual_completion_authority_revalidation_only", False)
+             ),
++            preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
+             objective_path=parsed.objective_path or default_objective_path,
+             objective_bundle_dir=(
+                 parsed.objective_bundle_dir or default_objective_bundle_dir
+@@ -1461,6 +1462,7 @@
+             queue_path=None,
+             require_real_execution=bool(getattr(parsed, "implement", False)),
+             max_task_attempts=int(getattr(parsed, "max_task_attempts", 0)),
++            preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
+             execution_slice_task_cids=tuple(getattr(parsed, "execution_slice_task_cid", ()) or ()),
+             execution_slice_task_ids=tuple(getattr(parsed, "execution_slice_task_id", ()) or ()),
+             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
+@@ -1568,6 +1570,7 @@
+         manual_completion_authority_revalidation_only=(
+             authority_revalidation_only
+         ),
++        preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
+         objective_path=parsed.objective_path or default_objective_path,
+         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
+         execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
+@@ -1626,6 +1629,7 @@
+         authority_mode=authority_mode,
+         task_source_kind=task_source_kind,
+         quack_uri=str(getattr(parsed, "quack_endpoint", "") or ""),
++        preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
+         provider_fn=provider_fn,
+         effect_fn=effect_fn,
+         validation_fn=validation_fn,
+--- a/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py
+@@ -2316,6 +2316,7 @@
+             "objective_goal_refinement_enabled must be boolean"
+         )
+     for field in (
++        "preserve_task_attempts",
+         "retry_budget_guardrail_enabled",
+         "dependency_guardrail_enabled",
+         "reconciliation_guardrail_enabled",
+@@ -2947,6 +2948,8 @@
+             args.append("--no-objective-goal-refinement")
+     if payload.get("codebase_refill_enabled") is True:
+         args.append("--codebase-refill-scan")
++    if payload.get("preserve_task_attempts") is True:
++        args.append("--preserve-task-attempts")
+     if payload.get("retry_budget_guardrail_enabled") is False:
+         args.append("--no-retry-budget-guardrail")
+     if payload.get("dependency_guardrail_enabled") is False:

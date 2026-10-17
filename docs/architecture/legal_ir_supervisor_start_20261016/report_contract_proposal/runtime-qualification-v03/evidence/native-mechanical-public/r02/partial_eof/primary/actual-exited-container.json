@@ -1,0 +1,295 @@
+{
+  "AppArmorProfile": "docker-default",
+  "Args": [
+    "-I",
+    "-c",
+    "import os,select,sys,time\nexpected=b'LEGAL_IR_ORDINARY_PROVIDER_START_V1\\n';received=bytearray();deadline=time.monotonic()+180\nwhile len(received)<len(expected):\n remaining=deadline-time.monotonic()\n if remaining<=0 or not select.select([0],[],[],remaining)[0]:raise SystemExit(125)\n byte=os.read(0,1)\n if not byte:raise SystemExit(125)\n received.extend(byte)\nif bytes(received)!=expected:raise SystemExit(125)\nos.execv(sys.argv[1],sys.argv[1:])\n",
+    "/opt/ipfs-task-tools/bin/python",
+    "-I",
+    "-S",
+    "-B",
+    "/opt/legal-ir/fixture_payload.py",
+    "positive"
+  ],
+  "Config": {
+    "AttachStderr": true,
+    "AttachStdin": true,
+    "AttachStdout": true,
+    "Cmd": [
+      "-I",
+      "-c",
+      "import os,select,sys,time\nexpected=b'LEGAL_IR_ORDINARY_PROVIDER_START_V1\\n';received=bytearray();deadline=time.monotonic()+180\nwhile len(received)<len(expected):\n remaining=deadline-time.monotonic()\n if remaining<=0 or not select.select([0],[],[],remaining)[0]:raise SystemExit(125)\n byte=os.read(0,1)\n if not byte:raise SystemExit(125)\n received.extend(byte)\nif bytes(received)!=expected:raise SystemExit(125)\nos.execv(sys.argv[1],sys.argv[1:])\n",
+      "/opt/ipfs-task-tools/bin/python",
+      "-I",
+      "-S",
+      "-B",
+      "/opt/legal-ir/fixture_payload.py",
+      "positive"
+    ],
+    "Domainname": "",
+    "Entrypoint": [
+      "/opt/ipfs-task-tools/bin/python"
+    ],
+    "Env": [
+      "LC_ALL=C.UTF-8",
+      "PYTHONDONTWRITEBYTECODE=1",
+      "PATH=/usr/bin:/bin",
+      "HOME=/workspace",
+      "TMPDIR=/workspace",
+      "LANG=C.UTF-8"
+    ],
+    "Hostname": "6c580ec6afce",
+    "Image": "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e",
+    "Labels": {
+      "ipfs_accelerate.grok_isolation": "true",
+      "org.ipfs-accelerate.ordinary-worker": "2026-10-16-ordinary-v1",
+      "org.ipfs-accelerate.worker-profile": "ordinary-task-toolchain-v1",
+      "org.justicedao.fixture-case": "partial_eof",
+      "org.justicedao.nonmodel-fixture": "legal-ir-ordinary-handoff-nonmodel-gate-v02",
+      "org.opencontainers.image.base.digest": "sha256:95d16dfcd4ab8b61154e2280ab9fe4afa2ef03e5eefa8a689e86571e8a1b32cf",
+      "org.opencontainers.image.description": "CPU-only host-toolchain-bound ordinary worker; no protected-route authority",
+      "org.opencontainers.image.title": "Legal IR ordinary task toolchain",
+      "org.opencontainers.image.version": "24.04"
+    },
+    "OpenStdin": true,
+    "StdinOnce": true,
+    "Tty": false,
+    "User": "1000:1000",
+    "Volumes": null,
+    "WorkingDir": "/workspace"
+  },
+  "Created": "2026-10-17T06:20:06.99278023Z",
+  "Driver": "overlay2",
+  "ExecIDs": null,
+  "GraphDriver": {
+    "Data": {
+      "ID": "6c580ec6afce9e7f7e3e770a2e9c8e3ad9c6eea6f3bfccc97550d5f1287eaf91",
+      "LowerDir": "/var/lib/docker/overlay2/02bca4ddefc138eef918c8ecfa091a49f29854018e095f1fbd0ec1e89fbf6854-init/diff:/var/lib/docker/overlay2/twi4i0kwkn52p7pevmjhgq6fs/diff:/var/lib/docker/overlay2/ro1w5jw55tcv037nt5itb3bbn/diff:/var/lib/docker/overlay2/ef16c04a16da7ef4559586074dfc061b3df00b3caa6e8d4670d76b1d99a2a514/diff",
+      "MergedDir": "/var/lib/docker/overlay2/02bca4ddefc138eef918c8ecfa091a49f29854018e095f1fbd0ec1e89fbf6854/merged",
+      "UpperDir": "/var/lib/docker/overlay2/02bca4ddefc138eef918c8ecfa091a49f29854018e095f1fbd0ec1e89fbf6854/diff",
+      "WorkDir": "/var/lib/docker/overlay2/02bca4ddefc138eef918c8ecfa091a49f29854018e095f1fbd0ec1e89fbf6854/work"
+    },
+    "Name": "overlay2"
+  },
+  "HostConfig": {
+    "AutoRemove": false,
+    "Binds": null,
+    "BlkioDeviceReadBps": [],
+    "BlkioDeviceReadIOps": [],
+    "BlkioDeviceWriteBps": [],
+    "BlkioDeviceWriteIOps": [],
+    "BlkioWeight": 0,
+    "BlkioWeightDevice": [],
+    "CapAdd": null,
+    "CapDrop": [
+      "ALL"
+    ],
+    "Cgroup": "",
+    "CgroupParent": "",
+    "CgroupnsMode": "private",
+    "ConsoleSize": [
+      0,
+      0
+    ],
+    "ContainerIDFile": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r02/native/temporary-partial_eof/asref-grok-container-gehqhmnf/container.cid",
+    "CpuCount": 0,
+    "CpuPercent": 0,
+    "CpuPeriod": 0,
+    "CpuQuota": 0,
+    "CpuRealtimePeriod": 0,
+    "CpuRealtimeRuntime": 0,
+    "CpuShares": 0,
+    "CpusetCpus": "",
+    "CpusetMems": "",
+    "DeviceCgroupRules": null,
+    "DeviceRequests": null,
+    "Devices": [],
+    "Dns": null,
+    "DnsOptions": [],
+    "DnsSearch": [],
+    "ExtraHosts": null,
+    "GroupAdd": null,
+    "IOMaximumBandwidth": 0,
+    "IOMaximumIOps": 0,
+    "IpcMode": "none",
+    "Isolation": "",
+    "Links": null,
+    "LogConfig": {
+      "Config": {},
+      "Type": "none"
+    },
+    "MaskedPaths": [
+      "/proc/acpi",
+      "/proc/asound",
+      "/proc/interrupts",
+      "/proc/kcore",
+      "/proc/keys",
+      "/proc/latency_stats",
+      "/proc/sched_debug",
+      "/proc/scsi",
+      "/proc/timer_list",
+      "/proc/timer_stats",
+      "/sys/devices/virtual/powercap",
+      "/sys/firmware"
+    ],
+    "Memory": 268435456,
+    "MemoryReservation": 0,
+    "MemorySwap": 268435456,
+    "MemorySwappiness": null,
+    "Mounts": [
+      {
+        "ReadOnly": true,
+        "Source": "/usr",
+        "Target": "/usr",
+        "Type": "bind"
+      },
+      {
+        "ReadOnly": true,
+        "Source": "/usr/bin/python3.12",
+        "Target": "/opt/ipfs-task-tools/bin/python",
+        "Type": "bind"
+      },
+      {
+        "ReadOnly": true,
+        "Source": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-v02/fixture_payload.py",
+        "Target": "/opt/legal-ir/fixture_payload.py",
+        "Type": "bind"
+      },
+      {
+        "Source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r02/native/temporary-partial_eof/workspace",
+        "Target": "/workspace",
+        "Type": "bind"
+      }
+    ],
+    "NanoCpus": 1000000000,
+    "NetworkMode": "none",
+    "OomKillDisable": null,
+    "OomScoreAdj": 0,
+    "PidMode": "",
+    "PidsLimit": 4,
+    "PortBindings": {},
+    "Privileged": false,
+    "PublishAllPorts": false,
+    "ReadonlyPaths": [
+      "/proc/bus",
+      "/proc/fs",
+      "/proc/irq",
+      "/proc/sys",
+      "/proc/sysrq-trigger"
+    ],
+    "ReadonlyRootfs": true,
+    "RestartPolicy": {
+      "MaximumRetryCount": 0,
+      "Name": "no"
+    },
+    "Runtime": "runc",
+    "SecurityOpt": [
+      "no-new-privileges"
+    ],
+    "ShmSize": 67108864,
+    "UTSMode": "",
+    "Ulimits": [
+      {
+        "Hard": 120,
+        "Name": "cpu",
+        "Soft": 120
+      },
+      {
+        "Hard": 2097152,
+        "Name": "fsize",
+        "Soft": 2097152
+      },
+      {
+        "Hard": 64,
+        "Name": "nofile",
+        "Soft": 64
+      }
+    ],
+    "UsernsMode": "",
+    "VolumeDriver": "",
+    "VolumesFrom": null
+  },
+  "HostnamePath": "/var/lib/docker/containers/6c580ec6afce9e7f7e3e770a2e9c8e3ad9c6eea6f3bfccc97550d5f1287eaf91/hostname",
+  "HostsPath": "/var/lib/docker/containers/6c580ec6afce9e7f7e3e770a2e9c8e3ad9c6eea6f3bfccc97550d5f1287eaf91/hosts",
+  "Id": "6c580ec6afce9e7f7e3e770a2e9c8e3ad9c6eea6f3bfccc97550d5f1287eaf91",
+  "Image": "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e",
+  "LogPath": "",
+  "MountLabel": "",
+  "Mounts": [
+    {
+      "Destination": "/usr",
+      "Mode": "",
+      "Propagation": "rprivate",
+      "RW": false,
+      "Source": "/usr",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/opt/ipfs-task-tools/bin/python",
+      "Mode": "",
+      "Propagation": "rprivate",
+      "RW": false,
+      "Source": "/usr/bin/python3.12",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/opt/legal-ir/fixture_payload.py",
+      "Mode": "",
+      "Propagation": "rprivate",
+      "RW": false,
+      "Source": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-v02/fixture_payload.py",
+      "Type": "bind"
+    },
+    {
+      "Destination": "/workspace",
+      "Mode": "",
+      "Propagation": "rprivate",
+      "RW": true,
+      "Source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r02/native/temporary-partial_eof/workspace",
+      "Type": "bind"
+    }
+  ],
+  "Name": "/ipfs-accelerate-grok-1790157-21387060fef54486834952114f0cfbff",
+  "NetworkSettings": {
+    "Networks": {
+      "none": {
+        "Aliases": null,
+        "DNSNames": null,
+        "DriverOpts": null,
+        "EndpointID": "",
+        "Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "GwPriority": 0,
+        "IPAMConfig": null,
+        "IPAddress": "",
+        "IPPrefixLen": 0,
+        "IPv6Gateway": "",
+        "Links": null,
+        "MacAddress": "",
+        "NetworkID": "ac9540b5d635c97a468ba512011dea350070989b6e4c44bae3a235b7d9d66550"
+      }
+    },
+    "Ports": {},
+    "SandboxID": "",
+    "SandboxKey": ""
+  },
+  "Path": "/opt/ipfs-task-tools/bin/python",
+  "Platform": "linux",
+  "ProcessLabel": "",
+  "ResolvConfPath": "/var/lib/docker/containers/6c580ec6afce9e7f7e3e770a2e9c8e3ad9c6eea6f3bfccc97550d5f1287eaf91/resolv.conf",
+  "RestartCount": 0,
+  "State": {
+    "Dead": false,
+    "Error": "",
+    "ExitCode": 125,
+    "FinishedAt": "2026-10-17T06:20:24.451155884Z",
+    "OOMKilled": false,
+    "Paused": false,
+    "Pid": 0,
+    "Restarting": false,
+    "Running": false,
+    "StartedAt": "2026-10-17T06:20:07.12186787Z",
+    "Status": "exited"
+  }
+}

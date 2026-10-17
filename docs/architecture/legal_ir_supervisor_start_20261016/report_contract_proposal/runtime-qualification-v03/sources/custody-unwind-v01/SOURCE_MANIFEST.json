@@ -1,0 +1,133 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "controlled_exact_refusals": 8,
+  "controlled_native_engineering_experiments": 1,
+  "custody_manifest_sha256": "36742d137ef138fd720ffc9db0521e0107bb7616ef9c95494f785b21ef238ceb",
+  "dispatch_authority": false,
+  "files": [
+    {
+      "bytes": 5882,
+      "path": "README.md",
+      "sha256": "987ba530b8002860806e9592db37daddbe6d4620d11fce6b6baf7b4993f25791"
+    },
+    {
+      "bytes": 910,
+      "path": "RESOURCE_PLAN.json",
+      "sha256": "d806923342c9d91e8167c966135ca6adc7c5b92d89b14364566b2427f994e5b4"
+    },
+    {
+      "bytes": 26450,
+      "path": "qualify_custody_unwind.py",
+      "sha256": "cc5e0aaae114c706f2e6b13de7361735e9e943acbbd7dad58c7443853f703b4a"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 15440,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "bytes": 40999,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+    },
+    {
+      "bytes": 17545,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d"
+    },
+    {
+      "bytes": 121503,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    },
+    {
+      "bytes": 53075,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "542f705867b93fcb138a117e1f5c97a144ad6635dc92c37bc5034eee5065ef63"
+    },
+    {
+      "bytes": 15543,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633"
+    },
+    {
+      "bytes": 56829,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/__init__.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9"
+    },
+    {
+      "bytes": 957,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/__init__.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "a12bab3724da07be67b447719ace42fc1f480cb5635581f320a99a372f02f450"
+    },
+    {
+      "bytes": 69336,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "9d693fa576f00dc36899faad75ef3044c437e2bfec5c62306f7031236725bb0e"
+    },
+    {
+      "bytes": 5845,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/router_deps.py",
+      "role": "held_native_public_API_and_transitive_source",
+      "sha256": "56f66dfff183d9d0ee7977a314c49adbaa181e6fe0087c8f1c581a7d2973bf4c"
+    },
+    {
+      "bytes": 7157,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/README.md",
+      "role": "frozen_custody_capacity_binder_source",
+      "sha256": "1a52e5b0b71b36199f657525e996d643c8df9c1a64dfcf43e1aaa7e9eb4199b3"
+    },
+    {
+      "bytes": 15131,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/ordinary_custody_hold.py",
+      "role": "frozen_custody_capacity_binder_source",
+      "sha256": "e84b97fb4bfb0e9cc2cd880681e1a907e1234bff8c54f8d7b43faa1d3ec42331"
+    },
+    {
+      "bytes": 10588,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/test_custody_hold_memory.py",
+      "role": "frozen_custody_capacity_binder_source",
+      "sha256": "122d01c16aeac9d2738b4f830e58d0cc61ecc3ef650315d075c0ca4648a1d21b"
+    },
+    {
+      "bytes": 2775,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/SOURCE_MANIFEST.json",
+      "role": "frozen_custody_capacity_binder_source",
+      "sha256": "36742d137ef138fd720ffc9db0521e0107bb7616ef9c95494f785b21ef238ceb"
+    },
+    {
+      "bytes": 7845032,
+      "path": "/usr/bin/python3.12",
+      "role": "actual_executing_host_Python",
+      "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    }
+  ],
+  "productive_authority_after_cancellation": false,
+  "provider_calls_performed": false,
+  "qualifications_not_claimed": [
+    "Docker_or_kernel_closeout",
+    "real_provider_execution",
+    "automatic_custody_handler",
+    "host_process_death_survival",
+    "Codex_backup",
+    "candidate_or_acceptance_integration",
+    "legal_fidelity_or_Lean_compilation"
+  ],
+  "schema": "legal-ir-ordinary-custody-unwind-source@1",
+  "source_author_AST_review_only": true,
+  "status": "frozen_source_only_pending_root_genuine_execution",
+  "tests_or_native_Docker_provider_jobs_performed_by_source_author": false
+}

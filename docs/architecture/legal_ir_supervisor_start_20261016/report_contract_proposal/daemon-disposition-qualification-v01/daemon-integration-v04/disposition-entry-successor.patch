@@ -1,0 +1,22 @@
+--- before/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -15234,6 +15234,9 @@
+         """Run one pass and establish its durable file-cursor boundary."""
+ 
+         if self.report_only_candidate_freezing:
++            from .report_only_disposition_gate import require_clear_report_only_disposition
++
++            require_clear_report_only_disposition(self)
+             self._require_report_only_native_host().guard_pass_entry(self)
+         retained = self._retained_provider_capacity_deferral()
+         if retained is not None:
+@@ -21058,6 +21061,9 @@
+     @_workspace_mutation_boundary(pool=True)
+     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+         if self.report_only_candidate_freezing:
++            from .report_only_disposition_gate import require_clear_report_only_disposition
++
++            require_clear_report_only_disposition(self)
+             self._require_report_only_native_host().require_attempt_profile(self, task, state)
+         retained = self._retained_provider_capacity_deferral()
+         if retained is not None:

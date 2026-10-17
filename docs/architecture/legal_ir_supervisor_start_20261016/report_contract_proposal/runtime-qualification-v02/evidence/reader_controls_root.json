@@ -1,0 +1,22 @@
+{
+  "actual_exec_exit_code": 0,
+  "actual_exec_session": 58967,
+  "actual_native_terminal": {
+    "child_returncode": 0,
+    "failure_type": null,
+    "native_finalized": true,
+    "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-candidate-reader-20261017-qualification03/receipt.json",
+    "status": "completed"
+  },
+  "actual_public_observer_qualified": false,
+  "actual_public_parser_regression_passed": true,
+  "additional_passed_call_reports": 4,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 60,
+  "prior_harness_failure_preserved": true,
+  "provider_calls_performed": false,
+  "result_sha256": "01138726a410608dd3d148ed7b37dfd51e90122cd182b6dfe2dabd9f6c8c1ace",
+  "schema": "legal-ir-candidate-readers-root-observation@1",
+  "source_manifest_sha256": "829d35224fc21fa40bd63e50b8d9073e3e66e58dd332710fc85d29caa214be97",
+  "source_request_sha256": "b62685ff1a2feae14d48381f20148045eeee72612468dc29a25c9accd48d979b"
+}

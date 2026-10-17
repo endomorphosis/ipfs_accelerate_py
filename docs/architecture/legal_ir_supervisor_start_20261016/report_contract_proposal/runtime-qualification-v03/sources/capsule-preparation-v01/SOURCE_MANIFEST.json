@@ -1,0 +1,31 @@
+{
+  "acceptance_authority": false,
+  "author_copied_source_execution": false,
+  "author_native_or_Docker_operations": false,
+  "author_provider_calls_performed": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "files": [
+    {
+      "bytes": 5424,
+      "path": "README.md",
+      "sha256": "ddea9289bc29433a002b4e5d35dec410368265c0d60b61e808a64cb3df5355f9"
+    },
+    {
+      "bytes": 1365014,
+      "path": "SOURCE_INVENTORY.json",
+      "sha256": "920eee1617fdf1832d74219b0a778c044fe675e493f2128ba9c516575602e8fc"
+    },
+    {
+      "bytes": 13883,
+      "path": "prepare_capsule.py",
+      "sha256": "16335ba70b213d86c1bf1b328a6542a5fe040cb76dc2360f88c25b827796536a"
+    }
+  ],
+  "payload_byte_limit": 134217728,
+  "payload_file_limit": 4096,
+  "production_hook_deployed": false,
+  "schema": "legal-ir-native-handoff-capsule-preparation-source@1",
+  "source_AST_valid": true,
+  "status": "source_only_not_executed"
+}

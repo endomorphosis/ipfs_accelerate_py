@@ -1,0 +1,584 @@
+{
+  "acceptance_authority": false,
+  "canonical_configured_attempt_cap": 2,
+  "canonical_historical_consumed_attempts": 2,
+  "canonical_task_count": 64,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "counter_or_cap_mutation_authority": false,
+  "draft": false,
+  "engineering_evidence": {
+    "coupled_entry_sources": {
+      "actual_full_entry_cases_qualified": false,
+      "observation": "entry-source-root-observation-r01.json",
+      "passed_testcases": 6,
+      "status": "passed_native_finalized"
+    },
+    "full_original_entry_fixture": {
+      "Git_descendants_in_original_attached_worker_group_observed": true,
+      "actual_native_host_constructed": false,
+      "actual_parent_finalized": true,
+      "actual_private_original_DuckDB_wrappers": 5,
+      "actual_root_phase_owner_rows_drained": true,
+      "case_names": [
+        "missing_journal",
+        "valid_lowlevel_denial",
+        "corrupt_journal",
+        "incomplete_journal",
+        "quarantine_without_journal"
+      ],
+      "complete_payload_and_modes_independently_rechecked": true,
+      "consumed_original_attempt_positive_qualified": false,
+      "correction": "Fresh V02 private child set umask0077 after actual admission; unchanged product source and five entry assertions. No chmod of shared canonical store.",
+      "disk_released": true,
+      "entry_boundary": "Four journal/quarantine denial cases refused before host access; absent journal reached the actual missing-host refusal. No measured entry SQL, phase renewal, attempt selection/start, native host or consumed join.",
+      "expected_cases": 5,
+      "failed_case_native_finalized": true,
+      "failed_case_observation": "disposition-entry-failed-root-observation-r01.json",
+      "failed_case_observation_sha256": "3365892d78230dfadc7f6531366fe8ab9e6b4f403ed4bb5b75094fbb0d80a1f2",
+      "failed_case_qualification_passed": false,
+      "failure_reason": "Inherited umask0002 created original lifecycle store0775; strict owned-namespace preflight correctly refused group-writable original store.",
+      "final_attempt_bytes": 8232240,
+      "final_case_observation": "disposition-entry-root-observation-r02.json",
+      "final_case_observation_sha256": "2003b7c0ddbb8f9809d07111beb26cb32cde49860a4e97a9d1f0a8378a458986",
+      "final_preparation_observation": "disposition-entry-capsule-root-observation-r01.json",
+      "full_original_daemon_constructor_calls": 5,
+      "full_original_host_qualified": false,
+      "native_finalized": true,
+      "original_Git_process_count": 56,
+      "original_cap_two_unchanged": true,
+      "original_positive_publish_failure_qualified": false,
+      "passed_cases": 5,
+      "payload_bytes": 106943056,
+      "payload_file_count": 2812,
+      "preparation_native_finalized": true,
+      "preparation_observation_sha256": "20b49c65e26c722193588f0010602c5260ca4c7ee0ea17f0ad08bfb0a5b7637e",
+      "private_counter_rows_unchanged": true,
+      "same_borrow_connection_identity_qualified": false,
+      "source": "disposition-entry-fixture-v02/SOURCE_MANIFEST.json",
+      "status": "passed_five_original_negative_entry_cases_native_finalized"
+    },
+    "immutable_evidence_copies": {
+      "actual_copied_files": 26,
+      "bundles": [
+        {
+          "actual_copied_files": 14,
+          "copied_payload_bytes": 23633,
+          "source": "qualification-evidence-v01/COPY_MANIFEST.json"
+        },
+        {
+          "actual_copied_files": 5,
+          "copied_payload_bytes": 165255,
+          "source": "qualification-evidence-v02/COPY_MANIFEST.json"
+        },
+        {
+          "actual_copied_files": 7,
+          "copied_payload_bytes": 13307,
+          "source": "qualification-evidence-v03/COPY_MANIFEST.json"
+        }
+      ],
+      "copied_payload_bytes": 202195,
+      "copy_only": true,
+      "failed_generations_preserved": [
+        "journal-failed-closeout-r02",
+        "entry-failed-r01"
+      ],
+      "originals_unchanged": true,
+      "worker_success_and_native_finalization_remain_separate": true
+    },
+    "journal_controls_V02": {
+      "actual_parent_exit_code": 1,
+      "counts_as_native_qualified": false,
+      "native_finalized": false,
+      "observation": "attempt-controls-failed-finalization-root-observation-r02.json",
+      "observation_sha256": "1ecada1238ec588dd1612d7172f5c45a8f0f67ca14321a1eaab71cfd6961dfe6",
+      "passed_worker_testcases": 33,
+      "reason": "Builtin pytest tmp_path framework directory symlinks violate original strict storage inventory",
+      "status": "worker_passed_native_finalization_failed",
+      "worker_returncode": 0
+    },
+    "journal_controls_V03": {
+      "actual_consumed_ordinal_qualified": false,
+      "actual_root_phase_owner_rows_drained": true,
+      "disk_released": true,
+      "expected_cases": 33,
+      "failures": 0,
+      "final_attempt_bytes": 104796,
+      "final_root_observation": "attempt-controls-root-observation-r03.json",
+      "final_root_observation_sha256": "28a22bf169b60fe564617f70167af38e1ef1508a0a5083040552a3949950a4a4",
+      "junit_sha256": "7191253685ca3eaa91b59de063b4fc7e72b9b1578b133ed756664c02cebf4ce9",
+      "native_finalized": true,
+      "passed_testcases": 33,
+      "positive_original_object_join_cases": 0,
+      "private_post_test_alias_scan_passed": true,
+      "request": "attempt-disposition-controls-v03/request-r03.json",
+      "request_sha256": "5021fa4b5d2cbd8e3e44b5631ac9156a7425c9e8ec4c54c0e15fef8d3b808fe2",
+      "status": "passed_native_finalized",
+      "storage_bytes": 67108864,
+      "supersedes_only_qualification_not_erasure_of_failed_V02": true
+    },
+    "native_admin": {
+      "runtime_implemented_or_qualified_by_audit": false,
+      "status": "source_audit_and_design_only",
+      "tasks": "native-admin-audit-v01/TASKS.json"
+    },
+    "native_finalized_engineering_control_and_entry_cases": 74,
+    "native_finalized_original_public_entry_cases": 5,
+    "native_finalized_source_or_cold_control_cases": 69,
+    "retained_V02_recovery": {
+      "actual_postwrite_charged_bytes": 159125034258,
+      "actual_root_phase_owner_rows_drained": true,
+      "deletion_journal_matches_exact_aliases": true,
+      "exact_framework_aliases_independently_removed": 28,
+      "existing_global_limit_bytes": 160000000000,
+      "final_recovery_observation": "failed-fixture-recovery-root-observation-r01.json",
+      "final_recovery_observation_sha256": "f347ef5126068822efdf10e00c371145162bbd3c62ba9c0cbf99a3e677dea93b",
+      "full_metadata_and_hashes_preserved": true,
+      "native_finalized": true,
+      "new_disk_released": true,
+      "new_native_owner_final_attempt_bytes": 372388,
+      "ordinary_artifacts_deleted": false,
+      "original_native_finalization_succeeded": false,
+      "quota_or_cap_changed": false,
+      "regular_bytes_preserved": 103004,
+      "regular_files_independently_preserved": 283,
+      "scope": "Exact owned framework symlink fixtures and retained original reservation only",
+      "selected_old_disk_status": "released",
+      "selected_old_reserved_bytes": 134217728,
+      "status": "passed_public_API_recovery_native_finalized"
+    },
+    "sticky_host": {
+      "actual_successful_host_qualified": false,
+      "cold_negative_cases": 22,
+      "observation": "sticky-host-root-observation-r01.json",
+      "passed_testcases": 30,
+      "source_preservation_cases": 8,
+      "status": "passed_native_finalized"
+    }
+  },
+  "github_qualification": "skipped_by_user",
+  "goal": {
+    "id": "PI-P04-DISPOSITION",
+    "status": "engineering_scope_qualified_ready_for_documentation_runtime_and_semantic_work_pending",
+    "subgoals": [
+      {
+        "id": "SG-ENGINEERING-CLOSEOUT",
+        "status": "qualification_and_recovery_complete_publication_ready",
+        "tasks": [
+          {
+            "actual_evidence": "failed-fixture-recovery-root-observation-r01.json",
+            "completion_criteria": [
+              "Use finite genuine original public recovery and exact recorded owner/process/attempt/link identities. Remove only authenticated owned framework aliases and preserve ordinary evidence.",
+              "Do not reconstruct private lease keys, change quota/caps, signal unrelated owners, or equate a worker exit with stopped native closeout.",
+              "Independently record original child/group absence, original disk release and actual root/phase/native finalization. Keep the original33-pass worker and failed parent outcome intact."
+            ],
+            "depends_on": [],
+            "id": "ENG-RECOVER-V02",
+            "priority": 0,
+            "status": "passed_public_API_recovery_native_finalized",
+            "title": "Recover exact framework aliases and retained original V02 reservation"
+          },
+          {
+            "actual_evidence": "attempt-controls-root-observation-r03.json",
+            "completion_criteria": [
+              "Review exact frozen V03 request/source and current capacity. Use original V05 attachment gate, fresh64MiB request and no extra native grant.",
+              "All33 original assertions pass with regular0700 case directories; explicit manual links are cleaned only by exact fixture identity; bounded worker scan finds no framework aliases.",
+              "Independently verify actual original native/disk/root/phase closeout. Update readiness only after this proof; do not reuse the V02 native failure as qualification."
+            ],
+            "depends_on": [],
+            "id": "ENG-FS-V03",
+            "priority": 0,
+            "status": "passed_native_finalized",
+            "title": "Qualify corrected33-case journal filesystem controls with actual native finalization"
+          },
+          {
+            "actual_evidence": "disposition-entry-capsule-root-observation-r01.json",
+            "completion_criteria": [
+              "Run the finite reviewed preparation under original admission before any product import/Git/DB effect. Preserve all unmodified original source hashes and exact daemonV04/hostV05/helper/gate association.",
+              "Use a fresh independently charged complete2812-source capsule with regular single-link0444 files and0500 directories; retain actual assembled source and complete manifest.",
+              "Verify original preparation native finalization independently before freezing any later case request. No full clone/constructor/provider qualification follows from source copying."
+            ],
+            "depends_on": [],
+            "id": "ENG-CAPSULE",
+            "priority": 0,
+            "status": "passed_native_finalized",
+            "title": "Prepare complete immutable original-source entry capsule"
+          },
+          {
+            "actual_evidence": "disposition-entry-root-observation-r02.json",
+            "completion_criteria": [
+              "Use complete original constructors, real private Git/local DuckDB wrappers and actual original-module imports under original native attachment.",
+              "Cover absent journal\u2192missing-host refusal, real private low-level denial, corrupt denial, incomplete marker, and actual original current-owner quarantine fallback with missing journal.",
+              "During measured public entry, require the four journal/quarantine denial cases to refuse before host access; absent journal must reach the missing-host refusal. Forbid SQL/new connection/reconnect/close, phase renewal, process launch, selection and original attempt-start bodies. Preserve cap2 and the real private counter row.",
+              "Treat these as negative public-entry cases. Do not claim a source-owned consumed-attempt publication, positive native host, quarantine transfer, borrowed exit, candidate validation or task acceptance.",
+              "Keep per-case and original parent finalization evidence; preserve every failed or blocked preparation/qualification outcome.",
+              "Establish private original lifecycle store/state permissions through actual owned startup (fresh child umask0077 only after admission for this fixture). Preserve the V01 group-writable-store refusal; never chmod a shared canonical store or relax the product privacy predicate."
+            ],
+            "depends_on": [
+              "ENG-CAPSULE",
+              "ENG-FS-V03"
+            ],
+            "failed_evidence": "disposition-entry-failed-root-observation-r01.json",
+            "id": "ENG-ENTRY-FIVE",
+            "priority": 0,
+            "status": "passed_five_original_negative_entry_cases_native_finalized",
+            "title": "Qualify five actual complete original public-entry refusal cases"
+          },
+          {
+            "completion_criteria": [
+              "Root updates/finalizes READINESS.md and this task file, then explicitly selects immutable source/evidence. Failed/unexecuted histories remain clearly labeled inert documents.",
+              "Freeze publisher source/packet/request only afterward. Use fixed basea1b1f32826e58913837308330d8ec6cc8589222a on owned draftPR292 and additive daemon-disposition-qualification-v01 prefix.",
+              "Genuine publisher verifies593 prior committed report files/16,547,750bytes unchanged; exact new paths/blobs and one parent commit; no runtime install, PR merge, CI/GitHub qualification or canonical state mutation.",
+              "Independently record original public native finalization after publication. Source-only filesystem inventory is not proof that Git/network ran."
+            ],
+            "depends_on": [
+              "ENG-RECOVER-V02",
+              "ENG-FS-V03",
+              "ENG-ENTRY-FIVE"
+            ],
+            "execution_status": "ready_under_actual_native_owner",
+            "future_native_publication_and_independent_closeout_required": true,
+            "id": "ENG-PUBLISH-DRAFT",
+            "priority": 1,
+            "published": false,
+            "published_commit": null,
+            "status": "ready_to_publish",
+            "title": "Publish exact reviewed source and engineering evidence to the owned draft effort"
+          }
+        ],
+        "title": "Complete genuine fixture closeout and preserve evidence"
+      },
+      {
+        "id": "SG-ORIGINAL-DISPOSITION",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Use the actual same-PID original daemon/task/state/lifecycle/current process birth and actual usable borrowed connection. No synthetic positive daemon, copied JSON ownership or reconstructed native grant.",
+              "Bind original canonical task revision, board bytes, active original workspace/branch and exact consumed counters by task ID/CID. Reject changed record/index/fence/connection/source before parking effects.",
+              "Original configured cap and historical counters remain unchanged; any fixture attempt is explicitly private engineering state."
+            ],
+            "depends_on": [
+              "ENG-ENTRY-FIVE",
+              "NADM-03"
+            ],
+            "id": "DISPOSITION-01",
+            "priority": 1,
+            "status": "source_binding_authored_positive_original_path_pending",
+            "title": "Qualify actual original consumed-state/lifecycle/connection association"
+          },
+          {
+            "completion_criteria": [
+              "Preserve stable canonical revision key across later ordinals/display aliases/board-status changes, exact immutable provenance and conflict refusal.",
+              "Prove actual file+directory durability/idempotent no-clobber behavior, bounded strict storage reads and missing-journal original quarantine fallback.",
+              "Keep deny metadata separate from native/lifecycle/connection authority. Corrupt or unreadable storage never falls through to productivity."
+            ],
+            "depends_on": [
+              "ENG-FS-V03",
+              "ENG-ENTRY-FIVE"
+            ],
+            "id": "DISPOSITION-02",
+            "priority": 1,
+            "status": "journal_private_FS_and_original_negative_entry_native_qualified_positive_consumed_join_pending",
+            "title": "Qualify immutable journal publication and earliest supported lane denial"
+          },
+          {
+            "completion_criteria": [
+              "After independent original stopped proof, publish the exact deny-only journal and invoke original quarantine_current_owner with the actual captured nonterminal record, exact denial provenance and fixed reason.",
+              "Verify exact immutable original receipt without terminalizing/deleting ownership or fabricating protected-path incident/provider-capacity semantics.",
+              "Changed owner/index/fence/authority or partial publication retains original host/borrow and durable denial. No provider retry or ordinal refund follows."
+            ],
+            "depends_on": [
+              "DISPOSITION-01",
+              "DISPOSITION-02"
+            ],
+            "id": "DISPOSITION-03",
+            "priority": 1,
+            "status": "existing_receipt_join_authored_actual_consumed_invocation_pending",
+            "title": "Park exact original consumed workspace with actual current-owner quarantine"
+          },
+          {
+            "completion_criteria": [
+              "Authenticate original code/caller/globals/every closure cell, retain before fallible checks, drain inner then outer at most once after actual stopped proof.",
+              "Distinguish absent, unchanged protected-fence retention, foreign replacement, unreadable and partial failure. A True task release does not prove absence.",
+              "No dictionary-driven cleanup, blind callback replay, replacement unlink, counter restore or acceptance call. Preserve original producer body semantics."
+            ],
+            "depends_on": [
+              "DISPOSITION-03"
+            ],
+            "id": "DISPOSITION-04",
+            "priority": 1,
+            "status": "prior_original_continuation_component_available_joint_disposition_pending",
+            "title": "Drain exact original finalizers and classify each claim outcome"
+          },
+          {
+            "completion_criteria": [
+              "A source-defined actual parked binding joins current stopped/native closeout, exact durable journal/quarantine, original state association and completed original finalizers.",
+              "Use a distinct reviewed closeout path while keeping disposition_pending monotonic. Never clear flags merely to pass existing guards.",
+              "Unregister borrowing exactly once and never close/reconnect the caller-owned DB. Keep counters and all genuine protected fences intact. Failed checks retain original references."
+            ],
+            "depends_on": [
+              "DISPOSITION-03",
+              "DISPOSITION-04",
+              "NADM-07"
+            ],
+            "id": "DISPOSITION-05",
+            "priority": 1,
+            "status": "not_implemented",
+            "title": "Implement explicit parked borrowed-scope closeout"
+          },
+          {
+            "completion_criteria": [
+              "Derive candidate from actual original success/callback objects and independently observe baseline/parent/tree/report blob/path/task/source association.",
+              "Respect quarantine cleanup/reuse/evidence-reuse denials; design an explicit admitted read/copy/validator contract. Do not delete denial markers or revive terminal ownership.",
+              "Provider exit0, syntax success, a JSON candidate or a frozen report never completes a task. Native and legal/Lean validation remain distinct."
+            ],
+            "depends_on": [
+              "DISPOSITION-05",
+              "NADM-06"
+            ],
+            "id": "DISPOSITION-06",
+            "priority": 2,
+            "status": "actual_candidate_handoff_not_implemented",
+            "title": "Bind an actual inert candidate to independent validation input"
+          },
+          {
+            "completion_criteria": [
+              "Use isolated owned private state/repository and actual original objects/native admission. Cover publication fsync barriers, exact quarantine repeats/conflicts, changed index/fence, replaced claims, unreadable denial and partial finalizer failure.",
+              "Prove a later supported original pass refuses before productivity while parked, including after original process exit; no portable JSON reconstructs ownership or productive grants.",
+              "Record actual public native finalization and exact unchanged canonical cap/counters/board. No model/provider calls are necessary for this transport fixture."
+            ],
+            "depends_on": [
+              "DISPOSITION-01",
+              "DISPOSITION-02",
+              "DISPOSITION-03",
+              "DISPOSITION-04",
+              "DISPOSITION-05",
+              "NADM-07"
+            ],
+            "id": "DISPOSITION-07",
+            "priority": 1,
+            "status": "joint_original_positive_and_failure_recovery_qualification_pending",
+            "title": "Qualify genuine original parking/cancellation/crash boundaries together"
+          },
+          {
+            "completion_criteria": [
+              "Report exact source pins, real original-object positive/negative cases, failure recovery and native closeout limits.",
+              "Keep proposed source, actual installation, parked disposition, independent validation and canonical acceptance separately labeled. Skip GitHub qualification as requested."
+            ],
+            "depends_on": [
+              "DISPOSITION-07"
+            ],
+            "id": "DISPOSITION-08",
+            "priority": 2,
+            "status": "future_complete_disposition_readiness_pending",
+            "title": "Document complete disposition readiness separately from source publication"
+          },
+          {
+            "completion_criteria": [
+              "Use actual same-PID original3CPU/4096MiB/16-slot phase/root and usable borrowed DB with real bound ReportOnlyNativeHost.",
+              "Repeated public run_once, failed first pass and pending/disposition reentry refuse before source/DB/phase/productive effects; repeated valid in-pass profile checks remain permitted.",
+              "Preserve original cleanup/observation functions and monotonic flags. Cold injected-failure probes are not positive native-host qualification."
+            ],
+            "depends_on": [
+              "ENG-ENTRY-FIVE",
+              "NADM-03"
+            ],
+            "id": "DISPOSITION-09",
+            "priority": 1,
+            "status": "30_cold_source_cases_native_finalized_actual_host_reentry_pending",
+            "title": "Qualify sticky public pass entry with an actual retained native host"
+          },
+          {
+            "completion_criteria": [
+              "Audit actual constructor/bootstrap effects, public/private callers, legacy flag-false mode, task source and every supported writer of the original state/repository.",
+              "Place denial/sticky checks before each promised productive boundary or explicitly refuse unsupported compositions. A body-level check after an existing mutation decorator cannot be labeled zero-earlier-effect protection.",
+              "Qualify supported serialization/races and durable denial across writers; readonly absence alone is never admission.",
+              "Inventory existing original store/state directory permissions and supported ownership before startup. Provide an admitted owned migration or explicit refusal where necessary; the private fixture umask correction is not a production permission migration."
+            ],
+            "depends_on": [
+              "DISPOSITION-02",
+              "NADM-03"
+            ],
+            "id": "ENTRY-ALL-WRITERS",
+            "priority": 1,
+            "status": "required_activation_gap",
+            "title": "Close constructor/pre-decorator and unsupported-writer gate boundaries"
+          }
+        ],
+        "title": "Bind actual consumed attempts to durable deny-only parking and exact closeout"
+      },
+      {
+        "completion_constraints": [
+          "Use actual original same-PID3CPU/4096MiB/16-slot root/phase; never nest a substitute beneath a generic1CPU/8-slot envelope or reconstruct private keys.",
+          "Stop/drain/release admin before freezer. Never retain provider8+watchdog4+freezer4+admin4 together.",
+          "Revocation cannot acquire a new productive owner or restore model authority. Fixed readonly socket observer remains design-only until real inert tests qualify it.",
+          "Keep actual native owner/consumer/anchor/process/source references on unknown cleanup; require public stopped release and independent finalization."
+        ],
+        "external_goal": "NADM-G1",
+        "id": "SG-NATIVE-ADMIN",
+        "priority_order": [
+          "Actual source-defined admin executor and original bootstrap Git hooks",
+          "Genuine same-PID full daemon/native host cap2 refusal",
+          "Fixed bounded readonly original Docker observations and productive admin ownership",
+          "Real inert cancellation/stopped-proof qualification before original finalizer/disposition closeout"
+        ],
+        "status": "design_only_no_implementation_qualification",
+        "task_ids": [
+          "NADM-01",
+          "NADM-02",
+          "NADM-03",
+          "NADM-04",
+          "NADM-05",
+          "NADM-06",
+          "NADM-07",
+          "NADM-08"
+        ],
+        "task_source": "native-admin-audit-v01/TASKS.json",
+        "title": "Implement genuine same-PID bootstrap and ordinary administrative custody"
+      },
+      {
+        "id": "SG-AUTOFORMALIZATION",
+        "status": "future_measured_work_no_accuracy_claims",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Version-pin the user's span/entity caches and source contexts; distinguish generated caches from independently reviewed reference labels.",
+              "Define held-out section/title/entity splits and leakage checks, independent legal review criteria, source citations and error cohorts for scope, exceptions, quantification, definitions, entities, temporal conditions and modality.",
+              "Measure semantic/source fidelity independently from output syntax, native pipeline validity and Lean build success."
+            ],
+            "depends_on": [
+              "DISPOSITION-06",
+              "DISPOSITION-07",
+              "ENTRY-ALL-WRITERS"
+            ],
+            "id": "LEGAL-SOURCE-FIDELITY",
+            "priority": 3,
+            "status": "future_after_independent_candidate_input_contract",
+            "title": "Establish real US Code source-fidelity reference evaluation"
+          },
+          {
+            "completion_criteria": [
+              "Inventory actual current logic-module family/parser/checker contracts from the repository and pin supported features.",
+              "Use explicit typed intermediate outputs, constrained decoding and family-specific validity/semantic checks. Unsupported constructs produce explicit abstention or diagnostics rather than invented translations.",
+              "Report per-family and cross-family held-out fidelity with source counterexamples; syntax compliance alone is not semantic equivalence."
+            ],
+            "depends_on": [
+              "DISPOSITION-06",
+              "LEGAL-SOURCE-FIDELITY"
+            ],
+            "id": "LOGIC-FAMILY-COVERAGE",
+            "priority": 3,
+            "status": "future_measured_evaluation",
+            "title": "Validate generated typed logic against actual ipfs_datasets_py families"
+          },
+          {
+            "completion_criteria": [
+              "Pin the actual Lean/Lake/project dependency environment and require the user's lake build legal target on generated modules.",
+              "Define a reviewed trust policy for axioms/placeholders/proof escapes and report rejected or unresolved spans explicitly.",
+              "Link every declaration/proof obligation to source spans and typed logic interpretation; a successful build does not independently prove legal fidelity."
+            ],
+            "depends_on": [
+              "LOGIC-FAMILY-COVERAGE",
+              "LEGAL-SOURCE-FIDELITY"
+            ],
+            "id": "LEAN4-LEGAL-CORPUS",
+            "priority": 3,
+            "status": "future_build_and_semantic_qualification",
+            "title": "Independently validate unified Lean4 legal modules"
+          },
+          {
+            "completion_criteria": [
+              "Define canonical entity/term/definition IDs with source jurisdiction/version/scope, aliases, cross references and uncertainty.",
+              "Check graph joins for scope errors, contradictory or cyclic definitions and identifier collisions before producing unified Lean declarations.",
+              "Preserve span-level provenance and independent validation status; aggregate metrics cannot conceal unsupported or unreviewed spans."
+            ],
+            "depends_on": [
+              "LEGAL-SOURCE-FIDELITY",
+              "LOGIC-FAMILY-COVERAGE"
+            ],
+            "id": "ENTITY-DEFINITION-GRAPH",
+            "priority": 3,
+            "status": "future_corpus_integration",
+            "title": "Aggregate validated spans into provenance-preserving entity and definition graphs"
+          },
+          {
+            "completion_criteria": [
+              "Inventory and reconcile existing autoencoder/decoder weights, findings, owned branches and worktrees before creating another competing training line.",
+              "Freeze architecture/tokenizer/data/split/baseline identities and evaluate each latent dimension using the same real held-out legal reference set.",
+              "Test constrained typed decoding and feedback from independent family/Lean validators. Report source fidelity, build/parse validity, coverage, abstention and error cohorts separately.",
+              "Run actual admitted reproducible experiments only after transport/provider/storage readiness; record measured gains without inferring accuracy from engineering controls."
+            ],
+            "depends_on": [
+              "LEGAL-SOURCE-FIDELITY",
+              "LOGIC-FAMILY-COVERAGE",
+              "LEAN4-LEGAL-CORPUS"
+            ],
+            "id": "DECODER-TRAINING-EVAL",
+            "priority": 3,
+            "status": "future_reproducible_experiments",
+            "title": "Compare existing decoder architectures and8D/384D/768D training improvements"
+          },
+          {
+            "completion_criteria": [
+              "Use the user's authorized Hugging Face destination and immutable checkpoint/version/checksum identities, preserving prior weights.",
+              "Publish architecture/latent size/tokenizer/training data and held-out split identities with actual evaluation reports, constraints and unsupported logic features.",
+              "Do not label weights or an aggregated Lean corpus legally validated without corresponding independent source/family/build evidence."
+            ],
+            "depends_on": [
+              "DECODER-TRAINING-EVAL",
+              "ENTITY-DEFINITION-GRAPH"
+            ],
+            "id": "WEIGHTS-HF-PUBLICATION",
+            "priority": 3,
+            "status": "future_after_measured_training_validation",
+            "title": "Publish validated decoder checkpoints and reproducibility metadata"
+          }
+        ],
+        "title": "Resume measured legal autoformalization and training after transport readiness"
+      }
+    ],
+    "title": "Close original legal autoformalization transport and disposition gaps before measuring model progress"
+  },
+  "provider_dispatch_authority": false,
+  "publication": {
+    "Git_or_network_jobs_executed_by_source_author": 0,
+    "base_head": "a1b1f32826e58913837308330d8ec6cc8589222a",
+    "existing_readonly_document_bytes": 16547750,
+    "existing_readonly_document_files": 593,
+    "new_prefix": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/daemon-disposition-qualification-v01",
+    "owned_draft_PR": "https://github.com/endomorphosis/ipfs_accelerate_py/pull/292",
+    "packet_frozen": false,
+    "published": false,
+    "published_commit": null,
+    "publisher_manifest_frozen": false,
+    "request_frozen": false,
+    "root_review_and_source_freeze_pending": true,
+    "source": "publication-v01",
+    "status": "ready_under_actual_native_owner",
+    "task_status": "ready_to_publish"
+  },
+  "root_must_update_before_publication": false,
+  "root_review": {
+    "combined_unique_task_ids": 29,
+    "engineering_cases_native_finalized": 74,
+    "publication_outcome_recorded_separately": "publication-root-observation-r01.json",
+    "reviewed": true,
+    "runtime_and_semantic_qualification_not_claimed": true,
+    "task_dependency_graph_acyclic": true,
+    "task_dependency_references_valid": true
+  },
+  "root_review_and_source_freeze_required": false,
+  "runtime_enabled": false,
+  "runtime_status": "proposed_not_installed_disabled",
+  "schema": "legal-ir-disposition-supervisor-goals@1",
+  "source_generation": {
+    "actual_original_runtime_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+    "composed_daemon_V04_sha256": "67f4959c391776a1361a98f2a5f8d137e86ea5651e9ced0ab96fca3eb91f15a0",
+    "entry_gate_sha256": "7d68b6d26b538c3cc7be4454bdbdb353f0e4c12452f6c06b190141031a10cead",
+    "journal_helper_sha256": "980597e97d337aaa90c0a93527229be37974db1f6351b0eb33a98c95cc8fe43b",
+    "native_host_V04_sha256": "965009a7de709c67b2ef796ab34cec30288c85b08c0fd2ace6631abcef995260",
+    "native_host_V05_sha256": "2b38d5a93c8e71ed02a5d52c1624a5b0a3a2a0dc759bace2b571aec6c0e956b6",
+    "runtime_installed": false
+  },
+  "status": "ready_to_publish_runtime_remains_proposed"
+}

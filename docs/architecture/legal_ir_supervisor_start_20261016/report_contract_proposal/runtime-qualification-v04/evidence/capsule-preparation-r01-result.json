@@ -1,0 +1,15 @@
+{
+  "acceptance_authority": false,
+  "actual_public_wrapper_qualified": false,
+  "all_files_fsynced_readonly": true,
+  "canonical_tasks_accepted": 0,
+  "capsule_manifest_sha256": "75992b24f5389b30be5d19ce3fcf68e7eeadabc0508e593af9af6c30b1e38e68",
+  "capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r01/preparation/capsule",
+  "original_native_preparation_closeout_pending": true,
+  "passed": true,
+  "payload_bytes": 106757603,
+  "payload_file_count": 2807,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-callable-capsule-preparation@1",
+  "source_inventory_sha256": "c3404a30986c25dbf87ec22f3d9bcec342daa7da5b6fc955a066a3901b24deb3"
+}

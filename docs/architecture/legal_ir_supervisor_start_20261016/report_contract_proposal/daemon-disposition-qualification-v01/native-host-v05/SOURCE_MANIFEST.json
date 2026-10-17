@@ -1,0 +1,29 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 313,
+      "path": "README.txt",
+      "sha256": "788ad541a84e939f68fc30fc5624a077882e7dcdf5fe1a2e3cd87fb40c9c6906"
+    },
+    {
+      "bytes": 613,
+      "path": "baked-pin-successor.patch",
+      "sha256": "a64ad0b80b07799de28e05ff23844825cb3d7e5e0114e8ee806f0935819b260a"
+    },
+    {
+      "bytes": 33273,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "sha256": "2b38d5a93c8e71ed02a5d52c1624a5b0a3a2a0dc759bace2b571aec6c0e956b6"
+    }
+  ],
+  "full_host_qualified": false,
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/daemon-integration-v04/ASSEMBLY.json": "00626960fda131f854cc6487b8e45aadb412a97b1fff722228dd56d83bd6b30c",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/native-host-v04/SOURCE_MANIFEST.json": "9bd8f8d06743a5e7f595e24a187d54f1f7bab1a5db2731efab823268bf96ec50"
+  },
+  "qualification": "authored; execution evidence separate",
+  "runtime_enabled": false,
+  "schema": "legal-ir-disposition-source-proposal@1"
+}

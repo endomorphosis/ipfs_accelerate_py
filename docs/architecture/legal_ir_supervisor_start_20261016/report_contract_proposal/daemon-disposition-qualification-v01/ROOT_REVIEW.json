@@ -1,0 +1,34 @@
+{
+  "acceptance_authority": false,
+  "borrowed_connection_closeout_qualified": false,
+  "canonical_configured_attempt_cap": 2,
+  "canonical_tasks_accepted": 0,
+  "combined_task_graph": {
+    "acyclic": true,
+    "references_valid": true,
+    "unique_tasks": 29
+  },
+  "consumed_attempt_join_qualified": false,
+  "controlled_components": {
+    "actual_fullmodule_public_entry_refusals": 5,
+    "composition_source_preservation": 6,
+    "host_source_refusals": 30,
+    "journal_private_filesystem": 33
+  },
+  "engineering_cases_native_finalized": 74,
+  "full_native_host_qualified": false,
+  "github_qualification": "skipped_by_user",
+  "legal_semantic_fidelity_or_Lean_build_measured": false,
+  "preserved_failed_generations": [
+    "attempt-disposition-controls-v02",
+    "disposition-entry-fixture-v01"
+  ],
+  "provider_or_model_dispatch_performed": false,
+  "reviewed": true,
+  "reviewed_document_sha256": {
+    "READINESS.md": "14c4a95710871d399b0541d4ea198b8a1ff9a8e7d6d2c01c6fed0dd82006df54",
+    "TASKS.json": "9bb31847ef527014400fe28b70f91a35235caabfafcbd126de3eb92a3b417dc2"
+  },
+  "schema": "legal-ir-disposition-root-source-review@1",
+  "source_proposals_installed": false
+}

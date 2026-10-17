@@ -1,0 +1,41 @@
+{
+  "acceptance_authority": false,
+  "copy_only": true,
+  "evidence_scope": "Later explicit administrative recovery; original r02 native finalization remains failed.",
+  "files": [
+    {
+      "bytes": 635,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-failed-fixture-recovery-20261017-r01/receipt.json",
+      "path": "receipt.json",
+      "sha256": "e4cd54d756af0b898fdb0155041b1c28ffd7722fce981e407034315107dab2e7"
+    },
+    {
+      "bytes": 1612,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-failed-fixture-recovery-20261017-r01/failed-fixture-recovery.json",
+      "path": "failed-fixture-recovery.json",
+      "sha256": "e6892426801e8a40478b5b24c7db539d906e308a5418a76bc914305bb328a05a"
+    },
+    {
+      "bytes": 71274,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-failed-fixture-recovery-20261017-r01/public-recovery-projection.json",
+      "path": "public-recovery-projection.json",
+      "sha256": "64aae05ab1cf2988ebb21e301d718b7be7c412c46a0f3eb30503cde82b37fa16"
+    },
+    {
+      "bytes": 24745,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-failed-fixture-recovery-20261017-r01/removed-framework-aliases.json",
+      "path": "removed-framework-aliases.json",
+      "sha256": "dbc790bf02a185e1995e1e8a1dc21959cfdfc4cf124ab15da31baf64cd2b9cb3"
+    },
+    {
+      "bytes": 66989,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-failed-fixture-recovery-20261017-r01/preserved-regular-inventory.json",
+      "path": "preserved-regular-inventory.json",
+      "sha256": "36f9622bd58c80a8c04a7397916e2f127c368e59058a9d51ebf05e610c7a035b"
+    }
+  ],
+  "originals_unchanged": true,
+  "runtime_enabled": false,
+  "schema": "legal-ir-qualification-evidence-copies@1",
+  "total_bytes": 165255
+}

@@ -1,0 +1,25 @@
+{
+  "author_runtime_or_repository_mutation": false,
+  "authored_testcases_expected": 51,
+  "configuration_schema": "legal-ir-attempt-preservation-publication-config@1",
+  "controls_manifest_sha256": "8fa90c38f399e36dc37e7490252ff12340424f19f102344a8f62da5d9d005b28",
+  "files": [
+    {
+      "bytes": 6624,
+      "path": "README.md",
+      "sha256": "0bfc6e71817bae9516437f8d5034fa034826df37edc1de0496603962c585b477"
+    },
+    {
+      "bytes": 23103,
+      "path": "publish_attempt_preservation.py",
+      "sha256": "3681c7b3fda7b04e98f49d34200eb4583f49c5bca3b1917be1ce27dd3dce83eb"
+    }
+  ],
+  "native_owner_required": true,
+  "nominal_expected_head": "24af767c2587d82be03623c0d8a1ce19e1d902aa",
+  "provider_or_legal_acceptance_claimed": false,
+  "schema": "legal-ir-attempt-preservation-publication-source@1",
+  "scope": "four-reviewed-production-modules-focused51-policy-tests-complete-explicit-source-doc-closure-commit-and-push",
+  "source_proposal_manifest_sha256": "05f0369a1d3c2bc6b876c4fc51ea83ef7ab00ba2d2e25ad30b0aac4e66f8f225",
+  "status": "source-authored-independent-review-cleared-not-executed"
+}

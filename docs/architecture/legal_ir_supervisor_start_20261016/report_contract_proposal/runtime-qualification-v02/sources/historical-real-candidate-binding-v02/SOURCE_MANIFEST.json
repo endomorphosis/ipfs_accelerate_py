@@ -1,0 +1,34 @@
+{
+  "author_performed_git_mutations": false,
+  "author_performed_native_admission": false,
+  "author_performed_provider_calls": false,
+  "author_performed_runtime_tests": false,
+  "base_v01_manifest_sha256": "8ef2a9764206819e2980114e662cc24c194aac7651420c085d28fd6c709008d7",
+  "base_v01_source_sha256": "a9b8de8e0b496360e3e828e0bae84aa2b60b6b9643c165b9878462388095a896",
+  "files": [
+    {
+      "bytes": 4040,
+      "path": "README.md",
+      "sha256": "e876b169253214e72741096c413462e322d4e1d2addf2e76734d2d2b8a6fed5f"
+    },
+    {
+      "bytes": 19845,
+      "path": "real_candidate_binding.py",
+      "sha256": "fb2f27e6ecfb47c47039c0086cc65ffc0bd8cd1d91ee579971865aa5641afb2c"
+    },
+    {
+      "bytes": 10735,
+      "path": "test_binding_memory.py",
+      "sha256": "ce8b8370f240aedf92aed366eba051c2ea161411809dd16ee80105b0ced15224"
+    },
+    {
+      "bytes": 6902,
+      "path": "test_binding_readers.py",
+      "sha256": "668795a688925e16ad398cf3fbed5b4ad22ee9f85f0cc0e14106df7c377b38aa"
+    }
+  ],
+  "new_bounded_reader_controls": 23,
+  "preserved_memory_controls": 31,
+  "schema": "legal-ir-real-candidate-binding-source-manifest@2",
+  "status": "source_authored_pending_root_controlled_and_native_execution"
+}
