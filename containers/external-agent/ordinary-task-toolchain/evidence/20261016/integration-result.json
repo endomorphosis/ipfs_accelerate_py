@@ -1,0 +1,14 @@
+{
+  "schema": "legal-ir-ordinary-integration-validation@1",
+  "checkout": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller",
+  "commit": "93cfd32f65cd231df57e53736edf0f78b58af009",
+  "image_id": "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e",
+  "controlled_integration_tests_returncode": 0,
+  "actual_successor_image_guard_passed": true,
+  "protected_image_pin_preserved": true,
+  "archive": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-worker-image-20261016-integration02/ordinary-worker-arm64.docker.tar",
+  "archive_bytes": 179565056,
+  "archive_sha256": "9fced6382d3ad13f16c17aea382cdca43f20969c1d887d9fb16623a9b623ee61",
+  "provider_task_dispatched": false,
+  "legal_ir_supervisor_started": false
+}

@@ -1,0 +1,22 @@
+{
+  "child_pgid": 675394,
+  "child_pid": 675394,
+  "child_returncode": 0,
+  "completion_authority": false,
+  "disk_reservation_id": "c45e8fe8d1f54f4a95569e4a1acf423b",
+  "docker_allocation_state": "image_retained",
+  "docker_container_absence_verified_by_parent": true,
+  "ended_at_epoch": 1792190741.7475388,
+  "failure_type": null,
+  "hard_enforcement": false,
+  "native_named_root_covers_daemon_storage": false,
+  "owned_group_quiescent": true,
+  "owner_pid": 663376,
+  "phase_lease_id": "a6a1375d1f704285b7f4df921de670e3",
+  "purpose": "docker_preparation",
+  "request_sha256": "5f06af0662bd1115ae46961e6ea54c331336b20b913da64cffab6c4bb7c7963e",
+  "retained_daemon_allocation_receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-worker-image-20261016-build03/docker-allocation.json",
+  "root_lease_id": "2ecb0f1be0fb477b827e30144d40132f",
+  "schema": "legal-ir-native-orchestration-receipt@1",
+  "status": "completed"
+}
