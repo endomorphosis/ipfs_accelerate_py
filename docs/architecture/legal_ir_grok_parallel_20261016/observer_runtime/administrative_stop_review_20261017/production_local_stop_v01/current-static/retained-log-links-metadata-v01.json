@@ -1,0 +1,81 @@
+{
+  "database_or_WAL_bytes_read": false,
+  "exact_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state",
+  "interpretation": "Exactly these retained native latest-log links can be inventoried without following: verify their link generation and literal same-parent ordinary-file target, count link bytes plus already ordinary-inventoried target bytes once; refuse any other alias.",
+  "links": [
+    {
+      "link_identity": {
+        "device": 66306,
+        "inode": 59244650,
+        "mode": 41471,
+        "mtime_ns": 1792198574857685039,
+        "nlink": 1,
+        "size": 46,
+        "uid": 1000
+      },
+      "literal_target": "lir_lane_0_managed_daemon_20261017T005614Z.log",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state/lane-0/lir_lane_0_managed_daemon.latest.log",
+      "target_identity": {
+        "device": 66306,
+        "inode": 59244651,
+        "mode": 33204,
+        "mtime_ns": 1792198594155635988,
+        "nlink": 1,
+        "size": 2873,
+        "uid": 1000
+      },
+      "target_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state/lane-0/lir_lane_0_managed_daemon_20261017T005614Z.log"
+    },
+    {
+      "link_identity": {
+        "device": 66306,
+        "inode": 59244636,
+        "mode": 41471,
+        "mtime_ns": 1792198574726683148,
+        "nlink": 1,
+        "size": 46,
+        "uid": 1000
+      },
+      "literal_target": "lir_lane_1_managed_daemon_20261017T005614Z.log",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state/lane-1/lir_lane_1_managed_daemon.latest.log",
+      "target_identity": {
+        "device": 66306,
+        "inode": 59244637,
+        "mode": 33204,
+        "mtime_ns": 1792198593863942722,
+        "nlink": 1,
+        "size": 2873,
+        "uid": 1000
+      },
+      "target_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state/lane-1/lir_lane_1_managed_daemon_20261017T005614Z.log"
+    },
+    {
+      "link_identity": {
+        "device": 66306,
+        "inode": 59244646,
+        "mode": 41471,
+        "mtime_ns": 1792198574847684895,
+        "nlink": 1,
+        "size": 46,
+        "uid": 1000
+      },
+      "literal_target": "lir_lane_2_managed_daemon_20261017T005614Z.log",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state/lane-2/lir_lane_2_managed_daemon.latest.log",
+      "target_identity": {
+        "device": 66306,
+        "inode": 59244647,
+        "mode": 33204,
+        "mtime_ns": 1792198595102977245,
+        "nlink": 1,
+        "size": 13793,
+        "uid": 1000
+      },
+      "target_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06/state/lane-2/lir_lane_2_managed_daemon_20261017T005614Z.log"
+    }
+  ],
+  "links_or_targets_mutated": false,
+  "native_custody_or_authority": false,
+  "observed_at_epoch": 1792242094.9368737,
+  "schema": "production-retained-log-links-metadata-observation@1",
+  "symlink_target_followed_or_bytes_read": false
+}

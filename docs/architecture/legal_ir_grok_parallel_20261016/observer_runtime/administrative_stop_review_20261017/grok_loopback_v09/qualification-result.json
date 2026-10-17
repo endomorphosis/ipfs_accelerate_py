@@ -1,0 +1,91 @@
+{
+  "canonical_catalog_mutations": false,
+  "cases": [
+    {
+      "case": "positive-read-file",
+      "passed": true
+    },
+    {
+      "case": "empty-tools-control",
+      "passed": true
+    },
+    {
+      "case": "canonical-planning-adversarial",
+      "passed": true
+    }
+  ],
+  "charged_fixture_root": "/tmp/pytest-of-barberb/grk17f",
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "effective_fixture_toolset_verified": true,
+  "final_agent_exit_inventory_pin": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/fixture-root-after-all-agent-exits.json",
+    "sha256": "f84c127277f9b294d5c4a0fdacabf37d0882562974f7c2a797b9aeeede7b7f29",
+    "size_bytes": 52790
+  },
+  "fixture_allocation_database": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/fixture-allocation.duckdb",
+  "fixture_only": true,
+  "historical_unknown_resolution_authority": false,
+  "limitations": [
+    "Loopback transport and fixture configuration only; production effective config needs a bound check",
+    "Eight exact call IDs, names and argument objects rejected at native argument parsing; no claim about future entrypoints",
+    "Parse-stage rejection does not establish which native registry was consulted or universal dispatch confinement",
+    "Observed ancillary title request is intentionally rejected by the fixture; dashboard summaries receive a synthetic reply",
+    "Tool qualification covers primary agent requests only; ancillary calls retain their separately recorded models and temperatures",
+    "Inventories are point-in-time; the final inner snapshot precedes RootlessKit exit and needs independent post-owner readback",
+    "No proof of continuous custody and no retrospective inference about UNKNOWN provider intents"
+  ],
+  "native_parse_refusal_predicate_qualified": true,
+  "network_namespace": "net:[4026532991]",
+  "outer_network_namespace": "net:[4026531833]",
+  "predicate_selection_evidence": [
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/case-result.json",
+      "sha256": "09276e7813f82a0a5de45a2e5f879d63f365339ff0fb20f2e410c1c1a9e3e26a",
+      "size_bytes": 14507
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-02.json",
+      "sha256": "31e25da55b32c704d9912b7c0902f140fa6a2ecdeefae865041478989da08cee",
+      "size_bytes": 7713
+    }
+  ],
+  "production_configuration_qualified": false,
+  "real_model_calls": false,
+  "refusal_registry_identity_established": false,
+  "rootlesskit_post_exit_inventory_still_required": true,
+  "schema": "grok-planning-loopback-confinement-qualification/v5",
+  "source_pins": [
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "bf3d83281f81d3c139fef216440ae3cb143cee7f3a94a4bf98419d576f4e4bef",
+      "size_bytes": 127126
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_router.py",
+      "sha256": "9dc93f0fe1bd6fc873fd362902a8d62703ddb546b0e1dbd03dd997522560ad34",
+      "size_bytes": 581483
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/native/grok",
+      "sha256": "665c286b66760eb1a5e7199f60fb8028a5a0d290cc8e9cdecba6c9b24af7b862",
+      "size_bytes": 163114168
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/duckdb_store.py",
+      "sha256": "af59a71c8562bab211203efaaf82f210ec071badbf627fc1ef9966f3d5ca44f9",
+      "size_bytes": 62334
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/api_status.py",
+      "sha256": "2d214f072d2a3f4191b729279683c7431adfadc19fd44d5e5e7cca47223a753c",
+      "size_bytes": 5200
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/cli_status.py",
+      "sha256": "4f06ad4eb27a72397be329a6a94f50d791770e6c208667756724ff6ed8beefa2",
+      "size_bytes": 8150
+    }
+  ],
+  "source_pins_unchanged": true,
+  "strict_attempt_inventory_policy_unchanged": true
+}

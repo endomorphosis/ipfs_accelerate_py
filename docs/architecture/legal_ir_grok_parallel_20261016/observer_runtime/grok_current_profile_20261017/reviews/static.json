@@ -1,0 +1,86 @@
+{
+  "C_edits": false,
+  "concrete_static_blockers": [],
+  "database_or_resource_queries": false,
+  "exact_v02_delta": [
+    "One main-helper pass conjunction drops context_observed; computed marker observation remains in results.",
+    "Wrapper updates only exact helper filename/hash/module label."
+  ],
+  "extends_prior_review": "V01 full exact-source/AST/diff review remains valid except AGENTS-context ingestion is now explicitly observation-only.",
+  "final_helper_scope": {
+    "all_primary_wire_cap_values_exact_int4096_required": true,
+    "auxiliary_calls_preserved": true,
+    "fifteen_original_predicate_controls_unchanged": true,
+    "network_none_exec_and_four_slot_topology_unchanged": true,
+    "original_Handler_and_request_class_unchanged": true,
+    "package_origins_must_be_under_current_controller": true,
+    "private_allocation_and_META_environment_before_imports": true,
+    "production_configuration_or_resume_qualified": false,
+    "real_provider_or_spend_enforcement_qualified": false,
+    "retired_task_retry_rearm_successor_authority": false,
+    "source_head": "500fb4ee4d538c5abb1a395c171c979636b8092a",
+    "synthetic_backing_link_and_unchanged_byte_gates_required": true,
+    "three_original_cases_unchanged": true
+  },
+  "helpers_executed": false,
+  "inputs": [
+    {
+      "bytes": 66309,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_loopback_v02.py",
+      "sha256": "fb429a529bb32d1cfaccde6f359d5550aae1a479fa80cb85615bd321861a0442"
+    },
+    {
+      "bytes": 5597,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_rootlesskit_v02.py",
+      "sha256": "cfa311f21014fd75d1cd8654f1a2b3bfcabb34b85b12e6443de9dc1e7647ee3e"
+    },
+    {
+      "bytes": 11598,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-source-contract-v02.json",
+      "sha256": "98868a4ea2a812b567fc54065abeb132a7dd5d198b9333ad6eacbea41f450b33"
+    },
+    {
+      "bytes": 775319,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-request-v01.json",
+      "sha256": "f2dfa1e399f8a5cd5063bef251c49959faed97971a061ea0946762802caf4f19"
+    },
+    {
+      "bytes": 2313,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/context-ingestion-observation-only-v02.patch",
+      "sha256": "e3ae9c6b1347405e33bcaee5a0847dc98bf64c30e4b4bacfd2cf34e5c4e75fd3"
+    },
+    {
+      "bytes": 5390,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-helpers-independent-static-review-v01.json",
+      "sha256": "f5d1403709575181c681a7b81c7a035c5a1087e00f69058f615baae186de4698"
+    }
+  ],
+  "limits": "Read-only cooperative source/immutable request review. No actual availability, startup latency, effective production config, browser authentication, explicit resume, productive LegalIR, remote inference or hard output/spend cap qualification.",
+  "native_jobs_or_provider_calls": false,
+  "product_imports": false,
+  "remaining_native_gates": [
+    "Source-bound actual three-case execution on declared profile with cap/context/backing observations retained for every request.",
+    "Independent loaded-product-origin to full request map join after actual execution.",
+    "Post-RootlessKit-exit bounded fixture readback; actual outer exit and complete native reservation/lease/group finalization."
+  ],
+  "request_checks": {
+    "Python_SQL_mismatches": [],
+    "bytes": 775319,
+    "controller_external_bytes": 1073741824,
+    "current_SQL_pins_independently_rehashed": 6,
+    "current_python_pins_independently_rehashed": 2826,
+    "duration_seconds": 600,
+    "fixture_external_bytes": 134217728,
+    "fresh_declared_attempt": "legal-ir-grok-current-profile-20261017-01",
+    "fresh_declared_fixture": "/tmp/pytest-of-barberb/gc17a",
+    "full_other_package_native_data_and_system_pins_not_independently_rehashed_here": true,
+    "independently_rehashed_Python_SQL_bytes": 107317145,
+    "package_pins": 2941,
+    "path_freshness_or_live_availability_queried": false,
+    "source_pins": 2970,
+    "storage_bytes": 1610612736,
+    "strict_attempt_remainder_bytes": 402653184
+  },
+  "review_only": true,
+  "schema": "grok-current-profile-helpers-and-request-independent-static-review@2"
+}

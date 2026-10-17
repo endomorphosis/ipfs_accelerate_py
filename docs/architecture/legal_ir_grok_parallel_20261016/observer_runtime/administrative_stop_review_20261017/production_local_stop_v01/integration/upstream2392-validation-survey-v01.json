@@ -1,0 +1,143 @@
+{
+  "candidate_tree_metadata_pin": {
+    "bytes": 8307,
+    "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/candidate-tree.json",
+    "sha256": "dd6b2bfc90c20b66d7ad60134159c28ff54b2a000f2b05ac64c69c27f46c715b"
+  },
+  "earlier_plan_evidence_references": [
+    {
+      "path": "artifacts/owner-source-worker-handoff-20261017T050000Z/summary.json",
+      "reported_passed_executions": 1276,
+      "scope": "Earlier phase16; not added again to2392."
+    },
+    {
+      "path": "artifacts/owner-source-reporting-20261017T052230Z/summary.json",
+      "reported_passed_executions": 506,
+      "scope": "Earlier phase17; not added again to2392."
+    }
+  ],
+  "exact_published_tree": "fdfcb695b8ebbb932d0c4777851901a6902bd336",
+  "independent_source_binding": {
+    "actual_GitHub2fe_tree_matches_validation_publication_candidate_metadata": true,
+    "all102_changed_Python_paths_SHA_equal_exact_published2fe_Git_objects_in_both_runs": true,
+    "both292_source_maps_equal_retained_receipt_maps": true,
+    "changed_Python_paths_compared": 102,
+    "changed_document_path_not_in_Python_test_pin_maps": [
+      "docs/agent_supervisor/terminal_token_metadata_plan.md"
+    ],
+    "published_document_Git_blob": "2b6558b6ae9cee51fd0d4a1325cf9aa4a345ca38",
+    "published_document_SHA256": "b5602e65e063aafc37156d2b40e92edff975d0445cf6383fd0529ce06a648af4",
+    "published_document_has2392_literal": false,
+    "two_receipts_match_validation_declared_hashes": true
+  },
+  "independently_reconciled_passing_test_executions": 2392,
+  "method": {
+    "DB_WAL_provider_calls_or_live_process_resource_queries": false,
+    "active_merged_v11_outputs_C_native_inputs_or_foreign_evidence_modified": false,
+    "immutable_public_GitHub_commit_document_metadata_and_local_retained_JSON_JUnit_counters_and_wrapper_AST_only": true,
+    "sources_product_tests_wrappers_imported_or_executed": false,
+    "stdout_stderr_or_raw_native_fixture_payloads_read": false,
+    "upstream2392_rerun": false
+  },
+  "native_or_operator_authority": false,
+  "observed_at_utc": "2026-10-17T13:44:03.703389+00:00",
+  "public_copy_guidance": "Copy this bounded survey and optional small validation/publication/independent-review JSON only. Pin large292-source maps/JUnit/receipts as provenance without copying raw catalogs or3MiBJUnit. Preserve original paths/runtime evidence.",
+  "publication_pin": {
+    "bytes": 1157,
+    "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/publication.json",
+    "sha256": "c76b20f773bb1af04b25790daec0c530693a9b616daf9d7c0347604faaf0fe01"
+  },
+  "published_commit": "2fe4b218e1de10c70ae842bdcc29457975d49477",
+  "qualification_limits": [
+    "These are upstream authored offline unit/native fixtures and retained owner reports, not actual protected different-UID production-MCP deployment. Both receipts explicitly production_mcp_delegation_qualified=false.",
+    "No live provider, matched token-savings benchmark, model ingestion, remote outcome or new IR training/formalization quality is qualified. Publication metadata records provider_calls0/deploymentfalse.",
+    "Current native datasets and installed-runtime dependency pins in the292 maps were read as historical metadata; this review did not import or rehash live native dependencies and does not extend their qualification to arbitrary environments.",
+    "No live scheduler/ledger/process/resource query or independent outer tool exit re-observation occurred. Actual release is attributed to preserved native-parent receipts and inspected wrapper ordering; no recreated native ACK or authority.",
+    "Original scheduler-admission refusal and seven obsolete-stdin fixture failures remain preserved, referenced by validation.json, rather than silently excluded."
+  ],
+  "resource_completion_scope": {
+    "current_scheduler_ledger_or_process_state_requeried_by_this_review": false,
+    "not_an_original_v05_native_ADMIN_custody_receipt": true,
+    "retained_native_parent_receipts_report_real_child_stopped_grant_removed_child_and_root_leases_released": true,
+    "separate_root_tool_exit_or_quiescent_group_observation_available_in_this_inspected_package": false,
+    "wrapper_source_writes_receipt_after_real_process_poll_and_guarded_root_lease_release": true
+  },
+  "reuse_opportunity": "Reuse these other-agent2392 retained passing test executions as independently reconciled upstream source/owner/reporting and Harbor/archive/provider-routing regression evidence for exact2fe source bytes. Do not say this session reran them. Keep root fresh92 at merged045 as separate native administrative-policy integration qualification.",
+  "runs": [
+    {
+      "JUnit_metadata_pin": {
+        "bytes": 3085949,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/final/verified/results.xml",
+        "sha256": "087e28479d8f730d1ab7dfd6b89c4d7f3d7b887fc92656ce8e81f21c44b7388b"
+      },
+      "child_lease_id": "3e167289c7114d75bb609efdc060eb32",
+      "errors_failures_skips": 0,
+      "native_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+      "owner_reported_real_child_stopped": true,
+      "owner_reported_root_and_child_lease_release": true,
+      "passing_testcase_elements": 1987,
+      "production_MCP_delegation_qualified": false,
+      "receipt_pin": {
+        "bytes": 62481,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/final/verified/receipt.json",
+        "sha256": "1c447c3a977d2f923cd80f2c2dc735b694101ef13f29a33728d0d72f1ecb6730"
+      },
+      "root_lease_id": "1721f21e1c4e4452af0c0c97c024bf06",
+      "run": "final/verified",
+      "source_pins_pin": {
+        "bytes": 61575,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/final/source_pins.json",
+        "sha256": "5dbb13bd037d416b131b855a312d97398c03d4de5ccee774e2c0430c00cc8b2f"
+      },
+      "wrapper_source_pin": {
+        "bytes": 51634,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/final/qualify.py",
+        "sha256": "428202b3a8e703ff14c490af4e396a53e4256b017e753111e6b9005c19e1935e"
+      }
+    },
+    {
+      "JUnit_metadata_pin": {
+        "bytes": 55803,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/harbor/verified/results.xml",
+        "sha256": "f4a369a2fca7eca4b3889f7d1d70fac66bf9c7e2d4bae70c4541f15c4ac7249c"
+      },
+      "child_lease_id": "ebad738caaa446da92c53c37545d078c",
+      "errors_failures_skips": 0,
+      "native_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+      "owner_reported_real_child_stopped": true,
+      "owner_reported_root_and_child_lease_release": true,
+      "passing_testcase_elements": 405,
+      "production_MCP_delegation_qualified": false,
+      "receipt_pin": {
+        "bytes": 64459,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/harbor/verified/receipt.json",
+        "sha256": "43c17f5cd9d114aa8c5ed0bcd71a62ef300efe03026da48407cc0154e6c1cece"
+      },
+      "root_lease_id": "076e0a7c81044eaaa4f61da0275b14c9",
+      "run": "harbor/verified",
+      "source_pins_pin": {
+        "bytes": 61576,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/harbor/source_pins.json",
+        "sha256": "445666e8f2994b0990a77bdd29c8e89004b076299221a2b224edace127ff02c2"
+      },
+      "wrapper_source_pin": {
+        "bytes": 52309,
+        "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/harbor/qualify.py",
+        "sha256": "63ed9166f1d23c7c651f8ca9e6675fbc3b8e9c6e36646d6c7cf49dc11b6a90a6"
+      }
+    }
+  ],
+  "schema": "upstream-token-accounting2392-retained-metadata-independent-survey@1",
+  "source_commit": "5bea901d207c67df416472def575f9389fef4c31",
+  "status": "retained_test_and_owner_metadata_found_not_commit_message_only",
+  "upstream_independent_source_review_pin": {
+    "bytes": 757,
+    "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/independent-review.json",
+    "sha256": "471b06b96a632adcd1268d8435a49c9b7d3b905d2fc38f39fb9b6c03ae90ca33"
+  },
+  "validation_pin": {
+    "bytes": 1711,
+    "path": "/home/barberb/lift_coding/artifacts/token-accounting-publication-20261017T132230Z/validation.json",
+    "sha256": "7329e431110c01eb896c5167cb6aed6fe91181f579240023f074bdb4cd2a27ba"
+  }
+}

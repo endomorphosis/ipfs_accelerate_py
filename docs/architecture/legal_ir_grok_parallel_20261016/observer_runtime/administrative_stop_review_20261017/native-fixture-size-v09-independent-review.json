@@ -1,0 +1,44 @@
+{
+  "actual_file_metadata": [
+    {
+      "bytes": 32518144,
+      "links": 1,
+      "mode": 384,
+      "path": "/tmp/pytest-of-barberb/pa17h/test_actual_admin_creator_proc0/copies/canonical.duckdb",
+      "size_exceeds16MiB": true,
+      "size_within64MiB": true,
+      "uid": 1000
+    },
+    {
+      "bytes": 34615296,
+      "links": 1,
+      "mode": 384,
+      "path": "/tmp/pytest-of-barberb/pa17h/test_genuine_aged_audit_lost_r0/copies/canonical.duckdb",
+      "size_exceeds16MiB": true,
+      "size_within64MiB": true,
+      "uid": 1000
+    }
+  ],
+  "base_source_sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f",
+  "disposition": "No concrete blocker found. Actual retained canonical sizes exceed16MiB;64MiB remains bounded. Native qualification required.",
+  "exact_change": "Only tests/native_unknown_admin_owner_fixture.py MAX_DATABASE16MiB to64MiB",
+  "material_scope": [
+    "The constant controls parent canonical reads, child canonical reads AND this fixture child RLIMIT_FSIZE. The one-line change raises all three from16MiB to64MiB.",
+    "All private600/UID/single-link/no-alias/stable-stat/native source/identity/grant/custody checks remain unchanged.",
+    "JSON/source/package/CPU/AS/FD/time bounds unchanged. No product, frozen META helper or fixture DB edited.",
+    "The helper remains explicitly nonadmitting; this change does not qualify authentic production custody."
+  ],
+  "native_execution_by_reviewer": false,
+  "next_gate": "Root applies exact patch only after original owner finalizes, then qualifies affected native cases with a fresh original resource owner/request; preserve previous failed evidence.",
+  "patch_pin": {
+    "bytes": 350,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/root-native-fixture-size-bound-v09.patch",
+    "sha256": "f7d57ed3f6495a095aeaa5e594b425a02ddb9d442131ce5bf2ff1a85e7f56d68"
+  },
+  "production_authority_granted": false,
+  "proposed_source_sha256": "27e25297869b891a3c31568e9f1d554cd0dcac6d1d0f2afb10e24542fcc2bb5a",
+  "retained_outcome": "Native08:2PASS then graceful ADMIN-creator failure before child launch at canonical size pin. Remaining12 pending.",
+  "reviewer": "/root/grok_confinement_review",
+  "schema": "native-admin-fixture-size-independent-review@9",
+  "validation": "Exact base/proposed hashes, exact one-line unified patch and AST verified; native08 traceback and real lstat metadata read. No helper import, DB open, tests/native job or C edits."
+}

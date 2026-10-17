@@ -1,0 +1,112 @@
+{
+  "C_or_frozen_v02_edits": false,
+  "Python_AST_parsed": true,
+  "all_full_global_guard_call_sites": [
+    {
+      "location": "Runtime.spawn",
+      "scope": "before sealed deadline/request/Popen; Runtime.child must beNone"
+    },
+    {
+      "location": "Runtime.wait_exit",
+      "scope": "after genuine actual child close/reap/group absence"
+    },
+    {
+      "location": "native initial guard",
+      "scope": "before admin/settlement and any spawn"
+    },
+    {
+      "location": "native final guard/finalize",
+      "scope": "after finally retained-child close succeeds"
+    }
+  ],
+  "confirmed_v02_blocker": {
+    "SDK_chain": "ParentedPhaseResourceReservation.check_usage(full=True) -> DaemonResourceReservation.check_usage -> _account -> _inventory(all named roots)",
+    "observed_global_inventory_cost": {
+      "approximate_entries": 1500000,
+      "seconds": 17.18,
+      "source": "Parent reported retained native09 finalization measurement; not remeasured by this reviewer."
+    },
+    "risk": "Two such scans can consume the30s child window before ADMIN interaction. No guaranteed latency or successful runtime outcome is inferred.",
+    "source_finding": "worker_base sealed30s deadline before spawn full prelaunch census; genuine immediate Popen registration used another full census."
+  },
+  "exact_derivative_patch_pin": {
+    "bytes": 3955,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/native-parent-live-deadline-v03.patch",
+    "sha256": "1a0589c043180fbc28512d0ccdb7bdfab421cb8f10b63d6aa8f3844d0a8389d7"
+  },
+  "exact_unified_diff_verified": true,
+  "imports_performed": false,
+  "limits": [
+    "Static exact-diff/AST/source review only. No reviewed helper/module import, native admission/job, child/socket/model/provider call, database open, C edit or foreign cleanup occurred.",
+    "Removing known global-scan starvation does not prove remaining source/ledger/fsync/local checks or worker startup fit30s on this host. Runtime qualification remains pending.",
+    "Live local sampling and pre/post full inventory are the existing cooperative SDK semantics, not continuous global disk accounting or a kernel quota guarantee.",
+    "Persistent native close or leader-dead descendants still retain cleanup custody; uniformly bounded cleanup/host death survival is not claimed.",
+    "V03 requires freshly rendered requests pinning its exact parent source. Frozen v02 sources/manifests/results and the C592d trace stay preserved; no old native result is promoted into v03 qualification.",
+    "Fixture-only scope preserves UNKNOWN/unverified external effects/blocked automatic retries and grants no production or original native receipt authority."
+  ],
+  "prepared_at_utc": "2026-10-17T06:50:18.507159+00:00",
+  "production_authority_granted": false,
+  "remaining_concrete_blockers_found": [],
+  "reviewed_v03_semantics": [
+    "Full prelaunch source/native/global/external/control guard remains before deadline sealing, request publication and Popen. Exact Python pin check and log FD creation also precede sealing.",
+    "worker_base creates an unsealed in-memory body only. spawn adds the same min(parent_deadline,now+30s) deadline immediately before private request fsync/close and actual Popen.",
+    "The assignment-only real ActualChild is retained before log-FD close/birth/registration can fail; actual bind follows, and genuine disk.check_usage(child_pid,full=False) immediately registers it.",
+    "The full=False SDK path preserves actual source/root/owner/phase identities, lease ancestry/cancellation, strict attempt bytes plus declared external charge, group slots and RSS. It does not perform the all-roots _account scan.",
+    "disk.native_lease still performs full native scheduler-envelope checks; these inspect active lease records rather than the global filesystem. Heartbeat renews the same real native lease.",
+    "ADMIN post-response live guard is local/source/ancestry/external/control only. Wait loops and cleanup custody keep the existing local checks active.",
+    "wait_exit performs full global guard only after actual child.observe/close/wait/reap/group absence. Initial full guard occurs before any child; final full guard and disk finalization occur after actual retained-child close.",
+    "F07 policy, root/phase/native lease/disk reservation types,CPU1/memory2048MiB/4childslots,256MiB disk,128MiB fixture+8MiB control external charges,parent120s,phase420s and child30s are unchanged.",
+    "Worker/API/store/custody verifier behavior, nonce/identity/socket rules, actual crash/replay ordering and receipt/finalization boundaries remain unchanged. No fake ACK, guard suppression or worker-window widening is introduced."
+  ],
+  "reviewer": "main_integration_survey",
+  "runtime_qualified": false,
+  "schema": "authentic-CD-parent-live-deadline-independent-source-review/v3",
+  "source_pin": {
+    "bytes": 44005,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+    "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+  },
+  "source_pins": [
+    {
+      "bytes": 43309,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_native_parent_v02.py",
+      "sha256": "2394125824b30e28cca6c7a99603f734ec86cbaadb40b7d9e65b1c283714778e"
+    },
+    {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    {
+      "bytes": 3955,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/native-parent-live-deadline-v03.patch",
+      "sha256": "1a0589c043180fbc28512d0ccdb7bdfab421cb8f10b63d6aa8f3844d0a8389d7"
+    },
+    {
+      "bytes": 15440,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "bytes": 40999,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+    },
+    {
+      "bytes": 17545,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d"
+    },
+    {
+      "bytes": 121503,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    }
+  ],
+  "tests_jobs_DB_provider_or_admissions_performed": false,
+  "unchanged_frozen_v02_pin": {
+    "bytes": 43309,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_native_parent_v02.py",
+    "sha256": "2394125824b30e28cca6c7a99603f734ec86cbaadb40b7d9e65b1c283714778e"
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "authentic_custody_qualified": false,
+  "compatible_without_live_source_changes": [
+    {
+      "component": "frozen A/B owner a5263c6a",
+      "evidence": "request_data dynamically loads request.source_loader_pin; prepare_launch uses loader._package_pins, puts all values into actual original owner source_sha256 and propagates the same pin/map to producer request. product_imports compares exact loader closure dynamically."
+    },
+    {
+      "component": "frozen compiler v01 87107209",
+      "evidence": "Copies product_sources, producer_pin and source_loader_pin from actual producer request; includes actual producer request and loader pins in context immutable_pins. SOURCE_RELATIVES is the existing native context code subset, not a whole-map Python-only constraint; no need to change authority-context schema or add SQL ad hoc."
+    },
+    {
+      "component": "frozen parent v03 0ab548b2",
+      "evidence": "Loads unbound source_loader_pin and producer_pin dynamically; checks loader._package_pins==unbound product_sources; guards the actual loader/producer/worker pins. Its exact4 legacy native resource_source_pins are unrelated scheduler helpers, not the product SQL resource closure, and must remain unchanged."
+    },
+    {
+      "component": "settlement v04 ed72d2e1",
+      "evidence": "Uses dynamically pinned producer.prepare_imports(unbound,control), then loader._loaded_product_sources. No hardcoded loader SHA or independent Python-only whole-map check exists. It is compatible if new producer and loader implement the same exact expanded closure."
+    }
+  ],
+  "confirmed_required_live_derivative_changes": [
+    {
+      "component": "new resource loader",
+      "requirement": "Expanded exact catalog must contain all2810 current Python files and exactly the six native task_sources/sql resources; remain within unchanged4096-file/256MiB aggregate bound, read exact pinned real bytes and fail closed on escape/drift. Provide a read-only TraversableResourceReader through the package loader without ambient filesystem fallback/extraction or migration bypass."
+    },
+    {
+      "component": "new producer derivative",
+      "current_blocker": "prepare_imports currently requires set(product_sources)==all rglob('*.py') at lines273-275.",
+      "requirement": "Require equality with the new exact Python+six-SQL closure, keeping all pin/path/aggregate checks and source_loader_pin dynamic. Must complete fresh exact-source controller_preparation before supervisor_launch."
+    },
+    {
+      "component": "NEW ADMIN worker derivative",
+      "current_blocker": "LOADER_SHA at35 and exact equality at246 require frozen fba59b05... utilities.",
+      "requirement": "After the resource loader hash is final and independently reviewed, replace only that literal with its final full SHA in a new versioned worker; retain the strict equality rather than removing it. All permission-denial/native identity/context/policy code unchanged. No worker written in this review."
+    }
+  ],
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "frozen_bundles_or_publication_map_v02_modified": false,
+  "imports_tests_jobs_DB_provider_or_native_admissions_performed": false,
+  "limitations": [
+    "New loader implementation/hash and new producer closure derivative were not available/frozen at this review, so compatibility remains conditional on exact reviewed implementations.",
+    "AST parsed reviewed source only; no reviewed import, resource-loader execution, pytest/native job, SQL/DB operation or provider/model call.",
+    "No runtime or continuous source/process custody qualification; actual fresh A/B/C/D trace and post-owner finalization remain required."
+  ],
+  "metadata_construction_caveat": {
+    "renderer": "Frozen render_authentic_fixture_request_v01.py defaults LOADER and PRODUCER to old paths at22/24 and fills source_loader_pin from that default at99.",
+    "requirement": "A new exact-source request must explicitly contain the final new loader/producer pins before hashing/sealing; do not reuse an unmodified old rendered request or mutate frozen requests. Wrapper validators accept dynamic exact pins."
+  },
+  "native_migration_semantics": {
+    "checksum_semantics_unchanged": "Native checksum_sql normalizes line endings/final newline and native catalog/applied receipt checks remain untouched.",
+    "default_resources_path_requires_as_file_or_extraction": false,
+    "explicit_directory_override": "Separate existing native Path branch; this repair must not route to it.",
+    "extra_0002_tasks_index_repair_sql": "Pinned and enumerable but not loaded as another v2 migration; native REQUIRED_PACKAGE_SQL_FILENAMES chooses sealed versions1-5.",
+    "required_default_catalog_count": 5,
+    "six_pinned_SQL_filenames": [
+      "0001_control_plane.sql",
+      "0002_causal_event_federation_core.sql",
+      "0002_tasks_index_repair.sql",
+      "0003_state_server_restart_identity.sql",
+      "0004_hash_observations.sql",
+      "0005_tasks_index_repair.sql"
+    ]
+  },
+  "native_qualified": false,
+  "native_resource_API_required_by_default_migration_path": [
+    "get_resource_reader(fullname)",
+    "reader.files()",
+    "joinpath('sql')",
+    "is_dir()",
+    "iterdir()",
+    "entry.name",
+    "entry.is_file()",
+    "joinpath(filename)",
+    "read_text(encoding='utf-8')"
+  ],
+  "prepared_at_utc": "2026-10-17T07:09:14.715196+00:00",
+  "production_authority": false,
+  "review_kind": "source-only exact current frozen crossworker compatibility; future loader not yet reviewed or qualified",
+  "reviewer": "/root/main_integration_survey",
+  "schema": "authentic-resource-loader-crossworker-static-compatibility-review@1",
+  "source_or_HEAD_edits": false,
+  "source_pins": [
+    {
+      "bytes": 44914,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+      "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1"
+    },
+    {
+      "bytes": 10622,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/render_authentic_fixture_request_v01.py",
+      "sha256": "bda7d904fc820976a6ac285aeb9cca70a5a54de4024c53460b85c2bf3fdeb2ff"
+    },
+    {
+      "bytes": 14959,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/compile_authentic_admin_inputs_v01.py",
+      "sha256": "8710720918c86bc17cf93acfff9274b917f8e0961110ec24322acf8f387515ec"
+    },
+    {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_admin_worker_v04.py",
+      "sha256": "7993fcb86a7e80918fbd862ec3aa18b16eaac8c7f9182054b83f9012b8c1c03e"
+    },
+    {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    },
+    {
+      "bytes": 32133,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/produce_authentic_unknown_master_diagnostic_v03.py",
+      "sha256": "b24d39fc01da32989a8d43cf74b5db204e286b98c41736cc53db396696162f17"
+    },
+    {
+      "bytes": 43192,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py",
+      "sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
+    },
+    {
+      "bytes": 61483,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+      "sha256": "8299b019f7b55612da209ca719126d8fa3f7198d03e4c258257c9f161fbaa5f6"
+    }
+  ],
+  "unused_legacy_seam": {
+    "component": "old loader _serve_admin",
+    "python_only_check_at_line": 636,
+    "status": "Its old copied-DB nonadmitting helper path also insists on Python-only closure, but authentic A/B/C/D invokes only loader utility functions/finder and distinct genuine workers. This seam must not be enabled or claimed qualified by the resource repair. Preserve it as historical fail-closed, or if a derivative edits it require separate review without any admission promotion."
+  },
+  "worker_derivatives_written": false
+}

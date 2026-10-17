@@ -1,0 +1,117 @@
+{
+  "C_or_frozen_sources_modified": false,
+  "DB_opens": false,
+  "SQL_resource_count": 6,
+  "SQL_resource_total_bytes": 124258,
+  "SQL_resources": [
+    {
+      "HEAD_blob_sha1": "c5051dd3b03d49203e1c832ea13eb4b4b6305d26",
+      "HEAD_mode": "100644",
+      "pin": {
+        "bytes": 46509,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "sha256": "bace5842b431da39ac25d550338481ff4d68a2fc36327c8128280115adeaba36"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+      "worktree_bytes_match_HEAD_blob": true
+    },
+    {
+      "HEAD_blob_sha1": "400de066c2d481d4d58d33b910e5bf173a5f8d19",
+      "HEAD_mode": "100644",
+      "pin": {
+        "bytes": 75535,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql",
+        "sha256": "9253504546b6bdad0ad9c1d00842016bfb474c40c2650d6d024919126589949c"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql",
+      "worktree_bytes_match_HEAD_blob": true
+    },
+    {
+      "HEAD_blob_sha1": "87eecf76e78d91308b093bda940fbe44f0f72198",
+      "HEAD_mode": "100644",
+      "pin": {
+        "bytes": 439,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql",
+        "sha256": "e5ff06f3e3bc0bc64ff20487589ba88ef6adca7d9eff0fd8cd572f5829cfeeb2"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql",
+      "worktree_bytes_match_HEAD_blob": true
+    },
+    {
+      "HEAD_blob_sha1": "86cbfcc46dc98ba6b27f36d8866ce76cd8c9c971",
+      "HEAD_mode": "100644",
+      "pin": {
+        "bytes": 513,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql",
+        "sha256": "21b423d3aaf280cbbe1b066611bdfeaf94128ab994cc429cc7ed44f125b50fdc"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql",
+      "worktree_bytes_match_HEAD_blob": true
+    },
+    {
+      "HEAD_blob_sha1": "54d65315f1141adc185ef76e78cfd56310a89151",
+      "HEAD_mode": "100644",
+      "pin": {
+        "bytes": 672,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+        "sha256": "21e54254564d1cc7fc0bb667fcaae77e08e70dbe9d40fc03dbdd7e0bfa6750a2"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+      "worktree_bytes_match_HEAD_blob": true
+    },
+    {
+      "HEAD_blob_sha1": "260dee7f7265dc0abdaf92612af36c1e284f8361",
+      "HEAD_mode": "100644",
+      "pin": {
+        "bytes": 590,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
+        "sha256": "5cd6bc0dece24daa65a7c4123b347f1ffbce9e8200bafe2bc5ad2c56b225320a"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
+      "worktree_bytes_match_HEAD_blob": true
+    }
+  ],
+  "actual_python_bytes_and_runtime_expanded_catalog_qualified": false,
+  "actual_python_files_observed": 2810,
+  "authentic_A_B_C_D_qualified": false,
+  "bounds": {
+    "SQL_directory_entries": 64,
+    "SQL_file_bytes": 1048576,
+    "aggregate_SQL_bytes": 4194304,
+    "aggregate_source_bytes": 268435456,
+    "inventory_entries": 32768,
+    "source_files": 4096
+  },
+  "catalog_source_pin": {
+    "bytes": 61483,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+    "sha256": "8299b019f7b55612da209ca719126d8fa3f7198d03e4c258257c9f161fbaa5f6"
+  },
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "evidence_scope": "Read-only git rev-parse HEAD and git ls-tree HEAD:.../sql, actual file stat/read/hash; no custom loader/backend/product import or native runtime.",
+  "extra_physical_legacy_SQL": "0002_tasks_index_repair.sql",
+  "imports": false,
+  "native_admission_or_jobs": false,
+  "native_catalog_executed": false,
+  "native_extra_SQL_semantics": "The genuine native catalog selects its five literal sealed migrations from the enumerable six resources. The reader changes neither SQL contents nor required migration order/checksum/version checks.",
+  "native_required_filenames_from_pinned_source_AST": [
+    "0001_control_plane.sql",
+    "0002_causal_event_federation_core.sql",
+    "0003_state_server_restart_identity.sql",
+    "0004_hash_observations.sql",
+    "0005_tasks_index_repair.sql"
+  ],
+  "native_required_migration_count": 5,
+  "non_SQL_README_is_not_exposed_as_resource": true,
+  "package_initializer_pin": {
+    "bytes": 3212,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+    "sha256": "247e63849d1bf589825fcf965b6c6d20cc95de4e147f6121cd6fe6fd7cf06deb"
+  },
+  "production_authority": false,
+  "repo_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller",
+  "schema": "authentic-pinned-SQL-source-closure-metadata@1",
+  "schema_installed": false,
+  "sql_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql",
+  "sql_package": "ipfs_accelerate_py.agent_supervisor.task_sources"
+}

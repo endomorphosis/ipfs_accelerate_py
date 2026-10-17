@@ -1,0 +1,609 @@
+{
+  "absent_referenced_names_by_module": {
+    "daemon_module": {
+      "ExternalProviderIsolationConfig": [
+        89,
+        136,
+        241,
+        270,
+        388,
+        398,
+        581,
+        905,
+        1172,
+        1303,
+        1498,
+        1547,
+        1770,
+        1800,
+        1838,
+        1885
+      ],
+      "PROVIDER_EXTERNAL_ISOLATION_ENV": [
+        145,
+        228,
+        245,
+        277,
+        456,
+        502,
+        585,
+        675,
+        781,
+        960,
+        978,
+        993,
+        1312,
+        1507,
+        1556,
+        1809,
+        1860,
+        1899
+      ],
+      "PROVIDER_EXTERNAL_ISOLATION_SCHEMA": [
+        44,
+        1462
+      ],
+      "_CLI_CONTAINER_BIN": [
+        1353
+      ],
+      "_CLI_CONTAINER_HOME": [
+        1343,
+        1429,
+        1433,
+        1751
+      ],
+      "_HOST_CLI_ENV_NAMES": [
+        1733
+      ],
+      "_ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE": [
+        1531,
+        1610,
+        1774,
+        1789,
+        1863
+      ],
+      "_ISOLATED_ENV_EXEC_NAME": [
+        1433
+      ],
+      "_ISOLATED_ENV_FILE_NAME": [
+        1429,
+        1751
+      ],
+      "_LIFECYCLE_REPOSITORY_ROOT_ENV": [
+        1316
+      ],
+      "_VALIDATION_CONTAINER_PYTHON": [
+        869
+      ],
+      "_codex_ready_for_automatic_routing": [
+        1868
+      ],
+      "_docker_codex_implementation_command": [
+        808
+      ],
+      "_docker_external_validation_command": [
+        447,
+        536,
+        649
+      ],
+      "_host_codex_vendor_binaries": [
+        213
+      ],
+      "_isolated_codex_code_mode_host_ready": [
+        1776,
+        1785,
+        1865
+      ],
+      "_run_external_validation_in_container": [
+        751
+      ],
+      "validate_external_provider_isolation_config": [
+        789,
+        1191,
+        1213,
+        1219,
+        1241,
+        1271
+      ]
+    },
+    "multi_runner_module": {
+      "STATE_LIVE_SCHEMA_REVISION_ENV": [
+        936,
+        966,
+        984,
+        999
+      ],
+      "STATE_STORE_LIVE_GENERATION_ENV": [
+        935,
+        963,
+        981,
+        996
+      ],
+      "TRUSTED_CUDA_CACHE_DISABLE_ENV": [
+        1032,
+        1052,
+        1115
+      ],
+      "TRUSTED_CUDA_CACHE_PATH_ENV": [
+        1031,
+        1049,
+        1066,
+        1092,
+        1114
+      ],
+      "TRUSTED_DUCKDB_HOME_ENV": [
+        33,
+        1028,
+        1044,
+        1072,
+        1088,
+        1098,
+        1159
+      ],
+      "TRUSTED_PYTHONDONTWRITEBYTECODE_ENV": [
+        1033,
+        1054,
+        1116
+      ],
+      "TRUSTED_PYTHON_USER_BASE_ENV": [
+        35,
+        1029,
+        1073,
+        1100,
+        1110,
+        1120
+      ],
+      "TRUSTED_RUNTIME_CACHE_ENV_NAMES": [
+        38,
+        1075,
+        1104,
+        1122,
+        1127,
+        1130
+      ],
+      "TRUSTED_XDG_CACHE_HOME_ENV": [
+        1030,
+        1046,
+        1065,
+        1091,
+        1113
+      ],
+      "_PLAN_BOUND_LIFECYCLE_ENV_NAMES": [
+        1003
+      ],
+      "_plan_bound_positive_child_environment": [
+        955,
+        1061,
+        1108
+      ],
+      "_plan_bound_profile_environment": [
+        948
+      ],
+      "_trusted_duckdb_profile_environment": [
+        1037,
+        1135,
+        1142,
+        1149,
+        1156
+      ]
+    },
+    "scheduler_module": {
+      "EXTERNAL_PROVIDER_ISOLATION_ENV": [
+        387,
+        1653
+      ]
+    },
+    "supervisor_module": {}
+  },
+  "bounded_history_observations": {
+    "autouse_fixture_added_by_commit": "dff0159e1257d7362286ead56c79eff20f3485ab",
+    "exact_removal_or_merge_cause_not_established": true,
+    "latest_test_main_touch": "ad51f6605e1676da768cbece6957eff6d9dd0882",
+    "trusted_contract_previously_present_in_commit": "dff0159e1257d7362286ead56c79eff20f3485ab"
+  },
+  "classification": "Preexisting official-main test/source contract drift; not introduced by administrative-stop feature or d98 merge.",
+  "controller_head": "c1fd0d8c435ce8c5b16975ce762f83e3f84db314",
+  "current_implemented_contracts": [
+    {
+      "finding": "provider_subprocess_environment strips explicit database program/credential/owner grant bindings; it does not implement the removed trusted-HOME and lifecycle projection helpers.",
+      "line": 1191,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py"
+    },
+    {
+      "finding": "_managed_daemon_child_environment returns package PYTHONPATH and an explicitly supplied DatabaseProgramConfig environment; it does not synthesize ambient trusted-HOME/cache forwarding.",
+      "line": 1574,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py"
+    },
+    {
+      "finding": "_codex_implementation_command accepts codex/workspace/context/model/reasoning arguments and delegates to router-owned build_codex_cli_command; legacy test repository_root keyword is unsupported.",
+      "line": 2770,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    },
+    {
+      "finding": "ExternalProviderIsolationConfig, PROVIDER_EXTERNAL_ISOLATION_ENV/SCHEMA and the old Docker external-validation helpers are absent in current source and official d98 main.",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    },
+    {
+      "finding": "EXTERNAL_PROVIDER_ISOLATION_ENV is absent in current source and official d98 main.",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py"
+    }
+  ],
+  "failures_skipped": false,
+  "native_owner_session_at_review": 53240,
+  "official_main_reference": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499",
+  "policy_permissions_reintroduced": false,
+  "prepared_at_utc": "2026-10-17T05:57:14.659855+00:00",
+  "primary_setup_failure": {
+    "first_attribute": "multi_runner_module.TRUSTED_DUCKDB_HOME_ENV",
+    "first_attribute_line": 33,
+    "fixture": "_isolate_ambient_trusted_runtime",
+    "line": 30,
+    "other_absent_autouse_attributes": [
+      "TRUSTED_PYTHON_USER_BASE_ENV",
+      "TRUSTED_RUNTIME_CACHE_ENV_NAMES"
+    ]
+  },
+  "recommended_migration": [
+    "Preserve the failed62-case request and publish this explicit compatibility gap; keep the independently passing28-case ordinary/protected matrix separately scoped.",
+    "Do not restore trusted-runtime constants, synthesize monkeypatched compatibility aliases, add getattr fallbacks, silently deselect cases, or treat fixture removal as a passing migration.",
+    "Replace the obsolete autouse fixture only after mapping the current environment contract. Test explicit database-program/owner-grant credential projection and package import origins with current public boundaries.",
+    "Migrate former lifecycle/trusted-home cases to the current supported owner/capsule and managed-daemon environment contract. Do not preserve an old ambient HOME/cache permission merely to satisfy assertions.",
+    "Map old ExternalProviderIsolationConfig/Docker validation expectations to the currently supported ordinary-worker image profile and protected provider route, preserving secret/host-authority isolation assertions where those boundaries actually exist.",
+    "Retain separate explicit qualification for the3 live Docker cases; source tests and nonadmitting fixtures cannot establish authentic launch custody.",
+    "After a concrete test migration is reviewed and applied outside active native source freezes, run all affected source cases under the native owner and retain exact primary/subtest/JUnit outcomes. No migration patch is supplied because this is an API/security-contract rewrite rather than a valid one-line fixture fix."
+  ],
+  "retained_execution_truth": {
+    "evidence_source": "Parent report; owner53240 still active/finalizing during source review, not independently rerun here.",
+    "legacy_source_cases_reported_setup_errors": 34,
+    "native_finalization_not_claimed_by_this_report": true,
+    "ordinary_protected_source_cases_reported_passed": 28,
+    "request_selected_cases": 62,
+    "whole_request_passed": false
+  },
+  "review_scope": "Read-only exact Git blob/current file comparison and AST/name analysis; no module imports, tests, jobs, branch changes, database opens or production policy changes.",
+  "schema": "legacy-direct-codex-isolation-source-compatibility-gap/v1",
+  "source_edits": false,
+  "source_pins": [
+    {
+      "byte_identical_official_main": true,
+      "bytes": 68126,
+      "official_main_sha256": "212da1bac44eca09a68de80167b2c910a7d2f467d0fe7ce7b9ecc2ef62a5957d",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/test/api/test_agent_supervisor_direct_codex_isolation.py",
+      "sha256": "212da1bac44eca09a68de80167b2c910a7d2f467d0fe7ce7b9ecc2ef62a5957d"
+    },
+    {
+      "byte_identical_official_main": true,
+      "bytes": 603872,
+      "official_main_sha256": "d1682f52318e52076f4eecf12f32d5a4d6a93376511f02021d76bc4f18b8f6e6",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "sha256": "d1682f52318e52076f4eecf12f32d5a4d6a93376511f02021d76bc4f18b8f6e6"
+    },
+    {
+      "byte_identical_official_main": true,
+      "bytes": 266266,
+      "official_main_sha256": "5d126106950281b3db109ed876469dd3a3e5e6d50f17da08d7f255c6ee808ecb",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "sha256": "5d126106950281b3db109ed876469dd3a3e5e6d50f17da08d7f255c6ee808ecb"
+    },
+    {
+      "byte_identical_official_main": false,
+      "bytes": 3298714,
+      "official_main_sha256": "d8bff8e58c3168082ed2b175710dc077333d99b41312b40425a38b41cc064d54",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "8bd4c4a1aaef11140b2e2301bd203ce3159121f16fb821045e3ac2e0767783b5"
+    },
+    {
+      "byte_identical_official_main": true,
+      "bytes": 1010716,
+      "official_main_sha256": "d92007c21b0fc1961af7c2249c62c2b9217cb98b3d083cbd18f10ed9b22d3f89",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "sha256": "d92007c21b0fc1961af7c2249c62c2b9217cb98b3d083cbd18f10ed9b22d3f89"
+    },
+    {
+      "byte_identical_official_main": true,
+      "bytes": 52195,
+      "official_main_sha256": "5499810d9214ae212f9a3fbe10df5fddc02b8387195ec067af4cf1e4ff2d7f58",
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/multi_supervisor_runner.py",
+      "sha256": "5499810d9214ae212f9a3fbe10df5fddc02b8387195ec067af4cf1e4ff2d7f58"
+    }
+  ],
+  "static_case_inventory": {
+    "all_selected_source_cases_blocked_in_autouse": true,
+    "case_bodies_with_additional_literal_absences": [
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV",
+            "_host_codex_vendor_binaries"
+          ]
+        },
+        "line": 128,
+        "test": "test_direct_codex_command_has_a_fail_closed_external_boundary"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV"
+          ]
+        },
+        "line": 235,
+        "test": "test_required_isolation_never_falls_back_to_direct_codex"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV"
+          ]
+        },
+        "line": 265,
+        "test": "test_required_isolation_rejects_direct_command_override"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig"
+          ],
+          "scheduler_module": [
+            "EXTERNAL_PROVIDER_ISOLATION_ENV"
+          ]
+        },
+        "line": 356,
+        "test": "test_scheduler_seals_isolation_and_refuses_unavailable_runtime"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "PROVIDER_EXTERNAL_ISOLATION_ENV",
+            "_docker_external_validation_command"
+          ]
+        },
+        "line": 423,
+        "test": "test_external_validation_command_isolates_linked_task_workspace"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "_docker_external_validation_command"
+          ]
+        },
+        "line": 508,
+        "test": "test_external_validation_masks_control_state_in_main_checkout"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV"
+          ]
+        },
+        "line": 572,
+        "test": "test_external_validation_has_no_host_fallback_when_isolation_unavailable"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "_docker_external_validation_command"
+          ]
+        },
+        "line": 622,
+        "test": "test_external_validation_rejects_unbound_raw_no_site_profile"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "PROVIDER_EXTERNAL_ISOLATION_ENV",
+            "_run_external_validation_in_container"
+          ]
+        },
+        "line": 667,
+        "test": "test_live_external_validation_denies_host_authority_and_runs_pytest"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "PROVIDER_EXTERNAL_ISOLATION_ENV",
+            "_VALIDATION_CONTAINER_PYTHON",
+            "_docker_codex_implementation_command",
+            "validate_external_provider_isolation_config"
+          ]
+        },
+        "line": 774,
+        "test": "test_live_direct_provider_boundary_denies_host_and_keeps_auth_read_only"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV"
+          ],
+          "multi_runner_module": [
+            "STATE_LIVE_SCHEMA_REVISION_ENV",
+            "STATE_STORE_LIVE_GENERATION_ENV",
+            "_PLAN_BOUND_LIFECYCLE_ENV_NAMES",
+            "_plan_bound_positive_child_environment",
+            "_plan_bound_profile_environment"
+          ]
+        },
+        "line": 900,
+        "test": "test_sealed_isolation_survives_profile_gate_and_daemon_handoffs"
+      },
+      {
+        "absent_module_names": {
+          "multi_runner_module": [
+            "TRUSTED_CUDA_CACHE_DISABLE_ENV",
+            "TRUSTED_CUDA_CACHE_PATH_ENV",
+            "TRUSTED_DUCKDB_HOME_ENV",
+            "TRUSTED_PYTHONDONTWRITEBYTECODE_ENV",
+            "TRUSTED_PYTHON_USER_BASE_ENV",
+            "TRUSTED_RUNTIME_CACHE_ENV_NAMES",
+            "TRUSTED_XDG_CACHE_HOME_ENV",
+            "_plan_bound_positive_child_environment",
+            "_trusted_duckdb_profile_environment"
+          ]
+        },
+        "line": 1007,
+        "test": "test_trusted_duckdb_home_is_profile_bound_and_removed_from_provider"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig"
+          ]
+        },
+        "line": 1166,
+        "test": "test_external_isolation_contract_rejects_unknown_fields"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "validate_external_provider_isolation_config"
+          ]
+        },
+        "line": 1183,
+        "test": "test_external_isolation_contract_rejects_noncanonical_local_endpoints"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "validate_external_provider_isolation_config"
+          ]
+        },
+        "line": 1197,
+        "test": "test_external_isolation_host_admission_remains_uid_bound"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "validate_external_provider_isolation_config"
+          ]
+        },
+        "line": 1225,
+        "test": "test_host_validation_rejects_image_codex_digest_mismatch"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "validate_external_provider_isolation_config"
+          ]
+        },
+        "line": 1244,
+        "test": "test_host_validation_hashes_image_codex_bytes_and_rejects_mismatch"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "_CLI_CONTAINER_HOME",
+            "_ISOLATED_ENV_EXEC_NAME",
+            "_ISOLATED_ENV_FILE_NAME"
+          ]
+        },
+        "line": 1409,
+        "test": "test_isolation_wraps_goose_host_cli_in_docker"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "PROVIDER_EXTERNAL_ISOLATION_SCHEMA"
+          ]
+        },
+        "line": 1454,
+        "test": "test_sealed_grok_isolation_prefers_pcpc_image"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV",
+            "_ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE"
+          ]
+        },
+        "line": 1492,
+        "test": "test_isolation_allows_host_grok_without_wrapping_docker"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV",
+            "_ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE"
+          ]
+        },
+        "line": 1541,
+        "test": "test_isolation_auto_selects_grok_when_isolated_codex_cannot_write"
+      },
+      {
+        "absent_module_names": {
+          "scheduler_module": [
+            "EXTERNAL_PROVIDER_ISOLATION_ENV"
+          ]
+        },
+        "line": 1620,
+        "test": "test_scheduler_accepts_auto_provider_with_codex_isolation"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "_CLI_CONTAINER_HOME",
+            "_HOST_CLI_ENV_NAMES",
+            "_ISOLATED_ENV_FILE_NAME"
+          ]
+        },
+        "line": 1715,
+        "test": "test_host_cli_wrap_keeps_secret_values_off_argv"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "_ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE",
+            "_isolated_codex_code_mode_host_ready"
+          ]
+        },
+        "line": 1765,
+        "test": "test_isolated_codex_without_code_mode_host_is_not_auto_ready"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV"
+          ]
+        },
+        "line": 1794,
+        "test": "test_isolation_still_wraps_explicit_codex"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV",
+            "_ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE",
+            "_codex_ready_for_automatic_routing",
+            "_isolated_codex_code_mode_host_ready"
+          ]
+        },
+        "line": 1833,
+        "test": "test_host_codex_vendor_pair_makes_isolated_codex_auto_ready"
+      },
+      {
+        "absent_module_names": {
+          "daemon_module": [
+            "ExternalProviderIsolationConfig",
+            "PROVIDER_EXTERNAL_ISOLATION_ENV"
+          ]
+        },
+        "line": 1871,
+        "test": "test_isolation_bind_mounts_newer_host_codex_vendor_pair"
+      }
+    ],
+    "live_docker_cases_explicitly_excluded_by_parent": 3,
+    "parametrized_total_cases": 37,
+    "source_cases_selected_by_parent": 34,
+    "static_case_body_absence_count": 27,
+    "test_functions": 34
+  },
+  "tests_executed": false
+}

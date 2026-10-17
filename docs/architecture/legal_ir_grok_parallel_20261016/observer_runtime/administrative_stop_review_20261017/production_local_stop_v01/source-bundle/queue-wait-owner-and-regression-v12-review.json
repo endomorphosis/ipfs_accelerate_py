@@ -1,0 +1,55 @@
+{
+  "conclusion": "No concrete static blocker in the bounded admission wait derivative and fresh v12 qualification run sources.",
+  "pins": {
+    "combined_patch": {
+      "bytes": 6632,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-conditional-root-queue-and-fresh-v12.patch",
+      "sha256": "0da5536b9d44c77ab7970b1a1cde39818349f96aa719031fd287bb2af4e24491"
+    },
+    "contract": {
+      "bytes": 3960,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-conditional-queue-regression-contract-v12.json",
+      "sha256": "b4e95404a2cdb6c0d100b6343a4ee366b66ec0b5b26a83efc8a0e11d4bac9e64"
+    },
+    "fresh_preparer": {
+      "bytes": 11043,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/prepare_planning_unknown_administrative_controls_v12.py",
+      "sha256": "547e5b84a3d6c3494a12ea9f58b224d05911834841153b91e4d44362e61c4b8f"
+    },
+    "fresh_runner": {
+      "bytes": 10320,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_administrative_controls_v12.py",
+      "sha256": "71a24aa619246e2b118aa5cbafa7d45147e8de1278a238e18f5a15c79c2d0e9f"
+    },
+    "new_queue_only_owner": {
+      "bytes": 10304,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_native_owner_v06.py",
+      "sha256": "e2f66d5901f73ea99028d704703698745a16b83b4328589aa5e1b47c04d532c7"
+    },
+    "original_v05": {
+      "bytes": 10303,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261016-01/run_native_owner_v05.py",
+      "sha256": "3e5357925d3be41630e73adc0b8a31b1fd25c35ad3f5bc4ad1b01dbaeffebb14"
+    }
+  },
+  "remaining_gate": "Root alone may render the fresh request and run the actual new owner; require actual full92 pass and separate exit/release before later doc qualification.",
+  "reviewer": "unknown_event_forensics",
+  "reviewer_actions": {
+    "C_or_current_inputs_mutated": false,
+    "DB_WAL_credentials_process_resource_or_active_outputs_read": false,
+    "preparation_or_helpers_tests_native_jobs_executed": false,
+    "source_AST_only": true
+  },
+  "schema": "bounded-root-queue-owner-and-fresh92-regression-independent-static-review@12",
+  "scope": [
+    "Physical root admission wait only1800; phase300 and all actual F07/CPU1/mem2048/slots4/resource ancestry/cancellation/child custody/close behavior unchanged.",
+    "Same92 selected primary cases/nonadmitting custody seam/900s/3GiB/C512MiB/pytest2GiB. Fresh attempt12/pa17l/request+inputsv12; provider/logical production retry or cap change not introduced.",
+    "Both actual new e2f66 source helper and originalv05 historical dependency allowlist pin are preserved honestly; new helper is a reviewed derivative, not originalv05 bytes.",
+    "Root reported actual64390 pre-admission timeout preservedf501, with no testworker/reservation. No runtime or cleanup observation is independently re-queried here."
+  ],
+  "whole_AST_proofs": [
+    "New owner equals originalv05 after restoring only first scheduler.acquire timeout1800 to300.",
+    "Runner equalsv11 after restoring only INPUTS/REQUEST/ATTEMPT/BASE constants.",
+    "Preparer equalsv11 after restoring fresh constants and diagnostic literal and removing only the added explicit new-native-helper pin statement."
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "actual_completed_native_tool_session": 26436,
+  "authority_limit": "Existing user authorization for stale-space cleanup is root-owned; this source/immutable metadata review neither performs cleanup nor proves current quiescence/availability. Released native status and process/lease absence are attributed to genuine retained post-owner observation and must be freshly rechecked by root.",
+  "concrete_metadata_scope_blockers": [],
+  "current_fixture_filesystem_or_ledger_or_process_queries": false,
+  "database_payload_reads": false,
+  "deletion_executed": false,
+  "exact_proposed_root": "/tmp/pytest-of-barberb/pa17m",
+  "excluded": [
+    "All production stores and canonical/coord/execution payloads outside exact root.",
+    "All model/checkpoint/embedding assets.",
+    "All failed/retained/foreign roots, reservations, claims or resource records.",
+    "All other pytest roots and all OWNED/META evidence."
+  ],
+  "immutable_evidence": [
+    {
+      "bytes": 753650,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-request-v13.json",
+      "sha256": "eb399d80a38074d40cbc9c00271e2a9b8c8e6845e892ca4b181454f41a55a877"
+    },
+    {
+      "bytes": 695,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-inputs-v13.json",
+      "sha256": "6abff8a439dcbb951cfcca99e06c1db8ce59bccba9a19e5b1cb2fb0245c99f2f"
+    },
+    {
+      "bytes": 10320,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_administrative_controls_v13.py",
+      "sha256": "d0b70d6ae549d922504321b3df34f0f5b8d5ff4719a3a598c68493c8acfcc1e2"
+    },
+    {
+      "bytes": 1262,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/merged-regression-attempt13-post-owner-v01.json",
+      "sha256": "e7425439c2d5a8b58f5731ef493a9950f07b78441d9673bd04a46372ddeab4ed"
+    },
+    {
+      "bytes": 8098,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/merged-regression-attempt13-retained-evidence-independent-review-v01.json",
+      "sha256": "566a1c522315050ccbc89e0e2a852356a7fb30ca0269c25617a8606eba998f25"
+    },
+    {
+      "bytes": 70575,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-13/administrative-controls-result.json",
+      "sha256": "90236e81c441343c34fb9d43d1c33af2d41179735434bb81ff30fa804b0c9b41"
+    },
+    {
+      "bytes": 637,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-13/receipt.json",
+      "sha256": "cf8b62a668672e41f9fe3edf71ea86f8e9fb23734c0e3514505f6eecb43bcf64"
+    },
+    {
+      "bytes": 15924,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-13/pytest.junit.xml",
+      "sha256": "4f09fc3a1600656f4314eeba6c942fded14990db6314f3ce2d958b52ca5c2be4"
+    }
+  ],
+  "independently_joined": {
+    "full_92_passed_and_pytest_exit0": true,
+    "native_receipt_completed_child0_group_quiescent": true,
+    "post_owner_exit0_released_three_leases_and_parent_child_group_absence": true,
+    "reports_JUnit_inputs_request_and_reviews_outside_proposed_tree": true,
+    "request_external_charge_and_report_fixture_root_match": true,
+    "request_report_receipt_request_SHA_match": true
+  },
+  "native_jobs": false,
+  "required_root_owned_fresh_guards": [
+    "Exact parent/root dev-inode-uid and no-alias anchor; bounded no-follow metadata manifest before deletion.",
+    "Fresh absent actual owner/child/group, no owned scheduler leases/waiter, exact reservation released and no current active/retained external-charge references to root.",
+    "Preserve all OWNED report/receipt/JUnit/forensics and META requests/inputs/source/reviews by actual pins before and after.",
+    "Delete only anchored pa17m using descriptor-relative symlink-safe rmtree; do not follow or delete any external symlink target."
+  ],
+  "retained_reservation_id": "e483273a76ab4690a566747373046617",
+  "review_only": true,
+  "schema": "successful-v13-pytest-fixture-cleanup-scope-review@1",
+  "scope": "Only disposable pytest fixture bodies created beneath the declared basetemp by the successful nonprovider92 regression. Existing native assertions and prior independent qualification attribute those fixture contents; no new census or payload inspection was performed by reviewer.",
+  "source_or_C_edits": false
+}

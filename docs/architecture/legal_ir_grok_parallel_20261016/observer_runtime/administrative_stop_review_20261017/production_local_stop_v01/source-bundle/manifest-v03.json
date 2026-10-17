@@ -1,0 +1,166 @@
+{
+  "author_native_jobs_imports_or_DB_WAL_reads": false,
+  "controller_head": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "current_runtime_status_at_freeze": {
+    "native92": "Root reports92PASS and full owner release on523; product policy unchanged.",
+    "new_Status73846": "Root reports active on c0a749/bf766; no live output read by authors. Native read/close/9controls/release qualification pending.",
+    "old_Status76683": "Root reports FAILED/exit2 ValueError, no Status/audit result; exact sole cause not retrospectively proved.",
+    "production_ADMIN": "Not executed.",
+    "production_settlement": "Not executed."
+  },
+  "files": [
+    {
+      "bytes": 53242,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v03.py",
+      "sha256": "3332b8a3d77c944177878957fda2709c75a20ba046f5c9bb41daee2e146afff4"
+    },
+    {
+      "bytes": 5695,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-parent-exact-retained-log-census-v03.patch",
+      "sha256": "0d5e4d90c57f7aa1de642a5082308b6f2a507c54da1a77d08b8772c4005dc75b"
+    },
+    {
+      "bytes": 27483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v03.py",
+      "sha256": "ceaf84d615aba7bbb5ae5bacaaa31b04269c8a35cb5d966f9355872c91ede532"
+    },
+    {
+      "bytes": 6250,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-unbound-new-status-and-census-v03.patch",
+      "sha256": "052e04f4626d1f8fcbae9c65819d8f58a0b8ff035aa786e547b51242b28f1739"
+    },
+    {
+      "bytes": 15403,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+      "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+    },
+    {
+      "bytes": 3745,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-retained-log-links-metadata-v01.json",
+      "sha256": "3bb9c81cbc71cf4f5da79b42e5f18e332b04f3705c246a9bca292b901b201fa2"
+    },
+    {
+      "bytes": 31245,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01.py",
+      "sha256": "4fd503c0632ee880503acb70bf6c7b689cba39f8e3be57034c5e8d16956e438b"
+    },
+    {
+      "bytes": 26188,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+      "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+    },
+    {
+      "bytes": 50588,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/production_unknown_closed_status_owner_v01.py",
+      "sha256": "c0a7494b8de54641ae759c1754110c548a52f6be647c26a3329d75d3a972eee3"
+    },
+    {
+      "bytes": 18264,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/prepare_production_closed_status_request_v03.py",
+      "sha256": "9cbb9322a970270fa04f81a942051796b173aa27b48580143d339ddda586c599"
+    },
+    {
+      "bytes": 7370,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/observe_finalized_production_owner_v03.py",
+      "sha256": "f7f5602fe7cbd7595e88f670628e1c144d309175727a63b009b6d6b138705047"
+    },
+    {
+      "bytes": 1344646,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-request-v03.json",
+      "sha256": "bf766688224e3e4a53674bdf08ee918deeb80e197d9802c7045890082f290804"
+    },
+    {
+      "bytes": 7086,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-owner-source-contract-v03.json",
+      "sha256": "ea6d8c241584420bfa8131a4b5bd14eeedb01ec7397eb2e395bf41bc990b8d56"
+    },
+    {
+      "bytes": 4466,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-parent-retained-log-census-independent-review-v03.json",
+      "sha256": "bc00e4ebb184afc7739f35c3a086bc0774688e2eca21e7c99454108ad6c9f303"
+    },
+    {
+      "bytes": 6328,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compiler-census-independent-review-v03.json",
+      "sha256": "e5d2f095ab5214eb948336200aa2bf6c40839818d2cb85da085b9a2d5d275748"
+    },
+    {
+      "bytes": 3987,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/runtime-tree-census-independent-review-v01.json",
+      "sha256": "865f21da9c34f03b179855db3ed6e4796ea1cb588d5fc472ccc3b3261d9f0d36"
+    },
+    {
+      "bytes": 5314,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-window-census-diagnostic-independent-review-v03.json",
+      "sha256": "8b386d94a2f07b7df43981d68eb64db287a744acbf0c01da9a007ff19a59534f"
+    },
+    {
+      "bytes": 19791,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-adapters-and-unbound-compiler-source-contract-v03.json",
+      "sha256": "d43f4a6c0d4213079b1c280a93cb59c3c8ff6fcc72f98d028bc0201b76319eb0"
+    },
+    {
+      "bytes": 6437,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-command-templates-v03.json",
+      "sha256": "cfb1c08609fa34247e28fdc703f0e495691da7f9ba1de45ff55c0e8baa36ddce"
+    }
+  ],
+  "final_runtime_sources": {
+    "admin": {
+      "bytes": 31245,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01.py",
+      "sha256": "4fd503c0632ee880503acb70bf6c7b689cba39f8e3be57034c5e8d16956e438b"
+    },
+    "parent": {
+      "bytes": 53242,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v03.py",
+      "sha256": "3332b8a3d77c944177878957fda2709c75a20ba046f5c9bb41daee2e146afff4"
+    },
+    "runtime_tree_census_helper": {
+      "bytes": 15403,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+      "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+    },
+    "settlement": {
+      "bytes": 26188,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+      "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+    },
+    "status_actor": {
+      "bytes": 50588,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/production_unknown_closed_status_owner_v01.py",
+      "sha256": "c0a7494b8de54641ae759c1754110c548a52f6be647c26a3329d75d3a972eee3"
+    },
+    "unbound_compiler": {
+      "bytes": 27483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v03.py",
+      "sha256": "ceaf84d615aba7bbb5ae5bacaaa31b04269c8a35cb5d966f9355872c91ede532"
+    }
+  },
+  "native_policy_product_source_changed": false,
+  "new_changes": [
+    "Exact3pinned retained R06 log links can be inventoried without following target bytes; no broad alias exception.",
+    "Parent v03 uses that same helper/metadata only for R06 budget census and requires genuine Status provenance; all other native operations/real grants/UNKNOWN/risk/caps/close semantics unchanged.",
+    "Compiler v03 selects actual new Status request and registers nonadmitting9case/helper/metadata provenance without changing native authority schemas.",
+    "Status charges and inert controls finish before unchanged120s driver window; actual native30s/F07420s and source/close checks preserved."
+  ],
+  "no_new_retry_model_provider_or_remote_outcome_authority": true,
+  "old_sources_and_reviews_unchanged": true,
+  "prior_frozen_bundle_pin": {
+    "bytes": 8602,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-adapters-and-unbound-compiler-manifest-v02.json",
+    "sha256": "222b7b96e1a9e0eeaafaaee741ed3beb944c4676a6931cf010db3dfd10a74f2b"
+  },
+  "remaining_gates": [
+    "Actual new Status result,9control decisions,genuine native read/close,unchanged bytes and root full release observation",
+    "Metadata input compiler actual unsealed output/root review",
+    "Root-owned genuine production ADMIN/graceful creator exit/full release",
+    "Root-owned fresh same-attempt native settlement/full release and retained evidence review"
+  ],
+  "schema": "production-exact-local-stop-reviewed-source-bundle@3",
+  "wire_schemas_unchanged": [
+    "planning-unknown-production-unbound-input@2",
+    "planning-unknown-abandonment-authority-context@2",
+    "planning-unknown-closed-store-status-receipt@1"
+  ]
+}

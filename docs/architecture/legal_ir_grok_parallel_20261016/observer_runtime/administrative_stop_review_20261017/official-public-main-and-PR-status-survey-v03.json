@@ -1,0 +1,87 @@
+{
+  "schema": "official-public-main-and-draft-PR-readonly-survey@3",
+  "observed_at_utc": "2026-10-17 07:34:13 UTC",
+  "reviewer": "/root/main_integration_survey",
+  "source": "Four authenticated read-only GitHub REST GET responses; filtered metadata only.",
+  "official_accelerate_main": {
+    "ref": "refs/heads/main",
+    "sha": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499",
+    "type": "commit",
+    "url": "https://api.github.com/repos/endomorphosis/ipfs_accelerate_py/git/refs/heads/main"
+  },
+  "official_datasets_main": {
+    "ref": "refs/heads/main",
+    "sha": "4a410373a64fe951875b4da73cd1ed65c191529e",
+    "type": "commit",
+    "url": "https://api.github.com/repos/endomorphosis/ipfs_datasets_py/git/refs/heads/main"
+  },
+  "recovery_PR293": {
+    "base": {
+      "ref": "main",
+      "repo": "endomorphosis/ipfs_accelerate_py",
+      "sha": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499"
+    },
+    "draft": true,
+    "head": {
+      "ref": "agent/legal-ir-planning-unknown-abandonment-20261017",
+      "repo": "endomorphosis/ipfs_accelerate_py",
+      "sha": "592d07580fca33894f37723dea4f84630a957f37"
+    },
+    "merge_commit_sha": "758989611df2fa8b483e3ce216827b969a2a0493",
+    "mergeable": true,
+    "mergeable_state": "blocked",
+    "merged": false,
+    "merged_at": null,
+    "number": 293,
+    "state": "open",
+    "updated_at": "2026-10-17T07:27:17Z",
+    "url": "https://github.com/endomorphosis/ipfs_accelerate_py/pull/293"
+  },
+  "ordinary_handoff_PR292": {
+    "base": {
+      "ref": "agent/legal-ir-docker-bootstrap-20261016",
+      "repo": "endomorphosis/ipfs_accelerate_py",
+      "sha": "9390ddf14c4b5a5d19f0eccf395b6ac9c496072d"
+    },
+    "draft": true,
+    "head": {
+      "ref": "agent/legal-ir-ordinary-worker-20261016",
+      "repo": "endomorphosis/ipfs_accelerate_py",
+      "sha": "003a25b3814611edc2136c020d1ea689dee033fd"
+    },
+    "merge_commit_sha": "8af2ce34eb9510a0710ff96403a0387f4861b9de",
+    "mergeable": true,
+    "mergeable_state": "unstable",
+    "merged": false,
+    "merged_at": null,
+    "number": 292,
+    "state": "open",
+    "updated_at": "2026-10-17T06:23:03Z",
+    "url": "https://github.com/endomorphosis/ipfs_accelerate_py/pull/292"
+  },
+  "meaningful_findings": [
+    "No official main drift: accelerate main remains d98f1fba; datasets main remains 4a410373.",
+    "PR293 is open, draft and unmerged, with published head592d matching the frozen authentic trace; GitHub reports mergeable=true and mergeable_state=blocked. This response does not identify the blocking cause.",
+    "PR292 is open, draft and unmerged; head003a25b3 and stacked Docker-bootstrap base9390ddf1 remain unchanged. Its base is not main; GitHub reports mergeable=true and mergeable_state=unstable.",
+    "GitHub merge_commit_sha fields in open PR responses are candidate/test merge metadata and are not evidence either PR was merged."
+  ],
+  "integration_effect": "No newly published main commits require fetch/merge or a frozen traceHEAD change. These GET observations grant no merge or authentic/model qualification.",
+  "prior_main_baseline": {
+    "accelerate": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499",
+    "datasets": "4a410373a64fe951875b4da73cd1ed65c191529e"
+  },
+  "C_HEAD_or_source_or_gitrefs_changed": false,
+  "git_fetch_or_merge_or_push_performed": false,
+  "PR_or_check_status_mutated": false,
+  "imports_jobs_DB_provider_or_native_admissions_performed": false,
+  "qualifications": {
+    "production": false,
+    "authentic_A_B_C_D": false,
+    "provider_or_model_calls": false
+  },
+  "limitations": [
+    "Point-in-time independent API responses, not an atomic repository snapshot.",
+    "No fresh CI/check-run request or branch-protection inspection; mergeable_state causes are not inferred.",
+    "No source fetch, foreign tree read/cleanup, native owner admission or runtime state inspection."
+  ]
+}

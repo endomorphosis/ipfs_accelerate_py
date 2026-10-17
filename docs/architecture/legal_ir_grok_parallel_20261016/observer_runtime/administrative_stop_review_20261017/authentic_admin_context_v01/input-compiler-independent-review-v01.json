@@ -1,0 +1,47 @@
+{
+  "AB_edited": false,
+  "checked": [
+    "Exact frozen authentic A/B manifest pins retained, with genuine two_attempt outputs required.",
+    "Seven actual launch/status/maintenance slots are retained, with original native snapshot and same A/B store paths.",
+    "Post-B execution hash is newly captured; canonical remains checked only as pre-admin mutable source.",
+    "Exact12 native source pins remain in the bounded context; whole product closure stays outside context.",
+    "Compiler omits registered_owner_identity, registered_creator and contextCID and explicitly reports policy_verified/runtime_workers_qualified false.",
+    "New real worker sources must exist before pinning; no fabricated worker artifact or nonadmitting helper invocation.",
+    "Actual B owner birth is retained alongside original owner/child/master stopped rows.",
+    "Missing runtime contract requires genuine unmodified custody verifier, live native registration/grant, actual creator exit, fresh immutable audit lookup and serial same-store native stages.",
+    "New parent contract explicitly requires registered isolated child PGID==PID, separately charged short socket scope with narrow custody census and retained real F07 contexts.",
+    "Outer exit/native reservation finalization and original accepted-lease validity gates are explicit."
+  ],
+  "database_opened": false,
+  "disposition": "No concrete blocker found in the explicitly unbound metadata-only v01 scope. Runtime parent/ADMIN/settlement workers remain missing and unqualified.",
+  "files": [
+    {
+      "bytes": 14959,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/compile_authentic_admin_inputs_v01.py",
+      "sha256": "8710720918c86bc17cf93acfff9274b917f8e0961110ec24322acf8f387515ec"
+    },
+    {
+      "bytes": 14098,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/missing-native-adapter-contract-v01.json",
+      "sha256": "dfa0f51d8692ff68a7512f21dab16c8ebf09107dfc636b1e29d82a72c06efdb7"
+    },
+    {
+      "bytes": 2707,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/request-templates-v01.json",
+      "sha256": "2e80e8e9dd4be712069c9a8728c7dd3e2aa56d51b205420bc4e7186534084c4d"
+    }
+  ],
+  "followup_constraints": [
+    "Implement/review/freeze v02 actual worker schemas before submitting a native request; v01 templates are nonexecutable.",
+    "Native A/B database files can be0644 within a private0700 fixture root; avoid inheriting the old fixture helper private600 assumption or mutating A/B files merely to fit it.",
+    "Future D request must include an explicit finite monotonic deadline and actual live parent identity.",
+    "Actual response loss, fault stage and process close/reap claims must describe precisely the native observation performed.",
+    "No original UNKNOWN is reclassified or production abandonment authorized."
+  ],
+  "method": "Read exact source/JSON and actual unmodified product API; AST/JSON parse only.",
+  "native_job_performed": false,
+  "product_edited": false,
+  "reviewer": "/root/grok_confinement_review",
+  "schema": "authentic-admin-unbound-compiler-independent-static-review@1",
+  "source_execution_performed": false
+}

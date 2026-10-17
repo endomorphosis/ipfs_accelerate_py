@@ -1,0 +1,68 @@
+{
+  "diagnostic_review": {
+    "bounded_data": "Exact ValueError with one string argument <=512characters and <=2048UTF8bytes contributes only SHA256/bytecount; no plaintext. At most64traceback links scanned and16frames retained, only exact pinned-parent filename/line and boundedASCIIfunctionname.",
+    "child_observation": "Reads existing child PID/start/boot/group_bound/reaped and Popen.returncode attributes only; performs no poll, waitpid, kernel query, resource query, or child-exit witness creation.",
+    "limitations": [
+      "diagnostic publication may fail without replacing original exception",
+      "does not establish resource release or creator exit",
+      "can diagnose subsequent actual failure only; does not recover the missing C06 line"
+    ],
+    "publication": "Private best-effort new JSON before OUTER actual-child close; bare re-raise preserves actual exception and unchanged finally retains cleanup."
+  },
+  "exact_delta": {
+    "existing_changes": [
+      "Runtime.control_census: terminal socket poll becomes ActualChild.observe",
+      "native: best-effort diagnostic except before unchanged finally/actual close"
+    ],
+    "new_definition": "parent_failure_observation",
+    "restoration_counts": {
+      "diagnostic_handler": 1,
+      "terminal_poll": 1
+    },
+    "whole_module_AST_restored_to_baseline": true
+  },
+  "native_runtime_qualified": false,
+  "old_failure_reclassified": false,
+  "preserved_uncertainty": [
+    "C06 retained error did not include the failing source line or need reason; this concrete source race is not asserted to be its sole or actual runtime cause.",
+    "C06 has no successful parent result/exit witness and its canonical WAL remains unresolved; no replay or synthetic ACK authorized.",
+    "No standalone test-only socket/readiness seam was authored. Parent will exercise real authenticated READY and actual crash through fresh genuine native owner.",
+    "C/D success, closed native stores, deadline latency, genuine custody and resource release remain runtime gates."
+  ],
+  "production_action_authorized": false,
+  "reviewed_sources": {
+    "baseline": {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    "candidate": {
+      "bytes": 46961,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/authentic_unknown_native_parent_v04.py",
+      "sha256": "d774c6781f7563514c0b1175933196e25fc1674ddd5f6f50e3a56b68b908022c"
+    },
+    "exact_patch": {
+      "bytes": 4475,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/actual-child-terminal-observe-and-failure-diagnostic-v04.patch",
+      "sha256": "c43bf36e8449ce64894ba801688e17e81e4c70744a51cd44a742c993736c7766"
+    }
+  },
+  "schema": "authentic-native-parent-terminal-reap-independent-static-review@4",
+  "scope": "Offline source/AST and byte pins only; no helper/product imports, native jobs, DB opens, process/resource queries, tests, or frozen/source edits.",
+  "terminal_socket_review": {
+    "candidate_behavior": "ActualChild.observe calls the same real Popen.poll and marks reaped when it returns an actual returncode. Existing log bound, exact socket identity/mode, socket_ready_verified, and owned-group absence remain required.",
+    "concrete_baseline_defect": "In the terminal socket branch raw Popen.poll can reap the actual child without updating ActualChild.reaped, then the same branch refuses its stale socket precondition.",
+    "remaining_raw_polls": "Earlier pre-READY socket-birth/live-generation refusal checks remain unchanged; they establish initial live custody, rather than terminal reap bookkeeping.",
+    "unchanged_controls": [
+      "real Popen handle retained before failure-prone cleanup",
+      "actual source/HEAD checks",
+      "parent ancestry, disk heartbeat and strict local/external checks",
+      "authenticated READY/gateway/grant/socket joins",
+      "one same inode0700-to0600 pre-READY transition only",
+      "finite child deadline and pre-child/post-reap full census ordering",
+      "actual wait/reap and live-group absence before witness",
+      "retained actual component close on all operation outcomes"
+    ]
+  },
+  "verdict": "No concrete static blocker for the narrow derivative; genuine authenticated A07/B07/C07 remains required."
+}

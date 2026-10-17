@@ -1,0 +1,63 @@
+{
+  "cleanup_is_native_or_foreign_reservation_release": false,
+  "conclusion": "No static or retained-metadata blocker to root removing only this completed synthetic native-test fixture tree after fresh eligibility checks.",
+  "exact_removal_scope": "/tmp/pytest-of-barberb/pa17i",
+  "pins": {
+    "completed_receipt": {
+      "bytes": 637,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/receipt.json",
+      "sha256": "313aa02d709bf55b0ca535df57a8ae41f74df7c25e9f6e0c4e58b4adc8e07f4f"
+    },
+    "passed_report": {
+      "bytes": 43766,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/administrative-controls-result.json",
+      "sha256": "4d49a226112a294abcc9ea7d843839aa5a4a51b153c26dfb44b1bd6c0683ebd8"
+    },
+    "request": {
+      "bytes": 748233,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-request-v09.json",
+      "sha256": "b2d0a0a0dfa37f6509bbd245868e7c48b53171b3b272b09b9e7b907933e9af9c"
+    },
+    "runner": {
+      "bytes": 9381,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_administrative_controls_v09.py",
+      "sha256": "2dd5961f59da0757c78ff236e89f2f816b033a9ec07f685c3e8ad1e45c4a3d2d"
+    },
+    "separate_post_owner_observation": {
+      "bytes": 1755,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/native-controls-v09-post-owner-observation-v01.json",
+      "sha256": "17190a2117a6f34d1f00c41596406a9282703224e695d6ef85b631f7280a3b61"
+    }
+  },
+  "preserve": [
+    "Every other pytest root and all OWNED JUnit/report/receipt/source evidence.",
+    "All production, failed, retained, foreign data and every ledger reservation."
+  ],
+  "reviewer": "unknown_event_forensics",
+  "reviewer_actions": {
+    "deletion_or_native_job_or_C_mutation": false,
+    "immutable_metadata_and_source_only": true,
+    "target_tree_DB_process_live_ledger_or_resource_queries": false
+  },
+  "root_fresh_gates_required": [
+    "Exact ordinary parent/root path, device,inode,uid and symlink-safe descriptor-anchored removal; refuse mounts/changed root generation.",
+    "Fresh released reservation and absent leases/PIDs/group plus no active or retained external-charge references.",
+    "Bounded metadata-only predelete manifest; no DB payload reads."
+  ],
+  "schema": "passed-v09-disposable-pytest-root-cleanup-scope-review@1",
+  "verified_historical_scope": {
+    "JUnit_and_report_and_receipt_all_outside_removal_scope": true,
+    "actual_tool_exit": 0,
+    "actual_tool_session": 96493,
+    "child_PID_observed_absent": 2081949,
+    "historical_two_previously_passed_case_exclusions_retained": true,
+    "native_group_quiescent_and_observed_absent": true,
+    "not_promoted_to_full92_or14": true,
+    "owner_PID_observed_absent": 2072493,
+    "released_reservation_id": "fee8cd4001574313a0ca3654d2d3e86a",
+    "request_source_allowlist_contains_no_target_fixture_files": true,
+    "selected_native_cases_passed": 12,
+    "three_exact_lease_ids_observed_absent": true,
+    "unsuccessful_reports": 0
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "AST_parse_only": true,
+  "concrete_blockers": [],
+  "database_open": false,
+  "historical_unknown_resolved": false,
+  "limitations": [
+    "Static source/AST-only; new worker behavior and later transitive native imports are unqualified until root executes genuine serialized fresh-process gates.",
+    "An import that correctly handles denied Git provenance may complete with no capsule; this provides no protected route authorization or clean source-generation proof.",
+    "No new model/backend call, product/backend import, DB open, native admission/test or production action was performed.",
+    "The authentic producer still requires successful full exact-source controller_preparation preflight, genuine A/B artifacts, and complete original-owner release before C/D admission."
+  ],
+  "native_error_path": {
+    "exact_native_route": "PermissionError is OSError; genuine _agent_git_output catches OSError and raises ValueError; genuine implementation_daemon module catcher handles ValueError and sets imported capsule/launch/temp root=None.",
+    "fake_git_output_or_source_seal": false,
+    "git_query_permitted": false,
+    "native_code_edited_or_monkeypatched": false,
+    "new_runtime_state_observed": false,
+    "observed_predecessor": "Root-owned diagnostic preflight14385 retained one subprocess.Popen refusal in implementation_daemon import-time source-generation capture.",
+    "protected_route_qualified": false,
+    "provenance_capsule_expected_unavailable": true
+  },
+  "native_job_started": false,
+  "preservation": [
+    "Eight explicit process/fork/connect/lookup audit events and nonlocal socket creation are still refused before dispatch. Only exception taxonomy changes; caller-side catchability does not authorize a blocked operation.",
+    "ADMIN actual kernel parent/gateway/native custody verifier/peer grant/socket/ready-stop/creator-exit behavior is byte-exact outside two denial constructors.",
+    "Settlement actual old audit/native-store validation, serial postcommit child loss stages and fresh native close/replay behavior is byte-exact outside two denial constructors.",
+    "Parent remains v03 exact0ab548; no worker protocol, original context, original lease requirement, schema, native policy or actual authority change.",
+    "Frozen v02 worker sources, A/B bundle, failed preflights and C source/HEAD remain unchanged."
+  ],
+  "product_backend_imported": false,
+  "production_action_authorized": false,
+  "reviewer": "/root/grok_confinement_review",
+  "runtime_qualified": false,
+  "schema": "authentic-admin-settlement-conventional-denial-static-review@4",
+  "source_pins": [
+    {
+      "bytes": 24720,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+      "sha256": "b4bffedec72f1f8be083ac7ba83bd42fc7eb02ba9c1546a5034ac0d62fd77e86"
+    },
+    {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_admin_worker_v04.py",
+      "sha256": "7993fcb86a7e80918fbd862ec3aa18b16eaac8c7f9182054b83f9012b8c1c03e"
+    },
+    {
+      "bytes": 19477,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_settlement_worker_v02.py",
+      "sha256": "b2475216dabfd49da5bbc77b65d472cc28518c5dee9030fcceb41649a7b6136b"
+    },
+    {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    },
+    {
+      "bytes": 2001,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/worker-denial-permissionerror-v04.patch",
+      "sha256": "a85599ee1f8e6d7876f8624a6afc6ed08499bea545b4f6d57a8c587576423a95"
+    },
+    {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    {
+      "bytes": 343482,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+      "sha256": "1a3ab9f87f8e14a2bfb2b2dec0306a2007510bfb031aa9cbeef2dd5e949c6c9f"
+    },
+    {
+      "bytes": 3298714,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "8bd4c4a1aaef11140b2e2301bd203ce3159121f16fb821045e3ac2e0767783b5"
+    }
+  ],
+  "status": "no_concrete_static_blocker_in_exact_worker_denial_delta",
+  "worker_changes": [
+    {
+      "all_other_AST_identical": true,
+      "base_source": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+      "changed_denied_exception_constructors": 2,
+      "hook_conditions_arguments_unchanged": true,
+      "new_source": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_admin_worker_v04.py",
+      "worker": "admin"
+    },
+    {
+      "all_other_AST_identical": true,
+      "base_source": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_settlement_worker_v02.py",
+      "changed_denied_exception_constructors": 2,
+      "hook_conditions_arguments_unchanged": true,
+      "new_source": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "worker": "settlement"
+    }
+  ]
+}

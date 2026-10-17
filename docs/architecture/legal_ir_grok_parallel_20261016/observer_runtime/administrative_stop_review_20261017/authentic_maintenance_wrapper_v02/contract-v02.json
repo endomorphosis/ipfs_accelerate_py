@@ -1,0 +1,121 @@
+{
+  "baseline_pin": {
+    "bytes": 44914,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+    "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1"
+  },
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "entrypoint": {
+    "admitted_operation": "maintenance",
+    "argv_template": [
+      "<pinned normal-site Python>",
+      "-B",
+      "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/authentic_fixture_maintenance_owner_v02.py",
+      "--request",
+      "<NEW parent-sealed fresh B request>",
+      "--request-sha256",
+      "<exact request SHA256>"
+    ],
+    "direct_existing_F07_owner": true,
+    "fresh_attempt_required": true,
+    "nested_native_owner": false,
+    "request_schema": "authentic-native-fixture-owner-request@1",
+    "result_schema": "authentic-native-fixture-direct-owner-result@1"
+  },
+  "failure_observation": {
+    "capture_boundary": "after native run/internal close raises, before outer retained-close loop",
+    "diagnostic_publication_best_effort": true,
+    "native_ACK_receipt_replay_or_completion_authority_created": false,
+    "original_exception_reraised": true,
+    "path_relative_to_attempt": "maintenance-run-failure-observation.json",
+    "raw_args_env_locals_SQL_or_paths_exported": false,
+    "schema": "authentic-native-maintenance-run-failure-observation@2",
+    "state": "bounded detached public failure_state whitelist only",
+    "stored_operation_reason": "separate public_failure_state.failure_reason with same closed token rule",
+    "surfaced_native_reason": "exact native exception type, one string argument, <=128 characters, maintenance_[a-z0-9_]+ only"
+  },
+  "fixture_only": true,
+  "guard_mapping": {
+    "explicit_host_full_census_preserved": true,
+    "live_local_source_ancestry_strict_attempt_group_external_checks_preserved": true,
+    "monitor_global_census": false,
+    "monitor_native_ACK_or_heartbeat_added": false,
+    "rows": [
+      {
+        "actual_guard": [
+          false,
+          false
+        ],
+        "input": [
+          false,
+          false
+        ]
+      },
+      {
+        "actual_guard": [
+          false,
+          false
+        ],
+        "input": [
+          false,
+          true
+        ]
+      },
+      {
+        "actual_guard": [
+          true,
+          false
+        ],
+        "input": [
+          true,
+          false
+        ]
+      },
+      {
+        "actual_guard": [
+          true,
+          true
+        ],
+        "input": [
+          true,
+          true
+        ]
+      }
+    ],
+    "uniform_local_latency_or_nonblocking_guarantee": false,
+    "validation": "type(force_ack) is bool and type(check_only) is bool before mapping"
+  },
+  "native_component_source_pin": {
+    "bytes": 36257,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_execution_wal_maintenance.py",
+    "sha256": "875cecd7f5aeb9af8a085dfe55a88d20f380a510e4b5ef514d40a2451add183d"
+  },
+  "production_access": false,
+  "qualification": {
+    "B05_partial_checkpoint_not_replayed": true,
+    "changed_C_or_production_UNKNOWN": false,
+    "fresh_genuine_A06_then_B_required": true,
+    "global_census_cost_observed_seconds_approximately": 17,
+    "native_jobs_or_tests_run_by_authors": false,
+    "native_runtime_qualified": false,
+    "old_B05_precise_failure_reason_observed": false,
+    "outer_tool_exit_and_reservation_release_required_before_next_job": true,
+    "static_AST_and_exact_diff_review": true
+  },
+  "schema": "authentic-native-maintenance-wrapper-contract@2",
+  "source_pin": {
+    "bytes": 48240,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/authentic_fixture_maintenance_owner_v02.py",
+    "sha256": "8d51b1ecfc1a8831d3f7e557c6b86fd9cda3e6912eb61c8b7d4341e142f6b591"
+  },
+  "unchanged": [
+    "native_job resource admission/reservation/deadlines/envelope",
+    "native guard actual ancestry and scheduler policy checks",
+    "native Wal component and its run/close logic",
+    "outer same-component retained-close retries",
+    "whole-root no-follow 128MiB external census",
+    "A/preflight/launch sources and receipts",
+    "B request/result @1 wire schemas",
+    "unmodified compiler and C/D custody verifier"
+  ]
+}

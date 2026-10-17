@@ -1,0 +1,121 @@
+{
+  "computed_identities": {
+    "audit_evidence_digest": "baguqeeralyofzwpftqt7v6na6twy3t6je2zbf32jcg5cducoz23nnov52bmq",
+    "audit_evidence_id": "baguqeerafqzcd7oqwymgjtcpukovnqefk54ufxx3q3wga4pgappmm5pqotcq",
+    "context_cid": "baguqeeraxdymh623p6fezmqjbbi25sh5c3uxig6zwfmvpzjbm44it2zoswmq",
+    "current_UNKNOWN_rows_digest": "sha256:4f6fb1cd2cca50ae45d0c90fea2fc1c0d0c13bb65fe0979de08137475ad1cb08",
+    "historical_UNKNOWN_rows_digest": "sha256:6513685d9430997127ecfe5aa38a6d21d69e156122da1e3c2c78d7ea51f685d9",
+    "registered_preimage_digest": "sha256:b9dcd54640e3e05f95449bd9858f71f8bd2e069c15bdddd18ca90d26e32978f5"
+  },
+  "controller_head_bound_by_requests": "592d07580fca33894f37723dea4f84630a957f37",
+  "database_WAL_bytes_read_or_hashed": false,
+  "fixture_only": true,
+  "independently_verified": {
+    "actual_kernel_identity_crosswalk": "Parent PID3152634/start124320171 and child PID3169862/start124330167 birth IDs recomputed from the native kernel-birth protocol. READY child PID=PGID=SID, registered_creator, witness and parent observer identities agree. Actual process observations are parent/native reports, not fresh reviewer kernel queries.",
+    "audit": "Full decision body reconstructed from pinned policy constants, sealed context and immutable native preimage; registered-preimage/current-provider/history digests, evidence ID and evidence content digest independently recomputed. Receipt body/subject/digest/revision/empty parent/task/kind join that exact decision. Published replayed=true receipt matches same immutable decision.",
+    "authority_source_pins_rehashed": 12,
+    "configured_C_sources_rehashed": 2816,
+    "context": "Sealed context differs from compiler preimage only by actual registered owner identity/creator/context CID; canonical content CID independently recomputed. Seven custody JSON slots and all immutable/source pins rehash correctly. No current DB/closed-store byte rechecks performed.",
+    "crash_closeout": "Actual parent witness joins READY/request/context/observer and reports SIGKILL returncode-9, child_reaped=true and owned_group_absent=true. It explicitly claims no graceful gateway/native close. Root post-owner observation joins actual parent/child PIDs, all three leases, disk reservation, actual tool90982 exit0 and released state.",
+    "distinct_immutable_JSON_source_files_rehashed": 2852,
+    "public_grant": "Singleton ADMIN operation/client and task/context/attempt/claim scope CID recomputed; no extra commands or tenant/federation/profile authority. Peer PID/start/birth join actual parent; UID joins private control/socket records; lifetime20000ms and recorded audit timestamp falls inside grant window. No credential read or independent secret/transport authentication was attempted.",
+    "publication_and_finalization": "Parent result records native_finalization_pending_at_record_write=true; the separately rehashed root post-owner observation supplies the reported outer exit/reservation release gate.",
+    "response_loss_scope": "Pinned parent calls the genuine RPC to completion then intentionally discards the logical return; same-live exact replay succeeds. Both parent result and witness explicitly real_transport_drop_simulated=false.",
+    "source_boundary": "Parent d774, ADMIN1ade, future settlementa30a, loaderc385 and configured C source bytes match exact sealed request/input pins. No source-code or verifier substitution found in reviewed worker path."
+  },
+  "limits": {
+    "D1_to_D6_qualified_by_this_review": false,
+    "automatic_retry_admitted": false,
+    "callback_closed": false,
+    "completion_authority": false,
+    "decision_scope": "DISPOSABLE_FIXTURE_ONLY",
+    "failed_C06_replayed_or_retrospectively_promoted": false,
+    "graceful_gateway_or_native_close_proved": false,
+    "logical_response_discard": true,
+    "model_or_provider_nonreachability_proved": false,
+    "native_execution_settlement_performed_by_C": false,
+    "possible_external_effects": "unverified",
+    "production_R06_action_performed": false,
+    "provider_outcome": "unknown",
+    "real_transport_drop_tested": false,
+    "recovered_execution_verified_by_ADMIN_audit": false,
+    "remote_cancellation_proved": false
+  },
+  "live_process_resource_state_requeried": false,
+  "native_report_attribution": {
+    "UNKNOWN_preservation": "Decision explicitly preserves unknown/unverified semantics and hashes both original UNKNOWN inventories. C performs audit only; physical/raw-store preservation and all future D outcomes require their native validators and separate evidence.",
+    "canonical_WAL": "Witness reports WAL present after actual creator crash; no WAL read/hash/current-presence requery by reviewer.",
+    "durable_event_identity": "Native same-live replay source verifies unique evidence/event, complete canonical envelope/owner and event CID. Published event ID baguqeeras7iv5g46quajqry3egbjffwmbtsljqhlniohwc6ulmliyqn7smoa is retained native output; receipt omits stream_id/sequence so this reviewer did not independently recompute that full event CID or query durable event rows.",
+    "process_stop_and_resource_release": "Genuine retained parent witness and root post-owner observation report actual reap/group absence and outer release. Reviewer did not requery kernel/scheduler/ledger state.",
+    "race_fix_scope": "Fresh C07 closeout completed with parentv04. The exact vulnerable scheduling interleaving was not instrumented or forced.",
+    "unmodified_custody_verifier": "Pinned ADMIN preserves verify_custody/load_context function and code identities, invokes genuine closed-store verification before native bind/grant; READY reports those checks passed. Reviewer independently checked exact sources/JSON only."
+  },
+  "pins": {
+    "ADMIN_source": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "C_parent_request": {
+      "bytes": 2715,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/admin-parent-request-v07.json",
+      "sha256": "d4dba1d61e4fe3a2475f3b19b7e134a1558a1b213a0e99c682eaf2b3952d1a91"
+    },
+    "C_parent_result": {
+      "bytes": 2561,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-admin-20261017-07/parent-result.json",
+      "sha256": "087dc8d5badb2c4602b6161c543715d56296453db4931424758afa8624734f6c"
+    },
+    "READY": {
+      "bytes": 8582,
+      "path": "/tmp/pytest-of-barberb/unk17c7/admin-ready.json",
+      "sha256": "40484f81e6a6bd23e3a0e0f566d834ee52fdafce27d0bc364c337c8a6443ec7a"
+    },
+    "audit_response": {
+      "bytes": 32242,
+      "path": "/tmp/pytest-of-barberb/unk17c7/audit-response.json",
+      "sha256": "06e8f000b34faf2b089169d2ad1058044aadbab6fd8829226780376969208eea"
+    },
+    "child_exit_witness": {
+      "bytes": 1273,
+      "path": "/tmp/pytest-of-barberb/unk17c7/admin-exit-witness.json",
+      "sha256": "18d66e3a5279954d9cae5e39d892e09b1589a386e02381dff3f5b615cccabdc0"
+    },
+    "child_request": {
+      "bytes": 1191,
+      "path": "/tmp/pytest-of-barberb/unk17c7/admin-request.json",
+      "sha256": "d994e56b27b4ed74cabc4118aa83ac8f7c842afae426198bd4064f7cf87b85b2"
+    },
+    "future_settlement_source": {
+      "bytes": 21633,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/authentic_unknown_settlement_worker_v05.py",
+      "sha256": "a30a3081b72502e1bc95380fe435421b5b3281b40c6915a2e21abc0027b519d6"
+    },
+    "parent_source": {
+      "bytes": 46961,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/authentic_unknown_native_parent_v04.py",
+      "sha256": "d774c6781f7563514c0b1175933196e25fc1674ddd5f6f50e3a56b68b908022c"
+    },
+    "root_post_owner_observation": {
+      "bytes": 1123,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/admin07-post-owner-observation-v01.json",
+      "sha256": "cc6b417cc58c4420a581edd2cbc9ae4d646c071e1f7a7634e2e3fab7df5d89ea"
+    },
+    "sealed_context": {
+      "bytes": 14594,
+      "path": "/tmp/pytest-of-barberb/unk17c7/sealed-context.json",
+      "sha256": "f64d29d8e5585add6195007340f1909968e1caad34f2747b606d96e331351045"
+    },
+    "unbound_input": {
+      "bytes": 1355682,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/unbound-admin-input-v07.json",
+      "sha256": "0f0389a5d6c07624b5dc1090b5e2c86a531b55e299e5c662062fb7eb0e11ecd7"
+    }
+  },
+  "production_access": false,
+  "review_method": "Read-only standard-library JSON/SHA256/AST/source comparison. Token/credential files, database/WAL bytes, live process/resource state and target/backend imports were excluded.",
+  "review_result": "No concrete retained JSON/source evidence blocker found for completed authentic disposable C07 ADMIN audit/replay/crash-closeout scope.",
+  "schema": "authentic-native-ADMIN-retained-evidence-independent-review@1",
+  "target_imports_native_jobs_tests_or_C_edits_by_reviewer": false,
+  "token_or_credential_file_read_or_copied": false
+}

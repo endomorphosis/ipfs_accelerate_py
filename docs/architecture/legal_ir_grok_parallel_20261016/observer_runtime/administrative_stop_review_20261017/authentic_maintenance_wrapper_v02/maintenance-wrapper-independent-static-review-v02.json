@@ -1,0 +1,139 @@
+{
+  "AST_only": true,
+  "all_other_existing_function_ASTs_unchanged": true,
+  "authentic_B_custody_qualified": false,
+  "baseline_existing_functions_changed": [
+    "maintenance",
+    "main"
+  ],
+  "concrete_blockers": [],
+  "diagnostics_review": [
+    "Failure output is generated only from actual caught error and component.failure_state; no native operation is replayed or replaced.",
+    "Exact native error class with one maintenance_[a-z0-9_]+ argument<=128 is separately retained from whitelisted native public_failure_state.failure_reason. Exception classname is bounded/sanitized.",
+    "Allowed seven public phases, ten exactbool flags and exactly database/wal 64hex backup digests bound the diagnostic. No raw exception repr/args, paths, commands, environments, SQL, locals or database contents are exported.",
+    "Native run already attempts close in its internal finally and may mask an earlier operation refusal. New capture is correctly before OUTER retained-close, with surfaced native_reason and underlying state reason separate.",
+    "Publication/getter failures are best-effort and cannot replace the actual exception; bare raise and original retained-close finally preserve native behavior. Output explicitly disclaims ACK, receipt, retry, completion and replay authority."
+  ],
+  "limitations": [
+    "AST/source review only: no wrapper/product/backend import, native helper/component invocation, DB open/query, resource manager query, test/job, signal or C/frozen-source edit.",
+    "Local resource scheduler/source/strict attempt/group/external checks remain cooperative and can perform bounded filesystem/state reads. This is not a nofilesystem/noIPC/nonblocking guarantee or guaranteed latency claim.",
+    "The previous NativeExecutionWalMaintenanceError was recorded without exact reason/state. No causal diagnosis of its operation failure or nine close retries is asserted.",
+    "Live external census/source checks remain point-in-time and may refuse future races/drift; no atomicity/continuous custody guarantee is added.",
+    "Historical UNKNOWNs remain untouched; no production administrative abandonment/rearm/successor/model work is authorized."
+  ],
+  "native_runtime_qualified": false,
+  "new_functions": [
+    "maintenance_guard_arguments",
+    "maintenance_failure_observation"
+  ],
+  "old_failure_reinterpreted": false,
+  "preserved_checks": [
+    "Both original guard flags are exactbool-validated before conjunction, preserving refusal of False plus invalidcheck_only.",
+    "Actual native guard is called once with mapped flags. It still verifies source pins, actual disk.native_lease live native scheduler envelopes, root/phase released state, strict attempt bytes/RSS/group/slots and full declared external charges, plus bounded external fixture census.",
+    "No monitor heartbeat/lease renewal is requested. Native execution force_ackTrue still calls actual disk.heartbeat, not a synthetic ACK. Explicit pre/post(True,True) still perform genuine full global census.",
+    "Outer maintenance guard still rehashes actual launch/receipt/producer/terminal pins, verifies original stopped generations, checks actual loaded C sources/SQL closure and actual CHEAD, and binds only the original in-place native stores/locks.",
+    "Native F07 source/policy/CPU1/memory2048MiB/4childslots, storage/external bounds, native WAL source/90s bound, status source/30s bound and schemas remain unchanged.",
+    "Component.run, real native row/metadata/UNKNOWN preservation requirements, genuine status reopen and actual close_native_custody finally/retry implementation are unchanged. Main entrypoint now refuses all operations exceptmaintenance."
+  ],
+  "production_actions_authorized": false,
+  "reviewed_guard_modes": [
+    {
+      "actual_check_only_full": true,
+      "actual_force_ack": true,
+      "caller": "explicit pre/post full host guard",
+      "input_check_only": true,
+      "input_force_ack": true
+    },
+    {
+      "actual_check_only_full": false,
+      "actual_force_ack": true,
+      "caller": "native execution-thread ACK",
+      "input_check_only": false,
+      "input_force_ack": true
+    },
+    {
+      "actual_check_only_full": false,
+      "actual_force_ack": false,
+      "caller": "native monitor",
+      "input_check_only": true,
+      "input_force_ack": false
+    },
+    {
+      "actual_check_only_full": false,
+      "actual_force_ack": false,
+      "caller": "native execution-thread local check",
+      "input_check_only": false,
+      "input_force_ack": false
+    }
+  ],
+  "reviewer": "/root/grok_confinement_review",
+  "runtime_dependencies": [
+    "Fresh B request must pin the NEW maintenance-only wrapper8d51 before sealing; frozen renderer defaults oldwrapper and must not silently select it. A/preflight/launch remain on unchanged original A wrapper.",
+    "Root must qualify fresh actual A/B stores through the genuine native WAL monitor/close/row/source/custody path. Source repair does not establish successful monitor joining or maintenance runtime.",
+    "No extra pure-policy test file or native unit job was authored; root explicitly selected the decisive genuine B fixture."
+  ],
+  "schema": "authentic-maintenance-wrapper-local-monitor-independent-static-review@2",
+  "source_defect": {
+    "native_contract": "_watch_custody says cheap local liveness/cancel/deadline; only execution thread owns native IPC ACKs",
+    "native_monitor_arguments": {
+      "check_only": true,
+      "force_ack": false
+    },
+    "old_error_caused_by_this_defect_proven": false,
+    "old_runtime_error_exact_reason_captured": false,
+    "old_wrapper_result": "disk.check_usage(full=True) through unchanged actual_guard; all-named-root filesystem census on monitor callback"
+  },
+  "source_pins": [
+    {
+      "bytes": 44914,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+      "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1"
+    },
+    {
+      "bytes": 48240,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/authentic_fixture_maintenance_owner_v02.py",
+      "sha256": "8d51b1ecfc1a8831d3f7e557c6b86fd9cda3e6912eb61c8b7d4341e142f6b591"
+    },
+    {
+      "bytes": 5338,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/maintenance-local-monitor-and-diagnostic-v02.patch",
+      "sha256": "5e0679fa2f3a7f4edfb531294606ae384559d848a931961456af0bc5b2aa7e39"
+    },
+    {
+      "bytes": 36257,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_execution_wal_maintenance.py",
+      "sha256": "875cecd7f5aeb9af8a085dfe55a88d20f380a510e4b5ef514d40a2451add183d"
+    },
+    {
+      "bytes": 38565,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_execution_status_owner.py",
+      "sha256": "123436fc56c3f701e8bd5d6b2ef2dccc74fb80f03b9fd3d8101789f570b476ce"
+    },
+    {
+      "bytes": 90990,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+    },
+    {
+      "bytes": 15440,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "bytes": 40999,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+    },
+    {
+      "bytes": 17545,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d"
+    },
+    {
+      "bytes": 121503,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    }
+  ],
+  "status": "no_concrete_static_blocker_in_scoped_B_wrapper_repair"
+}

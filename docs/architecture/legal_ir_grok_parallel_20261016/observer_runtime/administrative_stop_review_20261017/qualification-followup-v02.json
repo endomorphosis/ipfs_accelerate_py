@@ -1,0 +1,220 @@
+{
+  "authentic_custody_qualified": false,
+  "authentic_parent_v03": {
+    "authentic_A_B_C_D_trace_qualified": false,
+    "latency_guarantee": false,
+    "manifest_pin": {
+      "bytes": 15562,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/manifest-v03.json",
+      "sha256": "49ea65d10fb06e10680a7994dcc49f669e2c0d52bbbc266be2d5486e6b7e0258"
+    },
+    "policy_envelopes_and_deadline_unchanged": true,
+    "runtime_qualified": false,
+    "v02_timing_blocker": "A30s child deadline was sealed before expensive prelaunch and immediate-registration global censuses. The roughly17s/1.5M-entry observations are root-reported, not independent timing measurements.",
+    "v03_status": "Static exact-source/patch review only: full prelaunch guard precedes the deadline; genuine immediate registration and live ADMIN checks retain local/native checks with full=False; full global checks occur before child launch or after actual exit/reap."
+  },
+  "controller_trace_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "finite_Grok_fixture_qualification": {
+    "atomic_snapshot": false,
+    "auxiliary_dashboard_model": "grok-4.7",
+    "auxiliary_dashboard_temperature": 0,
+    "auxiliary_title_model": "grok-4.6",
+    "auxiliary_title_temperature": 1,
+    "canonical_diagnostic_rewritten": false,
+    "cases": [
+      {
+        "case": "positive-read-file",
+        "passed": true
+      },
+      {
+        "case": "empty-tools-control",
+        "passed": true
+      },
+      {
+        "case": "canonical-planning-adversarial",
+        "passed": true
+      }
+    ],
+    "continuous_custody_proved": false,
+    "dashboard_generation": "synthetic fixture response",
+    "effective_toolset_verified_in_canonical_invocation": false,
+    "exact_parse_stage_refusals": 8,
+    "independent_review_pin": {
+      "bytes": 60997,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-v09-retained-evidence-independent-review-v01.json",
+      "sha256": "cbfaec0c424ceeba1743e30edd1f0cc7fd4defe49303b78d08a978187aa8359c"
+    },
+    "limitations": [
+      "This is finite local fake-provider configuration evidence, not production configuration qualification or a universal proof that future tool entrypoints cannot dispatch.",
+      "The eight native parse-stage refusals do not establish LocalRegistry or any other registry identity; refusal_registry_identity_established remains false.",
+      "Auxiliary session-title calls use a different model and sampling setting. The fake transport intentionally declines title generation and returns synthetic dashboard text; no real model inference or model quality conclusion follows.",
+      "The unmodified canonical invocation still records effective_toolset_verified=false and provider_output_token_cap_enforced=false; this external qualification does not rewrite either diagnostic.",
+      "Native inspect reports builtin agent definitions even with --no-subagents. Empty hook/MCP/plugin/LSP inventories and disabled external compatibility cells are fixture observations, not a universal startup-filesystem isolation claim.",
+      "The post-owner readback is a point-in-time root observation. Its inner inventory helper rootlesskit_process_exit_observed=false is preserved; actual outer process/group absence is separately recorded. Atomicity, namespace-change exclusion, full replacement-race exclusion and continuous custody remain unproved.",
+      "Root-reported resource release/lease/process absence was reconciled against retained artifacts; this reviewer did not query native resource state, issue an ACK, rerun a census/probe, import product/backend code or run DB queries.",
+      "Synthetic usage does not verify billing, prompt ingestion, token savings or the requested output cap. No historical UNKNOWN is resolved and no production action is authorized."
+    ],
+    "namespace_change_excluded": false,
+    "observed_request_classes": {
+      "auxiliary_dashboard_summary": 3,
+      "auxiliary_session_title": 3,
+      "primary_agent": 5
+    },
+    "overall_scope": "Three finite local fake-provider cases with the genuine pinned Grok binary in fresh RootlessKit user/network namespaces; no real remote model inference.",
+    "post_owner_observation": {
+      "actual_tool_exit_code": 0,
+      "external_apparent_bytes": 2364864,
+      "external_budget_bytes": 134217728,
+      "original_group_observed_absent": true,
+      "reservation_status": "released"
+    },
+    "post_owner_observation_pin": {
+      "bytes": 58494,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-v09-post-owner-readback-v01.json",
+      "sha256": "11d7bd40dd283302184c33853da692f109a059e7e193c2a1c4af346c48734baf"
+    },
+    "primary_model": "grok-4.7",
+    "primary_temperature": 0,
+    "production_configuration_qualified": false,
+    "provider_output_token_cap_enforced_in_canonical_invocation": false,
+    "registry_identity_established": false,
+    "result_pin": {
+      "bytes": 5197,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/qualification-result.json",
+      "sha256": "50039420fe98a9bd1d5475efb2930eeef118327cef9774c2192ad69987425f47"
+    },
+    "retained_predicate_control_cases": 15,
+    "title_generation": "fake transport intentionally declines title generation",
+    "universal_tool_confinement_proved": false
+  },
+  "historical_UNKNOWN_resolved": false,
+  "hosted_documentation_gate": {
+    "actual_status": "failure before any step",
+    "head": "592d07580fca33894f37723dea4f84630a957f37",
+    "local_status_does_not_forge_hosted_check": true,
+    "observation_pin": {
+      "bytes": 556,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/hosted-documentation-gates-592d-billing-observation-v01.json",
+      "sha256": "5635a29d203f42d10e4c918ec0513a1285697039e757fe8767d089fef5859944"
+    },
+    "reason": "account billing lock"
+  },
+  "metadata_review_only": true,
+  "native_authority": false,
+  "native_integration_coverage": {
+    "custody_seam": "explicitly nonadmitting; test fixture assertions do not admit authentic or production custody",
+    "native08": {
+      "first_failing_case": "tests/test_planning_unknown_abandonment_native_integration.py::test_actual_admin_creator_process_exits_before_fresh_native_audit_recovery[graceful_exit]",
+      "overall_status": "failed",
+      "passing_cases": 2,
+      "pytest_returncode": 1,
+      "receipt_pin": {
+        "bytes": 634,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-08/receipt.json",
+        "sha256": "ec205d60be5c9a80075bdadf687ea2810baf2ef04f95ec5b08a48c615baf490c"
+      },
+      "remaining_cases_not_run": 11,
+      "result_pin": {
+        "bytes": 42132,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-08/administrative-controls-result.json",
+        "sha256": "5ff37d468c63b28d4e3cf1106184c1767c9647eadc959f6594a0d93d4ee98290"
+      },
+      "source_head": "f2a5dad538d66939ee5eff2b81af03efc45d0667"
+    },
+    "native09": {
+      "overall_status": "passed",
+      "passing_cases": 12,
+      "post_owner_observation_pin": {
+        "bytes": 1755,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/native-controls-v09-post-owner-observation-v01.json",
+        "sha256": "17190a2117a6f34d1f00c41596406a9282703224e695d6ef85b631f7280a3b61"
+      },
+      "pytest_returncode": 0,
+      "receipt_pin": {
+        "bytes": 637,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/receipt.json",
+        "sha256": "313aa02d709bf55b0ca535df57a8ae41f74df7c25e9f6e0c4e58b4adc8e07f4f"
+      },
+      "result_pin": {
+        "bytes": 43766,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/administrative-controls-result.json",
+        "sha256": "4d49a226112a294abcc9ea7d843839aa5a4a51b153c26dfb44b1bd6c0683ebd8"
+      },
+      "source_head": "592d07580fca33894f37723dea4f84630a957f37"
+    },
+    "passing_case_nodeids": [
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_supplied_native_coordinator_is_open_before_actual_daemon_claim",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_genuine_aged_audit_lost_response_then_gateway_shutdown_and_fresh_native_closeout",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_actual_admin_creator_process_exits_before_fresh_native_audit_recovery[graceful_exit]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_actual_admin_creator_process_exits_before_fresh_native_audit_recovery[crash_exit]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[failed]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[coordination]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[blocked]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[terminal_event]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_recovery_refuses_changed_result_or_effect_before_failed_stage[accepted_provider_result]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_recovery_refuses_changed_result_or_effect_before_failed_stage[new_effect]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_fresh_native_recovery_authenticates_exact_durable_audit_before_failed[evidence_parent]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_fresh_native_recovery_authenticates_exact_durable_audit_before_failed[evidence_digest]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_fresh_native_recovery_authenticates_exact_durable_audit_before_failed[event_owner]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_exact_admin_replay_refuses_later_actual_control_rearm"
+    ],
+    "same_cases_rerun_in_this_review": false,
+    "source_difference": "Only the reviewed native test fixture database read/file-size bound changed16MiB to64MiB after08; production code is unchanged. The failed08 result remains failed.",
+    "statement": "14 covered across two retained runs: native08 failed overall after two PASS; native09 passed the remaining12. This is not a single14-PASS job.",
+    "unique_passing_cases_across_runs": 14
+  },
+  "prepared_at_utc": "2026-10-17T06:59:26.140554+00:00",
+  "prior_qualification_and_manifests_rewritten": false,
+  "producer_preflight_failures": {
+    "PermissionError_derivatives": "not included or qualified by this followup; fresh exact-source preflight remains required",
+    "diagnostic_v02": {
+      "actual_child_exit_code": 2,
+      "actual_tool_exit_code": 1,
+      "actual_tool_session": 14385,
+      "blocked_event": "subprocess.Popen",
+      "canonical_creation_completed": false,
+      "overall_status": "failed",
+      "post_owner_observation_pin": {
+        "bytes": 10750,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/post-owner-denied-git-observation-v01.json",
+        "sha256": "5636d7cebbba7111d58a48076613b9d10b1f810581a66dc3a3dc5b7d39c2ed3b"
+      },
+      "reservation_observed_released": true,
+      "source_provenance_git_Popen_denied": true,
+      "stage": "import_native_product_classes",
+      "supervisor_launch_started": false
+    },
+    "no_dispatch_allowlist_or_fake_Git_output_adopted": true,
+    "original_v01": {
+      "actual_child_exit_code": 2,
+      "actual_tool_exit_code": 1,
+      "actual_tool_session": 62976,
+      "overall_status": "failed",
+      "post_owner_observation_pin": {
+        "bytes": 872,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer-preflight01-post-owner-failure-v01.json",
+        "sha256": "9f532c7f296c9a8018933541c0a3829b023fa244c987173b3fb7ee2a1d4e7066"
+      },
+      "supervisor_launch_started": false
+    }
+  },
+  "product_or_backend_imported": false,
+  "production_R06_or_WAL_mutated": false,
+  "production_actions_performed": false,
+  "production_custody_qualified": false,
+  "production_rearm_or_successor_authorized": false,
+  "publication_rule": "Exact review copies only after root confirms diagnostic14385 fully finalized and the whole forthcoming authentic trace has ended or been explicitly terminated. Even finalized-owner gaps do not permit C edits; root may defer through a subsequent trace. Review copies have no executable/native authority.",
+  "real_model_or_provider_call_performed": false,
+  "remaining_gates": [
+    "Successful exact-source controller_preparation for any new diagnostic/PermissionError derivative before authentic supervisor_launch.",
+    "Fresh genuine A producer/seed and B qualified supervisor UNKNOWN master capture under one frozen CHEAD/source catalog.",
+    "Actual C ADMIN creator graceful/crash process custody and fresh D1-D6 authenticated settlement/recovery trace, with actual owner finalization and independent post-owner resource/socket observations.",
+    "Bound production Grok configuration/effective toolset/output-cap evidence; finite fake-provider probe gives no production admission.",
+    "Historical UNKNOWN investigation remains unresolved; no retry/rearm/successor/model dispatch is authorized by these review copies."
+  ],
+  "review_only": true,
+  "schema": "PR293-retained-qualification-followup/v2",
+  "semantic_admission": false,
+  "tests_or_jobs_or_DB_queries_performed": false,
+  "training_or_model_publication_performed": false
+}

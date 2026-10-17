@@ -1,0 +1,36 @@
+{
+  "actual_native_tool_exit": 0,
+  "actual_tool_session": 26436,
+  "completed_pytest_cleanup_review_pin": {
+    "bytes": 6015,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/three-completed-pytest-cleanups-independent-review-v01.json",
+    "sha256": "26a18151ad58db19c05495651edee434708a17c75ebccef45bc2c7153346005e"
+  },
+  "final_retention_comparison_pin": {
+    "bytes": 3654,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-final-retention-comparison-after-integration-v02.json",
+    "sha256": "7d0701262b01c9d0ba17cea7ab33e401433be9189ad82db52e8e5895b60dc717"
+  },
+  "merged_regression_review_pin": {
+    "bytes": 8098,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/merged-regression-attempt13-retained-evidence-independent-review-v01.json",
+    "sha256": "566a1c522315050ccbc89e0e2a852356a7fb30ca0269c25617a8606eba998f25"
+  },
+  "merged_source_92_cases_passed_without_exclusions": true,
+  "native_operator_or_completion_authority": false,
+  "production_UNKNOWN_retried_or_rearmed": false,
+  "production_runtime_qualified_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "productive_Grok_toolset_or_law_span_semantics_qualified": false,
+  "removed_synthetic_fixture_apparent_bytes": 3880610343,
+  "reviewed_upstream_HEAD": "2fe4b218e1de10c70ae842bdcc29457975d49477",
+  "schema": "production-local-stop-publication-integration-followup@1",
+  "separately_qualified_merged_source_HEAD": "04556f5fe1907a38faf89b059dedfce66527a5b4",
+  "storage_limit_raised": false,
+  "training_or_model_asset_changes": false,
+  "upstream_2392_evidence_pin": {
+    "bytes": 8582,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/upstream-token-accounting2392-retained-metadata-survey-v01.json",
+    "sha256": "76e3bf1464f15db7c2771b13f17420f7878687acab8213a36ddc0a6b4bcb72d6"
+  },
+  "upstream_2392_evidence_reused_from_other_agent": true
+}

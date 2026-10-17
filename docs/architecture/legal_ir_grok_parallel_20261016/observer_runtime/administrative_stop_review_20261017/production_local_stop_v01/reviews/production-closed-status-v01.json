@@ -1,0 +1,123 @@
+{
+  "actual_outer_release_crosswalk": {
+    "actual_owner_pid_observed_absent": 1986936,
+    "all_three_exact_native_lease_ids_observed_absent": true,
+    "child_live_group_observed_absent": null,
+    "disk_reservation_id": "7d30388e6c9c4c7da8a1c7a96b9438e0",
+    "observed_disk_reservation_status": "released",
+    "owner_process_birth_id": "birth:kernel:f3b283268dded9e98d1b5b6bb9fb57e2",
+    "owner_result_finalization_pending_at_write_preserved": true,
+    "owner_start_time_ticks": 126057245,
+    "post_owner_observation_is_separate_actual_finalization_evidence": true,
+    "root_reported_actual_tool_exit": 0
+  },
+  "actual_tool_session": 73846,
+  "attribution_and_limits": [
+    "DB bytes/hash/inode stability, WAL absence, actual native read-only connection/close and original lock release are assertions from the pinned genuine owner/native component. The reviewer compared their immutable reports and raw preimage; it did not re-open, rehash or stat any DB/WAL.",
+    "Native Status reports control_join_verified_by_component=false, coordination_authority_observed=false, native_callback_authority_observed=false and semantic_admission=false. These limits are preserved; later genuine ADMIN full policy and settlement validators remain separate gates.",
+    "The9 controls qualify only explicit inert metadata decisions and cleanup under fresh private fixtures. They do not themselves grant production custody or semantic authority.",
+    "Actual outer tool exit/releasedledger/absentleases/PID absence are retained root-observer facts, not new live resource/process queries by this reviewer. A null group field is not promoted to group-absence proof.",
+    "Historical original v08 owner provenance remains distinct from current v05 resource utility. The historical protocol leaf was absent from original source inventory; current A/C protocol terminal corroboration is not exact historical leaf-byte attestation.",
+    "Raw current and historical UNKNOWN outcomes remain unknown; no callback closure, remote cancellation, model nonreachability, completion, retry, rearm, successor, cap increase, ADMIN append or FAILED settlement is established by this status review.",
+    "All previous failed metadata/native attempts and retained reservations remain unchanged."
+  ],
+  "conclusion": "No concrete blocker in the retained genuine read-only Status and close custody evidence for preparing the exact approved ADMIN step.",
+  "independent_metadata_checks": {
+    "DB_identity_fields_equal_raw_readonly_export_and_status_binding": true,
+    "all_listed_JSON_pins_rehashed": true,
+    "binding_content_identity_recomputed": "sha256:890d137f77bdcae56039733ed01bf0bb58c9c44f5b1a573052cb927d46403106",
+    "binding_expected_metadata_subset_matches": true,
+    "current_effect_rows_equal_empty_compiled_snapshot": true,
+    "current_native_attempt_equals_compiled_snapshot": true,
+    "current_provider_UNKNOWN_rows_equal_compiled_snapshot": 1,
+    "database_before_after_pin_and_identity_fields_equal": true,
+    "historical_UNKNOWN_row_equals_readonly_raw_export": true,
+    "native_maintenance_backup_or_logical_write_claimed": false,
+    "native_metadata_exact_key_count": 13,
+    "original_A_three_custody_pins_equal_request_and_rehashed": true,
+    "phase_rows_equal_compiled_snapshot": 2,
+    "product_source_bytes": 107052976,
+    "product_source_pins_rehashed": 2816,
+    "raw_export_has_no_selected_lane2_WAL_pin": true,
+    "receipt_content_identity_recomputed": "sha256:c3e2512d53f868acde3fe1db8bbf46897df500cdede6c8f84d0609eba568841a",
+    "receipt_exact_key_count": 45,
+    "receipt_source_pins_rehashed": 16,
+    "retired_status_owner_process_birth_digest_recomputed": true,
+    "source_paths_distinct": 2829,
+    "source_reads_total": 2832,
+    "writer_and_policy_lock_before_after_identity_fields_equal": true
+  },
+  "nine_nonadmitting_control_cases": [
+    "valid_count_once",
+    "changed_literal",
+    "path_escape",
+    "wrong_generation",
+    "unlisted_link",
+    "symlink_target",
+    "hardlinked_target",
+    "fifo",
+    "world_writable"
+  ],
+  "pins": {
+    "actor_reciprocal_review": {
+      "bytes": 5314,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-window-census-diagnostic-independent-review-v03.json",
+      "sha256": "8b386d94a2f07b7df43981d68eb64db287a744acbf0c01da9a007ff19a59534f"
+    },
+    "actor_source_contract": {
+      "bytes": 7086,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-owner-source-contract-v03.json",
+      "sha256": "ea6d8c241584420bfa8131a4b5bd14eeedb01ec7397eb2e395bf41bc990b8d56"
+    },
+    "actual_outer_release_observation": {
+      "bytes": 1289,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-attempt02-post-owner-v01.json",
+      "sha256": "0beaf60f9f6142d6a618a5b2ccf9e62d0b728c90814a705851b28ac917f7f839"
+    },
+    "closed_status_receipt": {
+      "bytes": 9406,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-closed-status-20261017-02/closed-store-status-receipt.json",
+      "sha256": "f72a4b28384895547ff330b5ce71706715a7440102edf25a4c27a4645c3faaee"
+    },
+    "nine_inert_metadata_controls": {
+      "bytes": 715,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-closed-status-20261017-02/nonadmitting-runtime-census-controls-report.json",
+      "sha256": "7f21bbb939f0b44db2b9914b4c9c23d5976d8b828170e73f07e7ddcde2722a28"
+    },
+    "owner_result": {
+      "bytes": 4942,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-closed-status-20261017-02/owner-result.json",
+      "sha256": "567b4651ff7fcec3cacd0a812bede3779ab580c812f743596b3fbc1168aabe46"
+    },
+    "request": {
+      "bytes": 1344646,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-request-v03.json",
+      "sha256": "bf766688224e3e4a53674bdf08ee918deeb80e197d9802c7045890082f290804"
+    },
+    "status_binding": {
+      "bytes": 2415,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-closed-status-20261017-02/status-binding.json",
+      "sha256": "25422501fea6481c3dd73c5ae79c81384cf5921a09fa50de65ffe2ce8b9b4051"
+    },
+    "status_observation": {
+      "bytes": 5452,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-closed-status-20261017-02/status-observation.json",
+      "sha256": "b2a725c6b5af8332f078095fac40aa429c49d1f624e76961b49c6536e9c86e25"
+    }
+  },
+  "qualified_controller_head": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "remaining_gates": [
+    "Actual registered peer-bound ADMIN audit append and same-live replay, graceful creator retirement and full outer owner finalization.",
+    "Fresh native same-attempt FAILED/coordination release/BLOCKED/unique terminal settlement with exact durable audit resolution, unchanged raw UNKNOWNs/history, no successor or replay dispatch, and actual native close/outer release."
+  ],
+  "reviewer": "unknown_event_forensics",
+  "reviewer_actions": {
+    "C_or_production_mutations": false,
+    "DB_WAL_or_credential_reads": false,
+    "immutable_JSON_and_pinned_source_only": true,
+    "native_or_product_imports": false,
+    "production_tree_or_live_resource_process_queries": false,
+    "tests_or_native_jobs": false
+  },
+  "schema": "production-closed-status-retained-evidence-independent-review@1"
+}

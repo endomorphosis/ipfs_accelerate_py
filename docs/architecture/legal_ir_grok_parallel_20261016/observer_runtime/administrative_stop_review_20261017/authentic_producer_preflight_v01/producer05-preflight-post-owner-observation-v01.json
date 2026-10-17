@@ -1,0 +1,41 @@
+{
+  "actual_child_exit_code": 0,
+  "actual_disk_reservation_id": "23246dcb0c73468aa215038800ab897d",
+  "actual_lease_ids_observed_absent": [
+    "19d1c1a9e28641519fc0377407f69c07",
+    "027311317dce4643adc35b59c7fe889f",
+    "5d164038ff3d48eb8dc1494f184a3c36"
+  ],
+  "actual_pids_observed_absent": [
+    2638690,
+    2647198
+  ],
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 41228,
+  "authentic_ADMIN_settlement_qualified": false,
+  "bounded_storage_preflight_passed": true,
+  "conservative_B_growth_bytes": 33568660,
+  "conservative_total_through_B_bytes": 80524634,
+  "execution_DB_bytes": 12288,
+  "execution_WAL_bytes": 14228,
+  "fixture_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight",
+  "native_resource_ack_created": false,
+  "observation_only": true,
+  "observed_reservation_status": "released",
+  "original_supervisor_launch_qualified": false,
+  "owned_live_group_observed_absent": true,
+  "producer_result_pin": {
+    "bytes": 95496,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/producer-result.json",
+    "sha256": "61fffa59b4837027be4389b1be935992a6710b241bdfe39a3be5caa190ce77b2"
+  },
+  "production_actions_performed": false,
+  "receipt_pin": {
+    "bytes": 639,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05-preflight/receipt.json",
+    "sha256": "b6ba9ab7686a7fbed12fb1789e69c65bd1f296409e5b64cb0f18c32bcd018a1f"
+  },
+  "schema": "authentic-full-producer-preflight-post-owner-observation@1",
+  "whole_fixture_census_bytes": 46955974,
+  "whole_fixture_limit_bytes": 134217728
+}

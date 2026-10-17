@@ -1,0 +1,42 @@
+{
+  "changed_functions": [
+    "read",
+    "outer_release",
+    "prepare"
+  ],
+  "conclusion": "No concrete static blocker in the narrow v04 corrections.",
+  "limitations": [
+    "Current STATIC manifestv02 remains historical source provenance; later census/actor/parent/compiler versions and actual final independent reviews should be added by a fresh explicit publication followup rather than relabeling this frozen bundle.",
+    "This review does not qualify any live Status/ADMIN/settlement outcome or independently query their DB preservation assertions."
+  ],
+  "method": [
+    "Read exact v04 source and contract and compared source AST/unified delta to v03.",
+    "No helper execution, product imports, future or active native outputs, DB/WAL/credential reads, live resource queries or C modifications."
+  ],
+  "native_runtime_qualification": false,
+  "pins": {
+    "contract": {
+      "bytes": 15277,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-publication-contract-v04.json",
+      "sha256": "42124bb7ccd9ff18506ce1adcb4609e7e97de6963d1f9891842ce03eff77d45a"
+    },
+    "preparer": {
+      "bytes": 24628,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/prepare_production_local_stop_publication_v04.py",
+      "sha256": "0a7d641cf9306252a6f5e2fd81deb43899d216e9ea1fb9deee1a7850270c303d"
+    },
+    "prior_preparer": {
+      "bytes": 23038,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/prepare_production_local_stop_publication_v03.py",
+      "sha256": "f66d3adb692db081bdf7e006c4788fc3b415f5af4eb99e5e6d8952e644d8ffc3"
+    }
+  },
+  "reviewer": "unknown_event_forensics",
+  "schema": "production-local-stop-publication-preparer-independent-static-review@4",
+  "verified_scope": [
+    "The former blanket unbound filename refusal has exactly one absolute source-manifest exception; its complete path/bytes/SHA pin must match before read returns. Actual unbound/private inputs remain excluded.",
+    "Post-owner observations require exact v03 source-result schema and nested closed-status versus top-level parent custody selector, actual tool0/releasedreservation/threeabsentleases and separate owner absence.",
+    "Historical preparation failure and omitted historical protocol pin remain explicit. The corrected protocol review supersedes only the false earlier leaf attestation.",
+    "No C copies or native operations are performed. Future actual root facts and genuine results remain required before publication map construction."
+  ]
+}

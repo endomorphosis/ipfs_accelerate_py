@@ -1,0 +1,40 @@
+{
+  "database_or_wal_opened_or_read": false,
+  "inputs": [
+    {
+      "bytes": 50619,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/planning_unknown_abandonment.py",
+      "sha256": "0a090a6ac961cdb5e0e14514f00eb280feeb858b24332d0f9956d524585dfdda"
+    },
+    {
+      "bytes": 21305,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/planning-unknown-closed-status-and-owner-absence-v02.patch",
+      "sha256": "95290f5664f7c5f22161fa8c9e0bfad536a7ad34027315011e6f0de67b98a650"
+    },
+    {
+      "bytes": 41039,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_closed_status_owner_v01.py",
+      "sha256": "a51682c4926d6d529065611440b34361ba3f8e1066d50c936175bcd7c3e2d555"
+    }
+  ],
+  "native_execution_performed": false,
+  "observations": [
+    "Original stopped_processes strict body and full seven-artifact verify_custody body are AST-identical after only function-name restoration.",
+    "Only explicit authority-context@2 selects the six-artifact already-closed native status path; @1 retains genuine WAL maintenance/backup requirements.",
+    "Tagged absence is limited to one exact original receipt owner with unrecorded birth, actual current boot and absent entire /proc/PID; any present PID refuses without reuse inference. Genuine child/master birth joins remain unchanged.",
+    "Closed receipt requires matching actual readonly status, unchanged before/after DB pin and physical identity, writer/policy lock identities, genuine full13 native metadata/raw generation, no WAL, actual read/close and explicit no-write/no-maintenance/no-backup flags.",
+    "Receipt source/input pins must be registered in native context; actual status owner kernel birth and positive stopped-generation row are required before ADMIN. Receipt creation itself is not native owner finalization.",
+    "Mutable execution byte rehash/current-generation checks are suppressed only for later exact-audit settlement; immutable receipt/raw/source/snapshot pins and native staged-store validators remain required."
+  ],
+  "outcome": "no_concrete_static_blocker",
+  "product_or_backend_imported": false,
+  "production_mutation_performed": false,
+  "qualification_limits": [
+    "Static source/AST review only. The separately authored33 pure-policy decision tests are unexecuted and use expressly inert binding/receipt records; they do not establish genuine native custody.",
+    "Root must qualify actual NativeExecutionStatusOwner read/close under real F07 and independently verify full owner exit/lease release before ADMIN.",
+    "No proof of provider cancellation, callback closure, model nonreachability or unknown external-effect closure is supplied."
+  ],
+  "remaining_static_blockers": [],
+  "reviewer": "unknown_event_forensics",
+  "schema": "planning-unknown-native-closed-status-independent-static-review@1"
+}

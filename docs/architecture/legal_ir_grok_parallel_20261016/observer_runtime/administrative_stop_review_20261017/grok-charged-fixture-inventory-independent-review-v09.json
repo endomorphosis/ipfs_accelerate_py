@@ -1,0 +1,19 @@
+{
+  "findings": [
+    "Every named ancestor and traversed directory is opened O_DIRECTORY|O_NOFOLLOW and checked against held/name metadata. Directory entries are never followed by the recursive walk.",
+    "Symlink target expansion retains parent steps until expansion and restarts from held root with the correct remaining prefix; a parent step at root is rejected before lookup. Absolute redirects must remain under the exact charged root.",
+    "Forty-link-hop,64-directory-depth,8192-entry and128MiB apparent-size bounds are finite. Resolver current descriptors and recursive child descriptors close through finally; failed exact-open checks close the new descriptor.",
+    "The snapshot explicitly does not exclude directory replacement/ABA or namespace changes, is non-atomic, and makes no continuous-custody claim. Mandatory quiescent independent parent post-owner inventory remains necessary.",
+    "These containment observations cannot establish actual native registry identity, universal future-tool confinement, production configuration qualification, or retrospective UNKNOWN resolution."
+  ],
+  "qualification": "Read-only source and AST review only; no imports, predicate tests, native jobs, model calls or C edits.",
+  "reviewed_scope": "Descriptor-rooted symlink containment/accounting and FD cleanup only; native model/toolset predicate and parent resource admission require separate qualification.",
+  "reviewer": "grok_confinement_review",
+  "schema": "grok-charged-fixture-inventory-independent-review@9",
+  "source_pin": {
+    "bytes": 54447,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/qualify_grok_planning_toolset_loopback_v09.py",
+    "sha256": "6d30dd0c9b973801becba924c3ca424a308b1de4e667736d149d68955de9e3d5"
+  },
+  "unresolved_static_blockers": []
+}

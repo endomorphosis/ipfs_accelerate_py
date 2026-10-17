@@ -1,0 +1,21 @@
+{
+  "actual_tool_exit_code": 1,
+  "actual_tool_session": 60085,
+  "attempt_directory_empty": true,
+  "charged_fixture_root_absent": true,
+  "disk_reservation_created": false,
+  "failure": "DaemonResourceError: storage reservation capacity exceeded",
+  "grok_or_fixture_launched": false,
+  "observed_at_epoch": 1792254549.4719741,
+  "original_results_rewritten": false,
+  "own_scheduler_lease_count": 0,
+  "owner_pid_separately_observed": null,
+  "request": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-request-v01.json",
+    "sha256": "f2dfa1e399f8a5cd5063bef251c49959faed97971a061ea0946762802caf4f19"
+  },
+  "schema": "fresh-grok-current-profile-storage-admission-failure@1",
+  "scope": "Before disk reservation and worker creation. Actual owner PID not separately recorded; no fabricated observation.",
+  "system_limits_changed": false,
+  "worker_launched": false
+}

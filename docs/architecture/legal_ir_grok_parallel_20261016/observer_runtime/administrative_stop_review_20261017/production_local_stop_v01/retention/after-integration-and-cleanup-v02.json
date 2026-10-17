@@ -1,0 +1,69 @@
+{
+  "admin_parent_result_pin": {
+    "bytes": 2784,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-admin-20261017-02/parent-result.json",
+    "sha256": "cff84121cf49a838082d7a1bb9f05fee4a13abb6c1572e418dce9d41093895e5"
+  },
+  "admin_post_owner_pin": {
+    "bytes": 1260,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-admin-attempt02-post-owner-v01.json",
+    "sha256": "fd4d554320023dec1c09cf29326f474d161fcaae843cb331db481dfd37e0de4f"
+  },
+  "checks_passed": true,
+  "database_opened": false,
+  "failed_status_baseline_pin": {
+    "bytes": 1268,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-attempt01-failure-post-owner-v01.json",
+    "sha256": "f13fce3d6c3c6e2cba170d9191031396c4273820490686b61526dc7a33265cbd"
+  },
+  "first_failed_status_reservation": {
+    "complete_historical_record_baseline": false,
+    "current_record_sha256": "0dafeb74e3443156801e5f12c77413025d040976f9dc1b2e4350b09137ae19a5",
+    "historical_full_record_equality_claimed": false,
+    "owner_pid": 1815325,
+    "reservation_id": "e7dba9e4219b45c0bff55cddf990c382",
+    "selected_fields_compared_only": true,
+    "status": "retained",
+    "storage_bytes": 536870912
+  },
+  "foreign_baseline_pin": {
+    "bytes": 2290,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/foreign-original-retention-baseline-v01.json",
+    "sha256": "a7db7d0b83f95be85aa8401824ee3b27109154f290eeb9590c27d29b45f04d05"
+  },
+  "ledger_pin": {
+    "bytes": 3862319,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-daemon-resource-control/disk-reservations.json",
+    "sha256": "0a87110f7d6efb90ec56dfb7983b4d3f656337ae9582fef3abec673cfda8cd0d"
+  },
+  "live_process_or_resource_API_queried": false,
+  "native_ACK_or_receipt_created": false,
+  "native_operator_semantic_or_completion_authority": false,
+  "no_ledger_records_mutated_or_released": true,
+  "observation_only": true,
+  "original_foreign_reservation": {
+    "baseline_record_sha256": "90143f4793de683b1cb29ac4d7c0d87e29375990189c12025b4b46aa71046f6f",
+    "current_record_sha256": "90143f4793de683b1cb29ac4d7c0d87e29375990189c12025b4b46aa71046f6f",
+    "exact_record_canonical_SHA_equal": true,
+    "reservation_id": "36c3ec43207e430abdadf4bbededef94",
+    "status": "retained"
+  },
+  "other_reservations": {
+    "complete_historical_baseline_available": false,
+    "count": 964,
+    "current_ID_to_record_digest_map_sha256": "898340b6a84184b7019eb02f21ecca14d24782bda7de927263185d17617da909",
+    "historical_equality_claimed": false,
+    "mutated_or_released_by_this_script": false
+  },
+  "schema": "production-local-stop-post-finalization-retention-comparison@2",
+  "settlement_parent_result_pin": {
+    "bytes": 2469,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-settle-20261017-01/parent-result.json",
+    "sha256": "59c7d89db04a8af3e9a8184959eeaed3186ed857a81cca58a722224737bdcff3"
+  },
+  "settlement_post_owner_pin": {
+    "bytes": 1261,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-settlement-attempt01-post-owner-v01.json",
+    "sha256": "0f7ef136b40bb400faf49aa281404727b67c9b8889e2fc693d4331f3d42d3c04"
+  }
+}

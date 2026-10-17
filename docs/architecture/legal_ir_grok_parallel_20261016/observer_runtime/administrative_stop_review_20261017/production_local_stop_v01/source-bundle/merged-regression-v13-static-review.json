@@ -1,0 +1,43 @@
+{
+  "conclusion": "No concrete static blocker in the fresh v13 qualification source derivative.",
+  "limits": [
+    "Source/AST/text review only; no rendering, tests, native/resource jobs, DB/WAL/credential reads, live filesystem/process/resource queries or C edits.",
+    "Root reported storage refusal12 before testworker and retained actualfailure69d9. This new physical resource attempt neither retries nor rearms the already-stopped production logical attempt.",
+    "Require actual full92 exit0 and complete owner release before later doc qualification; no pass conferred here."
+  ],
+  "pins": {
+    "contract": {
+      "bytes": 4670,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-fresh-resource-retry-contract-v13.json",
+      "sha256": "39a5608251be27954ae31a2f61f624f4da79aa3dc7723743d60652d52e51015e"
+    },
+    "patch": {
+      "bytes": 3653,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-fresh-resource-retry-v13.patch",
+      "sha256": "ee747083d9c76639c569ddeb1001d36686a4a0da1e1ccee26d9bc06bfe325696"
+    },
+    "preparer": {
+      "bytes": 11043,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/prepare_planning_unknown_administrative_controls_v13.py",
+      "sha256": "f02caf3eaf4dfe1e1963e3d02267856c81c571437d2d4cfa4dacd874dbff556f"
+    },
+    "runner": {
+      "bytes": 10320,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_administrative_controls_v13.py",
+      "sha256": "d0b70d6ae549d922504321b3df34f0f5b8d5ff4719a3a598c68493c8acfcc1e2"
+    },
+    "unchanged_native_queue_owner": {
+      "bytes": 10304,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_planning_unknown_native_owner_v06.py",
+      "sha256": "e2f66d5901f73ea99028d704703698745a16b83b4328589aa5e1b47c04d532c7"
+    }
+  },
+  "reviewer": "unknown_event_forensics",
+  "schema": "fresh-resource-qualification-retry-independent-static-review@13",
+  "unchanged": [
+    "Same92/45+14+33 primary tests, no exclusions, nonadmitting custody seam, no provider/production actions.",
+    "Same900s/3GiB/C512MiB/pytest2GiB/F07 and e2f66 reviewed root-admission-only queue derivative.",
+    "Current committed source HEAD/pinned Python+sixSQL closure/selected tests+helpers and oldv09 dependency path allowlist checks remain unchanged."
+  ],
+  "whole_text_proof": "Restoring only declared fresh v13 filenames/attempt13/pa17m and exact runnerSHA produces byte-identical reviewed v12 sources."
+}

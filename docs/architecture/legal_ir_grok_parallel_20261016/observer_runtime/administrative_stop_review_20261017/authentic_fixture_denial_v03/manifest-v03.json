@@ -1,0 +1,139 @@
+{
+  "base_pin": {
+    "bytes": 32130,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/produce_authentic_unknown_master_diagnostic_v02.py",
+    "sha256": "5385eca75dcce2b7058bd915814b4cedc10969ec74b14fa3d9a421940b7e5c04"
+  },
+  "dispatch_restrictions": {
+    "exception_still_raised_before_dispatch": true,
+    "existing_bounded_first_last_diagnostics_preserved": true,
+    "new_allowlist_or_permission": false,
+    "nonlocal_socket_denial_unchanged": true,
+    "six_event_deny_set_unchanged": [
+      "subprocess.Popen",
+      "os.system",
+      "os.posix_spawn",
+      "os.exec",
+      "socket.connect",
+      "socket.getaddrinfo"
+    ]
+  },
+  "exact_source_change": "Only refused_dispatch error factory changes RuntimeError(message) to PermissionError(message). Existing diagnostic schema/request/result/native logic remain byte-exact otherwise.",
+  "native_error_path": {
+    "fake_git_output": false,
+    "git_dispatch_allowed": false,
+    "native_capture_monkeypatched": false,
+    "product_source_changed": false,
+    "protected_route_qualified": false,
+    "provenance_capsule_expected_unavailable": true,
+    "reason": "PermissionError is a native OSError subtype. Real _agent_git_output catches it, raises ValueError without Git output, and the real implementation_daemon import catches that ValueError and assigns imported capsule/launch/temp root=None.",
+    "source_pins": [
+      {
+        "bytes": 343482,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+        "sha256": "1a3ab9f87f8e14a2bfb2b2dec0306a2007510bfb031aa9cbeef2dd5e949c6c9f"
+      },
+      {
+        "bytes": 3298714,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "8bd4c4a1aaef11140b2e2301bd203ce3159121f16fb821045e3ac2e0767783b5"
+      }
+    ],
+    "unavailability_observed_in_new_runtime": false
+  },
+  "patch_pin": {
+    "bytes": 770,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/producer-denial-error-v03.patch",
+    "sha256": "a6ece9e03bf0da8c1fe52e6702ad4e30074830df276935eb29cfe425ab0534e1"
+  },
+  "preserved": [
+    "Original failed v01 preflight and v02 diagnostic failure evidence",
+    "Frozen A/B v01, diagnostic v02 and C source/HEAD",
+    "No supervisor_launch until genuine exact-source full producer preflight succeeds and original owner fully exits/releases"
+  ],
+  "producer_pin": {
+    "bytes": 32133,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/produce_authentic_unknown_master_diagnostic_v03.py",
+    "sha256": "b24d39fc01da32989a8d43cf74b5db204e286b98c41736cc53db396696162f17"
+  },
+  "qualification": {
+    "AST_only": true,
+    "database_open": false,
+    "historical_unknown_resolved": false,
+    "native_job_provider_or_model_call": false,
+    "native_runtime_qualified": false,
+    "new_full_exact_source_controller_preparation_preflight_required": true,
+    "producer_product_backend_imported": false,
+    "production_action_authorized": false,
+    "supervisor_launch_qualified": false
+  },
+  "retained_diagnostic": {
+    "actual_child_exit_code": 2,
+    "blocked_event_count": 1,
+    "event": "subprocess.Popen",
+    "exact_native_callsite": [
+      {
+        "function": "_agent_git_output",
+        "line": 7620,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py"
+      },
+      {
+        "function": "agent_implementation_control_plane_source_generation",
+        "line": 7937,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py"
+      },
+      {
+        "function": "_capture_imported_control_plane_generation",
+        "line": 79168,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+      },
+      {
+        "function": "<module>",
+        "line": 79202,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+      }
+    ],
+    "native_request_pin": {
+      "bytes": 739786,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/native-diagnostic-preflight-request-v02.json",
+      "sha256": "2e6759c8143abb2e4b874543471f16ae57097d5d3970d572b5da5158a3cd09a2"
+    },
+    "native_session": 14385,
+    "owner_receipt_pin": {
+      "bytes": 636,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-producer-diagnostic-20261017-02/receipt.json",
+      "sha256": "ab3492568a882f7426d5eae747dd7488a9c16fe67608e272783d79b70ef7e9c8"
+    },
+    "propagated_error_matches_last_denial": true,
+    "reported_outer_exit_code": 1,
+    "sanitized_log_pin": {
+      "bytes": 7309,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-producer-diagnostic-20261017-02/child.sanitized.log",
+      "sha256": "d303161eb4ca08725d2704f892c776261fad5ffa2d3c11e8c12b748e4b2cdb1e"
+    },
+    "stage": "import_native_product_classes"
+  },
+  "schema": "authentic-native-producer-conventional-denial-derivative@3",
+  "static_followup_import_inspection": {
+    "all_transitive_import_paths_proven_clear": false,
+    "finding": "No additional explicit uncaught module-body process/network dispatch identified in the subsequent directly imported bridge, policy and empty-track runner modules. Their imported dependency closure and later native constructor/bridge/runner behavior are not proven by this static inspection. Any additional denial still refuses and retains bounded diagnostics.",
+    "runtime_pending": true,
+    "source_pins": [
+      {
+        "bytes": 494008,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "sha256": "afc5d1843b3477b1ba3d46ed4f08ad427351dfae788fc36de720f6d139911ebb"
+      },
+      {
+        "bytes": 32448,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+        "sha256": "2c41ec13d6493da394d3285686e662e5fa36e88439eb840271260ce1605e60e7"
+      },
+      {
+        "bytes": 603872,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "sha256": "d1682f52318e52076f4eecf12f32d5a4d6a93376511f02021d76bc4f18b8f6e6"
+      }
+    ]
+  }
+}

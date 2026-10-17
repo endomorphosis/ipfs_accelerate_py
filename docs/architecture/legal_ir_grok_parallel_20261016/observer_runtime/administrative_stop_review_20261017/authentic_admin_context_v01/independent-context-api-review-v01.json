@@ -1,0 +1,123 @@
+{
+  "AB_edited": false,
+  "actual_C_API": {
+    "audit": "Actual canonical Intent evidence/event transaction, exact deterministic reserved evidenceID, owner identity/eventCID and registered immutable context.",
+    "bind": "gateway.bind_planning_unknown_abandonment_service(expected_identity=dict(gateway.identity), authority_context=sealed_context)",
+    "client": "Actual peer/birth-bound TypedStateOwnerConnection performs record_planning_unknown_abandonment_decision(context_cid, expected_task_revision), outside any active transaction.",
+    "exit": "Actually reap the exact ADMIN child generation after graceful close or SIGKILL. Retain actual exit witness and complete the enclosing real parent resource owner before D.",
+    "grant": "gateway.issue_planning_unknown_abandonment_grant(peer_pid=actual_parent_pid, ttl_seconds=finite)",
+    "owner": "Genuine TypedStateOwnerGateway bound to an actual exclusive native canonical connection; explicit fresh host identity becomes that real gateway identity.",
+    "response_loss": "Discard an actual post-commit response and qualify same-livegateway exact replay, explicitly labeling logical response loss unless a genuine transport drop was actually tested.",
+    "wire_payload_closed_keys": [
+      "operation",
+      "context_cid",
+      "expected_task_revision"
+    ]
+  },
+  "actual_D_API": {
+    "entry": "Fresh genuine DatabaseImplementationDaemon embedded_exclusive with native DatabaseTaskSource/IntentRepository and actually opened DatabaseCoordinator; original strict shard3/index1/prefix/path.",
+    "old_audit": "Resolve exact durable evidence/event via policy.exact_audit; never rebind the old context to a new ADMIN owner or mint a new audit.",
+    "process_identity": "Fresh daemon open may truthfully update process_instance_id; no old process constructor override. Original logical owner/ordinal/fences and raw UNKNOWN bytes remain exact.",
+    "resource_boundary": "Do not os._exit the resource owner or invoke D as supervisor_launch without a new real native master terminal. Parent must reap its real children and retain custody during their controlled exits.",
+    "serial_stages": [
+      "actual FAILED commit",
+      "actual coordination release/failure",
+      "actual canonical BLOCKED CAS",
+      "actual exact terminal event",
+      "exact no-duplicate replay"
+    ],
+    "settlement": "daemon.settle_planning_unknown_administrative_abandonment(authority_context=the_exact_old_C_context)",
+    "stage_losses": "Retained parent real F07 contexts own serial actual child daemons. A fault hook can call the genuine bound native method first and inject loss only afterward; no policy/audit/native-handle validator replacement.",
+    "time_bound": "Original accepted coordination preimage must still be valid before FAILED. Expiry is a refusal, never grounds to renew the stopped original lease or widen the native lease bound."
+  },
+  "concrete_adapter_constraints": [
+    {
+      "finding": "Frozen integration native_unknown_admin_owner_fixture.py unconditionally replaces policy.verify_custody and requires a nonadmitting fixture manifest.",
+      "id": "CD-01",
+      "required_resolution": "Do not invoke that helper as authentic C. Only its independently pinned source-loading utilities may be reused; author a new genuine-context child with the verifier untouched."
+    },
+    {
+      "finding": "Copied stores do not match original terminal-parent/store and post-B physical-file identity joins.",
+      "id": "CD-02",
+      "required_resolution": "Advance one genuine original A/B fixture in place, or launch distinct genuine A/B fixtures for independent cases; never fabricate replacement original launch/terminal receipts."
+    },
+    {
+      "finding": "Frozen A/B external_census refuses all unsupported objects, and existing F07 strict attempt census also refuses AF_UNIX sockets.",
+      "id": "CD-03",
+      "required_resolution": "A new C/D owner must separately charge a short private socket/control directory and inventory only its exact owned socket with actual child/identity/path/type/uid custody. Keep sockets outside strict native attempt trees and outside unchanged A/B census scope, or implement an explicitly scoped new census in the new owner. Never broadly relax native inventory policy or edit A/B."
+    },
+    {
+      "finding": "Original v05 completed receipt and native_finalized stdout precede all lexical native owner releases.",
+      "id": "CD-04",
+      "required_resolution": "Retain actual outer exits and independently verify resource reservation finalization before each serialized C/D owner."
+    },
+    {
+      "finding": "Alternate crashes/negative mutations cannot inherit custody by cloning the authentic stores.",
+      "id": "CD-05",
+      "required_resolution": "Use one serial genuine stage sequence for the first increment; run independent mutation/alternate-case gates only on separately authentic A/B fixtures, or report those gates pending."
+    }
+  ],
+  "controller_edited": false,
+  "frozen_AB_manifest": {
+    "bytes": 7357,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/manifest-v01.json",
+    "sha256": "244016f11f23d14788da81456825dfb900dc2dc2cd1bb8461ab9ba2e7d28ad31"
+  },
+  "native_qualification_performed": false,
+  "preservation_assertions": [
+    "Both current and historical raw UNKNOWN rows byte-for-byte",
+    "Complete ordinal1/2 native coordination history and original fences",
+    "Unrelated63 tasks and normalized outputs/acceptance/validations plus goals/plans/edges/dependencies",
+    "Exact audit event/evidence count and historical identity",
+    "FAILED/released/BLOCKED exact receipt and single terminal event",
+    "No rearm/successor/completion/callback closure/cancellation/nonreachability assertion"
+  ],
+  "product_sources_read": [
+    {
+      "bytes": 32448,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+      "sha256": "2c41ec13d6493da394d3285686e662e5fa36e88439eb840271260ce1605e60e7"
+    },
+    {
+      "bytes": 16649,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment_settlement.py",
+      "sha256": "8c4b3d713935d35a05901df56e6d29aac3cfd41fa894dcb85694e48f0dc78d88"
+    },
+    {
+      "bytes": 671092,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "sha256": "dbe6fd3a38b41b89eef9dff15987240c9faffcbf7c8e9820b27b05f9685e9a4d"
+    }
+  ],
+  "production_action_authorized": false,
+  "remaining": "C/D native worker implementation, source review, root admission and actual runtime qualification are all still required. This artifact grants no production abandonment authority.",
+  "required_context": {
+    "closed_store_pins": "Exactly execution and coordination. Execution hash/size must be newly observed AFTER B checkpoint; A pre-maintenance execution_pin cannot be reused. Canonical is excluded because the native audit mutates it.",
+    "custody_artifacts_closed_keys": [
+      "launch_request",
+      "native_owner_receipt",
+      "master_terminal",
+      "status_binding",
+      "status_observation",
+      "maintenance_binding",
+      "maintenance_receipt"
+    ],
+    "historical_sources": "A genuine closed ordinal1 sidecar pins and complete bounded predecessor inventory remain immutable.",
+    "namespace_logical_store_id": "Must equal genuine A namespace and B status binding control_store_id.",
+    "registration": "Only the actual new live child gateway identity and actual creator kernel birth may fill registered_owner_identity/registered_creator. Seal contextCID after those values exist; parent checks unchanged remaining canonical bytes.",
+    "snapshot": "A actual immutable native-preimage.json, unchanged by B physical maintenance.",
+    "source_pins": "The actual12 product authority sources required by load_context; full package closure remains a separately pinned record, never embedded in the64KiB context.",
+    "stopped_processes": "Actual original A owner and direct-child/master birth tuples; also include B native owner birth when retained. Never list the currently live C creator as stopped during bind.",
+    "stores": "Exact original A/B canonical, coordination and current execution paths IN PLACE; no copied or relocated stores."
+  },
+  "review_method": "Read-only exact product/A-B source and artifact-schema inspection; no product import, database open or execution.",
+  "review_scope": "Unmodified product verifier, live ADMIN gateway and fresh native settlement adapter contract against frozen authentic A/B results; no C/D worker implementation cleared.",
+  "reviewer": "/root/grok_confinement_review",
+  "schema": "authentic-admin-settlement-independent-context-api-review@1",
+  "socket_and_secrets": [
+    "Enforce actual AF_UNIX path length<=107 bytes without relocating any A/B store.",
+    "Use a closed child environment/private persistence paths and no HOME reassignment; no model/account credential forwarding.",
+    "Keep grant token/ready records private; publish only explicitly safe pins/public fields, never token contents.",
+    "After child crash, remove a stale socket only under exact known path/inode plus actual owned-child reap checks, or retain it under its separately charged private scope."
+  ]
+}

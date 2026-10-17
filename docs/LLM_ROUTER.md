@@ -745,12 +745,35 @@ print(generate_text(
 PY
 ```
 
-The router invokes Grok in bounded, non-interactive JSON mode. It disables
-plan mode, subagents, web search, cross-session memory, and tools by default,
+The router invokes Grok in non-interactive JSON mode. It disables
+plan mode, subagents, web search, and cross-session memory by default,
 passes the prompt through an owner-only temporary file, and extracts only the
 final response text. OAuth credentials from `grok login` take precedence in
 the CLI; `XAI_API_KEY` is also supported. Alternate accelerator and datasets
 xAI key variables are forwarded to the CLI as `XAI_API_KEY`.
+
+For the native CLI, `max_tokens`, `max_new_tokens`, and
+`max_completion_tokens` bind the selected model's `max_completion_tokens`
+configuration in a temporary private Grok home. Values must be positive
+integers; multiple aliases must agree. The router preserves the lowest
+configured selected-model or global limit across user, managed, and
+requirements files. Requirements that would override that lower limit or
+select another model cause the call to fail before launching Grok. Active
+`GROK_CONFIG` / `GROK_CONFIG_PATH` overlays and custom config options require
+separate qualification and are refused when a budget is supplied.
+
+The private configuration disables leader reuse and retains the original
+HOME and references to authentication and context files. A budget alone
+preserves temperature; explicit `temperature=0` also sets the selected
+model's temperature. Calls without either option retain the existing
+environment. Custom non-native command templates cannot bind these settings.
+
+This configures a per-response request budget. Mock-server wire observations
+do not establish real-provider enforcement, total token use, or spend limits:
+multiple turns, native retries, and auxiliary title or dashboard requests
+need separate accounting. An empty native `--tools` list can enable default
+tools; planning callers must use the separately qualified explicit tool
+allowlist and denylist policy.
 
 Use `trace=True` with `trace_jsonl_path=...` or `trace_dir=...` to retain
 request, session, usage, and cost metadata. Prompt and response text are not

@@ -1,0 +1,1022 @@
+{
+  "authentic_custody_qualification_scope": "DISPOSABLE_AUTHENTIC_FIXTURE_ONLY; exact frozen product HEAD592d and selected original resource-loader/producer/A/B/ADMIN/parent/D worker pins.",
+  "authentic_custody_qualified": true,
+  "authentic_trace05": {
+    "A05_original_launch": {
+      "actual_original_v05_called_unchanged": true,
+      "all_trees_fenced": true,
+      "cleanup_pending": false,
+      "fence_proof": {
+        "active_binding_cid": "baguqeerav5iisvrnttqatootubeo3eruvw5bd3pxcyw4pli6e2xudhle7hvq",
+        "all_trees_fenced": true,
+        "master_pid": 2679890,
+        "master_start_time_ticks": 124047140,
+        "run_started_at_epoch_nanoseconds": 1792222419675718527,
+        "terminal_receipt_cid": "baguqeerax5q2f7rb4deb54htd2lkvkuphdrdyq5kzcn2samd4jmmdq7ctvoq"
+      },
+      "native_stop_verified": true,
+      "post_owner_observation_pin": {
+        "bytes": 2419,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/launch-v05-post-owner-observation-v01.json",
+        "sha256": "fd684c94b1456e4ea0c873ef1fc8756a8d8de0b266dad5a2e8d2d063791f85d7"
+      },
+      "qualified_for_exact_disposable_fixture": true,
+      "receipt_pin_verified_not_copied": {
+        "bytes": 1068,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05/receipt.json",
+        "sha256": "398a9b329838aff25a9fee7f3649914bac3100a772a0f3dfd96ec11bae6da4fa"
+      },
+      "reservation_status": "released",
+      "session": 35562,
+      "tool_and_child_exit_code": 0,
+      "whole_fixture_census_bytes": 47217908
+    },
+    "B05_maintenance": {
+      "accepted_postmaintenance_status_proof": false,
+      "actual_close_retry_count": 9,
+      "component_close_returned": true,
+      "component_close_verification_pin_verified_not_copied": {
+        "bytes": 146,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-maintenance-20261017-05/wal-maintenance-close-verified.json",
+        "sha256": "d3f850a3b93eb307138977e41584bd218f5c948d3aafb799deb58a721ccf63f6"
+      },
+      "error_type": "NativeExecutionWalMaintenanceError",
+      "exact_native_error_reason_captured": false,
+      "execution_WAL_present": false,
+      "execution_current_opaque_bytes": 3944448,
+      "failed_fixture_replayed_or_deleted": false,
+      "finding_proves_sole_runtime_cause": false,
+      "maintenance_or_owner_result_created": false,
+      "native_finalized": false,
+      "native_reservation_released_or_relabelled": false,
+      "no_remaining_native_leases_for_owner_pid": true,
+      "owner_PID_observed_absent": 2696327,
+      "physical_checkpoint_observation": "Root reports physical checkpoint occurred; opaque file size/hash changed and WAL is absent. This does not establish accepted maintenance/status proof.",
+      "post_owner_observation_pin": {
+        "bytes": 2164,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/maintenance05-failure-post-owner-observation-v01.json",
+        "sha256": "545bb98185151ecb2e1de0ce19589643262e6cd6046701ad19b8f3e6a9323f64"
+      },
+      "qualified": false,
+      "reservation_status": "retained",
+      "retention_reason": "context_failed",
+      "session": 31203,
+      "source_contract_finding": "Native maintenance monitor requires cheap local check_only callback. Fixture B guard mapped it to a full global disk census. Exact runtime error reason was not captured, so this finding alone is not asserted to be the sole failure cause.",
+      "tool_exit_code": 2
+    },
+    "C_ADMIN_and_D_settlement": {
+      "executed": false,
+      "qualified": false,
+      "reason": "B05 failed; trace05 ended before unbound C/D admission."
+    },
+    "automatic_replay05_admitted": false,
+    "failed_stores_backups_and_retained_reservation_preserved": true,
+    "fresh_A06_required": true,
+    "full_producer_preflight05": {
+      "budget_bytes": 134217728,
+      "genuine_schema_and_two_UNKNOWN_fixture_rows": "Root-reported completed full producer behavior; this review did not query stores or re-execute native schema/catalog.",
+      "passed": true,
+      "post_owner_observation_pin": {
+        "bytes": 1897,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer05-preflight-post-owner-observation-v01.json",
+        "sha256": "8a9a113f0c7ee99fa97350ae75de69c1ffa7b671c21172423393bf24dec988ce"
+      },
+      "production_or_remote_model_quality_qualified": false,
+      "session": 41228,
+      "whole_fixture_census_bytes": 46955974
+    },
+    "overall_authentic_A_B_C_D_trace_qualified": false,
+    "preparation05": {
+      "owner_result_pin_verified_not_copied": {
+        "bytes": 3324,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/owner-result.json",
+        "sha256": "6ca2ca24d4fa6530545d669fcdcd2a9638459481e8ba820f3eb6a04ae4e55661"
+      },
+      "passed": true,
+      "post_owner_observation_pin": {
+        "bytes": 1977,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/prepare-v05-post-owner-observation-v01.json",
+        "sha256": "e6789c95cb8e461230f208394c1d7663a232b0ccce38c8abb86b80529761b8cb"
+      },
+      "session": 66187
+    },
+    "producer_sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced",
+    "product_head": "592d07580fca33894f37723dea4f84630a957f37",
+    "resource_loader_sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446",
+    "source_catalog_file_count": 2816,
+    "trace_overall_status": "FAILED_AT_B; no replay of fixture05"
+  },
+  "authentic_trace06": {
+    "A06_original_launch": {
+      "A_custody_crosswalk_also_reconciled_by_B06_retained_review": true,
+      "post_owner_observation_pin": {
+        "bytes": 1118,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/launch-v06-post-owner-observation-v01.json",
+        "sha256": "cd469d43ad3c857ba4544eaf147a1f2bc82a5d1dcbf2b35bbf9886e71f27fb96"
+      },
+      "qualified_for_exact_original_launch_fixture_custody": true,
+      "reservation_status": "released",
+      "session": 54406
+    },
+    "B06_native_maintenance_status": {
+      "all2847_source_files_rehashed_by_this_draft_author": false,
+      "independent_metadata_checks": {
+        "A_custody": "Original launch-request SHA joins actual owner receipt; exact owner/child/master birth joins; genuine direct child==master fallback; independent ACTIVE/terminal content identities and actual A proof pin reconcile.",
+        "C_preimage_crosswalk": "Exactly seven custody artifact slots join original A and native B records; revision5/logical store ID match B binding; twelve authority source pins join configured C source map; post-B execution pin has receipt-selected path/size; canonical and coordination pins retain A values; B actual owner birth appended to stopped_processes.",
+        "configured_product_sources_rehashed": {
+          "SQL": 6,
+          "python": 2810,
+          "total": 2816
+        },
+        "content_identities": {
+          "maintenance_binding_cid": "sha256:11818b9d7caec74c69dde38262c90af77f877f0aa0689d8f669851a3afe275c1",
+          "maintenance_receipt_cid": "sha256:27e2a36d8a7845e991f7ae65ee0eac532a9c42df1224452b73658bb25d150a34",
+          "post_B_status_binding_cid": "sha256:f4b966aefc7e18e3830ccfbc1434be6273581b3789979ae9bbe859ae59b27927",
+          "recomputed_from_native_canonical_JSON_protocol": true
+        },
+        "current_attempt_and_UNKNOWN": "Published native status attempt/body/identity, complete phase history, decoded provider record including exact invocation/key/owner/fences, and all metadata equal immutable A06 preimage/producer metadata; empty effect list agrees.",
+        "distinct_immutable_JSON_source_files_rehashed": 2847,
+        "finalization_observation": "Rehashed root post-owner observation reports tool94396 actual exit0, released disk reservation, all three exact lease IDs and B PID absent. These values join owner-result IDs. This reviewer did not requery live scheduler/kernel state.",
+        "history": "Immutable preimage retains distinct original UNKNOWN rows for ordinals/fences [1,2], correct owner/claim/lease joins, original callback intent schemas and unknown_may_have_started states. No fabricated or rewritten provider result.",
+        "physical_binding_crosswalk": "Pre-B execution and WAL identities join A producer; post-B execution identity joins native receipt, refreshed status binding and status observation. Backup hash/size records equal A execution/WAL pin values. Physical bytes themselves were not reread.",
+        "sealed_B_request_and_result": "operation=maintenance; wrapper8d51 self-pin, loaderc385, exact C source map; fixture-only/no production flag; genuine A06 artifact pins agree with owner result.",
+        "unbound_context_scope": "Compiler output still explicitly authority_context_sealed=false and policy_verified=false; this review does not treat metadata-only preimage as ADMIN authority."
+      },
+      "independent_retained_review_pin": {
+        "bytes": 9553,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/maintenance06-retained-evidence-independent-review-v01.json",
+        "sha256": "b1d84ef54c155032aee7f4f78bc2dc5d0399563fc22eb6dd002465b7466baa34"
+      },
+      "limits": {
+        "automatic_retry_admitted": false,
+        "current_C_or_D_runtime_qualified_by_this_review": false,
+        "failed_B05_receipt_reconstructed_or_operation_replayed": false,
+        "model_or_provider_nonreachability_proved": false,
+        "native_component_control_or_coordination_join_claimed": false,
+        "native_current_identity_is_historical_inode_attestation": false,
+        "original_owner_result_alone_proves_finalization": false,
+        "production_R06_UNKNOWN_changed": false,
+        "provider_callback_closed": false,
+        "qualification_scope": "Authentic disposable A06/B06 physical maintenance and current read-only status/custody crosswalk only; actual ADMIN audit and fresh settlement stages require separate genuine receipts.",
+        "remote_cancellation_proved": false,
+        "root_outer_exit_reservation_observation_required": true,
+        "task_completion_authority": false
+      },
+      "native_report_attribution": {
+        "guard_fix_outcome": "Fresh B06 completed with narrowed monitor(False,True)->actual_guard(False,False) and preserved explicit full host guards. This does not retrospectively prove B05 exact failure cause or a uniform local callback latency bound.",
+        "historical_database_preservation": "Successful pinned wrapper checks historical closed-store byte pins after maintenance. Reviewer independently verified its source and immutable historical row/pin records, not historical DB bytes.",
+        "native_logical_bytes": 6110,
+        "native_logical_sha256": "cf6255b105040e87e1168cf532d5421a3c6d5c34989873ec3102b7bdd1237fc1",
+        "native_table_row_counts": {
+          "attempt_phases": 2,
+          "daemon_execution_events": 2,
+          "daemon_execution_metadata": 13,
+          "database_task_attempts": 1,
+          "effect_claims": 0,
+          "provider_invocations": 1
+        },
+        "reported_by_genuine_native_receipt": [
+          "checkpoint executed",
+          "current execution full logical rows preserved",
+          "all metadata preserved",
+          "UNKNOWN not settled",
+          "connection close verified",
+          "original locks released",
+          "WAL absent",
+          "retained original database/WAL backups verified"
+        ],
+        "whole_root_128MiB_bound": "Pinned live native wrapper retains bounded external census at actual guard boundaries. No fresh whole-root census was performed during active C06."
+      },
+      "post_owner_observation_pin": {
+        "bytes": 1115,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/maintenance06-post-owner-observation-v01.json",
+        "sha256": "f0896c1ec29c3783a9d5b40a74b53ee6e196c57f1cde0149876a1a4855cb44ec"
+      },
+      "qualified_for_exact_disposable_A06_B06_scope": true,
+      "reservation_status": "released",
+      "reviewer_DB_WAL_bytes_read_or_hashed": false,
+      "session": 94396
+    },
+    "C06_ADMIN": {
+      "actual_tool_exit_code": 2,
+      "admin_exit_witness_created": false,
+      "admin_parent_result_created": false,
+      "canonical_WAL_present": true,
+      "exact_failed_check_captured": false,
+      "exception_type": "ValueError",
+      "finding_proves_sole_old_failure_cause": false,
+      "fully_qualified": false,
+      "native_ACK_created": false,
+      "native_finalized": false,
+      "original_exit_or_reap_witness_created": false,
+      "post_owner_failure_observation_pin": {
+        "bytes": 2020,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/admin06-failure-post-owner-observation-v01.json",
+        "sha256": "891852b2f2e7e7fa5091ecdf142f35b5baba6e6bbd4ceb89f0847b04425496af"
+      },
+      "raw_READY_audit_context_or_credentials_read_or_copied_by_this_author": false,
+      "registered_child_group_observed_absent": true,
+      "reservation_status": "retained",
+      "retained_audit_response_replayed": true,
+      "retention_reason": "context_failed",
+      "session": 62309,
+      "source_finding": "v03 control_census raw Popen.poll can actually reap the child without updating ActualChild.reaped. The retained failed check is not captured; this source race is not asserted to be the sole old failure cause.",
+      "worker_reported_native_context_and_custody_verification": true
+    },
+    "D06_settlement": {
+      "executed": false,
+      "qualified": false
+    },
+    "failed06_stores_reservation_and_existing_records_preserved": true,
+    "fresh07_trace_required": true,
+    "full_preflight06": {
+      "post_owner_observation_pin": {
+        "bytes": 1126,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer06-preflight-post-owner-observation-v01.json",
+        "sha256": "402b7ed6e7217a99bac2bd7449f4d1fd52584afd64f8773ec47638f479589741"
+      },
+      "qualified_for_exact_fixture_sources": true,
+      "reservation_status": "released",
+      "session": 8002
+    },
+    "overall_A_B_C_D_qualified": false,
+    "overall_status": "FAILED_AT_C_PARENT_CLOSEOUT; preserve failed06 state, no replay06",
+    "replay06_or_reconstructed_witness_admitted": false
+  },
+  "authentic_trace07": {
+    "B07_post_owner_observation_pin": {
+      "bytes": 1115,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/maintenance07-post-owner-observation-v01.json",
+      "sha256": "5e6f0e24a490c04a057eb991673d74936ab5e815f64507254245b31b10dddf9c"
+    },
+    "B07_qualified_for_native_maintenance_status_scope": true,
+    "B_C_D07_qualified": true,
+    "C07_parent_result_pin": {
+      "bytes": 2561,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-admin-20261017-07/parent-result.json",
+      "sha256": "087dc8d5badb2c4602b6161c543715d56296453db4931424758afa8624734f6c"
+    },
+    "C07_post_owner_observation_pin": {
+      "bytes": 1123,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/admin07-post-owner-observation-v01.json",
+      "sha256": "cc6b417cc58c4420a581edd2cbc9ae4d646c071e1f7a7634e2e3fab7df5d89ea"
+    },
+    "C07_qualified_for_actual_ADMIN_creator_crash_reap_finalization_scope": true,
+    "C07_retained_independent_review_pin": {
+      "bytes": 9548,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/admin07-retained-evidence-independent-review-v01.json",
+      "sha256": "cf35d8c905d7ac734362c8e120e70d3fdc1da6356e60ee286553d9c5252f2a54"
+    },
+    "D07_current_stage_at_parent_instruction": "Final snapshot: all D1-D6 actual exit0/released; serial orchestration cell518 completed.",
+    "D07_qualified": true,
+    "actual_creator_exited_and_reaped": true,
+    "actual_transport_drop_simulated": false,
+    "completed_D_stage_results": [
+      {
+        "actual_child_exited_and_reaped": true,
+        "actual_tool_exit": 0,
+        "actual_tool_session": 33612,
+        "inner_finalization_pending_at_record_write_preserved": true,
+        "intentional_postcommit_stage_crash": true,
+        "parent_result_pin": {
+          "bytes": 2448,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-01/parent-result.json",
+          "sha256": "8a7870e09075e09f92f665232d601b3d7a38acb7d7bd8f0ea853720994a64eeb"
+        },
+        "post_owner_observation_pin": {
+          "bytes": 1131,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d1-post-owner-observation-v01.json",
+          "sha256": "73244bc1c4a5dc2248a35c58f388e0416b576a2339b46333a826e2f0238387d7"
+        },
+        "private_context_worker_request_result_or_witness_records_read_or_copied": false,
+        "reservation_status": "released",
+        "stage_index": 1,
+        "stage_name": "failed"
+      },
+      {
+        "actual_child_exited_and_reaped": true,
+        "actual_tool_exit": 0,
+        "actual_tool_session": 78138,
+        "inner_finalization_pending_at_record_write_preserved": true,
+        "intentional_postcommit_stage_crash": true,
+        "parent_result_pin": {
+          "bytes": 2740,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-02/parent-result.json",
+          "sha256": "e2a34b663b33c79b6287ef6be31bf46335197d91068a049bd8934ad104e6dc37"
+        },
+        "post_owner_observation_pin": {
+          "bytes": 1131,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d2-post-owner-observation-v01.json",
+          "sha256": "91cf367bce8e63f737d18768630fdaf1a74ae585e60e13d2966d32a6efd4bfe4"
+        },
+        "private_context_worker_request_result_or_witness_records_read_or_copied": false,
+        "reservation_status": "released",
+        "stage_index": 2,
+        "stage_name": "coordination"
+      },
+      {
+        "actual_child_exited_and_reaped": true,
+        "actual_tool_exit": 0,
+        "actual_tool_session": 5063,
+        "inner_finalization_pending_at_record_write_preserved": true,
+        "intentional_postcommit_stage_crash": true,
+        "parent_result_pin": {
+          "bytes": 2730,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-03/parent-result.json",
+          "sha256": "c0007c16d1a0c76eb3792859b35a237c088b345a250c06b5479214636119b918"
+        },
+        "post_owner_observation_pin": {
+          "bytes": 1130,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d3-post-owner-observation-v01.json",
+          "sha256": "1d2183cafe0686dc582f02c491394cf0397799cef5da3fb45881598dfc65fb7f"
+        },
+        "private_context_worker_request_result_or_witness_records_read_or_copied": false,
+        "reservation_status": "released",
+        "stage_index": 3,
+        "stage_name": "blocked"
+      },
+      {
+        "actual_child_exited_and_reaped": true,
+        "actual_tool_exit": 0,
+        "actual_tool_session": 16442,
+        "inner_finalization_pending_at_record_write_preserved": true,
+        "intentional_postcommit_stage_crash": true,
+        "parent_result_pin": {
+          "bytes": 2744,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-04/parent-result.json",
+          "sha256": "8dbfea287820e7951b3a77ddd6301929eae755cd642a163603fbf150fee7640d"
+        },
+        "post_owner_observation_pin": {
+          "bytes": 1131,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d4-post-owner-observation-v01.json",
+          "sha256": "736e813bbea626075bb98ad9449ac5718e37cb53bbc9f1ce112b4bb552203ae7"
+        },
+        "private_context_worker_request_result_or_witness_records_read_or_copied": false,
+        "reservation_status": "released",
+        "stage_index": 4,
+        "stage_name": "terminal_event"
+      },
+      {
+        "actual_child_exited_and_reaped": true,
+        "actual_tool_exit": 0,
+        "actual_tool_session": 47384,
+        "inner_finalization_pending_at_record_write_preserved": true,
+        "intentional_postcommit_stage_crash": false,
+        "parent_result_pin": {
+          "bytes": 2741,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-05/parent-result.json",
+          "sha256": "271598c16e1b1076fea72dc5c2f28d4bb9c7dfe7b85d33770e375254753e5709"
+        },
+        "post_owner_observation_pin": {
+          "bytes": 1131,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d5-post-owner-observation-v01.json",
+          "sha256": "6586e348196c21e7ea19d03fe7d1a92fb07f58c041dc622192c369e675880306"
+        },
+        "private_context_worker_request_result_or_witness_records_read_or_copied": false,
+        "reservation_status": "released",
+        "stage_index": 5,
+        "stage_name": "complete"
+      },
+      {
+        "actual_child_exited_and_reaped": true,
+        "actual_tool_exit": 0,
+        "actual_tool_session": 66796,
+        "fresh_D5_D6_equal": true,
+        "inner_finalization_pending_at_record_write_preserved": true,
+        "intentional_postcommit_stage_crash": false,
+        "parent_result_pin": {
+          "bytes": 2736,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-06/parent-result.json",
+          "sha256": "e3bbb0b6ac87d63e56e04ebb3ea15a895957a9bd13d1e3a73af1416da8e97cae"
+        },
+        "post_owner_observation_pin": {
+          "bytes": 1131,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d6-post-owner-observation-v01.json",
+          "sha256": "e1704fadaeb2e86c6873752fc7b721ba226bf30fbe6a7a78d969442a4f855d23"
+        },
+        "private_context_worker_request_result_or_witness_records_read_or_copied": false,
+        "reservation_status": "released",
+        "stage_index": 6,
+        "stage_name": "replay"
+      }
+    ],
+    "final_complete_trace07_outcome_adopted": true,
+    "final_independent_D_reviews": [
+      {
+        "bytes": 22295,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-chain-source-and-evidence-review-v01.json",
+        "sha256": "2fd952185e26008cdb0060cf2492f094ad7453e9d3af08ab7077e30fbff47c2b"
+      },
+      {
+        "bytes": 39826,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-all-stages-retained-evidence-independent-review-v01.json",
+        "sha256": "e1a3021fca0a0994ccc65cf8a16ef3fdec27005e64750b04dfb92d69cfc4dfdd"
+      }
+    ],
+    "final_result_identity_from_independent_review": {
+      "canonical_JSON_bytes": 2479,
+      "canonical_JSON_sha256": "0ae15fa4bc342a43344f57bb87530f82f43de76345805abaf005140138400203",
+      "claim_state": "released",
+      "control_revision": 6,
+      "control_status": "blocked",
+      "coordination_attempt_status": "failed",
+      "execution_status": "failed",
+      "failure_payload_digest": "sha256:40761a6a006d91f7752e994bc614055fd849b06f1dd0ba06f690a97ba8d339dc",
+      "settlement_id": "baguqeerabsla3s5akctdecw7xm7cbhsfb7zdbcymjqhpqy5at3hv6jzoxvtq"
+    },
+    "freeze_final_v05_before_trace07_ends": false,
+    "fresh_D5_D6_exact_result_equality": true,
+    "fullpreflight07_observation_pin": {
+      "bytes": 1127,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer07-preflight-post-owner-observation-v01.json",
+      "sha256": "65f8d1dececdc161c93474bab32ed2f71b50a75d9f50926e14619cffea24aeaf"
+    },
+    "generic_observer_group_absence_field_is_null": true,
+    "group_witness_is_linked_by_real_parent_result_and_retained_review": true,
+    "live07_requests_logs_stores_or_DBs_inspected": false,
+    "logical_postresponse_discard": true,
+    "native_event_CID_independently_recomputed": false,
+    "native_event_CID_validation_scope": "Genuine native same-live replay validated it; independent review lacks original stream/sequence metadata and does not recompute it.",
+    "native_runtime_assertion_attribution": "Raw provider UNKNOWN history, full database population/rows, unique terminal-event body and mutation/exclusion properties are genuine native runtime checks reconciled by pinned retained reviewers; this publication author performed no DB/WAL reads, queries or native imports.",
+    "outer_post_owner_observation_supplies_release": true,
+    "parent_inner_finalization_pending_at_record_write_preserved": true,
+    "partial_A07_observation_pin": {
+      "bytes": 1118,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/launch-v07-post-owner-observation-v01.json",
+      "sha256": "a67181c19e25da60d2e52ad62598b75e2e9428c0267afc93eb3a52d6540907d5"
+    },
+    "partial_preflight_and_A07_completed": true,
+    "private_READY_grant_token_audit_context_read_or_copied_by_this_author": false,
+    "private_pins_inside_bounded_reports_were_not_dereferenced_by_publication_author": true,
+    "same_live_gateway_exact_audit_replay": true,
+    "selected_ADMIN_sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0",
+    "selected_parent_sha256": "d774c6781f7563514c0b1175933196e25fc1674ddd5f6f50e3a56b68b908022c",
+    "selected_settlement_sha256": "a30a3081b72502e1bc95380fe435421b5b3281b40c6915a2e21abc0027b519d6",
+    "status_at_final_snapshot": "PASS for complete disposable authentic preflight/A07/B07/C07/D1-D6 with consistent source HEAD592d. No native job remains per root."
+  },
+  "controller_trace_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "draft_only": false,
+  "finite_Grok_fixture_qualification": {
+    "atomic_snapshot": false,
+    "auxiliary_dashboard_model": "grok-4.7",
+    "auxiliary_dashboard_temperature": 0,
+    "auxiliary_title_model": "grok-4.6",
+    "auxiliary_title_temperature": 1,
+    "canonical_diagnostic_rewritten": false,
+    "cases": [
+      {
+        "case": "positive-read-file",
+        "passed": true
+      },
+      {
+        "case": "empty-tools-control",
+        "passed": true
+      },
+      {
+        "case": "canonical-planning-adversarial",
+        "passed": true
+      }
+    ],
+    "continuous_custody_proved": false,
+    "dashboard_generation": "synthetic fixture response",
+    "effective_toolset_verified_in_canonical_invocation": false,
+    "exact_parse_stage_refusals": 8,
+    "independent_review_pin": {
+      "bytes": 60997,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-v09-retained-evidence-independent-review-v01.json",
+      "sha256": "cbfaec0c424ceeba1743e30edd1f0cc7fd4defe49303b78d08a978187aa8359c"
+    },
+    "limitations": [
+      "This is finite local fake-provider configuration evidence, not production configuration qualification or a universal proof that future tool entrypoints cannot dispatch.",
+      "The eight native parse-stage refusals do not establish LocalRegistry or any other registry identity; refusal_registry_identity_established remains false.",
+      "Auxiliary session-title calls use a different model and sampling setting. The fake transport intentionally declines title generation and returns synthetic dashboard text; no real model inference or model quality conclusion follows.",
+      "The unmodified canonical invocation still records effective_toolset_verified=false and provider_output_token_cap_enforced=false; this external qualification does not rewrite either diagnostic.",
+      "Native inspect reports builtin agent definitions even with --no-subagents. Empty hook/MCP/plugin/LSP inventories and disabled external compatibility cells are fixture observations, not a universal startup-filesystem isolation claim.",
+      "The post-owner readback is a point-in-time root observation. Its inner inventory helper rootlesskit_process_exit_observed=false is preserved; actual outer process/group absence is separately recorded. Atomicity, namespace-change exclusion, full replacement-race exclusion and continuous custody remain unproved.",
+      "Root-reported resource release/lease/process absence was reconciled against retained artifacts; this reviewer did not query native resource state, issue an ACK, rerun a census/probe, import product/backend code or run DB queries.",
+      "Synthetic usage does not verify billing, prompt ingestion, token savings or the requested output cap. No historical UNKNOWN is resolved and no production action is authorized."
+    ],
+    "namespace_change_excluded": false,
+    "observed_request_classes": {
+      "auxiliary_dashboard_summary": 3,
+      "auxiliary_session_title": 3,
+      "primary_agent": 5
+    },
+    "overall_scope": "Three finite local fake-provider cases with the genuine pinned Grok binary in fresh RootlessKit user/network namespaces; no real remote model inference.",
+    "post_owner_observation": {
+      "actual_tool_exit_code": 0,
+      "external_apparent_bytes": 2364864,
+      "external_budget_bytes": 134217728,
+      "original_group_observed_absent": true,
+      "reservation_status": "released"
+    },
+    "post_owner_observation_pin": {
+      "bytes": 58494,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-v09-post-owner-readback-v01.json",
+      "sha256": "11d7bd40dd283302184c33853da692f109a059e7e193c2a1c4af346c48734baf"
+    },
+    "primary_model": "grok-4.7",
+    "primary_temperature": 0,
+    "production_configuration_qualified": false,
+    "provider_output_token_cap_enforced_in_canonical_invocation": false,
+    "registry_identity_established": false,
+    "result_pin": {
+      "bytes": 5197,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/qualification-result.json",
+      "sha256": "50039420fe98a9bd1d5475efb2930eeef118327cef9774c2192ad69987425f47"
+    },
+    "retained_predicate_control_cases": 15,
+    "title_generation": "fake transport intentionally declines title generation",
+    "universal_tool_confinement_proved": false
+  },
+  "focused_resource_API_qualification": {
+    "actual_native_session": 68924,
+    "actual_product_or_backend_or_verifier_imported": false,
+    "all_2832_owner_source_hashes_freshly_rechecked_by_this_followup": false,
+    "authentic_custody_qualified": false,
+    "case_count": 22,
+    "cases": [
+      {
+        "case": "candidate-real-stdlib-files-enumerates-exact-six",
+        "passed": true
+      },
+      {
+        "case": "candidate-reads-all-six-exact-pinned-bytes",
+        "passed": true
+      },
+      {
+        "case": "previous-plain-loader-lacks-sql-resource-directory",
+        "passed": true
+      },
+      {
+        "case": "sql-only-namespace-cannot-bypass-closed-reader",
+        "passed": true
+      },
+      {
+        "case": "reader-wrong-package-name",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "resource-path-filesystem-fallback",
+        "passed": true,
+        "refusal_type": "FileNotFoundError"
+      },
+      {
+        "case": "binary-resource-buffer-is-readonly",
+        "passed": true
+      },
+      {
+        "case": "binary-resource-write",
+        "passed": true,
+        "refusal_type": "UnsupportedOperation"
+      },
+      {
+        "case": "binary-resource-truncate",
+        "passed": true,
+        "refusal_type": "UnsupportedOperation"
+      },
+      {
+        "case": "binary-resource-writelines",
+        "passed": true,
+        "refusal_type": "UnsupportedOperation"
+      },
+      {
+        "case": "unregistered-file",
+        "passed": true,
+        "refusal_type": "FileNotFoundError"
+      },
+      {
+        "case": "parent-path-escape",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "absolute-path",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "embedded-parent-path-escape",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "directory-open",
+        "passed": true,
+        "refusal_type": "IsADirectoryError"
+      },
+      {
+        "case": "write-mode-w",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "write-mode-wb",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "write-mode-a",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "write-mode-x",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "write-mode-r+",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "copied-sql-pin-hash-mismatch",
+        "passed": true,
+        "refusal_type": "ValueError"
+      },
+      {
+        "case": "copied-initializer-pin-hash-mismatch",
+        "passed": true,
+        "refusal_type": "ValueError"
+      }
+    ],
+    "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+    "database_opened": false,
+    "driver_pin": {
+      "bytes": 18699,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/test_pinned_product_resources_v01.py",
+      "sha256": "d94fd06d831e4a5720e2917a94a0605b15afcd50fba5f63300b7fc0501502aef"
+    },
+    "independent_retained_review_pin": {
+      "bytes": 19278,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/native-resource-api-retained-evidence-independent-review-v01.json",
+      "sha256": "ab1cd7f2701ed4fe48773869cb18054dba69f3ebb2a814fb4abf4c6889ee08c2"
+    },
+    "independent_review_historical_scope": "Pinned retained reviewab1cd7f reports its own2832 exact owner source-pin rechecks; this map rechecks selected dependency/evidence bytes only, without repeating the driver or entire catalog census.",
+    "limitations": [
+      "Package views are explicitly constructed test doubles. No actual product initializer, product/backend/verifier import, native migration catalog execution or database/schema installation was qualified.",
+      "This finite source-specific resource API result does not qualify full producer preflight, authentic A/B custody, ADMIN/settlement, protected route/source capsule, production behavior or any historicalUNKNOWN resolution.",
+      "The frozen bundle/contract runtime-pending metadata remains unchanged; this later retained evidence review advances only the focused resourceAPI gate.",
+      "Source hashes are point-in-time observations, not atomicity or continuous filesystem custody proof.",
+      "Root-reported native release/process/lease absence was reconciled to retained receipts. This reviewer did not query resource-manager state or issue any native ACK.",
+      "Current next native prepare job25916 and all frozen sources/CHEAD were untouched."
+    ],
+    "loader_pin": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "native_catalog_executed": false,
+    "native_schema_installed": false,
+    "owner_receipt_pin": {
+      "bytes": 638,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-pinned-resource-api-20261017-01/receipt.json",
+      "sha256": "b783b7de25e46e102539e5e18a3a14c681cb6047296314c678a75033e06cb672"
+    },
+    "passed": true,
+    "post_owner_observation": {
+      "actual_pids_observed_absent": [
+        2554447,
+        2557014
+      ],
+      "actual_tool_exit_code": 0,
+      "original_receipt_status": "completed",
+      "owned_group_observed_absent": true,
+      "reservation_status": "released"
+    },
+    "post_owner_observation_pin": {
+      "bytes": 1767,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/native-resource-api-post-owner-observation-v01.json",
+      "sha256": "011a7675d5f3ac561546b7d3b37502cd916810cb0a4e86635bafd3b0c6ec0a1c"
+    },
+    "production_qualified": false,
+    "real_model_or_provider_call": false,
+    "resource_API_fixture_qualified": true,
+    "result_pin": {
+      "bytes": 8922,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-pinned-resource-api-20261017-01/resource-api-result.json",
+      "sha256": "b29dde9773860eca37aa3e8f8328e119636f9221d769ac5cc96b5691c9109a82"
+    },
+    "statement": "22 finite focused resource API controls passed under genuine original native owner; real stdlib importlib.resources.files used explicit metadata-only package views and exact six SQL bytes. Actual product initializer, native migration catalog and schema installation were not executed.",
+    "test_package_view_only": true,
+    "test_view_package_initializer_executed": false
+  },
+  "frozen": true,
+  "historical_UNKNOWN_resolved": false,
+  "historical_authentic_parent_v03_static_snapshot": {
+    "authentic_A_B_C_D_trace_qualified": false,
+    "latency_guarantee": false,
+    "manifest_pin": {
+      "bytes": 15562,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/manifest-v03.json",
+      "sha256": "49ea65d10fb06e10680a7994dcc49f669e2c0d52bbbc266be2d5486e6b7e0258"
+    },
+    "policy_envelopes_and_deadline_unchanged": true,
+    "runtime_qualified": false,
+    "v02_timing_blocker": "A30s child deadline was sealed before expensive prelaunch and immediate-registration global censuses. The roughly17s/1.5M-entry observations are root-reported, not independent timing measurements.",
+    "v03_status": "Static exact-source/patch review only: full prelaunch guard precedes the deadline; genuine immediate registration and live ADMIN checks retain local/native checks with full=False; full global checks occur before child launch or after actual exit/reap."
+  },
+  "historical_next_authentic_prepare_gate_trace05": {
+    "complete_A_B_C_D_qualified": false,
+    "full_preflight_qualified_for_exact_sources": true,
+    "full_preflight_receipt_pin": {
+      "bytes": 639,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05-preflight/receipt.json",
+      "sha256": "b6ba9ab7686a7fbed12fb1789e69c65bd1f296409e5b64cb0f18c32bcd018a1f"
+    },
+    "full_producer_preflight_observation_pin": {
+      "bytes": 1897,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer05-preflight-post-owner-observation-v01.json",
+      "sha256": "8a9a113f0c7ee99fa97350ae75de69c1ffa7b671c21172423393bf24dec988ce"
+    },
+    "full_producer_preflight_outcome": "completed child/tool0; native owner finalized and released per root observation and matching retained receipt",
+    "full_producer_preflight_session": 41228,
+    "preparation_observation_pin": {
+      "bytes": 1977,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/prepare-v05-post-owner-observation-v01.json",
+      "sha256": "e6789c95cb8e461230f208394c1d7663a232b0ccce38c8abb86b80529761b8cb"
+    },
+    "preparation_outcome": "completed exit0; reservation released per pinned post-owner observation",
+    "preparation_session": 66187,
+    "trace": "05"
+  },
+  "historical_retained_review_additions": {
+    "A05_custody_independent_review_pin": {
+      "bytes": 10830,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/launch-v05-retained-A-custody-independent-review-v01.json",
+      "sha256": "72c3143280a667966ccb916ee0ec927e18ec63b67859a4e67970e71548b70f6f"
+    },
+    "full_preflight05_independent_review_pin": {
+      "bytes": 16178,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer05-preflight-retained-evidence-independent-review-v01.json",
+      "sha256": "9e8aadba84c12a78688415ff35ef003035aba8d192769d82fb61817e916c33e4"
+    },
+    "scope": "Historical05 evidence only; failed B05 and later scopes are unchanged. Some earlier reviewer opaque DB/WAL hashes are attributed to that review, not performed by this draft author."
+  },
+  "historical_v04_pending_trace06_report": {
+    "future_outcomes_adopted": false,
+    "historical_only_superseded_by_current_trace06_section": true,
+    "live_requests_logs_stores_or_DBs_inspected": false,
+    "new_B_wrapper_repair": "Independent source review pending; not included or runtime-qualified in this historical snapshot.",
+    "qualification_from_partial05_substituted": false,
+    "root_reported_preparation_session": 25996,
+    "status_at_root_instruction": "ACTIVE fresh A06 preparation"
+  },
+  "hosted_documentation_gate": {
+    "actual_status": "failure before any step",
+    "head": "592d07580fca33894f37723dea4f84630a957f37",
+    "local_status_does_not_forge_hosted_check": true,
+    "observation_pin": {
+      "bytes": 556,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/hosted-documentation-gates-592d-billing-observation-v01.json",
+      "sha256": "5635a29d203f42d10e4c918ec0513a1285697039e757fe8767d089fef5859944"
+    },
+    "reason": "account billing lock"
+  },
+  "metadata_review_only": true,
+  "native_authority": false,
+  "native_integration_coverage": {
+    "custody_seam": "explicitly nonadmitting; test fixture assertions do not admit authentic or production custody",
+    "native08": {
+      "first_failing_case": "tests/test_planning_unknown_abandonment_native_integration.py::test_actual_admin_creator_process_exits_before_fresh_native_audit_recovery[graceful_exit]",
+      "overall_status": "failed",
+      "passing_cases": 2,
+      "pytest_returncode": 1,
+      "receipt_pin": {
+        "bytes": 634,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-08/receipt.json",
+        "sha256": "ec205d60be5c9a80075bdadf687ea2810baf2ef04f95ec5b08a48c615baf490c"
+      },
+      "remaining_cases_not_run": 11,
+      "result_pin": {
+        "bytes": 42132,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-08/administrative-controls-result.json",
+        "sha256": "5ff37d468c63b28d4e3cf1106184c1767c9647eadc959f6594a0d93d4ee98290"
+      },
+      "source_head": "f2a5dad538d66939ee5eff2b81af03efc45d0667"
+    },
+    "native09": {
+      "overall_status": "passed",
+      "passing_cases": 12,
+      "post_owner_observation_pin": {
+        "bytes": 1755,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/native-controls-v09-post-owner-observation-v01.json",
+        "sha256": "17190a2117a6f34d1f00c41596406a9282703224e695d6ef85b631f7280a3b61"
+      },
+      "pytest_returncode": 0,
+      "receipt_pin": {
+        "bytes": 637,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/receipt.json",
+        "sha256": "313aa02d709bf55b0ca535df57a8ae41f74df7c25e9f6e0c4e58b4adc8e07f4f"
+      },
+      "result_pin": {
+        "bytes": 43766,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/administrative-controls-result.json",
+        "sha256": "4d49a226112a294abcc9ea7d843839aa5a4a51b153c26dfb44b1bd6c0683ebd8"
+      },
+      "source_head": "592d07580fca33894f37723dea4f84630a957f37"
+    },
+    "passing_case_nodeids": [
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_supplied_native_coordinator_is_open_before_actual_daemon_claim",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_genuine_aged_audit_lost_response_then_gateway_shutdown_and_fresh_native_closeout",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_actual_admin_creator_process_exits_before_fresh_native_audit_recovery[graceful_exit]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_actual_admin_creator_process_exits_before_fresh_native_audit_recovery[crash_exit]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[failed]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[coordination]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[blocked]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_closeout_resumes_after_each_committed_stage_response_loss[terminal_event]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_recovery_refuses_changed_result_or_effect_before_failed_stage[accepted_provider_result]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_native_recovery_refuses_changed_result_or_effect_before_failed_stage[new_effect]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_fresh_native_recovery_authenticates_exact_durable_audit_before_failed[evidence_parent]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_fresh_native_recovery_authenticates_exact_durable_audit_before_failed[evidence_digest]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_fresh_native_recovery_authenticates_exact_durable_audit_before_failed[event_owner]",
+      "tests/test_planning_unknown_abandonment_native_integration.py::test_exact_admin_replay_refuses_later_actual_control_rearm"
+    ],
+    "same_cases_rerun_in_this_review": false,
+    "source_difference": "Only the reviewed native test fixture database read/file-size bound changed16MiB to64MiB after08; production code is unchanged. The failed08 result remains failed.",
+    "statement": "14 covered across two retained runs: native08 failed overall after two PASS; native09 passed the remaining12. This is not a single14-PASS job.",
+    "unique_passing_cases_across_runs": 14
+  },
+  "official_public_refs_observation_pin": {
+    "bytes": 3850,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/official-public-main-and-PR-status-survey-v03.json",
+    "sha256": "fb8f610b2e75bd980b15cc2a0be135b4775a253fb54cc14d2d653ff66bcf379a"
+  },
+  "operator_local_stop_proposal_accepted": false,
+  "operator_local_stop_proposal_pin": {
+    "bytes": 5880,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-exact-attempt-local-stop-proposal-v02.json",
+    "sha256": "c20b4b96333fe3f06f25b3b2fe023f7d84a3c4f31887160d65071e47fc6f78a7"
+  },
+  "post_trace_publication_and_exact_doc_gate_plan_pin": {
+    "bytes": 8956,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/PR293-post-trace-publication-and-doc-gates-plan-v01.json",
+    "sha256": "090e47c5d7e0bd5c83e7e3220f9a9e3972cd5a0c07d2c7ee3d9cef39d7bc69eb"
+  },
+  "predecessor_followup_pin": {
+    "bytes": 36129,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/PR293-qualification-followup-v04.json",
+    "sha256": "b013e2898d0dd935abd7d90e44253404cdf31befc8596ed9a43cad28fd717408"
+  },
+  "predecessor_followup_preserved": true,
+  "prepared_at_utc": "2026-10-17T08:47:37.554447+00:00",
+  "prior_qualification_and_manifests_rewritten": false,
+  "producer_preflight_failures": {
+    "PermissionError_derivatives": "Frozen denialv03/workersv04 remain source-reviewed history. Exact c385/544b resource descendants and ADMIN1ade were exercised by completed disposable trace07; original failed preflights and runtime-pending source manifests remain unchanged.",
+    "diagnostic_v02": {
+      "actual_child_exit_code": 2,
+      "actual_tool_exit_code": 1,
+      "actual_tool_session": 14385,
+      "blocked_event": "subprocess.Popen",
+      "canonical_creation_completed": false,
+      "overall_status": "failed",
+      "post_owner_observation_pin": {
+        "bytes": 10750,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/post-owner-denied-git-observation-v01.json",
+        "sha256": "5636d7cebbba7111d58a48076613b9d10b1f810581a66dc3a3dc5b7d39c2ed3b"
+      },
+      "reservation_observed_released": true,
+      "source_provenance_git_Popen_denied": true,
+      "stage": "import_native_product_classes",
+      "supervisor_launch_started": false
+    },
+    "no_dispatch_allowlist_or_fake_Git_output_adopted": true,
+    "original_v01": {
+      "actual_child_exit_code": 2,
+      "actual_tool_exit_code": 1,
+      "actual_tool_session": 62976,
+      "overall_status": "failed",
+      "post_owner_observation_pin": {
+        "bytes": 872,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer-preflight01-post-owner-failure-v01.json",
+        "sha256": "9f532c7f296c9a8018933541c0a3829b023fa244c987173b3fb7ee2a1d4e7066"
+      },
+      "supervisor_launch_started": false
+    },
+    "prepare04_parent_startup_failure": {
+      "actual_tool_exit_code": 2,
+      "actual_tool_session": 25916,
+      "attempt_directory_empty": true,
+      "diagnosis": "Root mistakenly used -I -S -B for parent wrapper. Its first admitted action imports installed duckdb from user site, excluded by these flags. Parent contract uses normal installed environment; isolated -I -S -B applies to actual children. Exact missing module name was not captured by wrapper.",
+      "failed_scope_released_or_relabelled": false,
+      "native_finalized": false,
+      "no_child_registered": true,
+      "no_remaining_leases_with_owner_pid": true,
+      "observed_reservation_status": "retained",
+      "overall_status": "failed",
+      "owner_PID_observed_absent": 2571216,
+      "post_owner_observation_pin": {
+        "bytes": 999,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/prepare-v04-startup-failure-observation-v01.json",
+        "sha256": "307061e38519190a94aa6e01227b47e9bac58d2c215d012f5d220150cb6bf585"
+      },
+      "qualification_limit": "Tool exit and owner/lease absence do not imply this retained reservation fully finalized or released.",
+      "retention_reason": "context_failed",
+      "stores_created": false
+    },
+    "producer03_resource_failure": {
+      "actual_child_exit_code": 2,
+      "actual_tool_exit_code": 1,
+      "actual_tool_session": 12876,
+      "diagnosis": "Frozen plain Python loader lacked get_resource_reader for real bundled SQL; source-specific resource loader repair follows without replacing native SQL/checksum/schema logic.",
+      "failure_message": "bundled control-plane migration catalog is unavailable",
+      "failure_type": "ControlPlaneSchemaInstallError",
+      "original_supervisor_launch_started": false,
+      "overall_status": "failed",
+      "post_owner_observation_pin": {
+        "bytes": 3553,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer03-resource-failure-post-owner-observation-v01.json",
+        "sha256": "d16374e5d653cd24646bbd428b0c3dcfe45add8727a97d6631dab9bcdcc7b2a4"
+      },
+      "previous_PermissionError_denial_propagated_as_failure": false,
+      "reservation_observed_released": true
+    }
+  },
+  "product_or_backend_imported": false,
+  "production_R06_or_WAL_mutated": false,
+  "production_actions_performed": false,
+  "production_custody_qualified": false,
+  "production_rearm_or_successor_authorized": false,
+  "productive_production_Grok_work_qualified_by_this_artifact": false,
+  "publication_rule": "Final metadata-only review snapshot after root-reported entire trace07 completion. Root may now apply only exact listed review copies under the final map; copies have no native/provider/operator authority. Preserve all historical failed states and original absolute runtime pins.",
+  "real_model_or_provider_call_performed": false,
+  "remaining_gates": [
+    "Fresh documentation qualification at resulting publication HEAD using the exact four current workflow checks; hosted billing failure remains an actual failure until GitHub runs succeed.",
+    "Production local-stop UNKNOWN-risk policy, genuine fresh production custody/current preimage and exact same-attempt native closeout remain separate; the included proposal is unapproved and confers no authority.",
+    "Production Grok effective configuration/output-cap and productive LegalIR model work remain separate. Fixture pass does not resolve historical UNKNOWNs, authorize rearm/retry/successor/cap increase, prove remote cancellation/callback closure/nonreachability or grant task/semantic completion authority."
+  ],
+  "review_only": true,
+  "reviewed_repairs_after_trace05_06": {
+    "B_only_wrapper_status": "Static source patch/review preserved; exact fresh B06 runtime maintenance/status scope separately passed. This does not prove sole B05 failure cause or a universal callback latency bound.",
+    "B_only_wrapper_v02_manifest_pin": {
+      "bytes": 3002,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/manifest-v02.json",
+      "sha256": "6b64376a3e81d6a6eb2562003f44161326659359d1aa22e0a2fca2a492c01e87"
+    },
+    "diagnostic_only_settlement_v05_manifest_pin": {
+      "bytes": 3295,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/manifest-v05.json",
+      "sha256": "420c6d87e897ae5e29b611015d9ce4ffcb753b16a63db6ebfac66e435a5ec223"
+    },
+    "diagnostic_only_settlement_v05_status": "Entire baseline ed72 run() remains byte-identical under source review. Only bounded stderr diagnostics changed; selected a30a worker completed fresh native D1-D6 fixture checks. No extra native authority or production qualification is inferred.",
+    "native_parent_v04_manifest_pin": {
+      "bytes": 4085,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/manifest-v04.json",
+      "sha256": "575b4c402b7b17cc3a85b0482203e382d0850d9c021b4984c143558511dae8d2"
+    },
+    "native_parent_v04_status": "Source-reviewed terminal raw-poll to existing ActualChild.observe plus bounded diagnostics was exercised by completed actual C07 creator crash/reap/finalization and all D07 stages. Failed C06 remains failed with no reconstructed witness/result/finalization."
+  },
+  "schema": "PR293-retained-qualification-followup/v5",
+  "semantic_admission": false,
+  "snapshot_scope": "Current: complete disposable authentic trace07 PASS through preflight/A/B/C and all D1-D6. Historical failed trace05/06 and every original pending manifest/receipt remain unchanged.",
+  "tests_or_jobs_or_DB_queries_performed": false,
+  "training_or_model_publication_performed": false,
+  "worker_resource_loader_compatibility": {
+    "ADMIN_v05_pin": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "current_runtime_qualification_scope": "Exact disposable trace07 only; current parentd774/ADMIN1ade/settlementa30a. Parentv03 and settlementv04 references remain historical bundle dependencies; original manifests are not rewritten.",
+    "delta": "Only ADMIN literal strict loader SHA fba to c385 changes; producer544b enforces exact Python+six-SQL closure, all dynamic pin propagation preserved. Native wire@2 and F07 envelopes/deadlines unchanged.",
+    "historical_static_runtime_flag_at_v03_publication": false,
+    "independent_v05_metadata_alignment_review_pin": {
+      "bytes": 5056,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/metadata-alignment-independent-followup-v05.json",
+      "sha256": "06fd1a669eefae68b0679a3da0973aaf2979f8fc4cf7ff913289818c52ba06b0"
+    },
+    "later_native_producer_API_source_review_pin": {
+      "bytes": 17551,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/producer-native-calls-source-review-v01.json",
+      "sha256": "52b779da234423f031bca5a4ec7bb1d111208253947a8814c759c2cf4e551720"
+    },
+    "parent_v03_unchanged_pin": {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    "resource_bundle_manifest_pin": {
+      "bytes": 10279,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/manifest-v01.json",
+      "sha256": "a482e036cecbca8498a2645cc02279abe9af991ddf0d05b48d3f57882098d00c"
+    },
+    "settlement_v04_unchanged_pin": {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    },
+    "v04_manifest_pin": {
+      "bytes": 21287,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/manifest-v04.json",
+      "sha256": "f31f7bcb6f03ae4d653d967f2a25c3ba2e65c585d8e690db9acaf92bd120a374"
+    },
+    "v05_manifest_pin": {
+      "bytes": 12400,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/manifest-v05.json",
+      "sha256": "c2c5a1240e664027674490459ced53292d75c8745d69d2e862a0e97d51bb960c"
+    },
+    "worker_or_authentic_runtime_qualified": true
+  }
+}

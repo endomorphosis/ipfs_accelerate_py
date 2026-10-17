@@ -1,0 +1,203 @@
+{
+  "auxiliary_profile": "Stock toggles unchanged; all observed title/dashboard requests keep separate model,temperature and cap maps; no no-aux/singlemodel/singlebilledcall claim.",
+  "current_canonical_source_pins": [
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "62f0f0f50e28d2685632714c1e2f1b59d06420b42adc4aad93a0af7851f6f88b",
+      "size_bytes": 136311
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_router.py",
+      "sha256": "9dc93f0fe1bd6fc873fd362902a8d62703ddb546b0e1dbd03dd997522560ad34",
+      "size_bytes": 581483
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5",
+      "size_bytes": 13799
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
+      "sha256": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+      "size_bytes": 10914
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_turn_policy.py",
+      "sha256": "4349fd8dcaef980993291e38307ac3e68d2631695730b7d176bebaef6e2f1ba6",
+      "size_bytes": 3200
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/duckdb_store.py",
+      "sha256": "af59a71c8562bab211203efaaf82f210ec071badbf627fc1ef9966f3d5ca44f9",
+      "size_bytes": 62334
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/api_status.py",
+      "sha256": "2d214f072d2a3f4191b729279683c7431adfadc19fd44d5e5e7cca47223a753c",
+      "size_bytes": 5200
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/cli_status.py",
+      "sha256": "4f06ad4eb27a72397be329a6a94f50d791770e6c208667756724ff6ed8beefa2",
+      "size_bytes": 8150
+    }
+  ],
+  "current_imports": "All loaded ipfs_accelerate_py modules with file origins must resolve under exact current C package and get sourcepins. Root request independently pins full current product closure. Private allocation and META-index databases stay under strict owneroutput; no production DB used.",
+  "documentation_source_pins": [
+    {
+      "path": "/home/barberb/.grok/README.md",
+      "sha256": "417362077c2e426b525f4db1ee704cb64a35b72e9845b3147193a530352f502b",
+      "size_bytes": 113372
+    },
+    {
+      "path": "/home/barberb/.grok/docs/user-guide/26-config-reference.md",
+      "sha256": "fe25dee6b870474b2a415b7de082d60294e2c901248245fef345437fdb2c49a8",
+      "size_bytes": 83190
+    }
+  ],
+  "exact_patch_pin": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-synthetic-backings-and-wire-budget-v01.patch",
+    "sha256": "f49fdcf6c37af70d8f7d82cf09711096eeda8fcf2ee344cc2b5ab1bba310f86c",
+    "size_bytes": 23956
+  },
+  "future_root_scope": {
+    "child_process_slots": 4,
+    "controller_external_charge_bytes_root_reported": 1073741824,
+    "fixture_external_charge_bytes_root_reported": 134217728,
+    "fixture_max_bytes": 134217728,
+    "fixture_max_entries": 8192,
+    "fresh_fixture_root": "/tmp/pytest-of-barberb/gc17a",
+    "native_copy_bytes_scope": "Owned exact pinned native binary copy under strictattempt; root pins actual installed binary separately.",
+    "native_name": "legal-ir-grok-current-profile-20261017-01",
+    "native_owner": "Existing reviewed queue-only nativev06 e2f66; actual request/admission is root-owned and not created here.",
+    "root_or_phase_cpu": 1,
+    "root_or_phase_memory_mb": 2048,
+    "storage_bytes_root_reported": 1610612736,
+    "strict_attempt_headroom_bytes_root_reported": 402653184
+  },
+  "inert_unexecuted_at_freeze": true,
+  "new_backing_fixture": {
+    "auth": "Documented issuer-to-key object with same public dummy key; selected model inline fake key remains precedence. No browserlogin, tokenrefresh, SSO, or auth_provider_command test.",
+    "context": "Documented global AGENTS.md marker ingestion is recorded per case but observation-only; disabled compatibility profile is not assumed to load it. Real sampling backing links and source-byte checks remain mandatory.",
+    "files": [
+      "config.toml",
+      "auth.json",
+      "AGENTS.md",
+      "requirements.toml"
+    ],
+    "mutability_scope": "Point-in-time observations; no continuous-custody or production writable-backing exclusion claimed.",
+    "requirements": "Unsigned harmless [cli]use_leader=false, [model.grok4_7]temperature=0; no hooks/extra constraints/feature toggles or signature authority.",
+    "sampling_binding": "Native Popen audit observes new private regular config and exact symlinks auth/AGENTS/requirements to owned synthetic originals; source backing pins checked beforeinspect/prelaunch/postreturn.",
+    "source": "New authored synthetic bytes only; no ambient home/auth/config/session read or copied."
+  },
+  "predecessor_unused_v01_pins": {
+    "contract": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-source-contract-v01.json",
+      "sha256": "d3e38c8895f5b61a57deb21890cc5ed22b8a8f523cee7633be3ff6015e4e3d73",
+      "size_bytes": 10084
+    },
+    "helper": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_loopback_v01.py",
+      "sha256": "31dd5ebe221092d3063c350689a1b8240b2f0f0cf75884eddd4fd47a23483a8e",
+      "size_bytes": 66330
+    },
+    "wrapper": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_rootlesskit_v01.py",
+      "sha256": "0ac0e4f5e0e219b311450e0717fcde14442cf77957890727738776539351955b",
+      "size_bytes": 5597
+    }
+  },
+  "profile_HEAD": "500fb4ee4d538c5abb1a395c171c979636b8092a",
+  "qualification_authority": {
+    "LIR9001_task_or_UNKNOWN_retry_rearm_successor_authority": false,
+    "native_canonical_catalog_mutations": false,
+    "production_configuration_qualified": false,
+    "real_output_spend_hard_cap": false,
+    "real_provider_or_model_calls": false,
+    "semantic_completion_training_or_Lean_authority": false,
+    "universal_tool_confinement_or_registry_identity": false
+  },
+  "reviewer_actions": {
+    "AST_parse_and_source_comparison_only": true,
+    "C_Git_or_old_assets_mutated": false,
+    "DB_WAL_resource_process_queries": false,
+    "native_qualification_execution": false,
+    "product_or_backend_imports": false,
+    "provider_requests": false
+  },
+  "same_case_matrix": [
+    "positive-read-file",
+    "empty-tools-control",
+    "canonical-planning-adversarial"
+  ],
+  "schema": "grok-current-profile-synthetic-home-qualification-source-contract@2",
+  "selected_model_cap": {
+    "config_key": "model.grok-4.7.max_completion_tokens",
+    "configured_value": 4096,
+    "documentation": "Pinned public config-reference line459; no invented CLI token flag or GROK_CONFIG overlay.",
+    "scope": "Mock transport mapping only. Native canonical effective_toolset_verified/provider_output_token_cap_enforced fields are not rewritten; real-server generation, billing or spend enforcement remains unqualified.",
+    "wire_observation": "Every captured primary request must offer at least one of max_completion_tokens/max_tokens/max_output_tokens and every such value must be exact int4096. Exact field map retained for all primary and auxiliary calls."
+  },
+  "source_only": true,
+  "source_pins": {
+    "helper": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_loopback_v02.py",
+      "sha256": "fb429a529bb32d1cfaccde6f359d5550aae1a479fa80cb85615bd321861a0442",
+      "size_bytes": 66309
+    },
+    "predecessor_helper": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/qualify_grok_planning_toolset_loopback_v09.py",
+      "sha256": "6d30dd0c9b973801becba924c3ca424a308b1de4e667736d149d68955de9e3d5",
+      "size_bytes": 54447
+    },
+    "predecessor_wrapper": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/qualify_grok_rootlesskit_loopback_v09.py",
+      "sha256": "3d067bfc79db2ef08fba159a92e07f687e57ee814e3d529a2326254d460752d4",
+      "size_bytes": 5321
+    },
+    "wrapper": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_rootlesskit_v02.py",
+      "sha256": "cfa311f21014fd75d1cd8654f1a2b3bfcabb34b85b12e6443de9dc1e7647ee3e",
+      "size_bytes": 5597
+    }
+  },
+  "source_scope": {
+    "all_other_existing_helper_functions_and_classes_source_text_identical": true,
+    "changed_existing_helper_functions": [
+      "exact_head",
+      "safe_import_environment",
+      "make_config",
+      "qualify_case",
+      "inner"
+    ],
+    "existing_descriptor_relative_inventory_unchanged": true,
+    "existing_refusal_predicate_15_examples_unchanged": true,
+    "new_helper_functions": [
+      "loaded_current_product_origins",
+      "make_synthetic_home",
+      "observe_synthetic_sampling_backings",
+      "synthetic_backing_pin",
+      "wire_completion_budget"
+    ],
+    "wrapper_delta": "Fresh helper/hash/gc17a; compile exact hash-verified helper bytes rather than pyc; mandatory RootlessKit network/user namespaces and no host fallback preserved."
+  },
+  "unchanged_required_controls": {
+    "MCP_names_injected": true,
+    "canonical_runtime_run_provider_grok_cli_model4_7_purpose_planning_temperature0_no_fallback": true,
+    "dummy_key_sanitizedenv_HOME_unchanged": true,
+    "eight_exact_bound_native_parse_refusals": true,
+    "mandatory_new_net_user_namespace_loopback_only_routes_empty": true,
+    "positive_native_read_file_private_sentinel": true,
+    "post_native_and_independent_post_owner_census_required": true,
+    "predicate_registry_identity_established": false,
+    "same_max_turns2_permission_dontAsk_allowlist_read_file_deny_read_file_search_tool_use_tool": true,
+    "unsafe_empty_tools_string_exposes_defaults": true,
+    "zero_offered_primary_tool_and_legacy_function_schemas": true
+  },
+  "v01_to_v02_patch_pin": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/context-ingestion-observation-only-v02.patch",
+    "sha256": "e3ae9c6b1347405e33bcaee5a0847dc98bf64c30e4b4bacfd2cf34e5c4e75fd3",
+    "size_bytes": 2313
+  },
+  "v02_delta": "Only remove context-marker ingestion from required case pass; preserve observation and mandatory backing-link/unchanged-byte and4096-wire checks. Wrapper binds new exact helper bytes/name."
+}

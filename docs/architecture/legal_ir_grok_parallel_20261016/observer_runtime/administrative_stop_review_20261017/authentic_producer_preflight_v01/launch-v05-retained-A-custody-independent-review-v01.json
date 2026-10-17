@@ -1,0 +1,143 @@
+{
+  "checks": [
+    "Sealed original native request SHA joins actual owner receipt, exact isolated Python/producer argv and full producer request hash. All2830 bound source/JSON files were rehashed; actualC2816 Python+sixSQL pins reconcile. No live DB/WAL path appears in that source verification.",
+    "Successful exact-source two_attempt preflight and original launch producer requests are identical except fresh fixture_root; namespace/HEAD/source/backend/worker executable closure matches. Preflight is preparation evidence and contributes no native launch-fence authority.",
+    "Original unmodified v05 source imports the actual foreignA observer and actualA proof module. Frozen wrapper source calls original.main unchanged in a fresh owner namespace, then enforces the actualA module origin after it returns. Actual source files are pinned separately from childC; A andC identity source bytes are equal2fd9 but never substituted.",
+    "Native ACTIVE and terminal selfCIDs independently recomputed with the exact reviewed A/C DAG-JSON CIDv1 sha2-256 algorithm over retained pure JSON; native request target/label/master/generation/ACTIVE CID/terminal CID and producer native summary all join. all_trees_fencedtrue/task_completion_authorityfalse and zero managed tracks preserved.",
+    "Owner receipt lacks child_birth_marker as expected. NativeFenceObserver actually records its exact original Popen child birth as master_start_time_ticks for directchild==master. Genuine field equals producer kernel birth124047140; original owner parentPID/birth and boot remain distinct. No fallback for a descendant master or reused generation is asserted.",
+    "Full outer exit0 plus released reservation/three lease absences/PID+group absence comes from separately retained root postowner observationfd684, not receiptcompleted/stdout alone. No new kernel/ledger query or native ACK was manufactured by this reviewer.",
+    "Retained immutable producer snapshot contains actual ordinal1failed UNKNOWN history and ordinal2context/running UNKNOWN. This custody review reads only JSON, not current stores. PreB execution DB/WAL pins are historical and intentionally not rehashed during/after B maintenance."
+  ],
+  "direct_child_birth_join": {
+    "actual_parent_start_time_ticks": 124038592,
+    "actual_producer_start_time_ticks": 124047140,
+    "boot_id": "82e446b4-5572-47d2-a5ea-4259f31bb2d9",
+    "eligible_existing_native_fallback": "Exact Popen child==native master with genuine observer master birth==actual producer birth. No synthetic receipt field or descendant-master fallback.",
+    "genuine_observer_master_start_time_ticks": 124047140,
+    "native_master_pid": 2679890,
+    "original_child_pid": 2679890,
+    "original_owner_child_birth_marker_present": false,
+    "original_owner_pid": 2664111,
+    "producer_pid": 2679890
+  },
+  "limits": [
+    "Original observer enforced pre-Popen wallclock binding at runtime; the original receipt has no standalone pre-Popen timestamp to independently reconstruct. Review joins its genuine retained proof/source and actual producer/master births, without inventing one.",
+    "Root actualpostowner absence/finalization observation is retained external evidence, not freshly requeried here.",
+    "A05 is retained historical custody evidence. Root reports failedB05 checkpointed stores without a maintenance receipt; retain failed05 and use freshA06, with no B05replay/removal or promotion of preBpins into a current generation.",
+    "No model nonreachability, callback closure, remote cancellation, semantic completion, production abandonment/rearm/successor or native namespace proof is asserted."
+  ],
+  "qualification": {
+    "B_maintenance_qualified_by_this_review": false,
+    "C_ADMIN_qualified": false,
+    "D_settlement_qualified": false,
+    "current_DB_WAL_generation_verified": false,
+    "production_UNKNOWN_action_authorized": false,
+    "productive_model_or_LegalIR_tasks_qualified": false,
+    "retained_original_A_fixture_launch_custody_qualified": true
+  },
+  "retained_pins": {
+    "exact_preflight_receipt": {
+      "bytes": 639,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05-preflight/receipt.json",
+      "sha256": "b6ba9ab7686a7fbed12fb1789e69c65bd1f296409e5b64cb0f18c32bcd018a1f"
+    },
+    "exact_preflight_request": {
+      "bytes": 723421,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/original-v05-producer-preflight-request.json",
+      "sha256": "1746dfebb12a8b88c76e524e82ce5c60be15d76635ffa9e00bc035066b23bc4c"
+    },
+    "exact_preflight_result": {
+      "bytes": 95496,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/producer-result.json",
+      "sha256": "61fffa59b4837027be4389b1be935992a6710b241bdfe39a3be5caa190ce77b2"
+    },
+    "native_ACTIVE_observation": {
+      "bytes": 414,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05/master-active-binding-observed.json",
+      "sha256": "e985d4742b0cfa9351ec383e1a346bd99f01789df4fc4b9b07621c90121f4914"
+    },
+    "native_launch_request": {
+      "bytes": 723379,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/original-v05-launch-request.json",
+      "sha256": "aa57a1f30a653b261441eec181e8bc51ff68343ab8033517c4c9819c1573b9e9"
+    },
+    "native_owner_receipt": {
+      "bytes": 1068,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05/receipt.json",
+      "sha256": "398a9b329838aff25a9fee7f3649914bac3100a772a0f3dfd96ec11bae6da4fa"
+    },
+    "native_preimage": {
+      "bytes": 81032,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05/native-preimage.json",
+      "sha256": "d3a4f99ea28111d69b87b7577375c7ced04d9ea0ccdd44ae82a9ec7ad5ae0f0c"
+    },
+    "native_terminal": {
+      "bytes": 1137,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05/current-lane/master.pid.terminal.json",
+      "sha256": "ba50f9d0bd890fc0585ee9ef919d6915ff9af6fff78d742a3fcec19d1365318a"
+    },
+    "post_owner_finalization_observation": {
+      "bytes": 2419,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/launch-v05-post-owner-observation-v01.json",
+      "sha256": "fd684c94b1456e4ea0c873ef1fc8756a8d8de0b266dad5a2e8d2d063791f85d7"
+    },
+    "producer_request": {
+      "bytes": 1339710,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/producer-request.json",
+      "sha256": "6b1ab0009bd005ab0e65e3690b3e4b2b6a156a03d68f46c6756847efdd96f9ae"
+    },
+    "producer_result": {
+      "bytes": 95316,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05/producer-result.json",
+      "sha256": "b5b1c4db264b5712099e6a7766b1776cfa13a27baa142486b0d2db825575c367"
+    },
+    "wrapper_launch_request": {
+      "bytes": 4607,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/launch-request-v05.json",
+      "sha256": "11807a11e06e70d7e3c3ce35431ed9d3c9599cf9a752813bc73da9821af5303f"
+    }
+  },
+  "review_scope": "Read-only retained JSON and exact source hashes/AST/identity protocol. No DB/WAL byte read, import, native job, process/ledger requery or source mutation.",
+  "reviewer": "unknown_event_forensics",
+  "schema": "authentic-original-A-launch-retained-custody-independent-review@1",
+  "source_scope": {
+    "C_Python_plus_SQL_sources": 2816,
+    "actual_foreign_A_identity": {
+      "bytes": 83470,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd"
+    },
+    "actual_foreign_A_observer": {
+      "bytes": 26621,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/scripts/run_legal_autoformalization_supervisor.py",
+      "sha256": "d05e9c92fa77aa09dc65a6c4c2484908e06ba95307cce16b2a58be3667248e6d"
+    },
+    "actual_sealed_producer_pin": {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    "actual_sealed_source_loader_pin": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "bound_source_hashes_verified": 2830,
+    "child_C_identity": {
+      "bytes": 83470,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd"
+    },
+    "native_current_birth_crosswalk_policy": {
+      "bytes": 32448,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+      "sha256": "2c41ec13d6493da394d3285686e662e5fa36e88439eb840271260ce1605e60e7"
+    },
+    "original_v05": {
+      "bytes": 10303,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261016-01/run_native_owner_v05.py",
+      "sha256": "3e5357925d3be41630e73adc0b8a31b1fd25c35ad3f5bc4ad1b01dbaeffebb14"
+    }
+  },
+  "status": "no_retained_A_custody_blocker"
+}

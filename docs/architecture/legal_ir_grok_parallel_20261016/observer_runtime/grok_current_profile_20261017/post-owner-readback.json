@@ -1,0 +1,2572 @@
+{
+  "actual_owner_exit_release_attributed_to_separate_root_observation": true,
+  "cases": [
+    {
+      "AGENTS_marker_observed": true,
+      "all_loaded_product_origins_join_request_pins": true,
+      "case": "positive-read-file",
+      "case_pin": {
+        "bytes": 36923,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/case-result.json",
+        "sha256": "349ce38f91fb8ffba5d4725823d68ff8f09cc8bf639a1beb0ed6160c273b3bda"
+      },
+      "explicit_native_parse_refusals": {
+        "CallMcpTool": false,
+        "FetchMcpResource": false,
+        "ListMcpResources": false,
+        "read_file": false,
+        "run_terminal_command": false,
+        "search_tool": false,
+        "spawn_subagent": false,
+        "use_tool": false
+      },
+      "loaded_product_origin_count": 42,
+      "native_tool_profile_verified": true,
+      "offered_tool_names": [
+        [
+          "read_file"
+        ],
+        [
+          "read_file"
+        ]
+      ],
+      "primary_requests": 2,
+      "wire_calls": [
+        {
+          "class": "auxiliary_session_title",
+          "completion_budget": {
+            "fields": {
+              "max_output_tokens": 100
+            },
+            "matches_selected_model_4096": false,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.6",
+          "path": "/v1/responses",
+          "temperature": 1.0
+        },
+        {
+          "class": "primary_agent",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        },
+        {
+          "class": "primary_agent",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        },
+        {
+          "class": "auxiliary_dashboard_summary",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        }
+      ]
+    },
+    {
+      "AGENTS_marker_observed": true,
+      "all_loaded_product_origins_join_request_pins": true,
+      "case": "empty-tools-control",
+      "case_pin": {
+        "bytes": 36611,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/case-result.json",
+        "sha256": "4cd28c920936f02c1fd781aa42d2f2d9e2844ddebce547ba867b9193e757dbfb"
+      },
+      "explicit_native_parse_refusals": {
+        "CallMcpTool": false,
+        "FetchMcpResource": false,
+        "ListMcpResources": false,
+        "read_file": false,
+        "run_terminal_command": false,
+        "search_tool": false,
+        "spawn_subagent": false,
+        "use_tool": false
+      },
+      "loaded_product_origin_count": 42,
+      "native_tool_profile_verified": true,
+      "offered_tool_names": [
+        [
+          "run_terminal_command",
+          "read_file",
+          "search_replace",
+          "list_dir",
+          "grep",
+          "kill_command_or_subagent",
+          "todo_write",
+          "get_command_or_subagent_output",
+          "scheduler_create",
+          "scheduler_delete",
+          "scheduler_list",
+          "monitor",
+          "workflow",
+          "enter_plan_mode",
+          "exit_plan_mode",
+          "ask_user_question",
+          "image_gen",
+          "image_edit",
+          "image_to_video",
+          "reference_to_video",
+          "write"
+        ]
+      ],
+      "primary_requests": 1,
+      "wire_calls": [
+        {
+          "class": "auxiliary_session_title",
+          "completion_budget": {
+            "fields": {
+              "max_output_tokens": 100
+            },
+            "matches_selected_model_4096": false,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.6",
+          "path": "/v1/responses",
+          "temperature": 1.0
+        },
+        {
+          "class": "primary_agent",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        },
+        {
+          "class": "auxiliary_dashboard_summary",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        }
+      ]
+    },
+    {
+      "AGENTS_marker_observed": true,
+      "all_loaded_product_origins_join_request_pins": true,
+      "case": "canonical-planning-adversarial",
+      "case_pin": {
+        "bytes": 148335,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/case-result.json",
+        "sha256": "0b468d4268c38e8c2e23aecdbd847381e90295cceae1ad251a9906645ec30293"
+      },
+      "explicit_native_parse_refusals": {
+        "CallMcpTool": true,
+        "FetchMcpResource": true,
+        "ListMcpResources": true,
+        "read_file": true,
+        "run_terminal_command": true,
+        "search_tool": true,
+        "spawn_subagent": true,
+        "use_tool": true
+      },
+      "loaded_product_origin_count": 205,
+      "native_tool_profile_verified": true,
+      "offered_tool_names": [
+        [],
+        []
+      ],
+      "primary_requests": 2,
+      "wire_calls": [
+        {
+          "class": "auxiliary_session_title",
+          "completion_budget": {
+            "fields": {
+              "max_output_tokens": 100
+            },
+            "matches_selected_model_4096": false,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.6",
+          "path": "/v1/responses",
+          "temperature": 1.0
+        },
+        {
+          "class": "primary_agent",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        },
+        {
+          "class": "primary_agent",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        },
+        {
+          "class": "auxiliary_dashboard_summary",
+          "completion_budget": {
+            "fields": {
+              "max_tokens": 4096
+            },
+            "matches_selected_model_4096": true,
+            "real_provider_hard_cap_or_spend_enforcement_proved": false
+          },
+          "model": "grok-4.7",
+          "path": "/v1/chat/completions",
+          "temperature": 0.0
+        }
+      ]
+    }
+  ],
+  "continuous_custody_proved": false,
+  "exact_two_retained_records_unchanged": {
+    "36c3ec43207e430abdadf4bbededef94": "90143f4793de683b1cb29ac4d7c0d87e29375990189c12025b4b46aa71046f6f",
+    "e7dba9e4219b45c0bff55cddf990c382": "0dafeb74e3443156801e5f12c77413025d040976f9dc1b2e4350b09137ae19a5"
+  },
+  "head": "500fb4ee4d538c5abb1a395c171c979636b8092a",
+  "historical_unknown_resolved": false,
+  "independent_native_resource_ACK_created": false,
+  "inner_inventory_pin": {
+    "bytes": 55015,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/fixture-root-after-all-agent-exits.json",
+    "sha256": "668de336b9acf9d13f44ef912dd6a53cff19753a10445cd0837768f1c225ff67"
+  },
+  "native_post_owner_pin": {
+    "bytes": 1241,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-post-owner-v03.json",
+    "sha256": "c4f65980851b6a80fa96e65f1afc88cee1580ffad11b24eb9a22ae60b53f996b"
+  },
+  "original_results_rewritten": false,
+  "owner_receipt_pin": {
+    "bytes": 634,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/receipt.json",
+    "sha256": "69818f4c23acacf3bdfe234e1ee492fda8ab02426cad705f86468f7cae1f1199"
+  },
+  "post_owner_inventory": {
+    "accounting": "Sum non-directory lstat sizes once per pathname, including symlink and special inode sizes",
+    "all_symlink_targets_inside_exact_charged_root": true,
+    "apparent_bytes": 2365768,
+    "atomic_snapshot": false,
+    "budget_bytes": 134217728,
+    "continuous_custody_proven": false,
+    "directory_open_uses_no_follow": true,
+    "directory_replacement_races_fully_excluded": false,
+    "directory_symlink_follow_on_open_excluded": true,
+    "entries": [
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586404,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 5,
+        "path": "cases",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586652,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 5,
+        "path": "cases/canonical-planning-adversarial",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586683,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 4,
+        "path": "cases/canonical-planning-adversarial/grok-home",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586688,
+        "kind": "regular",
+        "lstat_bytes": 119,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/AGENTS.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586687,
+        "kind": "regular",
+        "lstat_bytes": 99,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/auth.json",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586686,
+        "kind": "regular",
+        "lstat_bytes": 665,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/config.toml",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586690,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 3,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586691,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586692,
+        "kind": "regular",
+        "lstat_bytes": 10358,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/01-getting-started.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586693,
+        "kind": "regular",
+        "lstat_bytes": 15952,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/02-authentication.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586694,
+        "kind": "regular",
+        "lstat_bytes": 36914,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/03-keyboard-shortcuts.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586695,
+        "kind": "regular",
+        "lstat_bytes": 41861,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/04-slash-commands.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586696,
+        "kind": "regular",
+        "lstat_bytes": 53441,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/05-configuration.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586697,
+        "kind": "regular",
+        "lstat_bytes": 17376,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/06-theming.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586698,
+        "kind": "regular",
+        "lstat_bytes": 25628,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/07-mcp-servers.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586699,
+        "kind": "regular",
+        "lstat_bytes": 13886,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/08-skills.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586700,
+        "kind": "regular",
+        "lstat_bytes": 28001,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/09-plugins.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586701,
+        "kind": "regular",
+        "lstat_bytes": 102445,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/10-hooks.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586702,
+        "kind": "regular",
+        "lstat_bytes": 19362,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/11-custom-models.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586703,
+        "kind": "regular",
+        "lstat_bytes": 10890,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/12-project-rules.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586704,
+        "kind": "regular",
+        "lstat_bytes": 13988,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/13-memory.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586705,
+        "kind": "regular",
+        "lstat_bytes": 51763,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/14-headless-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586706,
+        "kind": "regular",
+        "lstat_bytes": 13797,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/15-agent-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586707,
+        "kind": "regular",
+        "lstat_bytes": 23119,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/16-subagents.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586708,
+        "kind": "regular",
+        "lstat_bytes": 32931,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/17-sessions.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586709,
+        "kind": "regular",
+        "lstat_bytes": 25586,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/18-sandbox.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586710,
+        "kind": "regular",
+        "lstat_bytes": 9525,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/19-plan-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586711,
+        "kind": "regular",
+        "lstat_bytes": 10777,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/20-background-tasks.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586712,
+        "kind": "regular",
+        "lstat_bytes": 15077,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/21-terminal-support.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586713,
+        "kind": "regular",
+        "lstat_bytes": 37054,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/22-permissions-and-safety.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586714,
+        "kind": "regular",
+        "lstat_bytes": 18425,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/23-dashboard.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586715,
+        "kind": "regular",
+        "lstat_bytes": 21667,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/24-monitoring-usage.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586716,
+        "kind": "regular",
+        "lstat_bytes": 18204,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/25-status-line.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586717,
+        "kind": "regular",
+        "lstat_bytes": 83190,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/26-config-reference.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586718,
+        "kind": "regular",
+        "lstat_bytes": 10136,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/docs/user-guide/27-grok-clone.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586689,
+        "kind": "regular",
+        "lstat_bytes": 62,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/grok-home/requirements.toml",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586719,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 3,
+        "path": "cases/canonical-planning-adversarial/grok-home/xdg_cache_home",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586720,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/grok-home/xdg_cache_home/ipfs_accelerate",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586684,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/temporary",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586653,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 3,
+        "path": "cases/canonical-planning-adversarial/workspace",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586654,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 7,
+        "path": "cases/canonical-planning-adversarial/workspace/.git",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586677,
+        "kind": "regular",
+        "lstat_bytes": 23,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/HEAD",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586658,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/branches",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586679,
+        "kind": "regular",
+        "lstat_bytes": 92,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/config",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586657,
+        "kind": "regular",
+        "lstat_bytes": 73,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/description",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586659,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586662,
+        "kind": "regular",
+        "lstat_bytes": 478,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/applypatch-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586665,
+        "kind": "regular",
+        "lstat_bytes": 896,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/commit-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586668,
+        "kind": "regular",
+        "lstat_bytes": 4726,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/fsmonitor-watchman.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586671,
+        "kind": "regular",
+        "lstat_bytes": 189,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/post-update.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586661,
+        "kind": "regular",
+        "lstat_bytes": 424,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/pre-applypatch.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586669,
+        "kind": "regular",
+        "lstat_bytes": 1643,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/pre-commit.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586664,
+        "kind": "regular",
+        "lstat_bytes": 416,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/pre-merge-commit.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586663,
+        "kind": "regular",
+        "lstat_bytes": 1374,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/pre-push.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586666,
+        "kind": "regular",
+        "lstat_bytes": 4898,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/pre-rebase.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586673,
+        "kind": "regular",
+        "lstat_bytes": 544,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/pre-receive.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586670,
+        "kind": "regular",
+        "lstat_bytes": 1492,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/prepare-commit-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586672,
+        "kind": "regular",
+        "lstat_bytes": 2783,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/push-to-checkout.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586660,
+        "kind": "regular",
+        "lstat_bytes": 2308,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/sendemail-validate.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586667,
+        "kind": "regular",
+        "lstat_bytes": 3650,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/hooks/update.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586655,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/info",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586656,
+        "kind": "regular",
+        "lstat_bytes": 240,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/info/exclude",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586678,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 4,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/objects",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586682,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/objects/info",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586681,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/objects/pack",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586674,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 4,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/refs",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586675,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/refs/heads",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586676,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/canonical-planning-adversarial/workspace/.git/refs/tags",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586685,
+        "kind": "regular",
+        "lstat_bytes": 50,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/canonical-planning-adversarial/workspace/sentinel.txt",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586585,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 5,
+        "path": "cases/empty-tools-control",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586616,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 4,
+        "path": "cases/empty-tools-control/grok-home",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586621,
+        "kind": "regular",
+        "lstat_bytes": 108,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/AGENTS.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586620,
+        "kind": "regular",
+        "lstat_bytes": 99,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/auth.json",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586619,
+        "kind": "regular",
+        "lstat_bytes": 665,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/config.toml",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586623,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 3,
+        "path": "cases/empty-tools-control/grok-home/docs",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586624,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586625,
+        "kind": "regular",
+        "lstat_bytes": 10358,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/01-getting-started.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586626,
+        "kind": "regular",
+        "lstat_bytes": 15952,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/02-authentication.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586627,
+        "kind": "regular",
+        "lstat_bytes": 36914,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/03-keyboard-shortcuts.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586628,
+        "kind": "regular",
+        "lstat_bytes": 41861,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/04-slash-commands.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586629,
+        "kind": "regular",
+        "lstat_bytes": 53441,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/05-configuration.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586630,
+        "kind": "regular",
+        "lstat_bytes": 17376,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/06-theming.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586631,
+        "kind": "regular",
+        "lstat_bytes": 25628,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/07-mcp-servers.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586632,
+        "kind": "regular",
+        "lstat_bytes": 13886,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/08-skills.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586633,
+        "kind": "regular",
+        "lstat_bytes": 28001,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/09-plugins.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586634,
+        "kind": "regular",
+        "lstat_bytes": 102445,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/10-hooks.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586635,
+        "kind": "regular",
+        "lstat_bytes": 19362,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/11-custom-models.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586636,
+        "kind": "regular",
+        "lstat_bytes": 10890,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/12-project-rules.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586637,
+        "kind": "regular",
+        "lstat_bytes": 13988,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/13-memory.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586638,
+        "kind": "regular",
+        "lstat_bytes": 51763,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/14-headless-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586639,
+        "kind": "regular",
+        "lstat_bytes": 13797,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/15-agent-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586640,
+        "kind": "regular",
+        "lstat_bytes": 23119,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/16-subagents.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586641,
+        "kind": "regular",
+        "lstat_bytes": 32931,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/17-sessions.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586642,
+        "kind": "regular",
+        "lstat_bytes": 25586,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/18-sandbox.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586643,
+        "kind": "regular",
+        "lstat_bytes": 9525,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/19-plan-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586644,
+        "kind": "regular",
+        "lstat_bytes": 10777,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/20-background-tasks.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586645,
+        "kind": "regular",
+        "lstat_bytes": 15077,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/21-terminal-support.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586646,
+        "kind": "regular",
+        "lstat_bytes": 37054,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/22-permissions-and-safety.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586647,
+        "kind": "regular",
+        "lstat_bytes": 18425,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/23-dashboard.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586648,
+        "kind": "regular",
+        "lstat_bytes": 21667,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/24-monitoring-usage.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586649,
+        "kind": "regular",
+        "lstat_bytes": 18204,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/25-status-line.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586650,
+        "kind": "regular",
+        "lstat_bytes": 83190,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/26-config-reference.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586651,
+        "kind": "regular",
+        "lstat_bytes": 10136,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/docs/user-guide/27-grok-clone.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586622,
+        "kind": "regular",
+        "lstat_bytes": 62,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/grok-home/requirements.toml",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586680,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/grok-home/xdg_cache_home",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586617,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/temporary",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586586,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 3,
+        "path": "cases/empty-tools-control/workspace",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586587,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 7,
+        "path": "cases/empty-tools-control/workspace/.git",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586610,
+        "kind": "regular",
+        "lstat_bytes": 23,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/HEAD",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586591,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/workspace/.git/branches",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586612,
+        "kind": "regular",
+        "lstat_bytes": 92,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/config",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586590,
+        "kind": "regular",
+        "lstat_bytes": 73,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/description",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586592,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/workspace/.git/hooks",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586595,
+        "kind": "regular",
+        "lstat_bytes": 478,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/applypatch-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586598,
+        "kind": "regular",
+        "lstat_bytes": 896,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/commit-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586601,
+        "kind": "regular",
+        "lstat_bytes": 4726,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/fsmonitor-watchman.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586604,
+        "kind": "regular",
+        "lstat_bytes": 189,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/post-update.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586594,
+        "kind": "regular",
+        "lstat_bytes": 424,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/pre-applypatch.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586602,
+        "kind": "regular",
+        "lstat_bytes": 1643,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/pre-commit.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586597,
+        "kind": "regular",
+        "lstat_bytes": 416,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/pre-merge-commit.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586596,
+        "kind": "regular",
+        "lstat_bytes": 1374,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/pre-push.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586599,
+        "kind": "regular",
+        "lstat_bytes": 4898,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/pre-rebase.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586606,
+        "kind": "regular",
+        "lstat_bytes": 544,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/pre-receive.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586603,
+        "kind": "regular",
+        "lstat_bytes": 1492,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/prepare-commit-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586605,
+        "kind": "regular",
+        "lstat_bytes": 2783,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/push-to-checkout.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586593,
+        "kind": "regular",
+        "lstat_bytes": 2308,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/sendemail-validate.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586600,
+        "kind": "regular",
+        "lstat_bytes": 3650,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/hooks/update.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586588,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/workspace/.git/info",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586589,
+        "kind": "regular",
+        "lstat_bytes": 240,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/.git/info/exclude",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586611,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 4,
+        "path": "cases/empty-tools-control/workspace/.git/objects",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586615,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/workspace/.git/objects/info",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586613,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/workspace/.git/objects/pack",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586607,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 4,
+        "path": "cases/empty-tools-control/workspace/.git/refs",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586608,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/workspace/.git/refs/heads",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586609,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/empty-tools-control/workspace/.git/refs/tags",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586618,
+        "kind": "regular",
+        "lstat_bytes": 50,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/empty-tools-control/workspace/sentinel.txt",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586517,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 5,
+        "path": "cases/positive-read-file",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586547,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 4,
+        "path": "cases/positive-read-file/grok-home",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586552,
+        "kind": "regular",
+        "lstat_bytes": 107,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/AGENTS.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586551,
+        "kind": "regular",
+        "lstat_bytes": 99,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/auth.json",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586550,
+        "kind": "regular",
+        "lstat_bytes": 665,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/config.toml",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586554,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 3,
+        "path": "cases/positive-read-file/grok-home/docs",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586555,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586558,
+        "kind": "regular",
+        "lstat_bytes": 10358,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/01-getting-started.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586559,
+        "kind": "regular",
+        "lstat_bytes": 15952,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/02-authentication.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586560,
+        "kind": "regular",
+        "lstat_bytes": 36914,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/03-keyboard-shortcuts.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586561,
+        "kind": "regular",
+        "lstat_bytes": 41861,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/04-slash-commands.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586562,
+        "kind": "regular",
+        "lstat_bytes": 53441,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/05-configuration.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586563,
+        "kind": "regular",
+        "lstat_bytes": 17376,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/06-theming.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586564,
+        "kind": "regular",
+        "lstat_bytes": 25628,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/07-mcp-servers.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586565,
+        "kind": "regular",
+        "lstat_bytes": 13886,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/08-skills.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586566,
+        "kind": "regular",
+        "lstat_bytes": 28001,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/09-plugins.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586567,
+        "kind": "regular",
+        "lstat_bytes": 102445,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/10-hooks.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586568,
+        "kind": "regular",
+        "lstat_bytes": 19362,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/11-custom-models.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586569,
+        "kind": "regular",
+        "lstat_bytes": 10890,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/12-project-rules.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586570,
+        "kind": "regular",
+        "lstat_bytes": 13988,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/13-memory.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586571,
+        "kind": "regular",
+        "lstat_bytes": 51763,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/14-headless-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586572,
+        "kind": "regular",
+        "lstat_bytes": 13797,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/15-agent-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586573,
+        "kind": "regular",
+        "lstat_bytes": 23119,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/16-subagents.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586574,
+        "kind": "regular",
+        "lstat_bytes": 32931,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/17-sessions.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586575,
+        "kind": "regular",
+        "lstat_bytes": 25586,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/18-sandbox.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586576,
+        "kind": "regular",
+        "lstat_bytes": 9525,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/19-plan-mode.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586577,
+        "kind": "regular",
+        "lstat_bytes": 10777,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/20-background-tasks.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586578,
+        "kind": "regular",
+        "lstat_bytes": 15077,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/21-terminal-support.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586579,
+        "kind": "regular",
+        "lstat_bytes": 37054,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/22-permissions-and-safety.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586580,
+        "kind": "regular",
+        "lstat_bytes": 18425,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/23-dashboard.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586581,
+        "kind": "regular",
+        "lstat_bytes": 21667,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/24-monitoring-usage.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586582,
+        "kind": "regular",
+        "lstat_bytes": 18204,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/25-status-line.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586583,
+        "kind": "regular",
+        "lstat_bytes": 83190,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/26-config-reference.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586584,
+        "kind": "regular",
+        "lstat_bytes": 10136,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/docs/user-guide/27-grok-clone.md",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586553,
+        "kind": "regular",
+        "lstat_bytes": 62,
+        "mode": 384,
+        "nlink": 1,
+        "path": "cases/positive-read-file/grok-home/requirements.toml",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586614,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 2,
+        "path": "cases/positive-read-file/grok-home/xdg_cache_home",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586548,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 2,
+        "path": "cases/positive-read-file/temporary",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586518,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 3,
+        "path": "cases/positive-read-file/workspace",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586519,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 7,
+        "path": "cases/positive-read-file/workspace/.git",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586542,
+        "kind": "regular",
+        "lstat_bytes": 23,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/HEAD",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586523,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/workspace/.git/branches",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586544,
+        "kind": "regular",
+        "lstat_bytes": 92,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/config",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586522,
+        "kind": "regular",
+        "lstat_bytes": 73,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/description",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586524,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/workspace/.git/hooks",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586527,
+        "kind": "regular",
+        "lstat_bytes": 478,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/applypatch-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586530,
+        "kind": "regular",
+        "lstat_bytes": 896,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/commit-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586533,
+        "kind": "regular",
+        "lstat_bytes": 4726,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/fsmonitor-watchman.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586536,
+        "kind": "regular",
+        "lstat_bytes": 189,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/post-update.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586526,
+        "kind": "regular",
+        "lstat_bytes": 424,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/pre-applypatch.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586534,
+        "kind": "regular",
+        "lstat_bytes": 1643,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/pre-commit.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586529,
+        "kind": "regular",
+        "lstat_bytes": 416,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/pre-merge-commit.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586528,
+        "kind": "regular",
+        "lstat_bytes": 1374,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/pre-push.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586531,
+        "kind": "regular",
+        "lstat_bytes": 4898,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/pre-rebase.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586538,
+        "kind": "regular",
+        "lstat_bytes": 544,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/pre-receive.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586535,
+        "kind": "regular",
+        "lstat_bytes": 1492,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/prepare-commit-msg.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586537,
+        "kind": "regular",
+        "lstat_bytes": 2783,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/push-to-checkout.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586525,
+        "kind": "regular",
+        "lstat_bytes": 2308,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/sendemail-validate.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586532,
+        "kind": "regular",
+        "lstat_bytes": 3650,
+        "mode": 509,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/hooks/update.sample",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586520,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/workspace/.git/info",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586521,
+        "kind": "regular",
+        "lstat_bytes": 240,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/.git/info/exclude",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586543,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 4,
+        "path": "cases/positive-read-file/workspace/.git/objects",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586546,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/workspace/.git/objects/info",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586545,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/workspace/.git/objects/pack",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586539,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 4,
+        "path": "cases/positive-read-file/workspace/.git/refs",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586540,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/workspace/.git/refs/heads",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586541,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 509,
+        "nlink": 2,
+        "path": "cases/positive-read-file/workspace/.git/refs/tags",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586549,
+        "kind": "regular",
+        "lstat_bytes": 50,
+        "mode": 436,
+        "nlink": 1,
+        "path": "cases/positive-read-file/workspace/sentinel.txt",
+        "uid": 1000
+      },
+      {
+        "device": 66306,
+        "gid": 1000,
+        "inode": 6586405,
+        "kind": "directory",
+        "lstat_bytes": 4096,
+        "mode": 448,
+        "nlink": 2,
+        "path": "namespace-tmp",
+        "uid": 1000
+      }
+    ],
+    "entry_count": 204,
+    "namespace_change_excluded": false,
+    "phase": "root-post-actual-owner-exit-readonly",
+    "root": "/tmp/pytest-of-barberb/gc17a",
+    "root_device": 66306,
+    "root_inode": 6586401,
+    "rootlesskit_process_exit_observed": false,
+    "schema": "charged-grok-fixture-descriptor-inventory/v2",
+    "special_file_count": 0,
+    "symlink_count": 0,
+    "symlink_entries_enqueued": false
+  },
+  "product_or_backend_imported": false,
+  "production_configuration_qualified": false,
+  "production_database_opened": false,
+  "qualification_result_pin": {
+    "bytes": 133024,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/qualification-result.json",
+    "sha256": "9486aae975cf107ed3436755c699ce8f4ee0c83d6504b266af93f62b0877ff5f"
+  },
+  "real_generation_or_spend_cap_verified": false,
+  "request_pin": {
+    "bytes": 776519,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-request-v03.json",
+    "sha256": "1fd334ada652d142e8bcfda5d6965f3a124e03c2bf1c9cb3858d494f7fc82f13"
+  },
+  "retained_baseline_pin": {
+    "bytes": 9719,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/retained-records-baseline-v01.json",
+    "sha256": "568dca0860992975d7ebcacfabb5130d37113c0191d3d59fd737c9dd22cfffba"
+  },
+  "schema": "current-grok-profile-post-owner-root-readonly-join@1"
+}

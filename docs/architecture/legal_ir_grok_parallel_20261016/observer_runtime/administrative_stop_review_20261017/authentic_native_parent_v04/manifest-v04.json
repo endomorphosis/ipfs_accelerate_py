@@ -1,0 +1,66 @@
+{
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "files": {
+    "contract": {
+      "bytes": 3328,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/contract-v04.json",
+      "sha256": "a51a122e453ef5b7d618c72f323df3fa183bd29c623a1ce80644b9999f161dbf"
+    },
+    "exact_patch": {
+      "bytes": 4475,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/actual-child-terminal-observe-and-failure-diagnostic-v04.patch",
+      "sha256": "c43bf36e8449ce64894ba801688e17e81e4c70744a51cd44a742c993736c7766"
+    },
+    "independent_static_review": {
+      "bytes": 4635,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/terminal-reap-independent-static-review-v04.json",
+      "sha256": "ed0a12e076360c6b1e2b19d9fee63a61572f52f55edf26b3a336ec91a5092c3b"
+    },
+    "parent_source": {
+      "bytes": 46961,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/authentic_unknown_native_parent_v04.py",
+      "sha256": "d774c6781f7563514c0b1175933196e25fc1674ddd5f6f50e3a56b68b908022c"
+    }
+  },
+  "fixture_only": true,
+  "frozen": true,
+  "future_request_selection": "Parent renders NEW requests from this source, sealing its exact self-pin and a freshly genuine A07/B07 unbound input. All C/D stages in that trace must use the same parent source pin.",
+  "pending_native_gate": "Fresh C07 actual READY/crash race path and complete outer finalization; genuine D stages remain separately required.",
+  "production_access": false,
+  "retained_failure_policy": "Preserve C06 READY/audit/WAL/failure artifacts as failed; no retrospective parent result, exit witness, recovery replay or deletion.",
+  "runtime_qualified_at_freeze": false,
+  "schema": "authentic-native-parent-terminal-reap-bundle@4",
+  "target_imports_native_jobs_tests_DB_opens_or_C_edits_by_authors": false,
+  "unchanged_dependencies": {
+    "ADMIN_worker_v05": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "baseline_parent_v03": {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    "producer_v04": {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    "resource_loader_v01": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "settlement_worker_v04": {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    },
+    "unchanged_AB_utilities": {
+      "bytes": 44914,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+      "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1"
+    }
+  }
+}

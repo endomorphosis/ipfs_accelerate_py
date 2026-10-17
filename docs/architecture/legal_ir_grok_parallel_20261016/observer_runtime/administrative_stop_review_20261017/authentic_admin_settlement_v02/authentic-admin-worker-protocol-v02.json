@@ -1,0 +1,152 @@
+{
+  "actual_crash": "Parent may kill/reap only its matching registered owned Popen child/group. Worker emits no successful graceful record when killed; canonical WAL is retained for genuine fresh daemon recovery. No old-context rebind.",
+  "actual_stop": "Parent writes exact stop record private600 with same nonce/requestSHA and exact parent/child identity maps. Child calls real gateway.stop and native connection.close. admin-exited records only successful component close, requiring actual parent process exit/reap/group-absence observation afterward.",
+  "argv": [
+    "PINNED_PYTHON",
+    "-I",
+    "-S",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+    "--request",
+    "CONTROL/admin-request.json",
+    "--request-sha256",
+    "SHA256"
+  ],
+  "child_process_closed_keys": [
+    "pid",
+    "start_time_ticks",
+    "boot_id",
+    "process_birth_id",
+    "process_group",
+    "session_id"
+  ],
+  "child_process_group_rule": "Actual getppid equals parent PID; actual child PGID==SID==PID. Real parent must start_new_session=True and immediately register this exact Popen child with disk.check_usage(child_pid=child.pid).",
+  "closed_request_keys": [
+    "control_scope",
+    "control_scope_identity",
+    "deadline_monotonic_ns",
+    "fixture_only",
+    "nonce",
+    "parent_kernel_identity",
+    "production_access",
+    "python_pin",
+    "schema",
+    "unbound_input_pin",
+    "worker_source_pin"
+  ],
+  "context": "sealed-context.json is exactly compiler context_preimage plus registered_owner_identity=dict(actualGateway.identity), registered_creator=actualChildPID+nativeKernelBirth, and canonical contextCID. No other field may change.",
+  "control_files": {
+    "admin-cleanup-pending.json": [
+      "child_process",
+      "error_type",
+      "fixture_only",
+      "parent_native_custody_still_required",
+      "request_sha256",
+      "schema",
+      "successful_close_asserted"
+    ],
+    "admin-exited.json": [
+      "actual_parent_reap_required",
+      "child_process",
+      "close_failure_observed",
+      "completion_authority",
+      "connection_close_returned",
+      "fixture_only",
+      "gateway_stop_returned",
+      "graceful_stop_requested",
+      "native_resource_finalization_asserted",
+      "nonce",
+      "parent_kernel_identity",
+      "process_exit_observed_by_this_record",
+      "production_access",
+      "request_sha256",
+      "schema",
+      "sealed_context_pin",
+      "socket_absent_after_stop"
+    ],
+    "admin-ready.json": [
+      "child_process",
+      "completion_authority",
+      "credential_pin",
+      "fixture_only",
+      "gateway_identity",
+      "grant",
+      "installed_backend",
+      "native_custody_verifier_preserved",
+      "native_resource_ack_created",
+      "nonce",
+      "original_launch_receipt_created",
+      "parent_kernel_identity",
+      "policy_context_verified",
+      "production_access",
+      "request_sha256",
+      "schema",
+      "sealed_context_pin",
+      "socket_identity",
+      "socket_path"
+    ],
+    "admin-token.json": [
+      "gateway_identity",
+      "nonce",
+      "request_sha256",
+      "schema",
+      "token"
+    ]
+  },
+  "control_scope_identity_closed_keys": [
+    "device",
+    "inode",
+    "uid",
+    "mode"
+  ],
+  "control_scope_mode_integer": 448,
+  "credential": "admin-token.json is private600; ready carries only its pin, not token. Actual parent validates closed credential requestSHA/nonce/gateway identity and uses token only in genuine peer-bound TypedStateOwnerConnection. Never log/publish token.",
+  "deadline": "deadline_monotonic_ns exact positive int, at most30seconds ahead at child read. Native grant<=20seconds and remaining graceful window; parent hard cleanup by its original finite deadline plus bounded reap.",
+  "expected_canonical_mode": "Original native file may be0644 under private0700 fixture root; exact pre-admin hash/owner/nlink/no-world-writes required, no chmod or rewrite performed.",
+  "native_qualification_performed": false,
+  "new_control_scope_initial_tree": "Exactly admin-request.json, private0700 directory whose device/inode/uid/mode matches request. No socket under strict attempt or unchanged A/B census tree.",
+  "parent_kernel_identity_closed_keys": [
+    "pid",
+    "start_time_ticks",
+    "boot_id",
+    "process_birth_id"
+  ],
+  "publication_barriers": {
+    "ready": "Parent waits for private600 zero-byte admin-ready.commit, created only after admin-ready.json and referenced private records were written/fsynced/closed. It verifies marker custody/empty bytes before parsing ready.",
+    "stop": "Parent writes/fsyncs/closes exact private600 admin-stop.json first, then creates/fsyncs private600 zero-byte admin-stop.commit. Child waits for this marker, verifies custody/empty bytes, then parses stop. Existence of a JSON file alone never marks publication complete."
+  },
+  "ready_is_not": [
+    "A resource ACK",
+    "Original launch/admission/fence receipt",
+    "A parent reap observation",
+    "Completed native qualification",
+    "Provider outcome resolution"
+  ],
+  "request_schema": "authentic-native-unknown-admin-worker-request@2",
+  "schema": "authentic-native-unknown-admin-worker-protocol@2",
+  "socket": "Exactly CONTROL/admin.sock, actual AF_UNIX mode600/uid/single-link identity. Parent independently binds exact path/inode to ready actual child/gateway/grant and charges the separate control scope. Encoded path<=107bytes.",
+  "socket_publication_umask": "Child sets umask077 before actual native bind. AF_UNIX bind initially publishes mode0700 (0777 masked), then the genuine gateway chmods that same socket to0600. Parent may observe only this exact live-owned pre-ready publication transition and must pin0600 at ready/grant/handshake. Existing A/B files are never chmodded.",
+  "status": "Draft pinned source protocol; AST-only, runtime unqualified.",
+  "stop_closed_keys": [
+    "child_process",
+    "nonce",
+    "parent_kernel_identity",
+    "request_sha256",
+    "schema"
+  ],
+  "stop_schema": "authentic-native-unknown-admin-stop@2",
+  "worker_actions_not_performed": [
+    "Native resource root acquisition",
+    "Provider/model/network connect/child process dispatch",
+    "Execution/coordinator connection",
+    "Native settlement",
+    "Original source rearm/successor",
+    "Historical identity override",
+    "policy.verify_custody/load_context replacement"
+  ],
+  "worker_pin": {
+    "bytes": 24720,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+    "sha256": "b4bffedec72f1f8be083ac7ba83bd42fc7eb02ba9c1546a5034ac0d62fd77e86"
+  }
+}

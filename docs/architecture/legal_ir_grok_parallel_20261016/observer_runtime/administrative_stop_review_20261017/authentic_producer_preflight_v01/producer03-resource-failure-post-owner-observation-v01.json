@@ -1,0 +1,67 @@
+{
+  "actual_child_exit_code": 2,
+  "actual_disk_reservation_id": "3b8bbfb000fd48d3841506913ca30869",
+  "actual_failure_message": "bundled control-plane migration catalog is unavailable",
+  "actual_failure_type": "ControlPlaneSchemaInstallError",
+  "actual_fixture_file_metadata": [
+    {
+      "bytes": 1336672,
+      "path": "producer-request.json"
+    },
+    {
+      "bytes": 6471,
+      "path": "duckdb-installation.json"
+    }
+  ],
+  "actual_root_phase_native_lease_ids_observed_absent": [
+    "02390074ee48441ba99cd451c42937eb",
+    "061942f3cb91484b8d9c8102aab789d8",
+    "1dcd4fa9d7344bdfaf255ff88e3d2ada"
+  ],
+  "actual_tool_exit_code": 1,
+  "actual_tool_session": 12876,
+  "authentic_custody_qualified": false,
+  "child_pid_observed_absent": 2373666,
+  "native_resource_ack_created": false,
+  "observed_reservation_status": "released",
+  "original_result_preserved": "failed",
+  "original_supervisor_launch_started": false,
+  "owner_pid_observed_absent": 2360542,
+  "present_native_SQL_resource_pins": [
+    {
+      "bytes": 46509,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+      "sha256": "bace5842b431da39ac25d550338481ff4d68a2fc36327c8128280115adeaba36"
+    },
+    {
+      "bytes": 75535,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql",
+      "sha256": "9253504546b6bdad0ad9c1d00842016bfb474c40c2650d6d024919126589949c"
+    },
+    {
+      "bytes": 439,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql",
+      "sha256": "e5ff06f3e3bc0bc64ff20487589ba88ef6adca7d9eff0fd8cd572f5829cfeeb2"
+    },
+    {
+      "bytes": 513,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql",
+      "sha256": "21b423d3aaf280cbbe1b066611bdfeaf94128ab994cc429cc7ed44f125b50fdc"
+    },
+    {
+      "bytes": 672,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+      "sha256": "21e54254564d1cc7fc0bb667fcaae77e08e70dbe9d40fc03dbdd7e0bfa6750a2"
+    },
+    {
+      "bytes": 590,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
+      "sha256": "5cd6bc0dece24daa65a7c4123b347f1ffbce9e8200bafe2bc5ad2c56b225320a"
+    }
+  ],
+  "previous_permission_denial_propagated_as_failure": false,
+  "production_actions_performed": false,
+  "sanitized_log_sha256": "294950762da1c47ad9097474215eb49fd886f2b124ce11df1713a1f87c4afad8",
+  "schema": "authentic-producer-resource-failure-post-owner-observation@1",
+  "source_diagnosis": "Custom pinned Python import loader has no get_resource_reader; genuine migration loader requires bundled resources.files(package)/sql. No filesystem fallback exists; native checksum/version checks remain unchanged."
+}

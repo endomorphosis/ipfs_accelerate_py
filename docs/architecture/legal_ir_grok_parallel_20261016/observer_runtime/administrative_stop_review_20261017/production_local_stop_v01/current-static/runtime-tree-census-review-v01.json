@@ -1,0 +1,56 @@
+{
+  "checks": [
+    "Public runtime_tree_census accepts only exact original R06 state root and loads exact closed3bb metadata pin everycall.",
+    "Exactly three root-provided link paths, literal same-parent ordinary-file target names and7-field link/target generations are bound.",
+    "readlink reads the symlink itself; target metadata uses stat(follow_symlinks=False); no log target/file payload is opened.",
+    "Links count their own46-byte metadata sizes; each distinct ordinary target is counted once through the normal directory inventory.",
+    "All other static symlinks, sockets, FIFOs, hardlinked regular files, unknown special types, wrong owners/worldwrite permissions and changed listed generations refuse.",
+    "8192entry cap and exact integer maximum byte bound remain; every opened directory descriptor is closed in finally.",
+    "Directory anchors bind dev/inode/uid/mode, allowing genuine mutable WAL directory size/mtime changes without relaxing exact protected link/target generations.",
+    "Nine pure filesystem controls cover positive count-once, changed literal, path escape, wrong generation, unknown link, symlink target, hardlinked target, FIFO and worldwrite.",
+    "Initial synthetic target/link/identity creation is inside outer try/finally; cleanup removes only freshly created special entries/hardlink aliases and retains ordinary private evidence before strict nativeguard.",
+    "No product imports, backend queries, network/process dispatch, native custody/admission receipt or authority is supplied by helper/control reports."
+  ],
+  "limitations": [
+    "The census is cooperative and non-atomic. Queued directory names are opened with O_NOFOLLOW on their finalcomponent and generation checks; concurrent ancestor replacement races are not fully excluded. No continuous filesystem custody or universal confinement is established.",
+    "Static metadata validation does not prove current production link/target generations, byte totals or actual cleanup; genuine root-owned next status execution must run the9controls and actual R06 census.",
+    "Nonadmitting controls create only their new private fixture objects inside the admitted owner. Their report supplies no production-store or native-authority proof.",
+    "Root-provided pinned link metadata is a retained observation; the helper reobserves actual link and target metadata on every runtime call."
+  ],
+  "metadata_pin": {
+    "bytes": 3745,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-retained-log-links-metadata-v01.json",
+    "sha256": "3bb9c81cbc71cf4f5da79b42e5f18e332b04f3705c246a9bca292b901b201fa2"
+  },
+  "method": {
+    "C_edits": false,
+    "DB_WAL_or_log_target_bytes_read_or_hash": false,
+    "helper_or_product_import_execution": false,
+    "native_jobs_or_controls_executed": false,
+    "production_tree_stat_or_readlink_by_reviewer": false,
+    "source_AST_and_immutable_metadata_only": true
+  },
+  "planned_controls": [
+    "valid_count_once",
+    "changed_literal",
+    "path_escape",
+    "wrong_generation",
+    "unlisted_link",
+    "symlink_target",
+    "hardlinked_target",
+    "fifo",
+    "world_writable"
+  ],
+  "resolved_before_freeze": [
+    "Directory size/mtime were removed from custody anchors because a genuine settlement may create/remove WAL while the budget census runs.",
+    "The initial synthetic symlink and row setup were moved inside case try/finally to preserve cleanup on setup failure."
+  ],
+  "schema": "production-runtime-tree-census-independent-static-review@1",
+  "source_pin": {
+    "bytes": 15403,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+    "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+  },
+  "status": "static_clear_actual_nine_controls_and_status_pending",
+  "unresolved_static_blockers": []
+}

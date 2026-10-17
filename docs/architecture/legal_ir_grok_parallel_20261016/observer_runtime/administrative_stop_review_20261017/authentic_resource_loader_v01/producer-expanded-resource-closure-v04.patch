@@ -1,0 +1,20 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/produce_authentic_unknown_master_diagnostic_v03.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py
+@@ -270,9 +270,14 @@
+     exec(compile(read_pin(request["source_loader_pin"]), loader.__file__, "exec", dont_inherit=True), loader.__dict__)
+     repo = Path(request["repo_root"])
+     pins = request["product_sources"]
+-    need(type(pins) is dict and 1 <= len(pins) <= 4096, "actual product Python population differs")
+-    actual = {str(path) for path in (repo / "ipfs_accelerate_py").rglob("*.py")}
+-    need(set(pins) == actual, "actual product Python closure differs")
++    need(type(pins) is dict and 1 <= len(pins) <= 4096, "actual product Python/SQL population differs")
++    need(loader.RESOURCE_PACKAGE == "ipfs_accelerate_py.agent_supervisor.task_sources"
++         and tuple(loader.RESOURCE_FILENAMES) == (
++             "0001_control_plane.sql", "0002_causal_event_federation_core.sql",
++             "0002_tasks_index_repair.sql", "0003_state_server_restart_identity.sql",
++             "0004_hash_observations.sql", "0005_tasks_index_repair.sql"),
++         "pinned SQL resource loader contract differs")
++    need(pins == loader._package_pins(repo), "actual product Python plus six-SQL closure differs")
+     total = 0
+     for name, value in pins.items():
+         need(name == value["path"] and Path(name).is_relative_to(repo / "ipfs_accelerate_py"),

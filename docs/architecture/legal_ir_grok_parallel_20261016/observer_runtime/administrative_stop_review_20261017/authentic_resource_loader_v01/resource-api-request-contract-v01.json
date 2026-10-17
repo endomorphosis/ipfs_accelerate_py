@@ -1,0 +1,163 @@
+{
+  "closed_request_keys": [
+    "catalog_source_pin",
+    "controller_head",
+    "driver_pin",
+    "fixture_only",
+    "loader_pin",
+    "output",
+    "package_initializer_pin",
+    "previous_loader_pin",
+    "python_pin",
+    "repo_root",
+    "schema",
+    "sql_pins"
+  ],
+  "driver_pin": {
+    "bytes": 18699,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/test_pinned_product_resources_v01.py",
+    "sha256": "d94fd06d831e4a5720e2917a94a0605b15afcd50fba5f63300b7fc0501502aef"
+  },
+  "evidence_scope": [
+    "Real stdlib importlib.resources.files API over metadata-only package views reads actual pinned six C SQL resources through the candidate resource reader.",
+    "Previous frozen plainLoader cannot expose the SQL resource directory through that same real API.",
+    "Finite reader/package/namespace/path/mode/hash/read-only-buffer refusals; copied pin metadata mutations only, no C file mutations or symlink fixture.",
+    "All selected pins plus the complete candidate._package_pins Python+SQL population and actualHEAD revalidated at end.",
+    "Native required-five names are read from pinned catalog literalAST; native catalog/database/verifier/schema installation remain unexecuted."
+  ],
+  "expected_case_count": 22,
+  "expected_controls": [
+    "candidate-real-stdlib-files-enumerates-exact-six",
+    "candidate-reads-all-six-exact-pinned-bytes",
+    "previous-plain-loader-lacks-sql-resource-directory",
+    "sql-only-namespace-cannot-bypass-closed-reader",
+    "reader-wrong-package-name",
+    "resource-path-filesystem-fallback",
+    "binary-resource-buffer-is-readonly",
+    "binary-resource-write",
+    "binary-resource-truncate",
+    "binary-resource-writelines",
+    "unregistered-file",
+    "parent-path-escape",
+    "absolute-path",
+    "embedded-parent-path-escape",
+    "directory-open",
+    "write-mode-w",
+    "write-mode-wb",
+    "write-mode-a",
+    "write-mode-x",
+    "write-mode-r+",
+    "copied-sql-pin-hash-mismatch",
+    "copied-initializer-pin-hash-mismatch"
+  ],
+  "expected_result_schema": "pinned-product-sql-resource-api-qualification-result@1",
+  "explicit_non_authority": [
+    "No genuine package import/provenance capsule/protected route qualification.",
+    "No native schema install/authenticA/B/ADMIN/settlement or original launcher receipt qualification.",
+    "No resource ACK, production action, provider/model call or historicalUNKNOWN resolution."
+  ],
+  "fixture_only": true,
+  "independent_driver_review_pin": {
+    "bytes": 4181,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-API-driver-independent-review-v01.json",
+    "sha256": "6f264431302f33b9d9e6703968ca11085fc1b657988b9c4b2cdc58372a665c30"
+  },
+  "independent_loader_review_pin": {
+    "bytes": 8371,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-loader-independent-static-review-v01.json",
+    "sha256": "6130f51e4d8113b7fcada526d87e11533f45203450d6c63c238e9087597bfac8"
+  },
+  "metadata_only_nonexecutable": true,
+  "native_command_template": [
+    "/usr/bin/python3.12",
+    "-I",
+    "-S",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/test_pinned_product_resources_v01.py",
+    "--request",
+    "<NEW private closed request JSON>",
+    "--request-sha256",
+    "<actual request SHA256>"
+  ],
+  "request_body_template": {
+    "catalog_source_pin": {
+      "bytes": 61483,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+      "sha256": "8299b019f7b55612da209ca719126d8fa3f7198d03e4c258257c9f161fbaa5f6"
+    },
+    "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+    "driver_pin": {
+      "bytes": 18699,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/test_pinned_product_resources_v01.py",
+      "sha256": "d94fd06d831e4a5720e2917a94a0605b15afcd50fba5f63300b7fc0501502aef"
+    },
+    "fixture_only": true,
+    "loader_pin": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "output": "<NEW separately admitted native attempt>/resource-api-result.json",
+    "package_initializer_pin": {
+      "bytes": 3212,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+      "sha256": "247e63849d1bf589825fcf965b6c6d20cc95de4e147f6121cd6fe6fd7cf06deb"
+    },
+    "previous_loader_pin": {
+      "bytes": 43192,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py",
+      "sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
+    },
+    "python_pin": {
+      "bytes": 7845032,
+      "path": "/usr/bin/python3.12",
+      "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    },
+    "repo_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller",
+    "schema": "pinned-product-sql-resource-api-qualification-request@1",
+    "sql_pins": {
+      "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql": {
+        "bytes": 46509,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "sha256": "bace5842b431da39ac25d550338481ff4d68a2fc36327c8128280115adeaba36"
+      },
+      "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql": {
+        "bytes": 75535,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql",
+        "sha256": "9253504546b6bdad0ad9c1d00842016bfb474c40c2650d6d024919126589949c"
+      },
+      "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql": {
+        "bytes": 439,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql",
+        "sha256": "e5ff06f3e3bc0bc64ff20487589ba88ef6adca7d9eff0fd8cd572f5829cfeeb2"
+      },
+      "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql": {
+        "bytes": 513,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql",
+        "sha256": "21b423d3aaf280cbbe1b066611bdfeaf94128ab994cc429cc7ed44f125b50fdc"
+      },
+      "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql": {
+        "bytes": 672,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+        "sha256": "21e54254564d1cc7fc0bb667fcaae77e08e70dbe9d40fc03dbdd7e0bfa6750a2"
+      },
+      "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql": {
+        "bytes": 590,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
+        "sha256": "5cd6bc0dece24daa65a7c4123b347f1ffbce9e8200bafe2bc5ad2c56b225320a"
+      }
+    }
+  },
+  "result_size_limit_bytes": 262144,
+  "root_only_rendering_requirements": [
+    "Replace output with a NEW absolute file below the actual admitted attempt directory, outside C. Serialize request once mode0600, pin exact bytes, and pass its actual hash.",
+    "Run through unchanged originalv05 in one genuine F07 finite controller_preparation owner; do not nest another resource root or invent a native receipt. Root decides exact finite limits and pins native scheduler/owner dependencies.",
+    "Pin driver/candidate/oldloader/Python/catalog/initializer/all6SQL and actual current C Git metadata in owner source_sha256. Preserve exactCHEAD592 for the whole qualification.",
+    "The driver compile-loads only pinned stdlib-based loader utility definitions. Never call helper start_admin_owner/serve_admin or any native/nonadmitting fixture entrypoint.",
+    "The actual package module views are explicitly test doubles for resource API dispatch; candidate find_spec executes no product initializer. NoProductImports prevents product/backend imports.",
+    "After native return, root must verify actual owner exit, child/group death and root/phase/disk release; stdout/result metadata is not a new native resource ACK."
+  ],
+  "runtime_qualified": false,
+  "schema": "pinned-product-sql-resource-api-qualification-contract@1",
+  "wire_request_schema": "pinned-product-sql-resource-api-qualification-request@1"
+}

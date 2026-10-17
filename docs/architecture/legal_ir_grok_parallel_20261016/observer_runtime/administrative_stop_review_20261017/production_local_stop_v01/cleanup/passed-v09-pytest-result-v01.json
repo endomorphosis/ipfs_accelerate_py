@@ -1,0 +1,43 @@
+{
+  "all_other_pytest_roots_preserved": true,
+  "completed_at_epoch": 1792245614.4672818,
+  "database_payload_read_or_opened": false,
+  "historical_full92_or14_claimed": false,
+  "historical_selected_cases": 12,
+  "ledger_records_mutated_by_cleanup": false,
+  "native_reservations_released_by_cleanup": false,
+  "post_owner_pin": {
+    "bytes": 1755,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/native-controls-v09-post-owner-observation-v01.json",
+    "sha256": "17190a2117a6f34d1f00c41596406a9282703224e695d6ef85b631f7280a3b61"
+  },
+  "pre_cleanup_manifest_pin": {
+    "bytes": 101731,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-pa17i-pre-cleanup-manifest-v01.json",
+    "sha256": "68a5cd1961a42be5b3aa06abed0b17f11cc76ba49b52747fcb1a025a7cf4467c"
+  },
+  "production_failed_retained_foreign_stores_or_model_assets_removed": false,
+  "removed_apparent_bytes": 1297896843,
+  "removed_metadata_entries": 473,
+  "removed_path": "/tmp/pytest-of-barberb/pa17i",
+  "removed_root_device": 66306,
+  "removed_root_inode": 6313253,
+  "reports_and_JUnit_preserved_exactly": [
+    {
+      "bytes": 637,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/receipt.json",
+      "sha256": "313aa02d709bf55b0ca535df57a8ae41f74df7c25e9f6e0c4e58b4adc8e07f4f"
+    },
+    {
+      "bytes": 43766,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/administrative-controls-result.json",
+      "sha256": "4d49a226112a294abcc9ea7d843839aa5a4a51b153c26dfb44b1bd6c0683ebd8"
+    },
+    {
+      "bytes": 2518,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/pytest.junit.xml",
+      "sha256": "35aa2cbfb100085157465b0b5e8810a1390258200466bab24ff2434c10446410"
+    }
+  ],
+  "schema": "owned-successful-pytest-disposable-tree-cleanup@1"
+}

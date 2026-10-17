@@ -1,0 +1,60 @@
+{
+  "checked": [
+    "Exact isolated -I/-S/-B, genuine parent PID/start/boot/kernel birth, real child PGID==SID==PID and closed finite request/nonce/deadline.",
+    "Actual whole C source closure/HEAD, exact installed DuckDB loader utilities only; nonadmitting fixture serve() is never invoked.",
+    "Unchanged production verify_custody/load_context function objects AND code objects, exact required13-key context preimage and actual seven A/B artifacts, physical post-B sidecars and original same-store pre-admin canonical pin.",
+    "Actual native canonical connection, fresh host-created identity bound to that genuine gateway; actual child kernel creator and canonical contextCID; genuine load_context(check_closed_stores=True), live service bind and exact peer-bound singleton ADMIN grant.",
+    "Existing native DuckDB files can remain0644 within0700 fixture root; no chmod or copies/relocation of A/B stores.",
+    "Private separate control/socket scope, short path, inherited credentials cleared before imports, native listener only and tokens kept in separate600 file.",
+    "Actual gateway/native connection close retries retain real objects. Successful component-close record follows actual close returns and explicitly does not claim process exit, parent reap or resource finalization.",
+    "Actual ready JSON+referenced files are fsynced before zero-byte private ready.commit; reciprocal stop.commit avoids parsing partial JSON publication."
+  ],
+  "disposition": "No remaining concrete static blocker found in the actual ADMIN child scope after the listed draft corrections. Native parent admission and runtime remain independently required.",
+  "draft_findings_resolved": [
+    {
+      "finding": "Direct os.fork/forkpty were missing from external-dispatch audit hook.",
+      "resolution": "Both events now refused in actual worker."
+    },
+    {
+      "finding": "Socket bind could transiently publish a non600 mode under inherited umask.",
+      "resolution": "Child sets umask077 before bind/new private persistence; existing A/B files unchanged."
+    },
+    {
+      "finding": "Parent could observe partial ready JSON; child could observe partial stop JSON.",
+      "resolution": "Exact private empty commit markers created only after JSON fsync/close and directory fsync; parent must implement protocol as reviewed."
+    }
+  ],
+  "files": [
+    {
+      "bytes": 24720,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+      "sha256": "b4bffedec72f1f8be083ac7ba83bd42fc7eb02ba9c1546a5034ac0d62fd77e86"
+    },
+    {
+      "bytes": 6588,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic-admin-worker-protocol-v02.json",
+      "sha256": "ae125285b14d321a8a211d72081bd63b778f88b0b3be3e914cfbea43fc8714f4"
+    }
+  ],
+  "fixture_only": true,
+  "qualification": {
+    "DB_opens": false,
+    "native_jobs": false,
+    "product_backend_imports": false,
+    "production_abandonment_authorized": false,
+    "production_access": false,
+    "status": "STATIC_ONLY_NATIVE_UNQUALIFIED",
+    "tests_executed": false
+  },
+  "remaining_static_blockers": [],
+  "required_parent_checks": [
+    "One real retained F07 owner, actual isolated worker registration and bounded real output/reap; no nested root or original supervisor_launch for C/D.",
+    "Separately explicit charged short control/socket scope outside strict native attempt and unchanged A/B fixture; exact observed socket inode/path/uid joined to actual READY child/gateway/grant.",
+    "Actual native peer handshake + exact token/ready/context pins; same-live genuine audit replay after explicitly logical postresponse discard.",
+    "Actual ADMIN creator exit/reap/owned-group absence and outer native finalization before any fresh D native store open. No old-context rebind.",
+    "CHEAD/source/worker bytes fixed across entire A\u2192B\u2192C\u2192D trace, including finalized owner gaps."
+  ],
+  "review_method": "Read exact worker/protocol and unmodified current C gateway/grant/context APIs; AST/JSON parse only, no source import/execution, DB opens, native jobs or C/A-B edits.",
+  "reviewer": "/root/unknown_event_forensics",
+  "schema": "authentic-admin-worker-independent-static-review@2"
+}
