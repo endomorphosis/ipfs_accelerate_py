@@ -5696,8 +5696,6 @@ class QuackStateServer:
         try:
             if self._lifecycle is ServerLifecycle.READY:
                 self._ensure_client_token_handoff()
-                self._unstall_false_terminal_blocked()
-                self._provisionally_complete_terminal_goals()
             _atomic_write_json(self.status_path(), self.status(), mode=0o600)
         except Exception as exc:
             self._log(f"status write warning: {type(exc).__name__}")
