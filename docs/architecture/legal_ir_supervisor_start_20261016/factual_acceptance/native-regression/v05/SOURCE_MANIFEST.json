@@ -1,0 +1,52 @@
+{
+  "author_tests_or_native_Docker_execution": false,
+  "base_adapter_manifest_sha256": "c9042090f0a9772c666dfa7b15f321a6c495989fbefcda8de30bd792dc0d6d5b",
+  "common_regression_manifest_sha256": "8240d5562e88c89bd4079e1b5605d4f57b8da7e8a3315d2942c5d31a5ee63c9a",
+  "compatible_entry_request_terminal_api": "@4",
+  "files": [
+    {
+      "bytes": 6098,
+      "path": "README.md",
+      "sha256": "9b5d7c9d85bef6f3409f593c9be574d1248fd216d4bf8518bd239ed3bab01d86"
+    },
+    {
+      "bytes": 7256,
+      "path": "RESOURCE_PLAN.json",
+      "sha256": "376a156bef5a5f564699080b1e9e44a10d83cf91d9e5b29f03630cc540349677"
+    },
+    {
+      "bytes": 1667,
+      "path": "REVISION_PROVENANCE.json",
+      "sha256": "1c2fee6ac5ef5468ca66c7e4770080dff82a7f65289110738d569cdff91277c6"
+    },
+    {
+      "bytes": 34367,
+      "path": "docker_fixture_roundtrip.py",
+      "sha256": "3014e52e8a94a1d4d3f9214f5dcf1e443f3a1eb471aaf2efba42ec93e97f750d"
+    },
+    {
+      "bytes": 15628,
+      "path": "entry.py",
+      "sha256": "9186ae87f353690ed0f51eb1f8b013035983296894440f18bed64b8d5fee948d"
+    },
+    {
+      "bytes": 3003,
+      "path": "inner_checker.py",
+      "sha256": "52e02e6a57152abaffc2d891350922f2202cd76a195745353635d10615ee9002"
+    },
+    {
+      "bytes": 2510,
+      "path": "outer_start_barrier.py",
+      "sha256": "94217528f7658c4e6b5913ccc903b638bf18d2d3f8e01fbf7d6ce760aa7e61d1"
+    },
+    {
+      "bytes": 4234,
+      "path": "prepare_entry_request.py",
+      "sha256": "26896505992f696006aa73d6f4ff5a6f189e073a3ce90f195decb3b13ef3dde5"
+    }
+  ],
+  "original_V04_manifest_sha256": "276338ca14edc7c1c7cdb76413ddf316a5d5290dd13b129e7b4b3a5ea5659387",
+  "runtime_profile": "legal-ir-factual-validation-docker-v05",
+  "schema": "legal-ir-genuine-native-docker-regression-source-manifest@5",
+  "status": "source_authored_root_reviewed_pending_controlled_and_native_execution"
+}

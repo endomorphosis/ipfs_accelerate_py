@@ -1,0 +1,64 @@
+{
+  "actual_git_or_public_observer_qualified": false,
+  "actual_provider_outcome_observed": false,
+  "author_test_or_observer_execution": false,
+  "embedded_git_barrier_ast_valid": true,
+  "existing_adapter_packet_v04_modified": false,
+  "existing_implementation_dependencies": {
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py": {
+      "bytes": 40999,
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py": {
+      "bytes": 17545,
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py": {
+      "bytes": 15440,
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": {
+      "bytes": 121503,
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py": {
+      "bytes": 13703,
+      "sha256": "4168c617ba079ca8fbeb2346931d4c7fcfb6516a09e5ddc7079434fb3541654e"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+      "bytes": 3300743,
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    "/usr/bin/git": {
+      "bytes": 4003072,
+      "sha256": "aa6540695d076182256dd6e96c8b302e4d56381e3000bbfd5c71bbdfe94a4942"
+    },
+    "/usr/bin/python3.12": {
+      "bytes": 7845032,
+      "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    }
+  },
+  "files": [
+    {
+      "bytes": 18030,
+      "path": "real_candidate_binding.py",
+      "sha256": "a9b8de8e0b496360e3e828e0bae84aa2b60b6b9643c165b9878462388095a896"
+    },
+    {
+      "bytes": 10735,
+      "path": "test_binding_memory.py",
+      "sha256": "ce8b8370f240aedf92aed366eba051c2ea161411809dd16ee80105b0ced15224"
+    },
+    {
+      "bytes": 6517,
+      "path": "README.md",
+      "sha256": "4afa30e2a86de5ffc7f7f36b71d653a9f761895390172e82a1ec87405722588f"
+    }
+  ],
+  "native_fixture_qualification_still_required": true,
+  "pure_unittest_cases": 31,
+  "qualification_scope": "Pure controls cover in-memory correspondence/refusals only; real Git/native observer and provider outcome integration remain pending.",
+  "schema": "legal-ir-real-candidate-binding-source-manifest@1",
+  "status": "source_only_not_executed",
+  "task_counter_board_or_repository_mutations": false
+}
