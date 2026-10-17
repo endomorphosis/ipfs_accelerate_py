@@ -107,6 +107,9 @@ def insert_fixture_unknown(daemon, row):
 def real_daemon(stores, *, source=None, coordinator=None):
     source = source or DatabaseTaskSource(intent=IntentRepository(stores["canonical"]))
     coordinator = coordinator or DatabaseCoordinator(stores["coordination"])
+    # Supplied native adapters keep their own public open lifecycle. The daemon
+    # does not implicitly open a caller-owned coordinator before claim_next.
+    coordinator.open()
     return DatabaseImplementationDaemon(database_path=stores["canonical"],
         coordination_path=stores["coordination"], execution_path=stores["execution"],
         state_dir=Path(stores["execution"]).parent, state_prefix="crash-copy",
@@ -124,6 +127,31 @@ def close_native(daemon):
         coordinator.close()
     if source is not None:
         source.close()
+
+
+def test_supplied_native_coordinator_is_open_before_actual_daemon_claim(tmp_path):
+    lane = tmp_path / "supplied-coordinator-lane"
+    lane.mkdir(mode=0o700)
+    stores = {"canonical": tmp_path / "constructor-canonical.duckdb",
+              "coordination": tmp_path / "constructor-coordination.duckdb",
+              "execution": lane / LANE_BASENAME}
+    repository = IntentRepository(stores["canonical"])
+    repository.upsert_goal(goal_cid="constructor-goal", goal_alias="CONSTRUCTOR-G", title="TEST ONLY")
+    repository.upsert_task(task_cid=TASK, task_alias="FIXTURE-T", goal_cid="constructor-goal",
+        status="ready", body={"board_namespace": NAMESPACE, "objective": "TEST ONLY native lifecycle"})
+    source = DatabaseTaskSource(intent=repository)
+    coordinator = DatabaseCoordinator(stores["coordination"])
+    assert coordinator._connection is None
+    daemon = real_daemon(stores, source=source, coordinator=coordinator)
+    try:
+        assert coordinator._connection is not None
+        daemon.open()
+        attempt = daemon.claim_next()
+        assert attempt is not None and attempt.attempt_number == 1
+        assert coordinator.get_task_claim(attempt.claim_id).attempt_id == attempt.attempt_id
+        assert source.get_task(TASK).status == "in_progress"
+    finally:
+        close_native(daemon)
 
 
 def seed_real_ordinal_history(root):

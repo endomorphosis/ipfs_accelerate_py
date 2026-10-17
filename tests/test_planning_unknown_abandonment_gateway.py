@@ -101,6 +101,18 @@ def decide(native, client=None):
         native.original["context_cid"], native.revision)
 
 
+def test_real_admin_grant_retains_exact_abandonment_scope_through_native_handshake(native):
+    token, grant = native.gateway.issue_planning_unknown_abandonment_grant()
+    expected = {"task_cid": "fixture-task", "abandonment_scope_cid": native.scope["abandonment_scope_cid"]}
+    assert dict(grant.entity_scopes) == expected
+    assert grant.allowed_operations == frozenset({policy.OPERATION})
+    assert grant.allowed_command_operations == grant.allowed_database_task_commands == frozenset()
+    client = native.connect(token, grant)
+    assert dict(client.grant)["entity_scopes"] == expected
+    assert dict(client.grant)["allowed_operations"] == [policy.OPERATION]
+    assert dict(client.identity) == native.identity
+
+
 def test_real_admin_rpc_appends_one_reserved_audit_and_event_with_no_task_mutation(native):
     client = native.admin()
     watermark = native.source.intent.event_watermark()

@@ -1124,6 +1124,7 @@ class OwnerClientGrant:
             "task_cid",
             "reviewed_preflight_cid",
             "recovery_scope_cid",
+            "abandonment_scope_cid",
             NATIVE_EXECUTION_STATUS_SCOPE,
             "subscription_id",
             "consumer_id",
