@@ -18,4 +18,6 @@ Merged source revision `04556f5fe1907a38faf89b059dedfce66527a5b4` incorporates m
 
 About 3.9 GB of completed synthetic pytest fixtures were reclaimed after fresh ownership and release checks. Reports and receipts remain preserved; production stores, failed runs, retained reservations, foreign work and model assets were kept. The shared storage limit remains unchanged. Productive Grok toolset qualification and law-span processing remain open.
 
+Follow-up source incorporates main `a9b1b7cb7affa48a7e65b6f3c27630fc25dca700`, preserving the other session's explicit Grok native session identity checks. Workflow repairs initialize runner-local paths in command steps and remove a malformed nested expression from failure reports. The frozen release evidence bundle still binds the older workflow and command hashes; its owner must reissue that immutable bundle before the repaired release workflow can qualify. No frozen evidence identity or qualification decision was rewritten.
+
 The publication adds review evidence after the source-qualified revision. Local documentation checks at the publication revision and hosted GitHub checks are tracked separately; an account billing restriction has prevented the hosted checks from starting. The feature remains in draft PR293 until its remaining integration gates are satisfied.

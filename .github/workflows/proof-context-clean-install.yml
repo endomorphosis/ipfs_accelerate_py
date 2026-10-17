@@ -68,13 +68,21 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
-      PCCE_ARTIFACT_BUNDLE_ROOT: ${{ runner.temp }}/proof-context-pcce053
       PCCE_ARTIFACT_MANIFEST_REL: ${{ inputs.artifact_manifest_path }}
       PCCE_ARTIFACT_ROOT_REL: ${{ inputs.artifact_root_path }}
-      PCCE_CLEAN_INSTALL_REPORT: ${{ runner.temp }}/proof-context-clean-install.json
-      PCCE_CONTAINER_BUILD_LOG: ${{ runner.temp }}/proof-context-container-build.log
-      PCCE_CONTAINER_IID: ${{ runner.temp }}/proof-context-container.iid
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${RUNNER_TEMP:?RUNNER_TEMP must be set}"
+          {
+            echo "PCCE_ARTIFACT_BUNDLE_ROOT=$RUNNER_TEMP/proof-context-pcce053"
+            echo "PCCE_CLEAN_INSTALL_REPORT=$RUNNER_TEMP/proof-context-clean-install.json"
+            echo "PCCE_CONTAINER_BUILD_LOG=$RUNNER_TEMP/proof-context-container-build.log"
+            echo "PCCE_CONTAINER_IID=$RUNNER_TEMP/proof-context-container.iid"
+          } >> "$GITHUB_ENV"
+
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
