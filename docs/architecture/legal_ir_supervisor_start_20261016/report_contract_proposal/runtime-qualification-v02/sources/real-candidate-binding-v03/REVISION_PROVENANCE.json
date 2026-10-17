@@ -1,0 +1,12 @@
+{
+  "base_manifest_sha256": "1699b077d97ba65edb354826123d1785d38631d35651140f919432bb61b4827e",
+  "base_source_sha256": "fb2f27e6ecfb47c47039c0086cc65ffc0bd8cd1d91ee579971865aa5641afb2c",
+  "failed_r01_refusal": "exact_legacy_task_population_required",
+  "failed_real_git_r01_preserved": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-candidate-observer-20261017-r01",
+  "failure_reported_by_root_not_execution_by_author": true,
+  "fixed_assumption": "Actual original64 ordered task IDs are independently bound to frozen authored inventory and execution board; they are not a contiguous9001..9064 range.",
+  "preserved_original_memory_controls_path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/real-candidate-binding-v02/test_binding_memory.py",
+  "preserved_original_memory_controls_sha256": "ce8b8370f240aedf92aed366eba051c2ea161411809dd16ee80105b0ced15224",
+  "retained_reader_controls_sha256": "668795a688925e16ad398cf3fbed5b4ad22ee9f85f0cc0e14106df7c377b38aa",
+  "schema": "legal-ir-real-candidate-binding-revision@3"
+}

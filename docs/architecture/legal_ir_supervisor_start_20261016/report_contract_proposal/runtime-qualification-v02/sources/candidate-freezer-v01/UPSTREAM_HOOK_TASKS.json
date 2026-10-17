@@ -1,0 +1,154 @@
+{
+  "schema": "legal-ir-report-only-candidate-freezer-upstream-tasks@1",
+  "status": "inert_source_review_proposal",
+  "canonical_scheduler_tasks_created": 0,
+  "canonical_tasks_accepted": 0,
+  "implementation_executed": false,
+  "provider_calls_performed": false,
+  "candidate_created": false,
+  "acceptance_authority": false,
+  "completion_authority": false,
+  "dispatch_authority": false,
+  "mutation_authority": false,
+  "root_goal": {
+    "id": "CF-G1",
+    "objective": "Freeze exactly one original successful fenced report-only Legal IR candidate before its separate native acceptance without resetting its finite retry history.",
+    "success_requires": [
+      "Actual supported public daemon host hook backed by same-process successful provider custody",
+      "Original two consumed attempts retained with total cap3 and only ordinal3 newly available",
+      "Existing daemon candidate producer reused under original decision and checkout serialization",
+      "Independent actual candidate binding plus separate native validation and one-use controller acceptance"
+    ]
+  },
+  "subgoals": [
+    {
+      "id": "CF-S1",
+      "goal": "Expose genuine original successful provider custody through the host daemon.",
+      "tasks": ["CF-001", "CF-002", "CF-003"]
+    },
+    {
+      "id": "CF-S2",
+      "goal": "Freeze only the report using the existing commit producer before native acceptance.",
+      "tasks": ["CF-004", "CF-005", "CF-006"]
+    },
+    {
+      "id": "CF-S3",
+      "goal": "Qualify the new path and consume its independent native acceptance truthfully.",
+      "tasks": ["CF-007", "CF-008", "CF-009"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "CF-001",
+      "status": "planned",
+      "depends_on": [],
+      "objective": "Add an explicit source-pinned report-only checkpoint profile to the real ordinary daemon, leaving generic validation and acceptance behavior unchanged.",
+      "acceptance": [
+        "Profile binds exact task CID, board byte revision, original workspace/baseline, one report path and original retry policy",
+        "No effectful public call accepts fake native owner, daemon facade, static grant dict or caller-supplied context",
+        "Named-root workspace, Git and durable output promises are charged before writes"
+      ]
+    },
+    {
+      "id": "CF-002",
+      "status": "planned",
+      "depends_on": ["CF-001"],
+      "objective": "Add a public supported original successful provider host hook backed by real runner Popen and active lifecycle fence observations.",
+      "acceptance": [
+        "Hook receives only actual daemon-issued same-process objects captured at native provider birth",
+        "Actual route/model, original child birth, canonical task, ordinal, board revision, workspace and baseline joins independently verified",
+        "Returncode0, actual reap, group absence, owned subreaper quiescence, current lease/fence and unchanged protected sources required",
+        "Worker receipt dictionaries, historical logs, PID-only observations and protected CAS replay are rejected"
+      ],
+      "external_dependency": "Provider-observation agent review found no existing ordinary public successful outcome capability. The upstream host hook must be implemented before an adapter can claim this boundary."
+    },
+    {
+      "id": "CF-003",
+      "status": "planned",
+      "depends_on": ["CF-001", "CF-002"],
+      "objective": "Preserve the two consumed canonical attempts and enforce one final additional ordinal under the actual durable daemon state.",
+      "acceptance": [
+        "Current original state independently reports two consumed attempts before the new dispatch",
+        "preserve_task_attempts is true and total attempt cap is3",
+        "Every other63 task remains blocked",
+        "Post-provider, unknown, timeout or failed closeout retains ordinal3 as consumed",
+        "Only actually observed predispatch no-execution refusal can use the existing refund policy"
+      ]
+    },
+    {
+      "id": "CF-004",
+      "status": "planned",
+      "depends_on": ["CF-002", "CF-003"],
+      "objective": "Add report-only structural proposal checks distinct from authoritative native validation.",
+      "acceptance": [
+        "Only data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json changes",
+        "Ignored declared JSON is included using existing bounded staging API",
+        "Extra paths, submodule changes, executable/symlink report, rewritten baseline and provider-created merges are refused",
+        "Advisory CLI exit3 is not converted to acceptance and generic validation-result bindings are not fabricated"
+      ]
+    },
+    {
+      "id": "CF-005",
+      "status": "planned",
+      "depends_on": ["CF-004"],
+      "objective": "Expose a concrete public report-only candidate freezer that reuses the daemon commit producer and its mutation/serialization scopes.",
+      "acceptance": [
+        "Exact preimage and staged report-only tree rechecked while holding existing checkout serialization",
+        "Existing commit decision scope remains in force",
+        "Original producer cleanup/staging/tracking behavior reused through a small reviewed refactor if needed",
+        "No new branch/worktree/commit implementation, gitignore broadening or dynamic unchecked-method fallback",
+        "Candidate creation alone has no task completion or merge authority"
+      ]
+    },
+    {
+      "id": "CF-006",
+      "status": "planned",
+      "depends_on": ["CF-005"],
+      "objective": "Independently re-observe the actual candidate and join it to the in-memory successful host outcome.",
+      "acceptance": [
+        "Current HEAD has exactly one baseline parent and one report-only diff",
+        "Actual regular100644 board/report blobs equal current source bytes with parser-derived semantic identity and separate board-byte CAS revision",
+        "Clean worktree, stable implementation sources and unchanged actual lifecycle/outcome joins rechecked",
+        "Post-commit mismatch retains failed candidate and consumed ordinal without silent repair or acceptance"
+      ],
+      "external_dependency": "Additive actual observer successor must address trusted0664 source pin reads without chmod of frozen/shared sources."
+    },
+    {
+      "id": "CF-007",
+      "status": "planned",
+      "depends_on": ["CF-006"],
+      "objective": "Connect the frozen original candidate to the strict real-context Docker backend through genuine fresh owners.",
+      "acceptance": [
+        "Real validation preparation independently rechecks candidate and original provider/task/attempt bindings",
+        "Current reviewed Docker fixture generation genuinely qualified under unchanged native admission policy",
+        "No synthetic fixture context, static capability or claimed terminal supplies missing actual qualification",
+        "Provider and native validation custody are closed honestly with no blind process-group cleanup"
+      ]
+    },
+    {
+      "id": "CF-008",
+      "status": "planned",
+      "depends_on": ["CF-007"],
+      "objective": "Consume the real one-use native handle through the original controller CAS and only then admit the next task.",
+      "acceptance": [
+        "Separate genuine ORCHESTRATION coordinator consumes one actual handle once",
+        "Original canonical task identity, report commit and board-byte revision all correspond",
+        "Stale board, changed commit, replayed handle and mismatching outcome are refused",
+        "No CLI exit0, candidate dictionary or model report is treated as authoritative completion"
+      ]
+    },
+    {
+      "id": "CF-009",
+      "status": "planned",
+      "depends_on": ["CF-005", "CF-006", "CF-007", "CF-008"],
+      "objective": "Qualify actual success and refusal boundaries using finite genuine owners and charged isolated fixtures.",
+      "acceptance": [
+        "Actual original successful runner at ordinal3 produces only the ignored report JSON and independently verified commit",
+        "Prelaunch refusal, nonzero/timeout/unknown exit, stale fence, changed birth, live descendants, extra dirty path and precommit/postcommit mutations tested",
+        "Extra parent, changed report bytes, source pin drift, board-byte CAS drift and second handle consumption tested",
+        "Pure controls and actual native/provider integration results reported separately",
+        "No statutory fidelity, training accuracy or Lean compilation claim from infrastructure qualification"
+      ]
+    }
+  ]
+}

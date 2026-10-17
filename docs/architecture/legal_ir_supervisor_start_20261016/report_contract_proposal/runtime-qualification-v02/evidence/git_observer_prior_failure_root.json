@@ -1,0 +1,28 @@
+{
+  "actual_exec_exit_code": 1,
+  "actual_exec_session": 70147,
+  "actual_native_terminal": {
+    "acceptance_authority": false,
+    "actual_provider_outcome_observed": false,
+    "actual_public_observer_and_git_qualified": false,
+    "canonical_attempt_counters_changed": false,
+    "canonical_tasks_accepted": 0,
+    "completion_authority": false,
+    "dispatch_authority": false,
+    "error_type": "BindingRefusal",
+    "native_validation_qualified": false,
+    "passed": false,
+    "provider_calls_performed": false,
+    "real_LIR_task_accepted": false,
+    "schema": "legal-ir-native-candidate-observer-qualification-terminal@1",
+    "synthetic_metadata_fixture": true
+  },
+  "canonical_tasks_accepted": 0,
+  "error_reason": "exact_legacy_task_population_required",
+  "old_failure_rewritten": false,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-candidate-observer-failure-root-observation@1",
+  "source_request_sha256": "9b00dfd75f99b40737f26feadc9c754f2c1dc94fcb548bb3c81b5920dfea3530",
+  "terminal_provenance": "Parsed terminal value from actual failed exec70147; error reason from the same actual traceback. No successful finalization is inferred from this failure terminal.",
+  "terminal_sha256": "0558d6e8b1cc7c71cdfac97ea489afa04facd9b6c046e13d8030eefe7a92b95d"
+}

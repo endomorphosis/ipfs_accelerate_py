@@ -1,0 +1,20 @@
+{
+  "actual_public_observer_qualified": false,
+  "actual_public_parser_regression_passed": true,
+  "additional_passed_call_reports": 4,
+  "canonical_tasks_accepted": 0,
+  "case_count_policy": "Unique pytest node IDs; successful subtest reports do not duplicate their parent case.",
+  "controlled_testcases": 60,
+  "errors": 0,
+  "external_test_root": "/tmp/pytest-of-barberb/legal-ir-candidate-readers-20261017-qualification03",
+  "failures": 0,
+  "native_git_fixture_qualified": false,
+  "passed": true,
+  "passed_testcases": 60,
+  "provider_calls_performed": false,
+  "returncode": 0,
+  "schema": "legal-ir-candidate-reader-qualification@1",
+  "skipped": 0,
+  "source_manifest_sha256": "829d35224fc21fa40bd63e50b8d9073e3e66e58dd332710fc85d29caa214be97",
+  "test_aliases_outside_native_attempt": true
+}

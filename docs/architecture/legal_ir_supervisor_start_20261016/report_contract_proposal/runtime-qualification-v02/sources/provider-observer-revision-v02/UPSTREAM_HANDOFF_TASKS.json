@@ -1,0 +1,167 @@
+{
+  "attempt_history_mutated": false,
+  "automatic_dispatch_authorized": false,
+  "canonical_board_mutated": false,
+  "future_task_count_blocked": 63,
+  "future_total_attempt_cap_proposal": 3,
+  "goals": [
+    {
+      "id": "G-HOST-01",
+      "task_ids": [
+        "HOST-OUTCOME-01",
+        "HOST-OUTCOME-02"
+      ],
+      "title": "Obtain actual host dispatch and selected route observations"
+    },
+    {
+      "id": "G-HOST-02",
+      "task_ids": [
+        "HOST-OUTCOME-03",
+        "HOST-OUTCOME-04"
+      ],
+      "title": "Retain and seal actual fenced provider custody"
+    },
+    {
+      "id": "G-HOST-03",
+      "task_ids": [
+        "HOST-OUTCOME-05",
+        "HOST-OUTCOME-06"
+      ],
+      "title": "Join real candidate, validation and independent coordinator"
+    }
+  ],
+  "historical_attempts_consumed": 2,
+  "native_prerequisites_satisfied_by_document": false,
+  "original_canonical_task_count": 64,
+  "original_v01_manifest_pin": {
+    "bytes": 5065,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/provider-observer-v01/SOURCE_MANIFEST.json",
+    "sha256": "980b93fc267e51c3292086711989158fd60513229e8c82b9c7ea99db23b7c6a0"
+  },
+  "provider_calls_authorized_by_document": false,
+  "schema": "legal-ir-provider-handoff-source-task-contract@2",
+  "scope": "Supplementary engineering goals/tasks; not the canonical64-task board and not dispatch authority.",
+  "tasks": [
+    {
+      "acceptance_authority": false,
+      "depends_on": [],
+      "done_when": [
+        "Pure controls reject fake owners/processes, missing source pins, stale board, reset ordinal and wider route.",
+        "Actual finite isolated control uses public child hook and proves child attachment before release under genuine admission."
+      ],
+      "goal": "G-HOST-01",
+      "id": "HOST-OUTCOME-01",
+      "scope": [
+        "Add an opt-in public host owner hook to the actual ordinary daemon dispatch path; retain default behavior.",
+        "Require genuine same-process admitted ORCHESTRATION owner and exact code/source pins before any productive child release.",
+        "Capture actual task revision via public identity helpers, namespace, current board SHA and native attempt authority; retain consumed ordinal2 and permit at most one additional reviewed attempt under total cap3.",
+        "Retain exact actual Popen, owner and worker births, command/route binding in a private process-local registry; no JSON loader, environment switch, or caller-supplied PID shortcut."
+      ],
+      "status": "pending_source_implementation",
+      "title": "Bind actual consumed task dispatch before release"
+    },
+    {
+      "acceptance_authority": false,
+      "depends_on": [
+        "HOST-OUTCOME-01"
+      ],
+      "done_when": [
+        "Actual typed callback joins retained ordinary route decision, genuine execution convention, task/native attempt and actual processes.",
+        "Actual untrusted model/container host PID/birth is distinct from trusted host/router and Docker client; fake PID/JSON/UUID, stale source, route drift and medium fallback refuse.",
+        "Finite isolated source-pinned control demonstrates callback call order without provider calls or acceptance."
+      ],
+      "goal": "G-HOST-01",
+      "id": "HOST-OUTCOME-02",
+      "scope": [
+        "Add an opt-in public typed lifecycle hook to the trusted ordinary grok_cli_runner path. The source-pinned actual trusted caller can retain route/Popen/native Docker outcome objects in the same interpreter.",
+        "Observe the current ordinary route binding and actual selected provider/model/effort/trigger before invocation; expose an existing actual execution identity only when present, or establish a separate reviewed host-generated execution convention before dispatch.",
+        "Do not relabel the benchmark router UUID, legacy failure nonce, trusted runner PID, Docker attach PID or native reservation as model provider execution identity.",
+        "Preserve exact Grok4.7 primary and Codex GPT6.1Sol high only after existing typed primary_quota_exhausted policy. Do not broaden policy to authentication failures.",
+        "Keep worker stdout, runner receipt dictionaries, metadata setters and historical receipts diagnostic; invoke hook with retained actual objects and independent current guards, not JSON-derived authority."
+      ],
+      "status": "pending_source_implementation",
+      "title": "Expose typed host-owned ordinary runner observations"
+    },
+    {
+      "acceptance_authority": false,
+      "depends_on": [
+        "HOST-OUTCOME-02"
+      ],
+      "done_when": [
+        "Genuine clean control seals a fresh observation only after complete known cleanup.",
+        "Failure controls retain custody and refuse unfinished watchdog, wrong daemon/CID/birth, reaped reused PID, stale receipt and unfsynced or worker-writable artifacts.",
+        "No private CAS capability is copied and no global storage/proof policy is changed."
+      ],
+      "goal": "G-HOST-02",
+      "id": "HOST-OUTCOME-03",
+      "scope": [
+        "Keep the same actual process object through native wait/reap and successful exit; require the public process-group fence.",
+        "Independently verify all owned Docker effects, daemon ID, exact CID/name, watchdog birth and lease absence; group absence alone is insufficient.",
+        "Hold genuine custody on unknown cleanup, PID identity drift, source drift or ambiguous Docker observations.",
+        "Fsync bounded host-private provider receipt and controller observation outside worker outputs under actual disk accounting; record actual immutable hashes."
+      ],
+      "status": "pending_source_implementation",
+      "title": "Seal actual fenced provider closeout"
+    },
+    {
+      "acceptance_authority": false,
+      "depends_on": [
+        "HOST-OUTCOME-03"
+      ],
+      "done_when": [
+        "Fake/copyable dataclass-only outcomes, arbitrary verifier callbacks, incorrect process roles, stale task/source/invocation and worker-writable owner artifacts refuse.",
+        "Same-interpreter actual observations reach independent checker only after provider fence, while caller retains genuine ownership until known closeout."
+      ],
+      "goal": "G-HOST-02",
+      "id": "HOST-OUTCOME-04",
+      "scope": [
+        "Expose a public exact typed successful outcome only inside the reviewed actual trusted lifecycle, after all actual observations and cleanup pass.",
+        "Retain actual native admitted caller, actual trusted route/child objects, untrusted model/container PID birth, task board/revision and consumed attempt history in the same interpreter.",
+        "Give the independent real checker consume-free access to checked actual objects and independently recheck source/task/report correspondence before validation; serialized summaries stay inert.",
+        "Do not add a portable token layer, JSON/environment authority loader or ordinary substitution for private protected CAS capabilities. No acceptance or native validation success comes from provider outcome alone."
+      ],
+      "status": "pending_source_implementation",
+      "title": "Expose same-interpreter checked factual provider outcome"
+    },
+    {
+      "acceptance_authority": false,
+      "depends_on": [
+        "HOST-OUTCOME-04"
+      ],
+      "done_when": [
+        "Mismatched actual report, commit, board and provider/native context refuse before expensive work.",
+        "A finite isolated end-to-end control demonstrates cleanup and honest native handle issuance, with no canonical board mutation."
+      ],
+      "goal": "G-HOST-03",
+      "id": "HOST-OUTCOME-05",
+      "scope": [
+        "Separately prepare a report-only candidate under genuine ORCHESTRATION ownership; do not reuse the ordinary validation-pass-before-commit path if check-report intentionally exits3.",
+        "Run actual public candidate binding observer and compare every task/board/report/candidate field with actual same-interpreter provider observation.",
+        "Real backend verifies actual same-interpreter typed provider outcome/context before Docker creation and again before actual native issuer.",
+        "Require a freshly successful fully genuine native Docker fixture before real provider dispatch; a fixture handle never authorizes a canonical task."
+      ],
+      "status": "pending_integration",
+      "title": "Join report-only candidate to fresh native validation"
+    },
+    {
+      "acceptance_authority": false,
+      "depends_on": [
+        "HOST-OUTCOME-05"
+      ],
+      "done_when": [
+        "Only actual joined one-use native validation handle can accept the one current canonical task.",
+        "Stale board, mismatched namespace/revision/candidate, handle replay, wrong lane/process or changed sources refuse without counter/frontier mutation."
+      ],
+      "goal": "G-HOST-03",
+      "id": "HOST-OUTCOME-06",
+      "scope": [
+        "Keep source checker --check-all and --check-facts advisory; check-report remains3 without actual live native acceptance handle.",
+        "Use genuine separate ORCHESTRATION coordinator to consume the actual one-use native handle after validation closeout.",
+        "CAS exact current board bytes/task revision/candidate/report/namespace and preserve all63 future blockers.",
+        "Do not reset two consumed attempts, auto-rearm exhausted tasks, accept all64 tasks, infer legal fidelity/accuracy or claim Lean compilation."
+      ],
+      "status": "pending_integration",
+      "title": "Use separate real coordinator for one manual acceptance"
+    }
+  ]
+}
