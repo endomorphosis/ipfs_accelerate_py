@@ -133,6 +133,7 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -8228,6 +8229,160 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
     return _MistralVibeProvider()
 
 
+_GROK_SAMPLING_MAX_CONFIG_BYTES = 1_048_576
+_GROK_SAMPLING_MAX_HOME_ENTRIES = 256
+
+
+def _validate_grok_zero_temperature(value: object) -> None:
+    if (type(value) not in (int, float) or not math.isfinite(value)
+            or float(value) != 0.0):
+        raise ValueError("Grok CLI explicit temperature must be zero")
+
+
+def _validate_grok_sampling_model_command(command, model: str) -> None:
+    if (not command or Path(str(command[0])).name not in {"grok", "agent"}
+            or not isinstance(model, str) or not model or len(model) > 256
+            or any(ord(char) < 32 for char in model)):
+        raise ValueError("Grok zero sampling requires a native CLI and explicit model")
+    selected = []
+    for index, token in enumerate(command):
+        if token in {"--model", "-m"}:
+            selected.append(command[index + 1] if index + 1 < len(command) else None)
+        elif token.startswith(("--model=", "-m=")):
+            selected.append(token.split("=", 1)[1])
+        elif token.startswith("-m") and not token.startswith("--"):
+            raise ValueError("Grok sampling cannot bind an ambiguous model option")
+    if selected != [model]:
+        raise ValueError("Grok sampling model differs from the native CLI command")
+
+
+def _grok_sampling_config_text(path: Path) -> str:
+    """Read a bounded stable regular config; never inspect credential files."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return ""
+    try:
+        before = os.fstat(descriptor)
+        if (not stat_module.S_ISREG(before.st_mode) or before.st_size > _GROK_SAMPLING_MAX_CONFIG_BYTES
+                or before.st_uid not in {0, os.geteuid()} or before.st_mode & 0o022):
+            raise ValueError("Grok sampling config is not a bounded trusted regular file")
+        raw = bytearray()
+        while len(raw) <= _GROK_SAMPLING_MAX_CONFIG_BYTES:
+            block = os.read(descriptor, min(65_536, _GROK_SAMPLING_MAX_CONFIG_BYTES + 1 - len(raw)))
+            if not block:
+                break
+            raw.extend(block)
+        def identity(value):
+            return tuple(getattr(value, field) for field in (
+                "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink",
+                "st_size", "st_mtime_ns", "st_ctime_ns"))
+        if (len(raw) > _GROK_SAMPLING_MAX_CONFIG_BYTES or len(raw) != before.st_size
+                or identity(before) != identity(os.fstat(descriptor))
+                or identity(before) != identity(path.stat(follow_symlinks=False))):
+            raise ValueError("Grok sampling config changed during bounded read")
+        return raw.decode("utf-8")
+    finally:
+        os.close(descriptor)
+
+
+def _grok_zero_temperature_config(text: str, model: str) -> str:
+    # toml is already a declared runtime dependency. No package is installed.
+    import toml
+
+    try:
+        original = toml.loads(text)
+    except ValueError:
+        raise ValueError("Grok sampling config is malformed") from None
+    if any(original.get(key) for key in ("experiments", "version_overrides", "campaigns")):
+        raise ValueError("Grok sampling requires qualification of user config patches")
+    from copy import deepcopy
+    expected = deepcopy(original)
+    models = expected.setdefault("model", {})
+    cli = expected.setdefault("cli", {})
+    if not isinstance(models, dict) or not isinstance(cli, dict):
+        raise ValueError("Grok sampling configuration tables are invalid")
+    table = models.setdefault(model, {})
+    if not isinstance(table, dict):
+        raise ValueError("Grok selected model configuration is not a table")
+    table["temperature"] = 0.0
+    # A leader can outlive the invocation or retain earlier sampling settings.
+    cli["use_leader"] = False
+    rendered = toml.dumps(expected)
+    if len(rendered.encode("utf-8")) > _GROK_SAMPLING_MAX_CONFIG_BYTES or toml.loads(rendered) != expected:
+        raise ValueError("Grok private sampling config cannot preserve original settings")
+    return rendered
+
+
+def _grok_requirements_allow_zero(path: Path, model: str) -> None:
+    import toml
+
+    try:
+        policy = toml.loads(_grok_sampling_config_text(path))
+    except ValueError:
+        raise ValueError("Grok sampling requirements are malformed") from None
+    # Experiment arms can change config values. Their resolver is native CLI
+    # policy; an unqualified rewrite must not try to override or interpret it.
+    if any(policy.get(key) for key in ("experiments", "version_overrides", "campaigns")):
+        raise ValueError("Grok sampling requires qualification of requirements config patches")
+    if policy.get("cli", {}).get("use_leader") is True:
+        raise ValueError("Grok private sampling cannot require a leader")
+    selected = policy.get("model", {}).get(model, {})
+    if "temperature" in selected:
+        _validate_grok_zero_temperature(selected["temperature"])
+
+
+@contextmanager
+def _grok_zero_temperature_environment(environment, *, model: str, command):
+    """Yield private sampling settings, preserving original context and auth.
+
+    HOME and all other environment values are retained. Other immediate Grok
+    home entries are referenced without opening or copying their contents.
+    Those references retain existing mutability if the CLI writes through them;
+    this helper does not promise immutable credential or cache backing files.
+    Both user and system requirements remain enforced; a known conflict fails
+    before any provider process. Native effective-config validation remains a
+    separate requirement for qualification.
+    """
+    _validate_grok_sampling_model_command(command, model)
+    inherited = dict(environment)
+    home_value = inherited.get("GROK_HOME")
+    if home_value:
+        source = Path(home_value).expanduser()
+    else:
+        source = Path(inherited.get("HOME") or Path.home()) / ".grok"
+    source = Path(os.path.abspath(source))
+    if source.exists() and (not source.is_dir() or source.resolve(strict=True) != source):
+        raise ValueError("Grok sampling home must be an exact directory")
+    entries = []
+    if source.exists():
+        with os.scandir(source) as listing:
+            for entry in listing:
+                if len(entries) >= _GROK_SAMPLING_MAX_HOME_ENTRIES:
+                    raise ValueError("Grok sampling home exceeds its metadata bound")
+                entries.append(source / entry.name)
+    config = _grok_zero_temperature_config(_grok_sampling_config_text(source / "config.toml"), model)
+    _grok_requirements_allow_zero(source / "requirements.toml", model)
+    _grok_requirements_allow_zero(Path("/etc/grok/requirements.toml"), model)
+    with tempfile.TemporaryDirectory(prefix="llm-router-grok-sampling-") as directory:
+        root = Path(directory)
+        root.chmod(0o700)
+        for entry in entries:
+            if entry.name != "config.toml":
+                (root / entry.name).symlink_to(entry)
+        target = root / "config.toml"
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(config)
+                stream.flush()
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
+        inherited["GROK_HOME"] = str(root)
+        yield inherited
+
+
 def _get_grok_cli_provider() -> Optional[LLMProvider]:
     """Return the official Grok CLI provider when its binary is available."""
 
@@ -8264,6 +8419,12 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 base_parts = shlex.split(command_text)
                 executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
                 structured_cli = executable_name in {"grok", "agent"}
+
+            temperature_supplied = "temperature" in kwargs
+            if temperature_supplied:
+                _validate_grok_zero_temperature(kwargs.pop("temperature"))
+                if not structured_cli:
+                    raise ValueError("Grok zero temperature requires a structured native CLI")
 
             explicit_max_turns = "grok_max_turns" in kwargs
             if explicit_max_turns:
@@ -8469,42 +8630,47 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 for key, value in extra_env.items():
                     if value is not None:
                         env[key] = value
-                try:
-                    if stream_progress:
-                        from .cli_runtime.grok_stream_capture import capture_grok_stream
-                        proc = capture_grok_stream(cmd, env=env, timeout=timeout,
-                            progress_callback=progress_callback)
-                        stream_observation = proc.progress
-                        if proc.timed_out:
-                            raise subprocess.TimeoutExpired(cmd, timeout,
-                                output=proc.stdout, stderr="")
-                    else:
-                        proc = subprocess.run(
-                            cmd,
-                            text=True,
-                            capture_output=True,
-                            check=False,
-                            timeout=timeout,
-                            env=env,
-                        )
-                except FileNotFoundError as exc:
-                    raise LLMRouterError("Grok CLI not found on PATH") from exc
-                except subprocess.TimeoutExpired as exc:
-                    from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
-                    from .cli_runtime.grok_native_usage import native_grok_observation
-                    partial_stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
-                    partial_stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
-                    observed = remember_cli_run("grok_cli", partial_stdout, partial_stderr,
-                        extra={"model_id": model, "timed_out": True})
-                    observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
-                    observed.update(native_grok_observation(_grok_cli_json_payload(partial_stdout), exit_code=None, timed_out=True))
-                    if stream_observation is not None:
-                        # Stream diagnostics describe the transport only. A final
-                        # event never overrides process timeout or grants retry.
-                        observed.update(native_grok_observation(proc.final_payload, exit_code=None, timed_out=True))
-                        observed["native_grok_progress"] = stream_observation
-                    set_last_cli_observation("grok_cli", observed)
-                    raise
+                from contextlib import ExitStack
+                with ExitStack() as sampling_scope:
+                    if temperature_supplied:
+                        env = sampling_scope.enter_context(_grok_zero_temperature_environment(
+                            env, model=model, command=cmd))
+                    try:
+                        if stream_progress:
+                            from .cli_runtime.grok_stream_capture import capture_grok_stream
+                            proc = capture_grok_stream(cmd, env=env, timeout=timeout,
+                                progress_callback=progress_callback)
+                            stream_observation = proc.progress
+                            if proc.timed_out:
+                                raise subprocess.TimeoutExpired(cmd, timeout,
+                                    output=proc.stdout, stderr="")
+                        else:
+                            proc = subprocess.run(
+                                cmd,
+                                text=True,
+                                capture_output=True,
+                                check=False,
+                                timeout=timeout,
+                                env=env,
+                            )
+                    except FileNotFoundError as exc:
+                        raise LLMRouterError("Grok CLI not found on PATH") from exc
+                    except subprocess.TimeoutExpired as exc:
+                        from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
+                        from .cli_runtime.grok_native_usage import native_grok_observation
+                        partial_stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
+                        partial_stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
+                        observed = remember_cli_run("grok_cli", partial_stdout, partial_stderr,
+                            extra={"model_id": model, "timed_out": True})
+                        observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
+                        observed.update(native_grok_observation(_grok_cli_json_payload(partial_stdout), exit_code=None, timed_out=True))
+                        if stream_observation is not None:
+                            # Stream diagnostics describe the transport only. A final
+                            # event never overrides process timeout or grants retry.
+                            observed.update(native_grok_observation(proc.final_payload, exit_code=None, timed_out=True))
+                            observed["native_grok_progress"] = stream_observation
+                        set_last_cli_observation("grok_cli", observed)
+                        raise
             finally:
                 if prompt_path:
                     try:
