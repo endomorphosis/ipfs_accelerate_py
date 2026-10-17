@@ -8420,6 +8420,19 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
                 structured_cli = executable_name in {"grok", "agent"}
 
+            named_request = kwargs.pop("grok_named_session_request", None)
+            named_base_parts = None
+            if named_request is not None:
+                from .cli_runtime.grok_named_session import validate_preparation_option
+                validate_preparation_option("grok_cli", named_request, kwargs)
+                if (not structured_cli or "temperature" not in kwargs
+                        or model != "grok-4.7" or Path.cwd() != named_request.workspace):
+                    raise ValueError("named planning session requires its exact zero-temperature workspace route")
+                # Preserve and validate the bare bootstrap command before
+                # headless max-turn/schema bindings amend base_parts.
+                if base_parts != [str(named_request.binary.path)]:
+                    raise ValueError("named bootstrap requires its exact binary-only base command")
+                named_base_parts = tuple(base_parts)
             temperature_supplied = "temperature" in kwargs
             if temperature_supplied:
                 _validate_grok_zero_temperature(kwargs.pop("temperature"))
@@ -8614,6 +8627,9 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
 
             prompt_path = ""
             stream_observation = None
+            named_lifetime = None
+            def accept_named_response(value):
+                return named_request.accept_response(value) if named_request is not None else value
             try:
                 with tempfile.NamedTemporaryFile(
                     mode="w",
@@ -8632,7 +8648,23 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         env[key] = value
                 from contextlib import ExitStack
                 with ExitStack() as sampling_scope:
-                    if temperature_supplied:
+                    if named_request is not None:
+                        from .cli_runtime.grok_named_session import NamedSessionLifetime, validate_allocation_session
+                        validate_allocation_session(named_request, _allocation_context()[0])
+                        # The allocation-selected key is injected before backend
+                        # dispatch. Share it and one charged native home across
+                        # ACP and headless; ambient credentials are not a substitute.
+                        _grok_requirements_allow_zero(Path("/etc/grok/requirements.toml"), model)
+                        named_lifetime = sampling_scope.enter_context(NamedSessionLifetime(
+                            named_request, env, model=model, base_command=named_base_parts,
+                            selected_api_key=kwargs.pop("api_key", None),
+                            selected_slot=getattr(_API_KEY_CONTEXT, "slot", ""),
+                            selected_fingerprint=getattr(_API_KEY_CONTEXT, "fingerprint", "")))
+                        resume_session_id = named_lifetime.session_id
+                        cmd.extend(["--resume", resume_session_id])
+                        env = named_lifetime.environment
+                        timeout = named_lifetime.headless_timeout(timeout)
+                    elif temperature_supplied:
                         env = sampling_scope.enter_context(_grok_zero_temperature_environment(
                             env, model=model, command=cmd))
                     try:
@@ -8687,6 +8719,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     "exit_code": proc.returncode,
                     "session_id": resume_session_id or chat_session_id,
                 }
+                if named_request is not None:
+                    extra["grok_owned_named_session"] = named_request.receipt()
                 if isinstance(payload, dict):
                     extra.update(
                         {
@@ -8775,25 +8809,25 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             if response_validator is not None:
                 from .cli_runtime.grok_structured_output import decode_response
                 try:
-                    return decode_response(proc.stdout or "", response_validator, additional_validator=wire_validator)
+                    return accept_named_response(decode_response(proc.stdout or "", response_validator, additional_validator=wire_validator))
                 except (ValueError, TypeError, RecursionError) as exc:
                     raise LLMRouterError("Grok CLI structured response failed validation") from exc
 
             if stream_progress:
                 cleaned = _clean_grok_cli_output(proc.response_text)
                 if cleaned:
-                    return cleaned
+                    return accept_named_response(cleaned)
                 raise LLMRouterError("Grok CLI returned no response text")
             if payload is not None:
                 text = payload.get("text")
                 if isinstance(text, str):
                     cleaned_text = _clean_grok_cli_output(text)
                     if cleaned_text:
-                        return cleaned_text
+                        return accept_named_response(cleaned_text)
                     raise LLMRouterError("Grok CLI returned no response text")
             cleaned = _clean_grok_cli_output(proc.stdout or "")
             if cleaned:
-                return cleaned
+                return accept_named_response(cleaned)
             raise LLMRouterError("Grok CLI returned no response text")
 
     return _GrokCLIProvider()
@@ -11761,12 +11795,21 @@ _STICKY_SKIP_KINDS = frozenset({"billing", "authentication"})
 
 def _bind_cli_session_kwargs(provider: str, kwargs: dict[str, object]) -> dict[str, object]:
     """Resume the native CLI session bound to this allocation session id."""
+    named_request = kwargs.get("grok_named_session_request")
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_preparation_option
+        validate_preparation_option(provider, named_request, kwargs)
     session_id, _path = _allocation_context()
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_allocation_session
+        validate_allocation_session(named_request, session_id)
     if not session_id or not provider:
         return kwargs
     try:
         from .llm_allocation.paths import CLI_PROVIDERS, inject_cli_session_kwargs
     except Exception:
+        if named_request is not None:
+            raise
         return kwargs
     if provider not in CLI_PROVIDERS:
         return kwargs
@@ -11777,7 +11820,14 @@ def _bind_cli_session_kwargs(provider: str, kwargs: dict[str, object]) -> dict[s
         stored = get_allocation_store().get_cli_session(session_id, provider)
         native = str((stored or {}).get("native_session_id") or "")
     except Exception:
+        if named_request is not None:
+            raise
         native = ""
+    if named_request is not None:
+        if native:
+            raise ValueError("automatic named bootstrap requires a fresh allocation session")
+        # Only this exact typed owner handoff suppresses create-on-first.
+        return kwargs
     inject_cli_session_kwargs(
         provider,
         kwargs,
@@ -11790,6 +11840,39 @@ def _bind_cli_session_kwargs(provider: str, kwargs: dict[str, object]) -> dict[s
 def _capture_cli_session(provider: str, kwargs: Mapping[str, object]) -> None:
     """Persist the native CLI session id used for this allocation session."""
     session_id, _path = _allocation_context()
+    named_request = kwargs.get("grok_named_session_request")
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import (
+            validate_allocation_session, NamedSessionRequest, NamedSessionCaptureRefusal)
+        # Validate exact type before reading its lifecycle, then leave an
+        # unfinished response uncaptured without querying the allocation store.
+        if type(named_request) is not NamedSessionRequest:
+            raise ValueError("automatic native capture requires the exact owner handoff")
+        native = named_request.completed_session_id
+        if not native:
+            validate_allocation_session(named_request, session_id)
+            return
+        try:
+            validate_allocation_session(named_request, session_id)
+            if provider != "grok_cli":
+                raise ValueError("automatic native capture requires the exact owner handoff")
+            from .llm_allocation import get_allocation_store
+            from .llm_allocation.paths import cli_session_contract
+            store = get_allocation_store()
+            contract = cli_session_contract(provider)
+            store.upsert_cli_session(session_id=session_id, provider=provider,
+                native_session_id=native, resume_style=str(contract.get("style") or ""),
+                workspace=str(named_request.workspace))
+            captured = store.get_cli_session(session_id, provider)
+            if (type(captured) is not dict or captured.get("allocation_session_id") != session_id
+                    or captured.get("provider") != provider or captured.get("native_session_id") != native
+                    or captured.get("workspace") != str(named_request.workspace)):
+                raise ValueError("automatic_native_capture_readback_mismatch")
+        except Exception as error:
+            # The accepted response and native UUID remain recorded on the
+            # request; an unconfirmed capture cannot replay that response.
+            raise NamedSessionCaptureRefusal("named_session_allocation_capture_unconfirmed") from error
+        return
     if not session_id or not provider:
         return
     try:
@@ -13412,12 +13495,23 @@ def generate_text(
     exactly for structured decisions. Ordinary Codex prose cleanup is default.
     """
 
+    named_request = kwargs.get("grok_named_session_request")
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_public_dispatch
+        validate_public_dispatch(provider=provider, model=model_name,
+            request=kwargs["grok_named_session_request"], options=kwargs,
+            allow_local_fallback=allow_local_fallback,
+            allow_cross_provider_fallback=allow_cross_provider_fallback,
+            allocation_session_id=allocation_session_id)
     if type(codex_cli_literal_response) is not bool:
         raise ValueError("Codex literal response must be an explicit Boolean")
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     call_kwargs = dict(kwargs)
     session_id = _resolve_allocation_session_id(allocation_session_id, call_kwargs)
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_allocation_session
+        validate_allocation_session(named_request, session_id)
     path = _resolve_allocation_path(allocation_path, call_kwargs, provider)
     call_kwargs.pop("allocation_session_id", None)
     call_kwargs.pop("allocation_path", None)
@@ -13505,16 +13599,25 @@ def generate_text(
     try:
         from .llm_allocation.api_key_slots import apply_api_key_to_kwargs
 
-        kwargs = apply_api_key_to_kwargs(
-            str(effective_provider_name or provider or ""),
-            dict(kwargs),
-            session_id=session_id,
-        )
+        if named_request is not None:
+            from .llm_allocation.api_key_slots import RequiredApiKeyBinding
+            kwargs = apply_api_key_to_kwargs(
+                str(effective_provider_name or provider or ""), dict(kwargs), session_id=session_id,
+                required_binding=RequiredApiKeyBinding(backend="grok_cli", session_id=named_request.allocation_session_id,
+                    slot_id=named_request.credential_slot, key_fingerprint=named_request.credential_fingerprint))
+        else:
+            kwargs = apply_api_key_to_kwargs(
+                str(effective_provider_name or provider or ""),
+                dict(kwargs),
+                session_id=session_id,
+            )
         _API_KEY_CONTEXT.slot = str(kwargs.pop("_api_key_slot", "") or "")
         _API_KEY_CONTEXT.fingerprint = str(kwargs.pop("_api_key_fingerprint", "") or "")
     except Exception:
         _API_KEY_CONTEXT.slot = ""
         _API_KEY_CONTEXT.fingerprint = ""
+        if named_request is not None:
+            raise
     _clear_last_generation_trace()
     _set_last_usage_admission(None)
 
