@@ -1,0 +1,37 @@
+{
+  "baseline_pin": {
+    "bytes": 19483,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+    "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+  },
+  "changed_scope": "New bounded error-only observation helper; main exception stderr writer only, followed by same os._exit(2).",
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "fixture_only": true,
+  "production_access": false,
+  "qualification": {
+    "AST_and_independent_diff_review_only": true,
+    "genuine_serial_D1_to_D6_still_required": true,
+    "no_new_semantic_or_phase_authority": true,
+    "tests_imports_jobs_or_DB_opens_by_authors": false,
+    "worker_runtime_qualified_at_freeze": false
+  },
+  "schema": "authentic-native-settlement-error-diagnostic-contract@5",
+  "selection": "Before C07 seal a NEW fresh A07/B07 unbound input whose worker_pins.settlement is this source; parent d774 dynamically uses the exact unbound worker pin. Keep old worker/source/contracts and failed06 artifacts unchanged.",
+  "stderr_observation": {
+    "argument": "Only SHA256/byte length for one exact str argument bounded to512characters/2048UTF8bytes; no plaintext exception string.",
+    "best_effort": true,
+    "maximum_encoded_bytes": 8192,
+    "native_query_close_replay_or_witness_added": false,
+    "schema": "authentic-native-settlement-failure-diagnostic@5",
+    "stage_omitted": true,
+    "stage_reason": "Already verified request remains private to unchanged run(); no new request read or locals inspection.",
+    "traceback": "Exact worker-source frames only, <=16 retained/64 scanned, line/function metadata with bounded source path once; no frame locals."
+  },
+  "unchanged_run": "Entire run() source byte-exact to ed72, including guard/custody/actual native adapters, postcommit fault hooks, native close and exit0/exit73 behavior. Imports/constants unchanged.",
+  "unchanged_wire": "authentic-native-unknown-settlement-worker-request@2 and all @2 stage/result schemas",
+  "worker_source_pin": {
+    "bytes": 21633,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/authentic_unknown_settlement_worker_v05.py",
+    "sha256": "a30a3081b72502e1bc95380fe435421b5b3281b40c6915a2e21abc0027b519d6"
+  }
+}

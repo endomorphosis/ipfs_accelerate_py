@@ -1,0 +1,51 @@
+{
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "executed_imports_native_jobs_tests_or_DB_opens_by_bundle_authors": false,
+  "files": {
+    "contract": {
+      "bytes": 4582,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/contract-v02.json",
+      "sha256": "ee5622ff40c907e649c5ab5b249073ab4c34bf4fa5b93e8de6c9e351c7c4609f"
+    },
+    "exact_patch": {
+      "bytes": 5338,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/maintenance-local-monitor-and-diagnostic-v02.patch",
+      "sha256": "5e0679fa2f3a7f4edfb531294606ae384559d848a931961456af0bc5b2aa7e39"
+    },
+    "independent_static_review": {
+      "bytes": 8979,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/maintenance-wrapper-independent-static-review-v02.json",
+      "sha256": "445593801a5e62f179dd47c785454747f124da701cf4c3c9a4c24cb13343cc36"
+    },
+    "wrapper": {
+      "bytes": 48240,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/authentic_fixture_maintenance_owner_v02.py",
+      "sha256": "8d51b1ecfc1a8831d3f7e557c6b86fd9cda3e6912eb61c8b7d4341e142f6b591"
+    }
+  },
+  "fixture_only": true,
+  "frozen": true,
+  "production_access": false,
+  "request_construction": "Parent seals NEW B-only wrapper self-pin and genuine fresh A06 custody artifacts; preserve all old request/receipt files.",
+  "review_outcome": "No concrete static blocker; genuine fresh B runtime remains required.",
+  "runtime_qualified": false,
+  "schema": "authentic-native-maintenance-wrapper-bundle@2",
+  "source_dependencies": {
+    "unchanged_A_B_wrapper": {
+      "bytes": 44914,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+      "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1"
+    },
+    "unchanged_native_WAL_component": {
+      "bytes": 36257,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_execution_wal_maintenance.py",
+      "sha256": "875cecd7f5aeb9af8a085dfe55a88d20f380a510e4b5ef514d40a2451add183d"
+    }
+  },
+  "supersedes_only": "Future B fixture maintenance wrapper selection; frozen A/B v01 and all historical records unchanged.",
+  "trace_constraints": [
+    "Keep exact controller HEAD and source pins across fresh A/B/C/D trace.",
+    "Do not replay B05 or promote its incomplete physical maintenance into an authority receipt.",
+    "Require actual outer process exit and native reservation release after B before any next native job."
+  ]
+}

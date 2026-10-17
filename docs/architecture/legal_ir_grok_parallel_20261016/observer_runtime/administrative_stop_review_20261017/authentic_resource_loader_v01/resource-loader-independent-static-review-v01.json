@@ -1,0 +1,117 @@
+{
+  "AST_parse_only": true,
+  "actual_six_physical_SQL_resource_pins": [
+    {
+      "bytes": 46509,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+      "sha256": "bace5842b431da39ac25d550338481ff4d68a2fc36327c8128280115adeaba36"
+    },
+    {
+      "bytes": 75535,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql",
+      "sha256": "9253504546b6bdad0ad9c1d00842016bfb474c40c2650d6d024919126589949c"
+    },
+    {
+      "bytes": 439,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql",
+      "sha256": "e5ff06f3e3bc0bc64ff20487589ba88ef6adca7d9eff0fd8cd572f5829cfeeb2"
+    },
+    {
+      "bytes": 513,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql",
+      "sha256": "21b423d3aaf280cbbe1b066611bdfeaf94128ab994cc429cc7ed44f125b50fdc"
+    },
+    {
+      "bytes": 672,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+      "sha256": "21e54254564d1cc7fc0bb667fcaae77e08e70dbe9d40fc03dbdd7e0bfa6750a2"
+    },
+    {
+      "bytes": 590,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
+      "sha256": "5cd6bc0dece24daa65a7c4123b347f1ffbce9e8200bafe2bc5ad2c56b225320a"
+    }
+  ],
+  "authentic_runtime_qualified": false,
+  "base_loader_pin": {
+    "bytes": 43192,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py",
+    "sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
+  },
+  "base_producer_pin": {
+    "bytes": 32133,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/produce_authentic_unknown_master_diagnostic_v03.py",
+    "sha256": "b24d39fc01da32989a8d43cf74b5db204e286b98c41736cc53db396696162f17"
+  },
+  "concrete_blockers": [],
+  "dependency_requirements": [
+    "Frozen ADMINv04 hardcodes old fba loader hash and needs a NEW minimal LOADER_SHA derivative for candidatec385.",
+    "A/B renderer defaults old pins; new sealed inputs must substitute candidatec385/producer544b and fresh roots.",
+    "Fresh product_sources/unbound inputs must include allPython+sixSQL. Generic owner/compiler/parent/settlement utilities consume the dynamic map.",
+    "Only genuine focused API qualification and successful full exact-source controller_preparation producer preflight may precede authentic supervisor_launch, after each owner fully exits/releases."
+  ],
+  "existing_loader_nodes_changed": [
+    "_package_pins",
+    "_PinnedProductLoader",
+    "_PinnedProductFinder",
+    "_loaded_product_sources"
+  ],
+  "existing_producer_nodes_changed": [
+    "prepare_imports"
+  ],
+  "historical_unknown_resolved": false,
+  "limitations": [
+    "AST/source/byte review only: no helper/product/backend/verifier import, runtime resources.files call, schema installation, database open, native job/test/model call or C/frozen edit.",
+    "Live directory enumeration/hash checks are not atomic or continuous-custody proof; complete replacement-race/namespace-change exclusion is unproved.",
+    "Guarantee is specific to native task_sources SQL; generic Python namespace resource behavior is not universally qualified.",
+    "Old helper16MiB creator fixture/nonadmitting seam is inert utility-source baggage and unqualified.",
+    "Conventional denied Git capture leaves native provenance capsule expected unavailable. This resource fix does not qualify a protected route.",
+    "Actual resource API, full authentic producer preflight, A/B custody and ADMIN/settlement remain runtime pending."
+  ],
+  "loader_pin": {
+    "bytes": 55889,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+    "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+  },
+  "native_catalog_source_pin": {
+    "bytes": 61483,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+    "sha256": "8299b019f7b55612da209ca719126d8fa3f7198d03e4c258257c9f161fbaa5f6"
+  },
+  "native_required_five_migration_names": [
+    "0001_control_plane.sql",
+    "0002_causal_event_federation_core.sql",
+    "0003_state_server_restart_identity.sql",
+    "0004_hash_observations.sql",
+    "0005_tasks_index_repair.sql"
+  ],
+  "native_schema_source_pin": {
+    "bytes": 87099,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+    "sha256": "a06d0b6a927836aca3b06fd4efcab73054bd308c61822337670e3dc4c1dda358"
+  },
+  "package_initializer_pin": {
+    "bytes": 3212,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+    "sha256": "247e63849d1bf589825fcf965b6c6d20cc95de4e147f6121cd6fe6fd7cf06deb"
+  },
+  "producer_pin": {
+    "bytes": 32519,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+    "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+  },
+  "production_qualified": false,
+  "resource_API_runtime_qualified": false,
+  "reviewer": "/root/grok_confinement_review",
+  "schema": "pinned-native-sql-resource-loader-independent-static-review@1",
+  "static_findings": [
+    "Exact task_sources parent-package reader joins its pinned initializer and all six physical SQL files. SQL-only namespaces cannot fall back to NamespaceLoader; other genuine Python namespaces are outside this package-specific resource guarantee.",
+    "Closed Traversable nodes are root/sql/exact-six-file names. joinpath refuses absolute/slash/backslash/dot/parent/non-ASCII/unknown components; resource_path always refuses. No filesystem SQL fallback is introduced.",
+    "Read-only r/rt/rb opening checks initializer, physical SQL population and all six resource pins before and after byte copying. Returned BytesIO subclass refuses write/writelines/truncate and getbuffer returns a readonly memoryview; TextIOWrapper uses that buffer.",
+    "The real native catalog uses supported name/is_file/is_dir/iterdir/read_text APIs, enumerates six physical files and selects five contiguous required migrations. Native checksum/version/schema installation logic is unchanged and unexecuted by this review.",
+    "Actual allPython-plus-sixSQL closure has4096file/32768entry/256MiB bounds with SQL1MiB perfile/4MiB aggregate. New producer compares the complete map to loader._package_pins; loaded product sources join actual loader object/class/origin/pin and revalidate resources.",
+    "Existing nonadmitting ADMIN fixture entrypoints remain unchanged in the utility-source copy. Authentic A/B/C/D and focused API qualification must never call them.",
+    "The producer changes only prepare_imports closure validation. Native stores/bridge/master/custody, PermissionError denials, diagnostics and wire schemas remain unchanged."
+  ],
+  "status": "no_concrete_static_blocker_for_scoped_native_package_resource_API"
+}

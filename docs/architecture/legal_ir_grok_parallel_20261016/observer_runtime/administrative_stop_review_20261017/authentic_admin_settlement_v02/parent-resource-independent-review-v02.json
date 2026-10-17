@@ -1,0 +1,109 @@
+{
+  "checks": {
+    "actual_child_close_failure_retains_same_lexical_F07_contexts": true,
+    "actual_existing_F07_scheduler_opened_in_runtime_code": true,
+    "actual_isolated_child_retained_before_bind_and_registration": true,
+    "child_registered_via_real_disk_check_usage": true,
+    "control_scope_separate_from_strict_attempt_and_fixture": true,
+    "disk_external_control_charge_bytes": 8388608,
+    "disk_external_fixture_charge_bytes": 134217728,
+    "disk_total_bytes": 268435456,
+    "fresh_stage_requires_previous_parent_stopped_and_actual_child_reap_witness": true,
+    "genuine_custody_context_functions_not_replaced_by_fixture_verifier": true,
+    "leader_dead_survivors_kept_pending_without_foreign_or_reused_group_signal": true,
+    "logical_response_discard_not_claimed_as_actual_transport_drop": true,
+    "one_root_and_one_phase_and_one_parented_disk_per_job": true,
+    "original_launch_ACK_or_native_receipt_fabrication_absent": true,
+    "successful_parent_finalization_print_occurs_after_actual_disk_and_phase_root_exit": true,
+    "unexpected_alias_or_special_control_entries_rejected": true,
+    "worker_physical_stores_bound_to_three_disposable_fixture_paths": true
+  },
+  "concrete_findings": [
+    {
+      "basis": "Actual worker umask0077 creates transient pathname socket0700; gateway.start binds then chmods0600. The earlier all-samples0600 census could reject that private pre-READY interval.",
+      "id": "pre-ready-socket-publication-race",
+      "previous_parent_sha256": "856670cee95516bd439255b59f4b27dfa2877b2f29a755df0ef41a8bcb35992c",
+      "rechecked_fix": "Only admin.sock in exact private charged scope may be0700, only while the actual registered child birth is live and ready.commit absent. Same device/inode/UID may transition once0700 to0600; reversal or replacement fails. READY processing performs guard/census after the committed marker and matches the actual worker final0600 identity; native transport grant/handshake joins remain mandatory.",
+      "status": "resolved_in_reviewed_candidate"
+    }
+  ],
+  "controller_head_observed": "f2a5dad538d66939ee5eff2b81af03efc45d0667",
+  "foreign_processes_or_artifacts_changed": false,
+  "imports_performed": false,
+  "limits": [
+    "Static source/AST review only; no reviewed module was imported and no native job, child launch, socket, model/provider call, database open or policy change was performed.",
+    "Runtime admission, actual child registration, installed DuckDB behavior, AF_UNIX peer joins, crash/replay and final resource release remain unqualified until actual native execution.",
+    "Native accounting is cooperative admission and sampled usage, not a kernel CPU/memory/process quota or continuous custody proof.",
+    "Private-tree and socket census observations are non-atomic; source/metadata guards fail closed on observed drift and do not eliminate every concurrent namespace or ABA race.",
+    "A leader-dead group with surviving descendants deliberately keeps cleanup pending; uniformly bounded cleanup and host-process-death survival are not established.",
+    "parent-result.json is written before native finalization and explicitly says so. It cannot substitute for the outer completed owner result; root must serialize later jobs through actual full finalization.",
+    "The real fixture action preserves UNKNOWN, unverified external effects and blocked automatic retry; no production UNKNOWN attempt or authentic production launch custody is authorized by this review."
+  ],
+  "parent_source_pin": {
+    "bytes": 40545,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_native_parent_v02.py",
+    "sha256": "a228e0f2c019b321fd0b6b9066f7a1408c630aa29391667c61fd6ecad6516809"
+  },
+  "prepared_at_utc": "2026-10-17T06:27:18.214058+00:00",
+  "production_authority_granted": false,
+  "remaining_concrete_blockers_found": [],
+  "review_scope": [
+    "Actual unchanged F07 root/phase/parented-disk ancestry",
+    "Immediate real isolated Popen child registration and retained cleanup custody",
+    "Serial actual worker exit/reap/group absence before fresh child/stage",
+    "External private AF_UNIX socket publication/census/READY/grant/handshake joins",
+    "Genuine policy/fixture scope and original-receipt boundaries"
+  ],
+  "reviewer": "main_integration_survey",
+  "runtime_qualified": false,
+  "schema": "authentic-CD-parent-resource-independent-source-review/v2",
+  "source_edits": false,
+  "source_pins": [
+    {
+      "bytes": 40545,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_native_parent_v02.py",
+      "sha256": "a228e0f2c019b321fd0b6b9066f7a1408c630aa29391667c61fd6ecad6516809"
+    },
+    {
+      "bytes": 24720,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+      "sha256": "b4bffedec72f1f8be083ac7ba83bd42fc7eb02ba9c1546a5034ac0d62fd77e86"
+    },
+    {
+      "bytes": 19477,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_settlement_worker_v02.py",
+      "sha256": "b2475216dabfd49da5bbc77b65d472cc28518c5dee9030fcceb41649a7b6136b"
+    },
+    {
+      "bytes": 44914,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+      "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1"
+    },
+    {
+      "bytes": 671092,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "sha256": "dbe6fd3a38b41b89eef9dff15987240c9faffcbf7c8e9820b27b05f9685e9a4d"
+    },
+    {
+      "bytes": 17545,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d"
+    },
+    {
+      "bytes": 121503,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    },
+    {
+      "bytes": 40999,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+    },
+    {
+      "bytes": 15440,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    }
+  ],
+  "tests_or_native_jobs_performed": false
+}

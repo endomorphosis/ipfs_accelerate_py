@@ -1,0 +1,144 @@
+{
+  "all_primary_requests_model_pinned": true,
+  "all_primary_requests_temperature_zero": true,
+  "all_request_classes_known": true,
+  "all_requests_credential_fixture": true,
+  "all_wire_requests_primary_model": false,
+  "all_wire_requests_temperature_zero": false,
+  "assistant_tool_calls": [
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/positive-read-file/workspace/sentinel.txt\"}",
+        "name": "read_file"
+      },
+      "id": "call-positive-read-file",
+      "type": "function"
+    }
+  ],
+  "case": "positive-read-file",
+  "charged_case_root": "/tmp/pytest-of-barberb/grk17f/cases/positive-read-file",
+  "charged_fixture_root": "/tmp/pytest-of-barberb/grk17f",
+  "error": null,
+  "exact_injected_call_set": false,
+  "explicit_native_parse_stage_refusals": {
+    "CallMcpTool": false,
+    "FetchMcpResource": false,
+    "ListMcpResources": false,
+    "read_file": false,
+    "run_terminal_command": false,
+    "search_tool": false,
+    "spawn_subagent": false,
+    "use_tool": false
+  },
+  "fixture_config_pin": {
+    "path": "/tmp/pytest-of-barberb/grk17f/cases/positive-read-file/grok-home/config.toml",
+    "sha256": "f26cdf9d23ef1b6989b6a4e4792f2f5a0b8460dfd47549576d32159b7dcf3b96",
+    "size_bytes": 636
+  },
+  "legacy_function_names": [
+    [],
+    []
+  ],
+  "native_allocation_database": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/fixture-allocation.duckdb",
+  "native_command_profile_verified": true,
+  "native_process_observations": [
+    {
+      "all_symlink_targets_inside_charged_fixture_root": true,
+      "argv": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/native/grok",
+        "--max-turns",
+        "2",
+        "--model",
+        "grok-4.7",
+        "--output-format",
+        "json",
+        "--no-plan",
+        "--no-subagents",
+        "--disable-web-search",
+        "--no-memory",
+        "--verbatim",
+        "--permission-mode",
+        "dontAsk",
+        "--tools",
+        "read_file",
+        "--disallowed-tools",
+        "search_tool,use_tool",
+        "--prompt-file",
+        "/tmp/pytest-of-barberb/grk17f/cases/positive-read-file/temporary/llm-router-grok-prompt-1v5o4x_g.txt"
+      ],
+      "charged_fixture_root": "/tmp/pytest-of-barberb/grk17f",
+      "config_pin": {
+        "path": "/tmp/pytest-of-barberb/grk17f/cases/positive-read-file/temporary/llm-router-grok-sampling-t97jgxlj/config.toml",
+        "sha256": "d4e91675bc0813ac3051d22e7b1fd11d1d9920ddd2641702e2f148b2e6c19739",
+        "size_bytes": 643
+      },
+      "cwd": "None",
+      "environment_home_unchanged": true,
+      "fixture_credential_only": true,
+      "leader_disabled": true,
+      "owned_allocation_database_preserved": true,
+      "owned_temporary_environment": true,
+      "prelaunch_inventory_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/positive-read-file/fixture-inventory-prelaunch-01.json",
+        "sha256": "f6a224c453cd8f4b3c0cbaa9630c6bd3bd3e39f02e203a1d07e6f9ac3ec7fb8e",
+        "size_bytes": 19765
+      },
+      "safe_import_limits_preserved": true,
+      "sampling_config_under_owned_temporary_directory": true,
+      "sampling_temperature_zero": true
+    }
+  ],
+  "observed_wire_calls": [
+    {
+      "class": "auxiliary_session_title",
+      "model": "grok-4.6",
+      "path": "/v1/responses",
+      "temperature": 1.0
+    },
+    {
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    },
+    {
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    },
+    {
+      "class": "auxiliary_dashboard_summary",
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    }
+  ],
+  "offered_tool_names": [
+    [
+      "read_file"
+    ],
+    [
+      "read_file"
+    ]
+  ],
+  "output": "QUALIFICATION_DONE",
+  "passed": true,
+  "positive_sentinel_returned": true,
+  "post_native_agent_exit_inventory_pin": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/positive-read-file/fixture-inventory-after-agent-exit.json",
+    "sha256": "9669a46f1603a9dbcb5f5dcc8bffce61de6ea11b9d8c9368ee725036e4efa3ae",
+    "size_bytes": 18663
+  },
+  "primary_requests": 2,
+  "refusal_registry_identity_established": false,
+  "requests": 4,
+  "runtime_invocation": null,
+  "tool_responses": [
+    {
+      "content": "1\u2192FIXTURE_SENTINEL_c6f774cf80b53552506da64d4d6721f6\n",
+      "role": "tool",
+      "tool_call_id": "call-positive-read-file"
+    }
+  ]
+}

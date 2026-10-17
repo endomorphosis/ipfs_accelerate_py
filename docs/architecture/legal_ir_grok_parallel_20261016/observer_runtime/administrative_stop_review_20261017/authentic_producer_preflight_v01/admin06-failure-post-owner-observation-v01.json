@@ -1,0 +1,49 @@
+{
+  "C_full_qualified": false,
+  "D_settlement_executed": false,
+  "actual_READY_pin": {
+    "bytes": 8582,
+    "path": "/tmp/pytest-of-barberb/unk17c6/admin-ready.json",
+    "sha256": "23189eb0829897096d7d256605b3c7df42fb8d92ffa866ebe9686894f96f7da5"
+  },
+  "actual_audit_response_pin": {
+    "bytes": 32232,
+    "path": "/tmp/pytest-of-barberb/unk17c6/audit-response.json",
+    "sha256": "a7a282679ce4b97227b5af1b0ccaa808f953480b9d805360071d6cc8fd9ad897"
+  },
+  "actual_context_pin": {
+    "bytes": 14589,
+    "path": "/tmp/pytest-of-barberb/unk17c6/sealed-context.json",
+    "sha256": "c11cf703afd98db9006b223d12051d8b93ef05b0fac29978fbb8a545f7cb4efc"
+  },
+  "actual_disk_reservation_id": "9ae2330871064e578ebc3b88007f71f5",
+  "actual_exception_type": "ValueError",
+  "actual_lease_ids_observed_absent": [
+    "7d4724ea9ef54e6e9ab3b4db38534726",
+    "2d966b41afd641618652411a535e21a4"
+  ],
+  "actual_pids_observed_absent": [
+    2932229,
+    2947078
+  ],
+  "actual_tool_exit_code": 2,
+  "actual_tool_session": 62309,
+  "admin_exit_witness_created": false,
+  "admin_parent_result_created": false,
+  "canonical_WAL_present_at_observation": true,
+  "exact_failed_check_captured": false,
+  "failed_scope_replayed_relabelled_or_deleted": false,
+  "native_ACK_created": false,
+  "native_finalized": false,
+  "no_remaining_lease_for_owner_pid": true,
+  "observation_only": true,
+  "observed_reservation_status": "retained",
+  "original_exit_code_or_reap_witness_created": false,
+  "production_actions_performed": false,
+  "registered_child_group_observed_absent": true,
+  "retained_audit_response_replayed": true,
+  "retention_reason": "context_failed",
+  "schema": "authentic-ADMIN-failed-parent-post-owner-observation@1",
+  "source_finding": "v03 control_census raw Popen.poll can actually reap the child without updating ActualChild.reaped. The retained failed check is not captured; this source race is not asserted to be the sole old failure cause.",
+  "worker_reported_native_context_and_custody_verification": true
+}

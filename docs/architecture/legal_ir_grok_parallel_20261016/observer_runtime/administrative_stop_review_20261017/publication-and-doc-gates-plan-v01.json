@@ -1,0 +1,146 @@
+{
+  "C_copies_or_edits_performed": false,
+  "controller_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller",
+  "controller_trace_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "current_v05_draft_paths": [
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/PR293-publication-map-v05-draft.json",
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/PR293-qualification-followup-v05-draft.json"
+  ],
+  "exact_workflow_validation_steps": [
+    {
+      "exact_run": "python scripts/docs/check_agent_supervisor_docs.py\n",
+      "name": "Supervisor primary-doc vocabulary",
+      "run_sha256": "d9ef12b7fda10c6a51b3560665c0567223c6a62b7bfc2b30740419f7a7bbfa61"
+    },
+    {
+      "exact_run": "python scripts/docs/check_current_docs_links.py\n",
+      "name": "Maintained-surface relative links",
+      "run_sha256": "5b2be7c4b30a55692f91f3b3ddacbb8997f35c2b85dedb48eb2f2cc5900194b5"
+    },
+    {
+      "exact_run": "python - <<'PY'\nfrom __future__ import annotations\n\nimport re\nimport sys\nfrom pathlib import Path\n\nroot = Path(\".\")\n\n\ndef need(path: Path, pattern: str, label: str) -> str:\n    text = path.read_text(encoding=\"utf-8\")\n    match = re.search(pattern, text, flags=re.M)\n    if not match:\n        print(f\"FAIL: {label} not found in {path}\", file=sys.stderr)\n        raise SystemExit(1)\n    return match.group(1)\n\n\npyproject = need(\n    root / \"pyproject.toml\",\n    r'^version\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"pyproject version\",\n)\nsetup = need(\n    root / \"setup.py\",\n    r'^\\s*version\\s*=\\s*\"([^\"]+)\"\\s*,?\\s*$',\n    \"setup.py version\",\n)\npackaging = need(\n    root / \"ipfs_accelerate_py\" / \"__init__.py\",\n    r'^_PACKAGING_VERSION\\s*=\\s*\"([^\"]+)\"\\s*$',\n    \"_PACKAGING_VERSION\",\n)\ninit_text = (root / \"ipfs_accelerate_py\" / \"__init__.py\").read_text(\n    encoding=\"utf-8\"\n)\nif not re.search(\n    r'^__version__\\s*=\\s*_PACKAGING_VERSION\\s*$',\n    init_text,\n    flags=re.M,\n):\n    print(\n        \"FAIL: __version__ must be assigned from _PACKAGING_VERSION\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nif not (pyproject == setup == packaging):\n    print(\n        \"FAIL: version pins disagree: \"\n        f\"pyproject={pyproject!r} setup={setup!r} \"\n        f\"_PACKAGING_VERSION={packaging!r}\",\n        file=sys.stderr,\n    )\n    raise SystemExit(1)\nprint(f\"OK: packaging pins aligned at {pyproject}\")\nPY\n",
+      "name": "Packaging version pin alignment",
+      "run_sha256": "dd9f0d61eac6272365739debbd752c76a27a87e08639bcf457901bda2379acf7"
+    },
+    {
+      "exact_run": "set -euo pipefail\ngrep -q 'Documentation baseline' docs/INDEX.md\ngrep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md\ntest -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md\necho \"OK: closeout navigation markers present\"\n",
+      "name": "Closeout navigation markers",
+      "run_sha256": "994fe2a947e83ce3ed2c9c7b63ce19c4f078ed970ef5822640c54cbaeb3f32e1"
+    }
+  ],
+  "final_v05_freeze_pending_actual_D6_full_exit_release": true,
+  "fresh_qualification_needed_after_publication_edits": true,
+  "historical_local_87553_pass_is_not_new_HEAD_validation": true,
+  "hosted_billing_failure_observation_pin": {
+    "bytes": 556,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/hosted-documentation-gates-592d-billing-observation-v01.json",
+    "sha256": "5635a29d203f42d10e4c918ec0513a1285697039e757fe8767d089fef5859944"
+  },
+  "hosted_failure_not_forged_or_bypassed_by_this_plan": true,
+  "link_checker_explicit_allowlist": [
+    "README.md",
+    "docs/README.md",
+    "docs/INDEX.md",
+    "docs/development/DOCUMENTATION_CURRENT_STATE.md",
+    "docs/development/DOCUMENTATION_LIFECYCLE.md",
+    "docs/development/DOCUMENTATION_MAINTENANCE.md",
+    "docs/development/DOCUMENTATION_MANIFEST.md",
+    "docs/development/testing.md",
+    "docs/guides/getting-started/README.md",
+    "docs/guides/getting-started/installation.md",
+    "docs/guides/QUICKSTART.md",
+    "docs/guides/cli/README_CLI.md",
+    "docs/guides/MCP_SETUP_GUIDE.md",
+    "docs/guides/AGENT_SUPERVISOR_GUIDE.md",
+    "docs/guides/deployment/README.md",
+    "docs/guides/hardware/overview.md",
+    "docs/guides/p2p/README.md",
+    "docs/guides/troubleshooting/faq.md",
+    "docs/api/overview.md",
+    "docs/MCP_SERVER.md",
+    "docs/architecture/README.md",
+    "docs/architecture/overview.md",
+    "docs/architecture/SYSTEM_CONTEXT.md",
+    "docs/architecture/INFERENCE_RUNTIME.md",
+    "docs/architecture/MODEL_SERVICE_ROUTING.md",
+    "docs/architecture/MCP_RUNTIME.md",
+    "docs/architecture/DISTRIBUTED_RUNTIME.md",
+    "docs/architecture/INTEGRATION_BOUNDARIES.md",
+    "docs/architecture/GUIDE_CONVENTIONS.md",
+    "docs/architecture/GLOSSARY.md",
+    "docs/architecture/AI_SERVICE_CATALOG.md",
+    "docs/architecture/AGENT_SUPERVISOR_PHILOSOPHY.md",
+    "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md",
+    "docs/architecture/agent_supervisor/README.md",
+    "docs/architecture/agent_supervisor/CONTROL_PLANE.md",
+    "docs/architecture/agent_supervisor/PLANNING_AND_ASSURANCE.md",
+    "docs/architecture/agent_supervisor/EXECUTION_AND_RECOVERY.md",
+    "docs/architecture/agent_supervisor/PROMPT_FIRST_RUNTIME.md",
+    "docs/architecture/agent_supervisor/DEVELOPER_GUIDE.md",
+    "docs/architecture/agent_supervisor/FOR_AGENTS.md",
+    "docs/architecture/agent_supervisor/FOR_CONTRIBUTORS.md",
+    "docs/architecture/agent_supervisor/PACKAGE_MAP.md",
+    "docs/architecture/agent_supervisor/PROGRAMS.md",
+    "docs/architecture/decisions/README.md",
+    "docs/features/hf-model-server/README.md",
+    "docs/NESTED_PACKAGES.md"
+  ],
+  "link_checker_explicit_allowlist_count": 46,
+  "metadata_only": true,
+  "native_or_production_authority": false,
+  "next_steps_after_actual_trace07_exit_and_release": [
+    {
+      "action": "Reconcile actual D6 and complete trace07 retained bounded evidence; freeze final v05 map and qualification followup without rewriting failed trace05/06 or historical manifests.",
+      "step": 1
+    },
+    {
+      "action": "On root direction after the entire trace ends, apply only exact review copies enumerated in final v05; preserve existing A/B copies and original absolute source/native pins. Review copies have no runtime or admission authority.",
+      "step": 2
+    },
+    {
+      "action": "Update PR293 description around final behavior and actual qualification. Distinguish native-qualified product/source HEAD592d from later documentation-only publication HEAD.",
+      "step": 3
+    },
+    {
+      "action": "Prepare a fresh original-owner documentation request with all exact four workflow steps below; pin/materialize tracked 46 allowlisted docs, referenced link/anchor targets, supervisor primary docs/packages, version inputs and three navigation files at the resulting HEAD. Execute through root only.",
+      "step": 4
+    },
+    {
+      "action": "After gates, inspect official GitHub main/PR drift read-only; root publishes/integrates via official github remote under prior user authorization, retaining truthful hosted billing failure status.",
+      "step": 5
+    },
+    {
+      "action": "Keep production local-stop policy separate from publication and fixture qualification. No successor, retry/rearm/cap raise or productive Grok dispatch is authorized by this metadata.",
+      "step": 6
+    }
+  ],
+  "prepared_at_utc": "2026-10-17T08:41:41.975923+00:00",
+  "product_or_gate_modules_imported": false,
+  "schema": "PR293-post-trace-publication-and-doc-gates-plan-v01",
+  "source_pins_verified_against_exact_git_HEAD": [
+    {
+      "bytes": 3479,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/.github/workflows/documentation-gates.yml",
+      "sha256": "0a46fa5b8905600cb9f74adaaec8b8aeb5f89878612a43fb7a847e586bde3763"
+    },
+    {
+      "bytes": 2845,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/scripts/docs/check_agent_supervisor_docs.py",
+      "sha256": "09580aa9a8707ce8da278d5b7fef4055e1945e53266c0fc4437e516eda1fed87"
+    },
+    {
+      "bytes": 10445,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/scripts/docs/check_current_docs_links.py",
+      "sha256": "596a0038b18d592f2e605643890afc85e457558f7b887932a474557d7586819e"
+    }
+  ],
+  "tests_native_jobs_DB_or_provider_calls_performed": false,
+  "workflow_configuration": {
+    "default_anchor_checks_preserved": true,
+    "job": "documentation-gates",
+    "package_install_required": false,
+    "python": "3.12",
+    "timeout_minutes": 10,
+    "working_directory": "repository root"
+  }
+}

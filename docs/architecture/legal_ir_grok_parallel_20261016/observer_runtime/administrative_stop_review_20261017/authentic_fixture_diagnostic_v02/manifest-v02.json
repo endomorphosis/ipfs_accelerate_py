@@ -1,0 +1,61 @@
+{
+  "base_pin": {
+    "bytes": 28496,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/produce_authentic_unknown_master_v01.py",
+    "sha256": "d11e0221419b2736366dfb5a9d1031c8050a95209f4f3378e1718d489f6f1e1a"
+  },
+  "closed_request_schema_unchanged": true,
+  "denied_event_set_unchanged": [
+    "subprocess.Popen",
+    "os.system",
+    "os.posix_spawn",
+    "os.exec",
+    "socket.connect",
+    "socket.getaddrinfo"
+  ],
+  "diagnostic_records": {
+    "arguments_commands_addresses_environment_locals_source_text_exported": false,
+    "bound": "First plus last blocked event, each at most 24 frames; only source root, bounded ASCII filename/function, line and filename SHA256",
+    "propagated_exception_join": "Exact identity between caught error and latest blocked RuntimeError instance",
+    "sink": "Existing bounded main failure JSON on stderr; no audit-hook filesystem writes"
+  },
+  "native_store_and_runner_calls_unchanged": true,
+  "new_dispatch_permission": false,
+  "next_native_request": "Root alone must allocate a NEW exact-source controller_preparation preflight with this producer self pin and a NEW root/attempt. No genuine supervisor_launch based on the failed original preflight.",
+  "nonlocal_socket_denial_unchanged": true,
+  "patch_pin": {
+    "bytes": 6853,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/producer-diagnostic-v02.patch",
+    "sha256": "d5f29dfee5fe4be7a40f324599b565b80ec06bf74135bac587a65899fdd5b84b"
+  },
+  "producer_pin": {
+    "bytes": 32130,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/produce_authentic_unknown_master_diagnostic_v02.py",
+    "sha256": "5385eca75dcce2b7058bd915814b4cedc10969ec74b14fa3d9a421940b7e5c04"
+  },
+  "qualification": {
+    "AST_parse_only": true,
+    "controller_preparation_full_preflight_required": true,
+    "database_open": false,
+    "failed_preflight_and_original_A_B_bundle_unchanged": true,
+    "native_job_or_provider_or_model_call": false,
+    "native_runtime_qualified": false,
+    "producer_imported": false,
+    "product_backend_imported": false,
+    "successful_exact_source_preflight_required_before_supervisor_launch": true
+  },
+  "retained_failure": {
+    "child_exit_code": 2,
+    "child_pid": 2214781,
+    "exact_denied_event_and_callsite_known": false,
+    "localization": "After pinned installation JSON copy; no retained canonical/coordinator/execution/master artifact. Frozen failure handler discards the audit event and traceback.",
+    "observed_files": [
+      "producer-request.json",
+      "duckdb-installation.json"
+    ],
+    "owner_pid": 2194805,
+    "owner_session": 62976,
+    "retained_fixture_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-01-preflight"
+  },
+  "schema": "authentic-native-producer-diagnostic-derivative@2"
+}

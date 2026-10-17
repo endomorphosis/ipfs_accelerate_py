@@ -1,0 +1,122 @@
+{
+  "API_request_contract_pin": {
+    "bytes": 10589,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-api-request-contract-v01.json",
+    "sha256": "48196909e7a1dca3cb67584e66bf89a8f3b5b48a11beab5cf98d71758174c9cb"
+  },
+  "SQL_HEAD_metadata_pin": {
+    "bytes": 6403,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/SQL-source-closure-v01.json",
+    "sha256": "02ee0d87b7558acd84af076ddc4bd79e830032045db4c8c7f2b5430744886e37"
+  },
+  "base_pins": {
+    "loader": {
+      "bytes": 43192,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py",
+      "sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
+    },
+    "producer": {
+      "bytes": 32133,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/produce_authentic_unknown_master_diagnostic_v03.py",
+      "sha256": "b24d39fc01da32989a8d43cf74b5db204e286b98c41736cc53db396696162f17"
+    }
+  },
+  "bounds": {
+    "SQL_directory_entries": 64,
+    "SQL_file_bytes": 1048576,
+    "aggregate_SQL_bytes": 4194304,
+    "aggregate_source_bytes": 268435456,
+    "inventory_entries": 32768,
+    "source_files": 4096
+  },
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "expanded_catalog": "Complete actual ipfs_accelerate_py Python source tree plus exactly the six declared physical task_sources/sql files, with full canonical path/byte/hash map equality. Current HEAD source observation2810Python+6SQL; population is discovered, bounded and checked rather than hardcoded2810.",
+  "fixture_only": true,
+  "fresh_inputs": "Create NEW exact request/attempt/fixture roots. Replace frozen renderer old default loader/producer pins BEFORE sealing new request. A/B wrapper accepts dynamic pins; compiler propagates exact expanded map and new source/worker pins. Never rewrite an old unbound input/context/audit/request/result.",
+  "native_migrations": "Six actual resources are enumerable, including legacy0002_tasks_index_repair.sql. Unchanged native REQUIRED_PACKAGE_SQL_FILENAMES selects its five contiguous migrations1..5 with own checksums/version/schema rules. No resource extraction, explicit-directory override, SQL mutation or fake catalog/schema receipt.",
+  "old_nonadmitting_entrypoints": "Preserved inert source baggage only. Authentic A/B/C/D and resource API driver call utility methods; never invoke old start_admin_owner/_serve_admin or its verify_custody replacement. Old16MiB creator cap is irrelevant and unqualified.",
+  "production_access": false,
+  "qualification": {
+    "AST_source_JSON_only": true,
+    "authentic_A_B_C_D_qualified": false,
+    "full_producer_preflight_qualified": false,
+    "genuine_catalog_executed": false,
+    "imports_nativejobs_DB_opens_C_edits_by_authors": false,
+    "production_authority": false,
+    "protected_source_seal_or_model_nonreachability_qualified": false,
+    "resource_API_driver_executed": false,
+    "schema_installed": false
+  },
+  "reader_contract": [
+    "Only exact task_sources package receives a TraversableResources reader joined to its pinned initializer and six SQL pins. Native resources.files(package)\u2192sql\u2192declared filenames exposes only closed root/sql/files nodes.",
+    "is_dir/is_file/iterdir/name/open/read_bytes/read_text are supported. Every operation rechecks pinned initializer, actual SQL population and six pinned resource bytes. Selected resource bytes are checked before/after copying into a bounded memory snapshot.",
+    "r/rt/rb only; UTF-8/strict text wrapper over readonly BytesIO snapshot. Write/writelines/truncate refuse; returned getbuffer memoryview is readonly. No resource_path filesystem fallback, alias/escape/unregistered resource or write/update mode is allowed.",
+    "SQL-only directories cannot become ambient NamespaceLoader packages. Generic genuine Python namespaces remain supported for imports and are outside this native SQL resource guarantee.",
+    "Loaded product source guards additionally join real source spec/loader/class/origin/pin and revalidate actual SQL resources. Live sampling is cooperative, not an atomic adversarial namespace snapshot or continuous quota proof."
+  ],
+  "resource_package": "ipfs_accelerate_py.agent_supervisor.task_sources",
+  "review_pins": {
+    "API_driver": {
+      "bytes": 4181,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-API-driver-independent-review-v01.json",
+      "sha256": "6f264431302f33b9d9e6703968ca11085fc1b657988b9c4b2cdc58372a665c30"
+    },
+    "crossworker": {
+      "bytes": 8999,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/authentic-resource-loader-crossworker-static-review-v01.json",
+      "sha256": "1f2059a0ccb77bc55a6cad86c25b79cea84629bf2a8fb53f9a1c04af74f3c557"
+    },
+    "loader_and_producer": {
+      "bytes": 8371,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-loader-independent-static-review-v01.json",
+      "sha256": "6130f51e4d8113b7fcada526d87e11533f45203450d6c63c238e9087597bfac8"
+    }
+  },
+  "root_owned_runtime_gates": [
+    "Run focused22-control exact-source resource API driver under real finite originalv05 controller_preparation; only stdlib package metadata views, no actual initializer/product/backend/native catalog execution. Root observes actual full owner exit and native reservation finalization.",
+    "Run NEW exact-source fullproducer controller_preparation preflight with this loader/producer and full actual expanded catalog. Keep prior failed preflights. Only exact successful producer preflight can precede genuine original supervisor_launch/NativeFenceObserver custody.",
+    "After actual outer launch finalization perform bounded no-follow wholefixture128MiB census beforeB. Genuine WAL maintenance/status, real ADMIN kernel grant/audit and fresh same-store D stages remain separate gates.",
+    "Freeze actual C HEAD/source/helper/backend/request bytes across complete A\u2192B\u2192C\u2192D1\u2026D6 trace and gaps. Parentv03 finite resource authority and preseal/postreap global check ordering remain unchanged."
+  ],
+  "schema": "authentic-pinned-native-SQL-resource-loader-source-contract@1",
+  "source_pins": {
+    "loader": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "producer": {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    "resource_API_driver": {
+      "bytes": 18699,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/test_pinned_product_resources_v01.py",
+      "sha256": "d94fd06d831e4a5720e2917a94a0605b15afcd50fba5f63300b7fc0501502aef"
+    }
+  },
+  "wire_compatibility": "Producer request/result@1, ADMIN/settlement/parent wire@2 and original A/B wrappers unchanged. New producer changes only prepare_imports source/resource closure checks; PermissionError denial/diagnostics/native calls/custody remain preserved.",
+  "worker_dependency": {
+    "ADMIN_independent_review": {
+      "bytes": 4005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/ADMIN-resource-loader-independent-review-v05.json",
+      "sha256": "bc017835e2481233f4da07202f843330ece343dfb384ba6cca1826cc06ac9b48"
+    },
+    "new_ADMIN": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "parent_unchanged": {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    "settlement_unchanged": {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    }
+  }
+}

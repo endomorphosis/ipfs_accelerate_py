@@ -1,0 +1,61 @@
+{
+  "files": [
+    {
+      "bytes": 14959,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/compile_authentic_admin_inputs_v01.py",
+      "sha256": "8710720918c86bc17cf93acfff9274b917f8e0961110ec24322acf8f387515ec"
+    },
+    {
+      "bytes": 14098,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/missing-native-adapter-contract-v01.json",
+      "sha256": "dfa0f51d8692ff68a7512f21dab16c8ebf09107dfc636b1e29d82a72c06efdb7"
+    },
+    {
+      "bytes": 2707,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/request-templates-v01.json",
+      "sha256": "2e80e8e9dd4be712069c9a8728c7dd3e2aa56d51b205420bc4e7186534084c4d"
+    },
+    {
+      "bytes": 9708,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/independent-context-api-review-v01.json",
+      "sha256": "0676d3587a207af0f42472247bb2ab4a2be90c1aa5a78197db6a428b9c5f82ee"
+    },
+    {
+      "bytes": 3412,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/input-compiler-independent-review-v01.json",
+      "sha256": "a8f45a84665457645fd88f19f0d11e83d523c675b2e9e8d4d71985939fa60ab9"
+    }
+  ],
+  "fixture_only": true,
+  "frozen": true,
+  "frozen_AB_manifest_pin": {
+    "bytes": 7357,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/manifest-v01.json",
+    "sha256": "244016f11f23d14788da81456825dfb900dc2dc2cd1bb8461ab9ba2e7d28ad31"
+  },
+  "implemented_scope": "Metadata-only input compiler, exact missing native parent/ADMIN/settlement adapter contract, placeholder templates and independent source/API reviews. Compiler output is deliberately unbound/policy-unverified and requires actual future worker source pins.",
+  "native_qualified": false,
+  "next_version": "Root-authorized concrete runtime implementation is separate v02; v01 remains unchanged.",
+  "production_access": false,
+  "production_policy_authorized": false,
+  "required_runtime_resolutions": [
+    "NEW genuine retained-F07 parent with isolated child PGID registration and separate explicitly charged short AF_UNIX control scope. Existing strict attempt and frozen A/B census cannot contain live sockets.",
+    "NEW actual ADMIN child with unmodified custody verifier, real current gateway/kernel identity/peer grant, actual append/replay and exit/reap. Existing nonadmitting ADMIN fixture child is not usable.",
+    "NEW fresh native settlement child retaining old authentic audit/context and exact A/B stores IN PLACE; serial post-durable-commit loss/exit/fresh continuation through FAILED/coord/BLOCKED/terminal and exact replay.",
+    "Root qualifies frozen A/B originals first, observes all native outer exits/reservations, then executes exact reviewed C/D jobs serially."
+  ],
+  "runtime_driver_implemented": false,
+  "runtime_workers_implemented": false,
+  "schema": "authentic-unknown-admin-settlement-offline-design-manifest@1",
+  "static_validation": {
+    "AB_v01_edits": false,
+    "AST_parsed": true,
+    "C_edits": false,
+    "DB_opens": false,
+    "JSON_parsed": true,
+    "context_shape_matches_production": "Exactly13 preimage keys; exactly3 missing live fields: registered_owner_identity, registered_creator, context_cid. Production closed context has16keys.",
+    "native_jobs": false,
+    "product_backend_imports": false,
+    "tests_executed": false
+  }
+}

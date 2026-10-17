@@ -1,0 +1,88 @@
+{
+  "actual_native_requirement": {
+    "function": "load_context",
+    "lines": [
+      277,
+      281
+    ],
+    "reason_bound_characters": [
+      1,
+      4096
+    ],
+    "required_exact_closed_keys": "DECISION plus reason and unknown_effect_risk_accepted",
+    "required_risk_value": true,
+    "source_pin": {
+      "bytes": 32448,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+      "sha256": "2c41ec13d6493da394d3285686e662e5fa36e88439eb840271260ce1605e60e7"
+    },
+    "why_explicit_policy_question_may_be_needed": "The genuine native API requires an explicit acceptance that UNKNOWN external effects remain unverified for this exact attempt. Starting the supervisor does not itself choose this unresolved provider disposition. This is a real source policy requirement, not a SKILL or approval-review block."
+  },
+  "before_any_operation": [
+    "Complete and reconcile authentic fixture gates; fixture success alone does not supply production custody.",
+    "Obtain explicit operator UNKNOWN-risk disposition for this exact local-stop scope.",
+    "Admit genuine current registered ADMIN creator/peer grant with exact current source/store/task/claim/fence/native preimage/custody; the retained inspection is insufficient.",
+    "Refuse on any current subject/revision/claim/lease/fence/successor-owner drift, accepted completion, committed effect or other failed native precondition; do not infer authority from historical observation.",
+    "Perform only exact admitted same-attempt audit/local closeout and verify truthful resulting blocked state; all other tasks/goals/dependencies/history remain unchanged."
+  ],
+  "candidate_operator_decision_NOT_YET_authorized": {
+    "automatic_retry_admitted": false,
+    "callback_closed": false,
+    "completion_authority": false,
+    "decision": "administratively_abandon_local_execution_authority",
+    "native_execution_settlement_performed_by_this_operation": false,
+    "nonreachability_asserted": false,
+    "possible_external_effects": "unverified",
+    "provider_outcome": "unknown",
+    "reason": "Administratively stop only the existing LIR-9001 ordinal-2 local execution authority after its unresolved planning invocation. Preserve both UNKNOWN provider outcomes and block the task; possible external effects remain unverified. Do not retry, rearm, raise the attempt cap, create a successor, or claim callback closure, remote cancellation, nonreachability, completion, or native settlement by this audit operation.",
+    "remote_cancellation_proved": false,
+    "unknown_effect_risk_accepted": true
+  },
+  "controller_source_HEAD": "592d07580fca33894f37723dea4f84630a957f37",
+  "current_production_state_freshness_asserted": false,
+  "effect_evidence_limit": "Historical zero committed-effect rows or absent outputs do not establish no external effects or no provider dispatch.",
+  "exact_subject": {
+    "attempt_id": "attempt:e1ddbe57f2a0408bacf841b2ba471a1f",
+    "both_ordinal_1_and_2_UNKNOWN_records_preserved": true,
+    "cap": 2,
+    "claim_id": "claim:6b2fb122f4274b1d91ea03055600b047",
+    "current_UNKNOWN_invocation": "provider:313d3ccc3da5909eb32910ca",
+    "fence": 2,
+    "fence_epoch": 2,
+    "historical_attempt_phase": "context",
+    "historical_attempt_status": "running",
+    "historical_canonical_revision": 12,
+    "historical_packet_revision": 11,
+    "historical_task_status": "in_progress",
+    "lease_id": "lease:cddf1019ca214d478cf9844dfe567d8c",
+    "namespace": "legal-ir-span-graph-lean-refinement-20261016",
+    "ordinal": 2,
+    "owner_id": "embedded-store:c0ef4decb26bb2d5d4a9208ff71cf7d1",
+    "task_alias": "LIR-9001",
+    "task_cid": "baguqeeraqk2ln7d3plwfonnyycsxkr5tjrpo7e5uq4p7rhe6vi6btpxsaeyq"
+  },
+  "excluded_scope": [
+    "No retry, rearm, fresh productive model dispatch, successor attempt or ordinal3.",
+    "No cap increase from2, claim of remote cancellation, callback closure, nonreachability or verified absence of external effects.",
+    "No completion or legal/Lean semantic authority, UNKNOWN resolution, raw private context/grant/token publication, or blanket authority for other attempts."
+  ],
+  "future_productive_Grok_launch_authorized": false,
+  "intended_local_result": "Audited abandonment of this existing attempt local execution authority, followed only by separately admitted same-attempt local failure/coordination/blocked/terminal closeout; task remains blocked and both UNKNOWN histories remain unresolved.",
+  "native_authority_context_created_or_sealed": false,
+  "native_or_production_authority": false,
+  "operator_policy_acceptance_obtained_by_this_document": false,
+  "prepared_at_utc": "2026-10-17T08:41:41.992841+00:00",
+  "production_DB_or_WAL_bytes_read_or_queried": false,
+  "production_actions_executed": false,
+  "proposal_only": true,
+  "retained_inspection_is_historical_not_fresh_authority": true,
+  "retained_inspection_pin": {
+    "bytes": 21926,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-launch06-attempt2-readonly-inspection-20261017-04/attempt2-state-inspection.json",
+    "sha256": "d90d45e230844984da300ca4db85f75d9e8f0d50c8688ebaab8dbff7a1e125be"
+  },
+  "reviewable_concrete_scope": true,
+  "schema": "planning-unknown-exact-attempt-local-stop-proposal-v02",
+  "suggested_root_operator_question_if_needed": "Approve an audited local stop for LIR-9001 attempt2, preserving both UNKNOWN records and blocking the task without retry, rearm or a cap increase?",
+  "suggested_root_question_explanation": "The current native API requires explicit acceptance that this attempt may have unverified external effects; this local action does not prove remote cancellation."
+}

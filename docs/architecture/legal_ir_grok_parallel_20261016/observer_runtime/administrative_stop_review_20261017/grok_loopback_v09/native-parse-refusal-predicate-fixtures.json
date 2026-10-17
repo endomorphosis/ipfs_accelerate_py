@@ -1,0 +1,108 @@
+{
+  "cases": [
+    {
+      "case": "observed-exact-native-parse-wrapper",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "case": "inner-mcp-tool-error",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "unreviewed-registry-wording",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-call-id",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-prefix-tool-name",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-repeated-tool-name",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-original-arguments",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "duplicate-original-argument-key",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "malformed-original-arguments",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "trailing-second-json-object",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-message-role",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "exact-bound-assistant-echo",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "case": "wrong-assistant-call-id",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-assistant-tool-name",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    },
+    {
+      "case": "wrong-assistant-arguments",
+      "expected": false,
+      "observed": false,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "schema": "native-parse-refusal-predicate-fixtures/v1",
+  "selection_evidence": [
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/case-result.json",
+      "sha256": "09276e7813f82a0a5de45a2e5f879d63f365339ff0fb20f2e410c1c1a9e3e26a",
+      "size_bytes": 14507
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-02.json",
+      "sha256": "31e25da55b32c704d9912b7c0902f140fa6a2ecdeefae865041478989da08cee",
+      "size_bytes": 7713
+    }
+  ]
+}

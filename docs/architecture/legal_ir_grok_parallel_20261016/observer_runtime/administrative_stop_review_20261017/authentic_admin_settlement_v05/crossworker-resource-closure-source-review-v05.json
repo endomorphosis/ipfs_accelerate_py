@@ -1,0 +1,88 @@
+{
+  "C_or_frozen_source_edits_performed": false,
+  "actual_resource_API_compatibility": "loaderc385 supplies get_resource_reader only for native task_sources package, Traversable files/joinpath/is_dir/is_file/iterdir/name/read_text via read-only in-memory pinned bytes. Reader verifies package initializer and all six actual SQL pins. _loaded_product_sources additionally rechecks the six SQL resources and actual pinned product loader identity.",
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "exact_ADMIN_delta": "Byte-for-byte baseADMIN7993 except one64-character LOADER_SHA literal fba\u2192c385; normalized entire AST equal. Strict hash equality at runtime retained.",
+  "expanded_producer_compatibility": "producer544b prepare_imports requires exact RESOURCE_PACKAGE and exact six RESOURCE_FILENAMES, then pins==loader._package_pins(repo); retains4096/256MiB/root/pin bounds.",
+  "historical_review_pin": {
+    "bytes": 8999,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/authentic-resource-loader-crossworker-static-review-v01.json",
+    "sha256": "1f2059a0ccb77bc55a6cad86c25b79cea84629bf2a8fb53f9a1c04af74f3c557"
+  },
+  "imports_jobs_DB_or_provider_calls_performed": false,
+  "independent_ADMIN_review_pin": {
+    "bytes": 4005,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/ADMIN-resource-loader-independent-review-v05.json",
+    "sha256": "bc017835e2481233f4da07202f843330ece343dfb384ba6cca1826cc06ac9b48"
+  },
+  "independent_resource_loader_review_pin": {
+    "bytes": 8371,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-loader-independent-static-review-v01.json",
+    "sha256": "6130f51e4d8113b7fcada526d87e11533f45203450d6c63c238e9087597bfac8"
+  },
+  "limitations": [
+    "Static source/AST/JSON/pin review only. Focused resource tests and complete exact-source preflight are separate pending gates.",
+    "Actual A/B custody and C/D authenticated parent/child/recovery trace remain pending; no fake receipts/native ACKs or source-seam admissions.",
+    "Directory/hash observations are point-in-time, not atomic or continuous custody."
+  ],
+  "metadata_only_renderer_default_caveat": "Fresh requests must choose final new loader/producer pins before hashing; frozen renderer defaults still name original helper/producer.",
+  "native_API_or_authentic_runtime_qualified": false,
+  "native_catalog_behavior_unchanged": "Six pinned SQL resources include legacy extra0002_tasks_index_repair.sql; native catalog still selects only five sealed names1-5, preserves checksum and applied-receipt validation.",
+  "no_live_Python_only_remaining_check_in_those_actors": true,
+  "obsolete_nonadmitting_helper_seam_not_invoked": true,
+  "parent_and_settlement_source_changed": false,
+  "prepared_at_utc": "2026-10-17T07:23:46.085670+00:00",
+  "production_authority": false,
+  "review_kind": "Author source/metadata alignment followup; separate independent ADMIN one-literal and resource-loader reviews are explicitly pinned",
+  "reviewer": "/root/main_integration_survey",
+  "schema": "authentic-resource-loader-crossworker-static-compatibility-review@2",
+  "source_pins": [
+    {
+      "bytes": 44914,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+      "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1"
+    },
+    {
+      "bytes": 10622,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/render_authentic_fixture_request_v01.py",
+      "sha256": "bda7d904fc820976a6ac285aeb9cca70a5a54de4024c53460b85c2bf3fdeb2ff"
+    },
+    {
+      "bytes": 14959,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/compile_authentic_admin_inputs_v01.py",
+      "sha256": "8710720918c86bc17cf93acfff9274b917f8e0961110ec24322acf8f387515ec"
+    },
+    {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    },
+    {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    }
+  ],
+  "unchanged_dynamic_pin_actors": [
+    "A/B wrappera526",
+    "compilerv01 8710",
+    "parentv03 0ab548",
+    "settlementv04 ed72"
+  ],
+  "wire_schema_changed": false
+}

@@ -1,0 +1,56 @@
+{
+  "AST_only": true,
+  "base_pin": {
+    "bytes": 32130,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/produce_authentic_unknown_master_diagnostic_v02.py",
+    "sha256": "5385eca75dcce2b7058bd915814b4cedc10969ec74b14fa3d9a421940b7e5c04"
+  },
+  "concrete_static_blockers": [],
+  "findings": [
+    "The complete source differs only in refused_dispatch error constructor RuntimeError(message)\u2192PermissionError(message). Restoring that one AST node makes the whole module identical. Existing six denied events, nonlocal socket denial, bounded diagnostics, request/result schemas, native calls and exit/custody behavior are unchanged.",
+    "PermissionError is an OSError subtype. Actual _agent_git_output catches OSError and raises its genuine ValueError without a completed subprocess or Git output. Actual implementation_daemon import catches that ValueError and sets imported protected control-plane capsule/launch/temp root to None. No Git result, source generation, capsule, function override or exception handler is fabricated.",
+    "The retained diagnostic confirms one subprocess.Popen denial in import_native_product_classes, first==last and exact propagated-error identity. Stack joins actual _agent_git_output7620\u2192source_generation7937\u2192_capture_imported_control_plane_generation79168\u2192module79202. Retained native receipt reports child2/failed/groupquiescent, while outer full finalization is root-observed separately.",
+    "The denial still raises before the subprocess audit boundary permits external dispatch. Catching a conventional native access-denied exception may let the real importer proceed along its own unavailable-capsule branch; it grants no process/network permission or protected-route qualification."
+  ],
+  "imports_native_jobs_DB_opens_signals_or_C_mutations": false,
+  "limitations": [
+    "Static/source/JSON review only; no target/product/backend imports, native jobs/admission, DB opens, signals, C edits or production access.",
+    "Expected imported capsule/launch/temp None is native-source reasoning, not newly observed runtime. Transitive imports/native constructors/runner may expose additional caught or uncaught denials; exact new full producer preflight remains mandatory.",
+    "No full model nonreachability, callback closure, remote cancellation, source rearm, UNKNOWN abandonment or production recovery authority is established.",
+    "Preserve frozen A/B v01, diagnostic v02 and prior failed preflights. Root must create NEW exact source/request/selfpin/root/attempt for genuine controller_preparation, retain actual outer exit/reservation finalization and whole-root census, and qualify exact successful preflight before any supervisor_launch."
+  ],
+  "manifest_pin": {
+    "bytes": 7635,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/manifest-v03.json",
+    "sha256": "e7fa815b2c06b0a1e4795f48d83facfcf542d9374eef6c070f4685fae063056e"
+  },
+  "native_error_source_pins": [
+    {
+      "bytes": 343482,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+      "sha256": "1a3ab9f87f8e14a2bfb2b2dec0306a2007510bfb031aa9cbeef2dd5e949c6c9f"
+    },
+    {
+      "bytes": 3298714,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "8bd4c4a1aaef11140b2e2301bd203ce3159121f16fb821045e3ac2e0767783b5"
+    }
+  ],
+  "new_dispatch_permission": false,
+  "patch_pin": {
+    "bytes": 770,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/producer-denial-error-v03.patch",
+    "sha256": "a6ece9e03bf0da8c1fe52e6702ad4e30074830df276935eb29cfe425ab0534e1"
+  },
+  "production_authority": false,
+  "protected_route_qualified": false,
+  "review_scope": "Exact source/hash/unified diff/AST and retained bounded sanitized diagnostic/receipt metadata; native caller source read only.",
+  "reviewer": "unknown_event_forensics",
+  "runtime_qualified": false,
+  "schema": "authentic-native-producer-conventional-denial-independent-review@3",
+  "source_pin": {
+    "bytes": 32133,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/produce_authentic_unknown_master_diagnostic_v03.py",
+    "sha256": "b24d39fc01da32989a8d43cf74b5db204e286b98c41736cc53db396696162f17"
+  }
+}

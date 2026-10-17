@@ -1,0 +1,247 @@
+{
+  "actual_crash": "Parent may kill/reap only its matching registered owned Popen child/group. Worker emits no successful graceful record when killed; canonical WAL is retained for genuine fresh daemon recovery. No old-context rebind.",
+  "actual_stop": "Parent writes exact stop record private600 with same nonce/requestSHA and exact parent/child identity maps. Child calls real gateway.stop and native connection.close. admin-exited records only successful component close, requiring actual parent process exit/reap/group-absence observation afterward.",
+  "argv": [
+    "PINNED_PYTHON",
+    "-I",
+    "-S",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+    "--request",
+    "CONTROL/admin-request.json",
+    "--request-sha256",
+    "SHA256"
+  ],
+  "base_frozen_protocol_pin": {
+    "bytes": 6783,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic-admin-worker-protocol-v02.json",
+    "sha256": "6e282788fb14866e3cf5e7071e4f21a3e7a5fb12ec021e589f9b780ef1d6cdfe"
+  },
+  "child_process_closed_keys": [
+    "pid",
+    "start_time_ticks",
+    "boot_id",
+    "process_birth_id",
+    "process_group",
+    "session_id"
+  ],
+  "child_process_group_rule": "Actual getppid equals parent PID; actual child PGID==SID==PID. Real parent must start_new_session=True and immediately register this exact Popen child with disk.check_usage(child_pid=child.pid).",
+  "closed_request_keys": [
+    "control_scope",
+    "control_scope_identity",
+    "deadline_monotonic_ns",
+    "fixture_only",
+    "nonce",
+    "parent_kernel_identity",
+    "production_access",
+    "python_pin",
+    "schema",
+    "unbound_input_pin",
+    "worker_source_pin"
+  ],
+  "context": "sealed-context.json is exactly compiler context_preimage plus registered_owner_identity=dict(actualGateway.identity), registered_creator=actualChildPID+nativeKernelBirth, and canonical contextCID. No other field may change.",
+  "control_files": {
+    "admin-cleanup-pending.json": [
+      "child_process",
+      "error_type",
+      "fixture_only",
+      "parent_native_custody_still_required",
+      "request_sha256",
+      "schema",
+      "successful_close_asserted"
+    ],
+    "admin-exited.json": [
+      "actual_parent_reap_required",
+      "child_process",
+      "close_failure_observed",
+      "completion_authority",
+      "connection_close_returned",
+      "fixture_only",
+      "gateway_stop_returned",
+      "graceful_stop_requested",
+      "native_resource_finalization_asserted",
+      "nonce",
+      "parent_kernel_identity",
+      "process_exit_observed_by_this_record",
+      "production_access",
+      "request_sha256",
+      "schema",
+      "sealed_context_pin",
+      "socket_absent_after_stop"
+    ],
+    "admin-ready.json": [
+      "child_process",
+      "completion_authority",
+      "credential_pin",
+      "fixture_only",
+      "gateway_identity",
+      "grant",
+      "installed_backend",
+      "native_custody_verifier_preserved",
+      "native_resource_ack_created",
+      "nonce",
+      "original_launch_receipt_created",
+      "parent_kernel_identity",
+      "policy_context_verified",
+      "production_access",
+      "request_sha256",
+      "schema",
+      "sealed_context_pin",
+      "socket_identity",
+      "socket_path"
+    ],
+    "admin-token.json": [
+      "gateway_identity",
+      "nonce",
+      "request_sha256",
+      "schema",
+      "token"
+    ]
+  },
+  "control_scope_identity_closed_keys": [
+    "device",
+    "inode",
+    "uid",
+    "mode"
+  ],
+  "control_scope_mode_integer": 448,
+  "credential": "admin-token.json is private600; ready carries only its pin, not token. Actual parent validates closed credential requestSHA/nonce/gateway identity and uses token only in genuine peer-bound TypedStateOwnerConnection. Never log/publish token.",
+  "deadline": "deadline_monotonic_ns exact positive int, at most30seconds ahead at child read. Native grant<=20seconds and remaining graceful window; parent hard cleanup by its original finite deadline plus bounded reap.",
+  "denial_compatibility": {
+    "base_admin_pin": {
+      "bytes": 24720,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+      "sha256": "b4bffedec72f1f8be083ac7ba83bd42fc7eb02ba9c1546a5034ac0d62fd77e86"
+    },
+    "base_settlement_pin": {
+      "bytes": 19477,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_settlement_worker_v02.py",
+      "sha256": "b2475216dabfd49da5bbc77b65d472cc28518c5dee9030fcceb41649a7b6136b"
+    },
+    "exact_delta": "Only two denied exception constructors per worker change RuntimeError\u2192PermissionError. Entire remaining worker AST and exact deny conditions are unchanged. No additional diagnostic payload or allowlist is added.",
+    "known_retained_failure": "Native diagnostic preflight14385 emitted one subprocess.Popen refusal during native class import, propagating the exact recorded RuntimeError from _agent_git_output through imported source-generation capture. Root separately observed complete outer failure finalization.",
+    "native_error_path": "PermissionError is OSError; genuine _agent_git_output catches it and raises genuine ValueError without Git output. Native imported-control-plane capture catches that ValueError and sets capsule/launch/temp root=None. This is expected source behavior, not newly observed runtime.",
+    "native_error_sources": [
+      {
+        "bytes": 343482,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+        "sha256": "1a3ab9f87f8e14a2bfb2b2dec0306a2007510bfb031aa9cbeef2dd5e949c6c9f"
+      },
+      {
+        "bytes": 3298714,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "8bd4c4a1aaef11140b2e2301bd203ce3159121f16fb821045e3ac2e0767783b5"
+      }
+    ],
+    "no_external_dispatch_permission": true,
+    "no_fake_git_output_capsule_or_source_generation": true,
+    "no_native_handler_or_function_override": true,
+    "patch_pin": {
+      "bytes": 2001,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/worker-denial-permissionerror-v04.patch",
+      "sha256": "a85599ee1f8e6d7876f8624a6afc6ed08499bea545b4f6d57a8c587576423a95"
+    },
+    "protected_route_or_source_seal_qualified": false,
+    "remaining_gate": "Fresh actual full exact-source producer preflight and later genuine C/D startup/ADMIN/settlement/finalization. Any later uncaught denied call remains a failure. No old failed preflight or unrelated integration result qualifies this bundle.",
+    "runtime_unavailable_capsule_observed": false
+  },
+  "derivative_base_v04_protocol_pin": {
+    "bytes": 10261,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic-admin-worker-protocol-v04.json",
+    "sha256": "4545066a1a49cbe6179881d7578b6e4244a4d57e99f849257b784ee23db68c31"
+  },
+  "expected_canonical_mode": "Original native file may be0644 under private0700 fixture root; exact pre-admin hash/owner/nlink/no-world-writes required, no chmod or rewrite performed.",
+  "native_qualification_performed": false,
+  "new_control_scope_initial_tree": "Exactly admin-request.json, private0700 directory whose device/inode/uid/mode matches request. No socket under strict attempt or unchanged A/B census tree.",
+  "parent_kernel_identity_closed_keys": [
+    "pid",
+    "start_time_ticks",
+    "boot_id",
+    "process_birth_id"
+  ],
+  "publication_barriers": {
+    "ready": "Parent waits for private600 zero-byte admin-ready.commit, created only after admin-ready.json and referenced private records were written/fsynced/closed. It verifies marker custody/empty bytes before parsing ready.",
+    "stop": "Parent writes/fsyncs/closes exact private600 admin-stop.json first, then creates/fsyncs private600 zero-byte admin-stop.commit. Child waits for this marker, verifies custody/empty bytes, then parses stop. Existence of a JSON file alone never marks publication complete."
+  },
+  "ready_is_not": [
+    "A resource ACK",
+    "Original launch/admission/fence receipt",
+    "A parent reap observation",
+    "Completed native qualification",
+    "Provider outcome resolution"
+  ],
+  "request_schema": "authentic-native-unknown-admin-worker-request@2",
+  "resource_loader_compatibility": {
+    "SQL_source_closure_pin": {
+      "bytes": 6403,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/SQL-source-closure-v01.json",
+      "sha256": "02ee0d87b7558acd84af076ddc4bd79e830032045db4c8c7f2b5430744886e37"
+    },
+    "authentic_runtime_qualified": false,
+    "base_ADMIN_pin": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_admin_worker_v04.py",
+      "sha256": "7993fcb86a7e80918fbd862ec3aa18b16eaac8c7f9182054b83f9012b8c1c03e"
+    },
+    "expanded_closure": "All actual Python sources plus exactly six native task_sources/sql files, equality checked using the pinned loader; unchanged4096-file and256MiB aggregate source limits.",
+    "independent_ADMIN_review_pin": {
+      "bytes": 4005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/ADMIN-resource-loader-independent-review-v05.json",
+      "sha256": "bc017835e2481233f4da07202f843330ece343dfb384ba6cca1826cc06ac9b48"
+    },
+    "loader_independent_static_review_pin": {
+      "bytes": 8371,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-loader-independent-static-review-v01.json",
+      "sha256": "6130f51e4d8113b7fcada526d87e11533f45203450d6c63c238e9087597bfac8"
+    },
+    "loader_pin": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "old_loader_pin_historical": {
+      "bytes": 43192,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py",
+      "sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
+    },
+    "old_nonadmitting_serve_admin_seam": "Not invoked or enabled by authentic A/B/C/D; old copied-store fixture behavior remains unqualified.",
+    "one_literal_patch_pin": {
+      "bytes": 888,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/admin-pinned-resource-loader-v05.patch",
+      "sha256": "e2fb2bbf637dbebde3952733f34db9b5ff64cd6a8f32949dbd7958ebe86142f5"
+    },
+    "producer_pin": {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    "resource_API_runtime_qualified": false
+  },
+  "schema": "authentic-native-unknown-admin-worker-protocol@5",
+  "socket": "Exactly CONTROL/admin.sock, actual AF_UNIX mode600/uid/single-link identity. Parent independently binds exact path/inode to ready actual child/gateway/grant and charges the separate control scope. Encoded path<=107bytes.",
+  "socket_publication_umask": "Child sets umask077 before actual native bind. AF_UNIX bind initially publishes mode0700 (0777 masked), then the genuine gateway chmods that same socket to0600. Parent may observe only this exact live-owned pre-ready publication transition and must pin0600 at ready/grant/handshake. Existing A/B files are never chmodded.",
+  "status": "Exact source protocol for new v05 ADMIN worker. Only the strict LOADER_SHA literal changes to the independently reviewed resource-loader hash. All @2 wire keys and native PermissionError/custody behavior remain unchanged. Source/AST review only; authentic runtime qualification pending.",
+  "stop_closed_keys": [
+    "child_process",
+    "nonce",
+    "parent_kernel_identity",
+    "request_sha256",
+    "schema"
+  ],
+  "stop_schema": "authentic-native-unknown-admin-stop@2",
+  "wire_schemas_unchanged": true,
+  "worker_actions_not_performed": [
+    "Native resource root acquisition",
+    "Provider/model/network connect/child process dispatch",
+    "Execution/coordinator connection",
+    "Native settlement",
+    "Original source rearm/successor",
+    "Historical identity override",
+    "policy.verify_custody/load_context replacement"
+  ],
+  "worker_pin": {
+    "bytes": 24726,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+    "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+  }
+}

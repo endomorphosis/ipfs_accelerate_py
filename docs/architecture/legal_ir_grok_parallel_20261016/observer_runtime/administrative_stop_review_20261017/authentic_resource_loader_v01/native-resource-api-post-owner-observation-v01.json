@@ -1,0 +1,41 @@
+{
+  "actual_child_exit_code": 0,
+  "actual_disk_reservation_id": "3d994bea633447a38096673eedfaaaf2",
+  "actual_lease_ids_observed_absent": [
+    "bcd7f16ac88940d6a92c85485890ea84",
+    "a5acb88dd0d1481aa4016026c4c8064c",
+    "5ee51f2daa374b6bb518703492f924a1"
+  ],
+  "actual_pids_observed_absent": [
+    2554447,
+    2557014
+  ],
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 68924,
+  "authentic_custody_qualified": false,
+  "cases_passed": 22,
+  "native_resource_ack_created": false,
+  "observation_only": true,
+  "observed_at_epoch": 1792221753.0610132,
+  "observed_reservation_status": "released",
+  "original_receipt_rewritten": false,
+  "original_receipt_status": "completed",
+  "owned_live_group_observed_absent": true,
+  "production_actions_performed": false,
+  "receipt_pin": {
+    "bytes": 638,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-pinned-resource-api-20261017-01/receipt.json",
+    "sha256": "b783b7de25e46e102539e5e18a3a14c681cb6047296314c678a75033e06cb672"
+  },
+  "request_pin": {
+    "bytes": 740251,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/native-resource-api-owner-request-v01.json",
+    "sha256": "f9c24cec035391c30214d38bb1472c907ce7cc5b04df27638bcfa34d4b9e4ca0"
+  },
+  "result_pin": {
+    "bytes": 8922,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-pinned-resource-api-20261017-01/resource-api-result.json",
+    "sha256": "b29dde9773860eca37aa3e8f8328e119636f9221d769ac5cc96b5691c9109a82"
+  },
+  "schema": "pinned-resource-api-post-owner-observation@1"
+}

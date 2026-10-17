@@ -1,0 +1,20 @@
+{
+  "actual_disk_reservation_id": "cce5b141aaeb406f852cb4c755db1906",
+  "actual_root_phase_native_lease_ids_observed_absent": [
+    "6bf4801dfe344a8d814912b8f566cc4f",
+    "c626996ef49c4b918bf863c4f4c69393",
+    "d8b36113db6944f0800ccdcb1297ff99"
+  ],
+  "actual_tool_exit_code": 1,
+  "actual_tool_session": 62976,
+  "failure": "Strict producer audit hook refused an operation before any fixture canonical database was created; exactevent diagnostic pending",
+  "native_resource_ack_created": false,
+  "observed_reservation_status": "released",
+  "original_child_exit_code": 2,
+  "original_child_pid_observed_absent": 2214781,
+  "original_failure_preserved": true,
+  "original_owner_pid_observed_absent": 2194805,
+  "original_supervisor_launch_started": false,
+  "production_actions_performed": false,
+  "schema": "authentic-full-producer-preflight-post-owner-failure@1"
+}

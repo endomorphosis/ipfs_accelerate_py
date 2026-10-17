@@ -1,0 +1,55 @@
+{
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "files": {
+    "contract": {
+      "bytes": 2437,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/contract-v05.json",
+      "sha256": "46354f014c583009506b5bc49d816301c9c453f6bf06753cac7282d0b9c0722c"
+    },
+    "exact_patch": {
+      "bytes": 3271,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/bounded-settlement-error-diagnostic-v05.patch",
+      "sha256": "ae74aad44bd2c8a0b0e642110b69c5e05d5dc48084646565d97d0d746b2ee585"
+    },
+    "independent_static_review": {
+      "bytes": 3683,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/settlement-diagnostic-independent-static-review-v05.json",
+      "sha256": "f3a600be5b3b50f261ddf1a1c60f497ffce152872a91390f936302e55f72fcc1"
+    },
+    "worker_source": {
+      "bytes": 21633,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/authentic_unknown_settlement_worker_v05.py",
+      "sha256": "a30a3081b72502e1bc95380fe435421b5b3281b40c6915a2e21abc0027b519d6"
+    }
+  },
+  "fixture_only": true,
+  "frozen": true,
+  "production_access": false,
+  "runtime_qualified_at_freeze": false,
+  "schema": "authentic-native-settlement-diagnostic-bundle@5",
+  "scope": "Failure diagnostics only. Existing native authority checks, actual commits, stage crash hooks, close policy and exit behavior remain unchanged.",
+  "selection_requirement": "Parent must seal this settlement worker in NEW fresh07 unbound input before C07; all D stages use that same immutable input. No old input/receipt/source rewriting.",
+  "target_imports_native_jobs_tests_DB_opens_or_C_edits_by_authors": false,
+  "unchanged_dependencies": {
+    "ADMIN_worker_v05": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "baseline_settlement_worker_v04": {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    },
+    "parent_v04": {
+      "bytes": 46961,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/authentic_unknown_native_parent_v04.py",
+      "sha256": "d774c6781f7563514c0b1175933196e25fc1674ddd5f6f50e3a56b68b908022c"
+    },
+    "source_loader": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    }
+  }
+}

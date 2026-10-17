@@ -1,0 +1,393 @@
+{
+  "C_source_or_refs_modified": false,
+  "cases": [
+    {
+      "acceptance_authority": false,
+      "actual_owner_finalization": {
+        "primary": {
+          "native_lease_id": "f35e1fb3aa8e43f19fd129ef7ef8f5ff",
+          "native_lease_released": true,
+          "reservation_id": "3db5b4aa0e4c460f93d3718a8d6ecd8f",
+          "status": "released"
+        },
+        "watchdog": {
+          "native_lease_id": "64b9e211679748c5b266c12519cdf702",
+          "native_lease_released": true,
+          "reservation_id": "abd76f9be3d94e068905841c61cd2bd9",
+          "status": "released"
+        }
+      },
+      "actual_returncode": 0,
+      "both_native_owner_contexts_exited_after_actual_cleanup": true,
+      "canonical_tasks_accepted": 0,
+      "cleanup": {
+        "actual_allocation_observed": true,
+        "actual_kernel_scope_captured": true,
+        "actual_transport_group_dead": true,
+        "actual_watchdog_group_dead": true,
+        "cleanup_known": true,
+        "container_absent_by_id_and_name": true,
+        "kernel_scope_quiescent": true,
+        "lease_home_prompt_absent": true,
+        "preserve_for_recovery_reported": false
+      },
+      "finish_or_success_callback_called": false,
+      "fixture_case": "positive",
+      "fixture_only": true,
+      "models_called": 0,
+      "passed": true,
+      "payload_effect_observed": true,
+      "positive_immediate_start_race_preserved": true,
+      "provider_calls_performed": false,
+      "public_wrapper_exercised": false
+    },
+    {
+      "acceptance_authority": false,
+      "actual_owner_finalization": {
+        "primary": {
+          "native_lease_id": "4af60bea2de24de880b9efee39afd816",
+          "native_lease_released": true,
+          "reservation_id": "88848b88c3714154acce55386004f707",
+          "status": "released"
+        },
+        "watchdog": {
+          "native_lease_id": "c35550192c324b1083bc9ab961c2324b",
+          "native_lease_released": true,
+          "reservation_id": "6e4815cd8bcb4ffc8030e0f34226bdac",
+          "status": "released"
+        }
+      },
+      "actual_returncode": 125,
+      "both_native_owner_contexts_exited_after_actual_cleanup": true,
+      "canonical_tasks_accepted": 0,
+      "cleanup": {
+        "actual_allocation_observed": true,
+        "actual_kernel_scope_captured": true,
+        "actual_transport_group_dead": true,
+        "actual_watchdog_group_dead": true,
+        "cleanup_known": true,
+        "container_absent_by_id_and_name": true,
+        "kernel_scope_quiescent": true,
+        "lease_home_prompt_absent": true,
+        "preserve_for_recovery_reported": false
+      },
+      "finish_or_success_callback_called": false,
+      "fixture_case": "wrong_marker",
+      "fixture_only": true,
+      "models_called": 0,
+      "passed": true,
+      "payload_effect_absent": true,
+      "positive_immediate_start_race_preserved": false,
+      "provider_calls_performed": false,
+      "public_wrapper_exercised": false
+    },
+    {
+      "acceptance_authority": false,
+      "actual_owner_finalization": {
+        "primary": {
+          "native_lease_id": "7c5d73d47c6345f4908251be3f93bf08",
+          "native_lease_released": true,
+          "reservation_id": "1e1daeb8c1884e27bcf8cb99200f806a",
+          "status": "released"
+        },
+        "watchdog": {
+          "native_lease_id": "a04f0cb40a54487aa8cb130f25f9c192",
+          "native_lease_released": true,
+          "reservation_id": "995807a29061463eb917531fd7721610",
+          "status": "released"
+        }
+      },
+      "actual_returncode": 125,
+      "both_native_owner_contexts_exited_after_actual_cleanup": true,
+      "canonical_tasks_accepted": 0,
+      "cleanup": {
+        "actual_allocation_observed": true,
+        "actual_kernel_scope_captured": true,
+        "actual_transport_group_dead": true,
+        "actual_watchdog_group_dead": true,
+        "cleanup_known": true,
+        "container_absent_by_id_and_name": true,
+        "kernel_scope_quiescent": true,
+        "lease_home_prompt_absent": true,
+        "preserve_for_recovery_reported": false
+      },
+      "finish_or_success_callback_called": false,
+      "fixture_case": "partial_eof",
+      "fixture_only": true,
+      "models_called": 0,
+      "passed": true,
+      "payload_effect_absent": true,
+      "positive_immediate_start_race_preserved": false,
+      "provider_calls_performed": false,
+      "public_wrapper_exercised": false
+    }
+  ],
+  "environment_controls": {
+    "acceptance_authority": false,
+    "cases": [
+      {
+        "case": "exact",
+        "outcome": "accepted"
+      },
+      {
+        "case": "reversed",
+        "outcome": "accepted"
+      },
+      {
+        "case": "rotated",
+        "outcome": "accepted"
+      },
+      {
+        "case": "identical_duplicate",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_duplicate_or_malformed_key"
+      },
+      {
+        "case": "changed_duplicate",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_duplicate_or_malformed_key"
+      },
+      {
+        "case": "unknown_extra",
+        "outcome": "refused",
+        "reason": "actual_fixture_config_differs:Env"
+      },
+      {
+        "case": "missing",
+        "outcome": "refused",
+        "reason": "actual_fixture_config_differs:Env"
+      },
+      {
+        "case": "changed_value",
+        "outcome": "refused",
+        "reason": "actual_fixture_config_differs:Env"
+      },
+      {
+        "case": "no_equals",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_entry_malformed"
+      },
+      {
+        "case": "empty_key",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_duplicate_or_malformed_key"
+      },
+      {
+        "case": "non_string",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_entry_malformed"
+      },
+      {
+        "case": "non_list",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_list_required"
+      },
+      {
+        "case": "invalid_key",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_duplicate_or_malformed_key"
+      },
+      {
+        "case": "duplicate_expected",
+        "outcome": "refused",
+        "reason": "actual_fixture_environment_duplicate_or_malformed_key"
+      },
+      {
+        "case": "first_equals",
+        "outcome": "accepted"
+      }
+    ],
+    "controlled_testcases": 15,
+    "models_called": 0,
+    "passed": true,
+    "passed_testcases": 15,
+    "pure_controls_only": true,
+    "schema": "legal-ir-exact-fixture-environment-controls@1"
+  },
+  "evidence_pins": [
+    {
+      "bytes": 23505,
+      "device": 66306,
+      "inode": 107787301,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-root-observation-r02.json",
+      "sha256": "308036b150a61fd85e0d133dbe8679249aac015d7637ccbb0a1dd2bf3087f0c9",
+      "stable_metadata_during_read": true
+    },
+    {
+      "bytes": 21823,
+      "device": 66306,
+      "inode": 107787277,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-request-r02.json",
+      "sha256": "1c5b4ecca05c0bfd343b6aabe1c9f3879f6c1d79056dbbcdf2d24ae7b01f5d56",
+      "stable_metadata_during_read": true
+    },
+    {
+      "bytes": 16629,
+      "device": 66306,
+      "inode": 107787300,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/native-gate-r02-terminal.jsonl",
+      "sha256": "425f1462893008fb43205e83485bc6b697ea5207914e14eef02f63d79e7b71b7",
+      "stable_metadata_during_read": true
+    },
+    {
+      "bytes": 14391,
+      "device": 66306,
+      "inode": 75255981,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r02/native/positive/primary/mechanical-case.json",
+      "sha256": "ecf786e8e759d947d62b11a84f9cea1f2a0b56b4e00cd7000632fc5a5158e0b2",
+      "stable_metadata_during_read": true
+    },
+    {
+      "bytes": 15142,
+      "device": 66306,
+      "inode": 75255990,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r02/native/wrong_marker/primary/mechanical-case.json",
+      "sha256": "214e6f0e904299b42317b21a4fa9f3d7fd0e8bb91a735ef613182118dde4a1d4",
+      "stable_metadata_during_read": true
+    },
+    {
+      "bytes": 15143,
+      "device": 66306,
+      "inode": 75255998,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r02/native/partial_eof/primary/mechanical-case.json",
+      "sha256": "310331cb6e91b7c7bb633669d7c14c56fe54f7342121f56d0320bfd0cc5632a9",
+      "stable_metadata_during_read": true
+    },
+    {
+      "bytes": 1376,
+      "device": 66306,
+      "inode": 75256007,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-handoff-publication-20261017-r01/publication.json",
+      "sha256": "eed87152905612c2d4ec5b7e188145acf248736fa63c4bf89656bbf0fa091243",
+      "stable_metadata_during_read": true
+    },
+    {
+      "bytes": 2594,
+      "device": 66306,
+      "inode": 107787307,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/handoff-publication-root-observation-r01.json",
+      "sha256": "68916f2bcb5bc6fd5e1404f9ff19ccd57e50ec6dd4f933ec9c3a79609195ae71",
+      "stable_metadata_during_read": true
+    }
+  ],
+  "foreign_artifacts_processes_trees_or_ledgers_modified": false,
+  "native_jobs_or_admissions_performed": false,
+  "observed_at_utc": "2026-10-17T06:30:24.636198+00:00",
+  "provider_or_model_calls_performed_by_survey": false,
+  "public_refs_observed": {
+    "PR292": {
+      "base_ref": "agent/legal-ir-docker-bootstrap-20261016",
+      "base_sha": "9390ddf14c4b5a5d19f0eccf395b6ac9c496072d",
+      "draft": true,
+      "head_ref": "agent/legal-ir-ordinary-worker-20261016",
+      "head_sha": "003a25b3814611edc2136c020d1ea689dee033fd",
+      "is_based_directly_on_main": false,
+      "mergeable": true,
+      "merged": false,
+      "state": "open"
+    },
+    "ipfs_accelerate_py": {
+      "agent/legal-ir-grok-parallel-20261016": "79afc5d3fa53241cafbda5b15eec2eaa05ad3942",
+      "agent/legal-ir-ordinary-worker-20261016": "003a25b3814611edc2136c020d1ea689dee033fd",
+      "agent/legal-ir-planning-unknown-abandonment-20261017": "f2a5dad538d66939ee5eff2b81af03efc45d0667",
+      "main": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499"
+    },
+    "ipfs_datasets_py": {
+      "agent/legal-ir-supervisor-startup-recovery-20261016": "4a410373a64fe951875b4da73cd1ed65c191529e",
+      "main": "4a410373a64fe951875b4da73cd1ed65c191529e"
+    },
+    "method": "exact git ls-remote refs and read-only GitHub pull292 API; no fetch or branch mutation",
+    "observed_main_not_in_owned_C_commits": 0,
+    "owned_C_ahead_of_observed_main_commits": 8,
+    "owned_C_head": "f2a5dad538d66939ee5eff2b81af03efc45d0667"
+  },
+  "qualification_limits": [
+    "All model/provider counts are zero and no canonical task or success callback is accepted.",
+    "public_wrapper_exercised=false; source_pipeline_dispatchable=false; production_hook_deployed=false; board_enabled=false; packet_materialized=false.",
+    "No real provider-to-acceptance handoff, productive authority, authentic production launch custody, UNKNOWN resolution or retry authority is established.",
+    "Pre-finalization mechanical-case files still show retained capacity snapshots; final owner-release facts are taken separately from the pinned final terminal/root observation, not inferred from those snapshots.",
+    "Capacity observations intentionally do not themselves authenticate Docker cleanup; the separate case cleanup results and native finalization are distinct scopes.",
+    "Docker daemon storage is outside named roots and no hard daemon disk quota is claimed.",
+    "PR292 remains a draft stacked on the Docker bootstrap branch, not merged into public main. Its source changes require explicit compatibility/integration review before reuse.",
+    "No tests were rerun, no foreign admission was adopted, no process was killed or lease released, and no current scheduler/ledger was opened by this survey."
+  ],
+  "qualified_scope": "Retained r02 evidence reports three passing synthetic nonmodel native gate mechanics (positive payload release, wrong-marker refusal, partial-EOF refusal) and15 passing exact-unique-key/value Env controls. Actual terminal reports all case primary/watchdog native reservations and leases released, then root/phase released. This is separately owned foreign qualification, not this campaign admission or authentic provider execution.",
+  "r01_preservation": {
+    "original_v01_rejected_environment_arrays_available": false,
+    "previous_failure_not_reclassified": true,
+    "prior_v01_failure_preserved_by_request": true,
+    "prior_v01_positive_failure_case_sha256": "f0831d712784ae3c54708b85e01a56dd5145342eb9f2580750382ed3edbf07e1",
+    "r02_positive_actual_environment_reordering_observed": true
+  },
+  "r02_overall": {
+    "acceptance_authority": false,
+    "actual_phase_closeout": {
+      "lease_id": "2c91a76f3c2b41e884824bd0ffd52eed",
+      "released": true
+    },
+    "actual_provider_execution_qualified": false,
+    "actual_root_closeout": {
+      "lease_id": "90de82e52931429fa50ee16b6fc02866",
+      "released": true
+    },
+    "all_case_owner_contexts_exited_after_independent_cleanup": true,
+    "canonical_tasks_accepted": 0,
+    "completion_authority": false,
+    "daemon_storage_outside_named_roots": true,
+    "environment_check": "exact_unique_key_value_mapping_ignoring_order_only",
+    "finish_or_success_callback_called": false,
+    "fixture_only": true,
+    "hard_daemon_disk_quota_claimed": false,
+    "models_called": 0,
+    "passed": true,
+    "production_hook_deployed": false,
+    "profile": "legal-ir-ordinary-handoff-nonmodel-gate-v02",
+    "provider_calls_performed": false,
+    "public_wrapper_exercised": false,
+    "root_and_phase_contexts_finalized_after_cases": true,
+    "schema": "legal-ir-ordinary-handoff-native-mechanics@1",
+    "scope": "synthetic_nonmodel_engineering_fixture_only"
+  },
+  "read_only": true,
+  "recorded_exec_result": {
+    "actual_exec_exit_code": 0,
+    "actual_exec_session": 82220,
+    "current_kernel_scheduler_state_not_inspected": true,
+    "terminal_provenance": "Exact actual final stdout JSON from session82220 after actual exec exit0 and all original case owners/root/phase release."
+  },
+  "related_publication": {
+    "accelerator_commit": "003a25b3814611edc2136c020d1ea689dee033fd",
+    "actual_custody_unwind_qualifier_passed": true,
+    "actual_nonmodel_gate_qualifier_passed": true,
+    "actual_provider_execution_qualified": false,
+    "actual_real_provider_to_acceptance_handoff_qualified": false,
+    "board_enabled": false,
+    "branch": "agent/legal-ir-ordinary-worker-20261016",
+    "canonical_tasks_accepted": 0,
+    "completion_authority": false,
+    "custody_memory_controlled_testcases": 35,
+    "ordinary_success_hook_controlled_testcases": 104,
+    "packet_materialized": false,
+    "pr_body_updated": true,
+    "pr_merged": false,
+    "pr_url": "https://github.com/endomorphosis/ipfs_accelerate_py/pull/292",
+    "production_hook_deployed": false,
+    "provider_calls_performed": false,
+    "pushed": true,
+    "source_pipeline_dispatchable": false
+  },
+  "reuse_opportunities": [
+    "Reuse strict Env equivalence that ignores ordering only while rejecting duplicate/malformed keys, unknown/missing keys and changed values.",
+    "Reuse positive/negative marker and partial-EOF controls plus separately authenticated native cleanup and primary/watchdog owner-release recording.",
+    "Review the stacked PR292 source and bootstrap dependency before merging its ordinary success-hook/capacity code with the current main and recovery branch.",
+    "Carry forward the retained r01 failure and separate zero-model mechanics from a future explicitly qualified authentic provider/acceptance run."
+  ],
+  "schema": "parallel-ordinary-handoff-r02-public-ref-survey/v2",
+  "verified_artifact_joins": {
+    "all3_private_case_files_match_terminal_SHA_and_bytes": true,
+    "publication_result_matches_publication_root_observation": true,
+    "request_SHA_matches_terminal_and_observation": true,
+    "terminal_SHA_matches_observation": true,
+    "terminal_json_equals_root_observation": true
+  }
+}
