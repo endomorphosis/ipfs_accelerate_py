@@ -1,0 +1,15 @@
+{
+  "acceptance_authority": false,
+  "actual_public_wrapper_qualified": false,
+  "all_files_fsynced_readonly": true,
+  "canonical_tasks_accepted": 0,
+  "capsule_manifest_sha256": "96ad22743580b53b07a5bc8d53ae9fc5fcf7dc7eff692e80c14a9f0a7a566e55",
+  "capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-host-h4-20261017-r01/preparation/capsule",
+  "original_native_preparation_closeout_pending": true,
+  "passed": true,
+  "payload_bytes": 106772927,
+  "payload_file_count": 2807,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-callable-capsule-preparation@1",
+  "source_inventory_sha256": "a5660a1ce21bb27dd855fdbdc741570c9a96573d663ec57d7c5309fe96456d2b"
+}

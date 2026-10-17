@@ -1,0 +1,481 @@
+--- report-freezer-v03/report_only_candidate_freezer.py
++++ freezer-board-v04/report_only_candidate_freezer.py
+@@ -27,7 +27,7 @@
+ REPORT = "data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json"
+ BOARD_SHA256 = "5244288f69562663f44b00d27add1ee6ef338f977fed1c0e1c8855725ff372c7"
+ TASK_ID = "LIR-9001"
+-SCHEMA = "legal-ir-report-only-frozen-candidate@2"
++SCHEMA = "legal-ir-report-only-frozen-candidate@3"
+ MAX_DOCUMENT = 4 * 1024 * 1024
+ MAX_INDEX = 64 * 1024 * 1024
+ MAX_GIT_CHILDREN = 40
+@@ -219,6 +219,7 @@
+     attempt: int
+     before_by_id: object = field(repr=False)
+     before_by_cid: object = field(repr=False)
++    preflight: object = field(repr=False)
+ 
+     def __reduce__(self):
+         raise ReportFreezerRefusal("dispatch_capture_not_portable")
+@@ -235,57 +236,384 @@
+     branch: str
+     lifecycle: object = field(repr=False)
+     control_plane_connection: object = field(repr=False)
++    preflight: object = field(repr=False)
+ 
+     def __reduce__(self):
+         raise ReportFreezerRefusal("dispatch_capture_not_portable")
+ 
+ 
+-def capture_before_attempt(daemon, state, task, attempt, *, consume_attempt):
+-    """Called only by the original actual _mark_implementation_started tail."""
+-    need(daemon.report_only_candidate_freezing is True and consume_attempt is True,
+-         "opt_in_consumed_ordinary_attempt_required")
++@dataclass(frozen=True)
++class _Preflight:
++    daemon: object = field(repr=False)
++    state: object = field(repr=False)
++    task: object = field(repr=False)
++    task_projection: tuple = field(repr=False)
++    task_cid: str
++    task_key: str
++    before_by_id: object = field(repr=False)
++    before_by_cid: object = field(repr=False)
++    repo: Path
++    authoritative_board: Path
++    board_relative: str
++    workspace: Path
++    workspace_board: Path
++    board_bytes: bytes = field(repr=False)
++    baseline: str
++    board_oid: str
++    branch: str
++    lifecycle: object = field(repr=False)
++    gitdir: Path
++    common: Path
++    repo_gitdir: Path
++    directory_identities: object = field(repr=False)
++    control_plane_connection: object = field(repr=False)
++    index_snapshot: object = field(repr=False)
++    head_snapshot: object = field(repr=False)
++    actual_git_session: object = field(repr=False)
++
++    def __reduce__(self):
++        raise ReportFreezerRefusal("dispatch_capture_not_portable")
++
++
++def board_relative_path(repo, board):
++    """Pure necessary lexical relation; the actual caller canonicalizes both."""
++    repo, board = Path(repo), Path(board)
++    need(repo.is_absolute() and board.is_absolute()
++         and str(repo) == os.path.abspath(repo) and str(board) == os.path.abspath(board),
++         "canonical_original_board_layout_required")
++    try:
++        relative = board.relative_to(repo)
++    except ValueError as error:
++        raise ReportFreezerRefusal("authoritative_board_outside_original_repository") from error
++    need(relative.parts and not any(p in {".", "..", ".git"} for p in relative.parts)
++         and all(re.fullmatch(r"[A-Za-z0-9_.-]+", p) for p in relative.parts),
++         "supported_authoritative_board_relative_path_required")
++    return relative.as_posix()
++
++
++def check_supported_index(flags, stage):
++    """Pure parser only; accepting bytes cannot authenticate a checkout."""
++    need(type(flags) is bytes and flags.endswith(b"\0") and type(stage) is bytes
++         and stage.endswith(b"\0"), "bounded_nul_terminated_index_inventory_required")
++    names, staged = [], []
++    for raw in flags[:-1].split(b"\0"):
++        need(raw.startswith(b"H "), "hidden_index_or_submodule_flag_refused")
++        names.append(raw[2:])
++    for raw in stage[:-1].split(b"\0"):
++        header, tab, name = raw.partition(b"\t")
++        need(tab and re.fullmatch(rb"100(?:644|755) [0-9a-f]{40} 0", header),
++             "submodule_symlink_or_unmerged_index_refused")
++        staged.append(name)
++    need(0 < len(names) <= 16384 and len(names) == len(set(names))
++         and len(staged) == len(set(staged)) and set(names) == set(staged),
++         "exact_unique_tracked_index_inventory_required")
++    for name in names:
++        need(name and not name.startswith(b"/") and not any(p in {b"", b".", b"..", b".git"}
++             for p in name.split(b"/")) and not any(c in name for c in (b"\n", b"\r", b"\t")),
++             "unaliased_tracked_index_paths_required")
++
++
++def _original_connection(daemon, connection=None):
++    control = importlib.import_module("ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane")
++    require = getattr(control, "require_borrowed_task_state_connection", None)
++    need(callable(require), "original_borrowed_state_api_required")
++    actual = require(daemon.state_path, connection=connection)
++    need(connection is None or actual is connection, "original_borrowed_state_connection_changed")
++    return actual
++
++
++def _original_idle_binding(daemon, state, task, connection):
++    need(daemon.report_only_candidate_freezing is True and daemon.preserve_task_attempts is True
++         and state.implementation_in_progress is False and not daemon._implementation_cancel_requested(),
++         "original_idle_preserved_attempt_required")
+     identity = daemon._identity_for_task(task)
+     before_id, before_cid = dict(state.implementation_attempts), dict(state.implementation_attempts_by_cid)
+     after_id, after_cid = dict(before_id), dict(before_cid)
+-    after_id[task.task_id] = after_cid[identity.canonical_task_cid] = attempt
+-    budget_projection(attempt=attempt, cap=daemon.max_task_attempts, task_id=task.task_id,
++    after_id[TASK_ID] = after_cid[identity.canonical_task_cid] = 3
++    budget_projection(attempt=3, cap=daemon.max_task_attempts, task_id=task.task_id,
+         task_cid=identity.canonical_task_cid, before_by_id=before_id, before_by_cid=before_cid,
+         current_by_id=after_id, current_by_cid=after_cid)
+-    need(task.status == "todo" and task.completion == "manual" and daemon.preserve_task_attempts is True,
+-         "manual_report_frontier_and_preserved_attempts_required")
+-    return _BeforeAttempt(daemon, state, task, _task_projection(task), identity.canonical_task_cid,
+-        identity.canonical_task_key, attempt, MappingProxyType(before_id), MappingProxyType(before_cid))
+-
+-
+-def capture_dispatch(daemon, state, task, attempt, workspace, baseline, invocation, control_plane_connection):
+-    """Called after the original launch-boundary state save, before provider start.
+-
+-    PI-P04 must pass the exact original local baseline and G invocation object.
+-    Legacy external CLI paths have no such object and explicitly refuse opt-in.
++    need(task.status == "todo" and task.completion == "manual", "manual_report_frontier_and_preserved_attempts_required")
++    row = _read_bound_control_plane(daemon, _original_connection(daemon, connection))
++    expected = {"implementation_in_progress": False, "implementation_attempts": before_id,
++                "implementation_attempts_by_cid": before_cid}
++    need(all(type(row.get(k)) is type(v) and row[k] == v for k, v in expected.items()),
++         "authoritative_pre_attempt_control_plane_changed")
++    return identity, before_id, before_cid
++
++
++def _board_layout(daemon, state, task, connection):
++    identity, before_id, before_cid = _original_idle_binding(daemon, state, task, connection)
++    repo, authoritative = canonical(daemon.repo_root), canonical(daemon.todo_path)
++    relative = board_relative_path(repo, authoritative)
++    need(repo.is_dir(), "actual_original_repository_required")
++    lifecycle = daemon._active_worktree_lifecycle
++    module = importlib.import_module(MERGE + "worktree_lifecycle")
++    need(type(lifecycle) is module.WorkspaceLifecycleRecord
++         and type(daemon.worktree_lifecycle) is module.WorktreeLifecycleStore,
++         "actual_fenced_dispatch_lifecycle_required")
++    workspace = canonical(lifecycle.workspace_path)
++    need(workspace.is_dir() and workspace != repo and workspace not in repo.parents
++         and workspace not in authoritative.parents, "separate_original_managed_worktree_required")
++    need(canonical(lifecycle.repo_root) == repo and canonical(daemon.worktree_lifecycle.repo_root) == repo
++         and daemon.worktree_lifecycle.load_workspace(str(workspace)) == lifecycle
++         and lifecycle.task_id == TASK_ID and lifecycle.canonical_task_cid == identity.canonical_task_cid
++         and lifecycle.attempt == daemon._worktree_lifecycle_attempt(task, 3)
++         and lifecycle.state is module.WorkspaceLifecycleState.ACTIVE and type(lifecycle.fence) is int
++         and lifecycle.fence > 0 and math.isfinite(lifecycle.expires_at) and lifecycle.expires_at > time.time()
++         and lifecycle.owner == module.read_process_birth(os.getpid()),
++         "original_repository_and_live_lifecycle_association_required")
++    workspace_board = canonical(workspace / relative)
++    board_bytes = read_regular(authoritative, source_sha=BOARD_SHA256)
++    need(read_regular(workspace_board, source_sha=BOARD_SHA256) == board_bytes,
++         "authoritative_and_workspace_board_bytes_differ")
++    actual_module = importlib.import_module(type(daemon).__module__)
++    parsed = actual_module.parse_task_text(board_bytes.decode(), path=authoritative, task_header_prefix="## LIR-")
++    need(len(parsed) == 64 and parsed[0].task_id == TASK_ID
++         and _task_projection(parsed[0]) == _task_projection(task)
++         and all(item.status == "blocked" for item in parsed[1:])
++         and actual_module.task_declared_output_paths(task) == (REPORT,),
++         "original_report_only_board_frontier_required")
++    return repo, authoritative, workspace, workspace_board, relative, lifecycle, board_bytes, identity, before_id, before_cid
++
++
++def _git_layout_policy(gitdir, common):
++    for config in {common / "config", gitdir / "config.worktree"}:
++        if os.path.lexists(config):
++            data = _read_git_metadata(config, 65536)
++            need(not re.search(rb"(?im)^\s*\[\s*alias(?:\s|\.|\])", data),
++                 "git_config_aliases_refused_before_attempt")
++    for base in {gitdir, common}:
++        need(not any(os.path.lexists(base / relative) for relative in
++             ("objects/info/alternates", "info/grafts", "shallow", "index.lock")),
++             "unsupported_git_storage_indirection_or_lock")
++
++
++def _metadata_storage(daemon, layout):
++    repo, _authoritative, workspace = layout[:3]
++    gitdir, common = _discover_git_storage(workspace)
++    repo_gitdir, repo_common = _discover_git_storage(repo)
++    need(common == repo_common and gitdir != common and gitdir != repo_gitdir,
++         "actual_worktree_common_repository_association_required")
++    _git_layout_policy(gitdir, common)
++    _git_layout_policy(repo_gitdir, common)
++    return gitdir, common, repo_gitdir
++
++
++def report_only_preflight_storage_roots(daemon, state, *, task):
++    """Read-only metadata derivation before native precharge; no Git/grant."""
++    connection = _original_connection(daemon)
++    layout = _board_layout(daemon, state, task, connection)
++    gitdir, common, _repo_gitdir = _metadata_storage(daemon, layout)
++    return tuple(_storage_roots(layout[2], gitdir, common))
++
++
++def _directory_identity(path):
++    metadata = path.lstat()
++    need(stat.S_ISDIR(metadata.st_mode) and metadata.st_uid in {0, os.getuid()}
++         and metadata.st_mode & 0o002 == 0, "owned_unaliased_repository_directory_required")
++    return metadata.st_dev, metadata.st_ino, metadata.st_mode, metadata.st_uid, metadata.st_gid
++
++
++def check_symbolic_head(raw, branch):
++    """Pure supported-files backend shape, never baseline authority."""
++    need(type(raw) is bytes and type(branch) is str and branch
++         and all(re.fullmatch(r"[A-Za-z0-9_.-]+", p) and p not in {".", ".."} for p in branch.split("/"))
++         and raw == ("ref: refs/heads/" + branch + "\n").encode(),
++         "supported_original_symbolic_branch_head_required")
++
++
++def _head_ref_snapshot(gitdir, common, branch, baseline):
++    """Stable readonly refs guard closes the preflight-to-mark drift window."""
++    need(type(baseline) is str and OID.fullmatch(baseline), "original_preflight_baseline_required")
++    head = gitdir / "HEAD"
++    data = _read_git_metadata(head, 8192)
++    check_symbolic_head(data, branch)
++    rows = [(str(head), witness(head.lstat()), data)]
++    loose, packed = common / "refs/heads" / branch, common / "packed-refs"
++    loose_raw = None
++    packed_raw = None
++    for path in (loose, packed):
++        if os.path.lexists(path):
++            data = _read_git_metadata(path, MAX_INDEX if path == packed else 8192)
++            rows.append((str(path), witness(path.lstat()), data))
++            if path == loose:
++                loose_raw = data
++            else:
++                packed_raw = data
++        else:
++            rows.append((str(path), None, None))
++    if loose_raw is not None:
++        need(loose_raw == (baseline + "\n").encode(), "original_loose_branch_ref_changed")
++    else:
++        need(packed_raw is not None, "supported_original_branch_ref_storage_required")
++        matches = [line.split(b" ", 1)[0] for line in packed_raw.splitlines()
++                   if line.endswith((" refs/heads/" + branch).encode())]
++        need(matches == [baseline.encode()], "original_packed_branch_ref_changed")
++    return tuple(rows)
++
++
++def _guard_preflight_owner(owner, parent_phase):
++    native = importlib.import_module(NATIVE + "parented_phase_resources")
++    resource = importlib.import_module(NATIVE + "resource_scheduler")
++    need(type(owner) is native.ParentedPhaseResourceReservation and type(parent_phase) is resource.ResourceLease,
++         "genuine_same_process_preflight_owner_and_phase_required")
++    phase = parent_phase.to_dict()
++    need(parent_phase.renew() and phase.get("lane") == "orchestration" and phase.get("owner_pid") == os.getpid()
++         and phase.get("released") is False and phase.get("cancelled") is False
++         and phase.get("cpu_slots") == 3 and phase.get("memory_mb") == 4096
++         and phase.get("child_process_slots") == 16 and phase.get("parent_lease_id"),
++         "actual_original_finite_preflight_parent_required")
++    lease, public = owner.native_lease.to_dict(), owner.to_dict()
++    need(lease.get("parent_lease_id") == phase.get("lease_id") and lease.get("owner_pid") == os.getpid()
++         and lease.get("cpu_slots") == 1 and lease.get("child_process_slots") == 4
++         and lease.get("memory_mb", 0) >= 512 and public.get("status") == "active"
++         and lease.get("released") is False and lease.get("cancelled") is False
++         and (public.get("record") or {}).get("child") is None
++         and (public.get("record") or {}).get("prior_children", []) == [],
++         "fresh_exact_sibling_preflight_owner_required")
++    need(owner.heartbeat(), "actual_preflight_owner_heartbeat_failed")
++    owner.check_usage(owner.directory, full=True)
++
++
++def preflight_report_only_candidate(daemon, state, *, task, preflight_owner, parent_phase, control_plane_connection,
++              protected_source_sha256, declared_external_storage):
++    """Actual readonly native Git preflight BEFORE original ordinal mutation.
++
++    A retained in-memory layout is created only after the original anchored
++    session has stopped. The caller alone owns explicit owner finalization.
+     """
++    need(sys.dont_write_bytecode is True and getattr(daemon, "_report_only_preflight", None) is None,
++         "fresh_no_bytecode_original_preflight_required")
++    _verify_sources(daemon, protected_source_sha256)
++    layout = _board_layout(daemon, state, task, _original_connection(daemon, control_plane_connection))
++    repo, authoritative, workspace, workspace_board, relative, lifecycle, board_bytes, identity, before_id, before_cid = layout
++    gitdir, common, repo_gitdir = _metadata_storage(daemon, layout)
++    _guard_preflight_owner(preflight_owner, parent_phase)
++    _check_storage(preflight_owner, workspace, gitdir, common, declared_external_storage)
++    index_before = _index_snapshot(gitdir)
++    with _Git(preflight_owner, workspace) as git:
++        for directory, expected_git in ((workspace, gitdir), (repo, repo_gitdir)):
++            prefix = [] if directory == workspace else ["-C", str(repo)]
++            need(git.run([*prefix, "rev-parse", "--show-toplevel"]).decode().strip() == str(directory)
++                 and git.run([*prefix, "rev-parse", "--absolute-git-dir"]).decode().strip() == str(expected_git)
++                 and git.run([*prefix, "rev-parse", "--path-format=absolute", "--git-common-dir"]).decode().strip() == str(common),
++                 "actual_original_repository_or_git_storage_changed")
++        baseline = git.run(["rev-parse", "--verify", "HEAD^{commit}"]).decode().strip()
++        need(OID.fullmatch(baseline), "locally_discovered_full_baseline_commit_required")
++        branch = git.run(["symbolic-ref", "--short", "HEAD"]).decode().strip()
++        need(branch == lifecycle.branch and branch and not any(c in branch for c in "\0\n\r"),
++             "original_preflight_branch_changed")
++        check_supported_index(git.run(["ls-files", "-v", "-z"], MAX_INDEX),
++                              git.run(["ls-files", "--stage", "-z"], MAX_INDEX))
++        need(git.run(["diff", "--cached", "--name-only", "-z", baseline, "--"], MAX_INDEX) == b"",
++             "preexisting_staged_change_refused")
++        for arguments in (["diff", "--name-only", "-z", "--no-ext-diff", "--"],
++                          ["ls-files", "--others", "--exclude-standard", "-z"],
++                          ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]):
++            allowed_dirty_paths(git.run(arguments, MAX_INDEX))
++        board_oid = parse_tree(git.run(["ls-tree", "-z", baseline, "--", relative]), relative)
++        need(git.run(["cat-file", "blob", board_oid], MAX_DOCUMENT) == board_bytes,
++             "original_workspace_baseline_board_differs")
++        need(git.run(["rev-parse", "--verify", "HEAD^{commit}"]).decode().strip() == baseline
++             and _index_snapshot(gitdir) == index_before, "readonly_preflight_head_or_index_changed")
++        need(_board_layout(daemon, state, task, control_plane_connection) == layout
++             and _metadata_storage(daemon, layout) == (gitdir, common, repo_gitdir),
++             "original_layout_changed_during_preflight")
++        head_snapshot = _head_ref_snapshot(gitdir, common, branch, baseline)
++    need(git._closed is True and git._known_stopped() and (git.consumer is None or git.consumer.released),
++         "original_preflight_git_custody_not_stopped")
++    _verify_sources(daemon, protected_source_sha256)
++    capture = _Preflight(daemon, state, task, _task_projection(task), identity.canonical_task_cid,
++        identity.canonical_task_key, MappingProxyType(before_id), MappingProxyType(before_cid), repo,
++        authoritative, relative, workspace, workspace_board, board_bytes, baseline, board_oid, branch,
++        lifecycle, gitdir, common, repo_gitdir,
++        MappingProxyType({str(p): _directory_identity(p) for p in {repo, workspace, gitdir, common, repo_gitdir}}),
++        control_plane_connection, index_before, head_snapshot, git)
++    daemon._report_only_preflight = capture
++    return {"schema": "legal-ir-report-only-layout-preflight@1", "supported": True,
++        "repository_root": str(repo), "authoritative_board_path": str(authoritative),
++        "workspace": str(workspace), "workspace_board_path": str(workspace_board),
++        "board_relative_path": relative, "board_sha256": BOARD_SHA256,
++        "baseline_commit": baseline, "baseline_board_blob_oid": board_oid,
++        "actual_preflight_git_commands": git.count, "actual_preflight_git_group_stopped": True,
++        "preflight_owner_finalization_belongs_to_caller": True, "attempt_consumed": False,
++        "canonical_tasks_accepted": 0, "acceptance_authority": False}
++
++
++def _require_preflight(daemon, state, task, *, before_consumption):
++    capture = getattr(daemon, "_report_only_preflight", None)
++    need(type(capture) is _Preflight and capture.daemon is daemon and capture.state is state
++         and capture.task is task and _task_projection(task) == capture.task_projection,
++         "actual_original_preflight_capture_required")
++    _original_connection(daemon, capture.control_plane_connection)
++    need(canonical(daemon.repo_root) == capture.repo and canonical(daemon.todo_path) == capture.authoritative_board
++         and board_relative_path(capture.repo, capture.authoritative_board) == capture.board_relative
++         and canonical(capture.workspace / capture.board_relative) == capture.workspace_board,
++         "original_dual_board_layout_changed")
++    need(read_regular(capture.authoritative_board, source_sha=BOARD_SHA256) == capture.board_bytes
++         and read_regular(capture.workspace_board, source_sha=BOARD_SHA256) == capture.board_bytes,
++         "authoritative_or_workspace_board_changed")
++    for spelling, identity in capture.directory_identities.items():
++        need(_directory_identity(canonical(spelling)) == identity, "original_repository_directory_replaced")
++    need(_discover_git_storage(capture.workspace) == (capture.gitdir, capture.common)
++         and _discover_git_storage(capture.repo) == (capture.repo_gitdir, capture.common),
++         "original_repository_git_storage_changed")
++    _git_layout_policy(capture.gitdir, capture.common)
++    _git_layout_policy(capture.repo_gitdir, capture.common)
++    lifecycle = daemon._active_worktree_lifecycle
++    module = importlib.import_module(MERGE + "worktree_lifecycle")
++    need(lifecycle is capture.lifecycle and daemon.worktree_lifecycle.load_workspace(str(capture.workspace)) == lifecycle
++         and canonical(lifecycle.repo_root) == capture.repo and canonical(daemon.worktree_lifecycle.repo_root) == capture.repo
++         and lifecycle.state is module.WorkspaceLifecycleState.ACTIVE and lifecycle.fence > 0
++         and lifecycle.expires_at > time.time() and lifecycle.owner == module.read_process_birth(os.getpid()),
++         "original_actual_fenced_lifecycle_changed")
++    need(capture.actual_git_session._closed and capture.actual_git_session._known_stopped()
++         and (capture.actual_git_session.consumer is None or capture.actual_git_session.consumer.released),
++         "original_preflight_git_custody_not_stopped")
++    if before_consumption:
++        need(_index_snapshot(capture.gitdir) == capture.index_snapshot
++             and _head_ref_snapshot(capture.gitdir, capture.common, capture.branch, capture.baseline) == capture.head_snapshot,
++             "original_preflight_head_or_index_changed_before_consumption")
++        identity, before_id, before_cid = _original_idle_binding(daemon, state, task, capture.control_plane_connection)
++        need(identity.canonical_task_cid == capture.task_cid and identity.canonical_task_key == capture.task_key
++             and before_id == dict(capture.before_by_id) and before_cid == dict(capture.before_by_cid),
++             "original_preflight_attempt_history_changed")
++    return capture
++
++
++def report_only_preflight_workspace(daemon, state, *, task):
++    """Return only the actual captured workspace; this is no portable grant."""
++    return _require_preflight(daemon, state, task, before_consumption=True).workspace
++
++
++def capture_before_attempt(daemon, state, task, attempt, *, consume_attempt, worktree_path, branch_name):
++    """Original mark tail requires preflight BEFORE changing active/counters."""
++    preflight = _require_preflight(daemon, state, task, before_consumption=True)
++    need(consume_attempt is True and type(attempt) is int and attempt == 3
++         and canonical(worktree_path) == preflight.workspace and branch_name == preflight.branch,
++         "preflight_original_mark_binding_required")
++    return _BeforeAttempt(daemon, state, task, preflight.task_projection, preflight.task_cid,
++        preflight.task_key, attempt, preflight.before_by_id, preflight.before_by_cid, preflight)
++
++
++def capture_dispatch(daemon, state, task, attempt, invocation, control_plane_connection):
++    """No caller board/workspace/baseline; use the original stopped preflight."""
+     before = getattr(daemon, "_report_only_before_attempt", None)
+     need(type(before) is _BeforeAttempt and before.daemon is daemon and before.state is state
+          and before.task is task and before.attempt == attempt, "actual_original_attempt_capture_required")
++    preflight = _require_preflight(daemon, state, task, before_consumption=False)
++    need(before.preflight is preflight and control_plane_connection is preflight.control_plane_connection,
++         "original_preflight_connection_or_capture_changed")
++    need(_index_snapshot(preflight.gitdir) == preflight.index_snapshot
++         and _head_ref_snapshot(preflight.gitdir, preflight.common, preflight.branch, preflight.baseline) == preflight.head_snapshot,
++         "original_preflight_head_or_index_changed_before_provider")
+     runner = importlib.import_module(RUNTIME + "grok_cli_runner")
+-    need(type(invocation) is runner.OrdinaryCallableInvocation, "actual_callable_invocation_capture_required")
+-    workspace, board = canonical(workspace), canonical(daemon.todo_path)
+-    need(workspace.is_dir() and workspace in board.parents and invocation.cwd == workspace,
+-         "original_board_and_invocation_workspace_required")
+-    need(type(baseline) is str and OID.fullmatch(baseline), "original_full_baseline_commit_required")
+-    raw = read_regular(board, source_sha=BOARD_SHA256)
+-    need(sha(raw) == BOARD_SHA256, "original_frozen_64_task_board_required")
+-    module = importlib.import_module(type(daemon).__module__)
+-    parsed = module.parse_task_text(raw.decode(), path=board, task_header_prefix="## LIR-")
+-    need(len(parsed) == 64 and parsed[0].task_id == TASK_ID
+-         and _task_projection(parsed[0]) == before.task_projection
+-         and all(item.status == "blocked" for item in parsed[1:])
+-         and module.task_declared_output_paths(task) == (REPORT,), "original_report_only_board_frontier_required")
+-    lifecycle = daemon._active_worktree_lifecycle
+-    need(lifecycle is not None and lifecycle.workspace_path == str(workspace)
+-         and lifecycle.task_id == task.task_id and lifecycle.canonical_task_cid == before.task_cid
+-         and lifecycle.branch == state.active_branch, "actual_fenced_dispatch_lifecycle_required")
+-    capture = _Dispatch(before, invocation, workspace, baseline, board, raw, state.active_branch, lifecycle,
+-                        control_plane_connection)
++    need(type(invocation) is runner.OrdinaryCallableInvocation and invocation.cwd == preflight.workspace,
++         "actual_callable_invocation_capture_required")
++    capture = _Dispatch(before, invocation, preflight.workspace, preflight.baseline,
++        preflight.workspace_board, preflight.board_bytes, preflight.branch, preflight.lifecycle,
++        control_plane_connection, preflight)
+     _check_live_binding(daemon, capture)
+     return capture
+ 
+@@ -293,6 +621,8 @@
+ def _check_live_binding(daemon, capture):
+     before = capture.before
+     state, task = before.state, before.task
++    need(_require_preflight(daemon, state, task, before_consumption=False) is capture.preflight
++         and before.preflight is capture.preflight, "original_preflight_dispatch_capture_changed")
+     runtime = importlib.import_module("ipfs_accelerate_py.agent_supervisor.context.decision_runtime")
+     need(type(daemon.decision_runtime) is runtime.DecisionRuntime
+          and daemon.decision_runtime.config.mode is runtime.DecisionRuntimeMode.ENFORCE,
+@@ -343,6 +673,7 @@
+     state_module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state")
+     control = importlib.import_module("ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane")
+     need(type(connection) is state_module.DuckDBConnection, "actual_retained_control_plane_connection_required")
++    _original_connection(daemon, connection)
+     target, _ = control.resolve_control_plane(daemon.state_path)
+     need(type(target) is str and not state_module.is_quack_transport_target(target)
+          and canonical(Path(target)) == canonical(connection.path), "original_local_control_plane_target_required")
+@@ -900,9 +1231,10 @@
+                  ["ls-files", "--others", "--exclude-standard", "-z"],
+                  ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]):
+         allowed_dirty_paths(git.run(args, MAX_INDEX))
+-    board_relative = capture.board.relative_to(capture.workspace).as_posix()
++    board_relative = capture.preflight.board_relative
+     board_oid = parse_tree(git.run(["ls-tree", "-z", capture.baseline, "--", board_relative]), board_relative)
+-    need(git.run(["cat-file", "blob", board_oid], MAX_DOCUMENT) == capture.board_bytes, "baseline_board_differs")
++    need(board_oid == capture.preflight.board_oid
++         and git.run(["cat-file", "blob", board_oid], MAX_DOCUMENT) == capture.board_bytes, "baseline_board_differs")
+     report = canonical(capture.workspace / REPORT)
+     raw_report = read_regular(report)
+     strict_report(raw_report)
+@@ -949,6 +1281,10 @@
+     return {"schema": SCHEMA, "committed": True, "candidate_commit": candidate, "candidate_tree": tree,
+         "baseline_commit": capture.baseline, "candidate_parent": capture.baseline,
+         "repository_root": str(capture.workspace), "board_path": str(capture.board), "board_sha256": BOARD_SHA256,
++        "authoritative_repository_root": str(capture.preflight.repo),
++        "authoritative_board_path": str(capture.preflight.authoritative_board),
++        "authoritative_board_sha256": BOARD_SHA256, "board_relative_path": capture.preflight.board_relative,
++        "baseline_board_blob_oid": capture.preflight.board_oid,
+         "report_path": str(report), "report_sha256": sha(raw_report), "report_blob_oid": staged_oid,
+         "task_id": TASK_ID, "canonical_task_cid": capture.before.task_cid,
+         "canonical_task_key": capture.before.task_key, "attempt": 3, "max_task_attempts": 3,

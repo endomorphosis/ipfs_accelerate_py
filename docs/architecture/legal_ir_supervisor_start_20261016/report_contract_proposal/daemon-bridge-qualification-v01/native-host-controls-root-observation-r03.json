@@ -1,0 +1,19 @@
+{
+  "H4_unchanged_from_native_tested_generation": true,
+  "acceptance_authority": false,
+  "actual_completion_chunk": "f8d238",
+  "actual_exec_exit_code": 0,
+  "actual_exec_session_id": 90933,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 19,
+  "full_host_qualified": false,
+  "github_qualification_skipped": true,
+  "native_finalized": true,
+  "original_finalizer_settlement_implemented": false,
+  "passed": true,
+  "pending_original_borrow_exit_guard_added": true,
+  "qualification_sha256": "0d35549ca5ef668874de562f836df86502e719525e964daf1b1b008b8bbcadcd",
+  "receipt_sha256": "faa12804053f2f757b71b5828cc8fa0631c19c1a5b76610646b26c990bb7f29a",
+  "schema": "legal-ir-native-host-controls-root-observation@2",
+  "source_manifest_sha256": "16e7f7dd18a40dc7678906161083fbcdc04b98365120188882a62e69e56f333d"
+}

@@ -1,0 +1,239 @@
+{
+  "acceptance_authority": false,
+  "actual_fixture_owner_closeout_observations": [
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_actual_catalog_switch_refuses",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_actual_closed_handle_refuses_reopen",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_actual_poisoned_handle_refuses_automatic_recovery",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_actual_transaction_refuses_state_io_without_reconnect",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_board_original_sql_roundtrip_uses_same_handle",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_default_owned_empty_producer_behavior_is_preserved",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_exception_identity_and_caller_lifetime_survive_scope",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_lane_original_sql_roundtrip_without_second_open_or_close",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_legacy_source_profile_and_unreviewed_backends",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_missing_explicit_route_refuses_without_implicit_resolution",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_missing_original_row_refuses_legacy_json_migration",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_nonidentical_object_cannot_supply_connection_authority",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_offthread_actual_state_access_refuses_without_reopen",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_original_portal_class_save_load_preserves_counter",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_other_state_path_same_target_refuses",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_rebinding_active_target_refuses",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_same_target_merge_open_refuses_before_owned_effects",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    },
+    {
+      "canonical_tasks_accepted": 0,
+      "case": "test_wrong_declared_actual_target_refuses",
+      "original_connection_closed_by_fixture_owner": true,
+      "provider_calls_performed": false
+    }
+  ],
+  "canonical_tasks_accepted": 0,
+  "cases": [
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_borrowed_context_never_owns_connection_lifetime",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_default_connect_body_preserved_after_reopen_guard",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_nonowning_scope_never_enters_or_exits_native_wrapper",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_original_board_load_sql_and_parameters",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_original_board_save_sql_and_parameters",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_original_lane_load_sql_and_parameters",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_original_lane_save_sql_and_parameters",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_source_controls.BorrowedSourceControls.test_source_profile_refuses_unreviewed_backend_objects",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_actual_catalog_switch_refuses",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_actual_closed_handle_refuses_reopen",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_actual_poisoned_handle_refuses_automatic_recovery",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_actual_transaction_refuses_state_io_without_reconnect",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_board_original_sql_roundtrip_uses_same_handle",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_default_owned_empty_producer_behavior_is_preserved",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_exception_identity_and_caller_lifetime_survive_scope",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_lane_original_sql_roundtrip_without_second_open_or_close",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_legacy_source_profile_and_unreviewed_backends",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_missing_explicit_route_refuses_without_implicit_resolution",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_missing_original_row_refuses_legacy_json_migration",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_nonidentical_object_cannot_supply_connection_authority",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_offthread_actual_state_access_refuses_without_reopen",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_original_portal_class_save_load_preserves_counter",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_other_state_path_same_target_refuses",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_rebinding_active_target_refuses",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_same_target_merge_open_refuses_before_owned_effects",
+      "passed": true
+    },
+    {
+      "case": "legal_ir_borrowed_real_cases.BorrowedRealDatabaseCases.test_wrong_declared_actual_target_refuses",
+      "passed": true
+    }
+  ],
+  "completion_authority": false,
+  "controlled_real_database_cases": 18,
+  "controlled_source_cases": 8,
+  "errors": 0,
+  "failures": 0,
+  "full_daemon_module_imported": false,
+  "native_parent_finalization_claimed": false,
+  "original_PortalTaskState_class_AST_sha256": "a9ff24843f3c3f820c3677d63a2d063f527de863012bda81fdac7d8b9c125b8c",
+  "original_class_selected_verbatim": true,
+  "passed": true,
+  "passed_testcases": 26,
+  "production_hook_deployed": false,
+  "production_state_written": false,
+  "provider_calls_performed": false,
+  "real_provider_path_qualified": false,
+  "schema": "legal-ir-borrowed-state-private-database-qualification@1",
+  "skipped": 0,
+  "source_manifest_sha256": "d836fc4545d5f86de2f2913fe194f79a2fd9e48b95eef96b212d12b1f8494c21",
+  "tests_run": 26
+}

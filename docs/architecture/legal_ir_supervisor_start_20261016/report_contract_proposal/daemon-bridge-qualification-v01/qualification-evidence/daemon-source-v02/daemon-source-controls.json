@@ -1,0 +1,15 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 15,
+  "errors": 0,
+  "failures": 0,
+  "native_host_qualified": false,
+  "passed": true,
+  "provider_execution_qualified": false,
+  "runtime_enabled": false,
+  "schema": "legal-ir-daemon-source-qualification@1",
+  "scope": "actual composed daemon AST and preserved producers only",
+  "skipped": 0,
+  "source_manifest_sha256": "2690f6df93740dcfcd7457c33a1f57dcc0a78c86a09cc710baa8484adb97a3fa"
+}

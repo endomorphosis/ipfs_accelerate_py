@@ -1,0 +1,31 @@
+{
+  "acceptance_authority": false,
+  "caller_baseline_or_board_or_workspace_override_accepted": false,
+  "capture_before_attempt_call": "capture_before_attempt(self,state,task,attempt,consume_attempt=consume_attempt,worktree_path=worktree_path,branch_name=branch_name)",
+  "capture_before_attempt_required_keywords": [
+    "consume_attempt",
+    "worktree_path",
+    "branch_name"
+  ],
+  "capture_dispatch_positional": [
+    "daemon",
+    "state",
+    "task",
+    "attempt",
+    "invocation",
+    "control_plane_connection"
+  ],
+  "composed_daemon_manifest_sha256": "2690f6df93740dcfcd7457c33a1f57dcc0a78c86a09cc710baa8484adb97a3fa",
+  "composed_daemon_source_bundle": "daemon-integration-v02",
+  "current_original_cap": 2,
+  "delegates": [
+    "preflight_report_only_candidate",
+    "report_only_preflight_workspace",
+    "report_only_preflight_storage_roots"
+  ],
+  "legacy_boundary_baseline_ref_ignored_by_new_capture": true,
+  "preflight_must_precede_original_mark_counter_mutation": true,
+  "runtime_enablement": false,
+  "schema": "legal-ir-freezer-dual-board-daemon-api@1",
+  "two_consumed_attempts_preserved": true
+}

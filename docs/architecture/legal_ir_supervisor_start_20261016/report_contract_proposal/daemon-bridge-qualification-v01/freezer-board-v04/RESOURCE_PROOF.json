@@ -1,0 +1,37 @@
+{
+  "acceptance_authority": false,
+  "actual_parent_phase_required": {
+    "child_process_slots": 16,
+    "cpu_slots": 3,
+    "memory_mb": 4096,
+    "same_process": true
+  },
+  "actual_public_preflight_qualified": false,
+  "board_or_state_written": false,
+  "canonical_tasks_accepted": 0,
+  "cold_source_cases_authored": 47,
+  "cold_source_cases_executed_by_author": 0,
+  "filesystem_hard_immutability_claimed": false,
+  "maximum_git_commands_per_session": 40,
+  "native_MAX_CHILDREN_PER_RESERVATION_changed": false,
+  "original_cap_changed": false,
+  "preflight_group_maximum_processes": 4,
+  "preflight_owner": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "fresh": true,
+    "minimum_memory_mb": 512,
+    "public_release_belongs_to_host": true
+  },
+  "preflight_owner_reused_as_callback_freezer": false,
+  "productive_preflight_child_before_exact_precharge": false,
+  "provider_calls": 0,
+  "qualified_anchor_topology_changed": false,
+  "schema": "legal-ir-freezer-dual-board-resource-proof@1",
+  "status": "source_only_runtime_qualification_pending",
+  "storage_limits_inherited_bytes": {
+    "maximum_per_root": 268435456,
+    "maximum_total": 402653184,
+    "minimum_per_disjoint_root": 134217728
+  }
+}

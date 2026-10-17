@@ -1,0 +1,18 @@
+{
+  "files": [
+    {
+      "bytes": 8093,
+      "path": "publish_docs.py",
+      "sha256": "89f03da67cb9db31f08c3f289ad430fdb5b6af6aadaae367e58769d34088a358"
+    }
+  ],
+  "github_qualification": "skipped_by_user",
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/READINESS.md": "956256d72d84344c167ca2b3bc9ff3ce295b6eb6acaa426642fc781d94a07b89",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/TASKS.json": "9512f5c02e484a0ba7c19685103d97f48a4fd398e2865580fce3b067f8277184",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+  },
+  "mutations": "onlyexactadditive documentation snapshot andowned draftbranch commit/push; noPRmerge orruntimeinstallation",
+  "original_native_owner_required": true,
+  "schema": "legal-ir-daemon-documentation-publisher-source@1"
+}

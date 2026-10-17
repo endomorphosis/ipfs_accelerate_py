@@ -1,0 +1,52 @@
+{
+  "GitHub_qualification_required_for_this_source_work": false,
+  "acceptance_authority": false,
+  "author_runtime_jobs_performed": false,
+  "cap_or_counter_or_board_writes_authorized": false,
+  "cold_source_worker": {
+    "expected_unique_cases": 47,
+    "outer_owner_entry": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+    "outer_profile": {
+      "child_process_slots": 8,
+      "cpu_slots": 1,
+      "duration_seconds": 1800,
+      "memory_mb": 4096,
+      "storage_bytes": 536870912
+    },
+    "runtime_positive_preflight_claimed": false,
+    "test_file": "test_board_controls.py",
+    "worker": "qualify_board_controls.py"
+  },
+  "next_noncanonical_native_scope": {
+    "canonical_tasks_accepted": 0,
+    "fake_genuine_owners_or_callbacks_allowed": false,
+    "negative_before_counter_mutation": [
+      "authoritative board outside repository or changed bytes",
+      "workspace copy or baseline board blob mismatch",
+      "wrong lifecycle repository/task/process/commonGit",
+      "hidden index flags/gitlink/symlink/unmerged or extra dirt",
+      "refs/index drift after preflight before originalmark",
+      "missing/insufficient native storage precharge or fake/wrong phase owner"
+    ],
+    "positive": [
+      "derive authoritative board relative path from original daemon repository/todo_path",
+      "derive workspace copy from actual managed lifecycle",
+      "actual17-command readonly preflight and original baseline board blob",
+      "genuine original anchored group stopped and consumer released",
+      "exact untouched original fixture counters and caller-owned connection remain usable"
+    ],
+    "provider_calls": 0,
+    "real_objects_required": [
+      "actual composed original daemon",
+      "original borrowed local DuckDB connection and registered scope",
+      "actual same-process parent phase",
+      "actual fresh preflight owner",
+      "actual managed lifecycle/store and private repository/commonGit",
+      "actual task parsed from normative original authoritative board"
+    ],
+    "status": "requires_separately_frozen_complete_composed_runtime_and_reviewed_request"
+  },
+  "original_cap": 2,
+  "original_consumed_attempts": 2,
+  "schema": "legal-ir-freezer-dual-board-qualification-plan@1"
+}

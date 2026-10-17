@@ -1,0 +1,631 @@
+{
+  "acceptance_authority": false,
+  "additional_engineering_gaps": [
+    {
+      "constraints": [
+        "preserve original/shared repository",
+        "explicit finite native storage admission",
+        "exact original board/commits/source association",
+        "do not weaken V04 profile"
+      ],
+      "dependencies": [
+        "PI-P04-08"
+      ],
+      "id": "PI-P04-GAP-01",
+      "status": "required",
+      "title": "Prepare and qualify self-contained owned repository without object alternates"
+    },
+    {
+      "constraints": [
+        "same original claims/lock/task/state/lifecycle/connection",
+        "no replaying provider,attempt refunds,completion or portable grant",
+        "frame references alone do not resume unwound Python code"
+      ],
+      "dependencies": [
+        "PI-P04-12",
+        "PI-P04-14"
+      ],
+      "id": "PI-P04-GAP-02",
+      "source_guard_status": "V02 keeps pending host and borrowedscope retained even after physical stopped proof; original finalizer settlement still unimplemented",
+      "status": "required",
+      "title": "Implement retained original finalizer settlement after independently stopped custody"
+    },
+    {
+      "constraints": [
+        "actual source-pinned PortalImplementationDaemon instance",
+        "no fake positive host/owner/connection",
+        "cap2 must refuse before original pass writes"
+      ],
+      "dependencies": [
+        "PI-P04-03",
+        "PI-P04-05",
+        "PI-P04-06"
+      ],
+      "id": "PI-P04-GAP-03",
+      "status": "required",
+      "title": "Qualify actual complete daemon with private authoritative database and unsupported-profile refusal"
+    },
+    {
+      "constraints": [
+        "same actual phase16slot budget",
+        "preauth before freezer4",
+        "zero Docker queries during freezer scope",
+        "cooperative slot observation is not actual admin child attachment or hard quota"
+      ],
+      "dependencies": [
+        "PI-P04-07",
+        "PI-P04-11"
+      ],
+      "id": "PI-P04-GAP-04",
+      "status": "required",
+      "title": "Resolve and qualify native accounting of trusted Docker administrative queries"
+    },
+    {
+      "constraints": [
+        "keep disabled until exact reviewed composition",
+        "no current canonical attempts or provider calls in this qualification phase",
+        "candidate must remain pending independent native/legal/Lean4 validation"
+      ],
+      "dependencies": [
+        "PI-P04-GAP-01",
+        "PI-P04-GAP-02",
+        "PI-P04-GAP-03",
+        "PI-P04-GAP-04"
+      ],
+      "id": "PI-P04-GAP-05",
+      "status": "requires_separate_activation_readiness",
+      "title": "Qualify complete actual provider-success callback and candidate-only original daemon result"
+    }
+  ],
+  "author_tests_or_jobs_performed": true,
+  "canonical_task_counter_authority": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "expected_task_count": 18,
+  "full_runtime_enabled": false,
+  "github_qualification": "skipped_by_user",
+  "goal": {
+    "id": "PI-P04",
+    "status": "component_progress_full_runtime_and_acceptance_unqualified",
+    "subgoals": [
+      {
+        "id": "PI-P04-S1",
+        "status": "partial_source_or_component_progress_not_runtime_complete",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Pin actual source bytes and line proofs. Distinguish existing APIs from proposed APIs."
+            ],
+            "dependencies": [],
+            "evidence_ids": [
+              "E01",
+              "E02",
+              "E03",
+              "E04",
+              "E05",
+              "E06",
+              "E09",
+              "E11"
+            ],
+            "id": "PI-P04-01",
+            "minimal_patch_scope": [
+              "Documentation/source audit only."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "source_audit_complete",
+            "title": "Review original source and same-process plumbing absence"
+          },
+          {
+            "completion_criteria": [
+              "Accept actual already-admitted phase and existing local state connection; no task/baseline/attempt override or IDs/JSON authority.",
+              "No new root behind existing admission or CPU>=slots bridge policy edit."
+            ],
+            "dependencies": [
+              "PI-P04-01"
+            ],
+            "evidence_ids": [
+              "E03",
+              "E07",
+              "E08",
+              "E10",
+              "E22"
+            ],
+            "id": "PI-P04-02",
+            "minimal_patch_scope": [
+              "New additive host/public entry; default CLI/run_once unchanged."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "source_authored_controls_passed_full_host_unqualified",
+            "title": "Approve one opt-in single-thread host API with actual objects"
+          }
+        ],
+        "title": "Freeze the supported host and state ownership contract"
+      },
+      {
+        "id": "PI-P04-S2",
+        "status": "partial_source_or_component_progress_not_runtime_complete",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Bind exact original usable local wrapper, current PID/thread and canonical resolved target before selection.",
+              "Refuse closed/poisoned/retired/transactional/remote/catalog-switched/different-target; no reconnect/pool/wrap/second open.",
+              "Borrowing never closes caller-owned connection."
+            ],
+            "dependencies": [
+              "PI-P04-02"
+            ],
+            "evidence_ids": [
+              "E12",
+              "E13",
+              "E14",
+              "E15",
+              "E16",
+              "E17",
+              "E22"
+            ],
+            "id": "PI-P04-03",
+            "minimal_patch_scope": [
+              "portal_task_state_control_plane.py explicit borrowing guard and owned-or-borrowed context."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "genuine_private_database_component_qualified",
+            "title": "Add explicit nonowning connection scope for exact state target"
+          },
+          {
+            "completion_criteria": [
+              "Board/lane load/save use original borrowed connection with original SQL/return projections.",
+              "Borrowed branch has no DDL/migration/open/close/JSON fallback; default None path unchanged."
+            ],
+            "dependencies": [
+              "PI-P04-03"
+            ],
+            "evidence_ids": [
+              "E12",
+              "E13",
+              "E14"
+            ],
+            "id": "PI-P04-04",
+            "minimal_patch_scope": [
+              "Four state producer contexts; bounded PortalTaskState opt-in admission guard if needed."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "four_original_SQL_producers_component_qualified",
+            "title": "Route all four original state producers through common connection context"
+          },
+          {
+            "completion_criteria": [
+              "Selection/marking/launch/preflight/cancellation/progress/callback/failure/terminal reuse original connection or refuse before opening.",
+              "Audit other same-file task-source/plan-runtime producers; unknown reopen is pre-dispatch refusal.",
+              "Off-thread target access refuses or uses separately reviewed exact object path; no silent new handle."
+            ],
+            "dependencies": [
+              "PI-P04-04"
+            ],
+            "evidence_ids": [
+              "E18",
+              "E26",
+              "E27",
+              "E28",
+              "E38"
+            ],
+            "id": "PI-P04-05",
+            "minimal_patch_scope": [
+              "Callgraph inventory plus bounded opt-in callsites; no global pool or ambient monkeypatch."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "audited_supported_profile_and_reopen_refusals_qualified_full_attempt_pending",
+            "title": "Audit every state access across whole active attempt"
+          }
+        ],
+        "title": "Borrow original local state connection for whole attempt"
+      },
+      {
+        "id": "PI-P04-S3",
+        "status": "partial_source_or_component_progress_not_runtime_complete",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Actual root-ancestor phase matches PID/scheduler/policy and live native authority.",
+              "Direct same-PID entry replaces external parent topology for opt-in; no token serialization/key copy/extra root."
+            ],
+            "dependencies": [
+              "PI-P04-02"
+            ],
+            "evidence_ids": [
+              "E01",
+              "E02",
+              "E07",
+              "E08",
+              "E09",
+              "E10",
+              "E11"
+            ],
+            "id": "PI-P04-06",
+            "minimal_patch_scope": [
+              "Additive direct host and explicit daemon session binding; SDK/bridge policy unchanged."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "source_authored_actual_host_phase_binding_unqualified",
+            "title": "Pass genuine phase directly into callable host"
+          },
+          {
+            "completion_criteria": [
+              "Root/phase3CPU4096MiB16slots; provider1CPU1024MiB8slots, watchdog1CPU512MiB4slots, fresh freezer1CPU>=512MiB4slots.",
+              "Prebind actual nested provider/watchdog consumers through C before effects; fresh finite<=3600s deadlines; no cap raise.",
+              "Precharge exact disjoint private/output/external roots and finalize only after stopped proof."
+            ],
+            "dependencies": [
+              "PI-P04-06"
+            ],
+            "evidence_ids": [
+              "E07",
+              "E29",
+              "E31",
+              "E32",
+              "E33",
+              "E39"
+            ],
+            "id": "PI-P04-07",
+            "minimal_patch_scope": [
+              "Host frames and actual public SDK owners/children."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "source_authored_H4_startup_abort_cancel_components_qualified_full_host_pending",
+            "title": "Admit original provider/watchdog/freezer owners within existing envelope"
+          }
+        ],
+        "title": "Keep genuine native admission in daemon interpreter"
+      },
+      {
+        "id": "PI-P04-S4",
+        "status": "partial_source_or_component_progress_not_runtime_complete",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Derive board relative path only from canonical original repo/todo_path and actual lifecycle association.",
+              "Validate actual worktree/Git/common roots, bounded inventories, exact charges/headroom/index modes/hidden flags/submodules/aliases.",
+              "Unsupported profile refuses before original consumption, with no cap increase or guard relaxation."
+            ],
+            "dependencies": [
+              "PI-P04-05",
+              "PI-P04-07"
+            ],
+            "evidence_ids": [
+              "E21",
+              "E23",
+              "E24",
+              "E25",
+              "E34",
+              "E37",
+              "E38"
+            ],
+            "id": "PI-P04-08",
+            "minimal_patch_scope": [
+              "Pre-dispatch report-only profile check; frozen V02 unchanged."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "source_controls_passed_actual_repository_profile_refused",
+            "title": "Preflight supported repository/storage before ordinal3 consumption"
+          },
+          {
+            "completion_criteria": [
+              "Retain original authoritative board and independently derive workspace copy from original relative path/actual lifecycle.",
+              "Require both SHA-pinned bytes and original baseline tracked board blob throughout; original parser/CID/key identity remains authoritative.",
+              "No daemon.todo_path reassignment or callback board/baseline choice; original frontier/manual/counter/report guards remain."
+            ],
+            "dependencies": [
+              "PI-P04-08"
+            ],
+            "evidence_ids": [
+              "E21",
+              "E23",
+              "E24",
+              "E25",
+              "E36",
+              "E37"
+            ],
+            "id": "PI-P04-09",
+            "minimal_patch_scope": [
+              "Additive V03 capture/live-binding/baseline-board checks and controls; preserve V02."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "dual_board_V04_source_controls_passed_public_preflight_unqualified",
+            "title": "Use qualified-anchor V04 dual-board capture successor"
+          },
+          {
+            "completion_criteria": [
+              "Original task/state objects and local full baseline remain in original daemon frame.",
+              "Use actual pinned G parser, configured Grok alias, explicit private env/temp/cwd and borrowed0600 bounded sinks.",
+              "Only original start producer consumes2\u21923 for ID/CID, peer counts unchanged, cap3."
+            ],
+            "dependencies": [
+              "PI-P04-09"
+            ],
+            "evidence_ids": [
+              "E04",
+              "E05",
+              "E21",
+              "E29",
+              "E38"
+            ],
+            "id": "PI-P04-10",
+            "minimal_patch_scope": [
+              "Narrow opt-in provider seam; no replacement selection or caller attempt."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "source_controls_passed_full_original_attempt_unqualified",
+            "title": "Build immutable G invocation from original selected attempt"
+          },
+          {
+            "completion_criteria": [
+              "Original decision runtime authorizes one primary dispatch; launch capture receives identical invocation/original baseline/same connection after original save.",
+              "Pinned plain callback calls public freezer with real outcome/fresh sibling owner; no reconstructed success.",
+              "Return inert candidate-pending-validation before generic validation/commit/merge/completion; no canonical acceptance."
+            ],
+            "dependencies": [
+              "PI-P04-10"
+            ],
+            "evidence_ids": [
+              "E29",
+              "E30",
+              "E33",
+              "E36"
+            ],
+            "id": "PI-P04-11",
+            "minimal_patch_scope": [
+              "Opt-in invoke_provider and first-class pending candidate result; defaults unchanged."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "scoped_H4_source_controls_passed_actual_success_callback_unqualified",
+            "title": "Join H4 authenticated callback and public freezer without nested Docker queries"
+          }
+        ],
+        "title": "Bind original task, board, baseline and callback"
+      },
+      {
+        "id": "PI-P04-S5",
+        "status": "partial_source_or_component_progress_not_runtime_complete",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Retain original pending exception, native frames/phase/owners/consumers/lifecycle/invocation/connection/task/state/claim metadata.",
+              "Unknown cleanup cannot mark finished/restore attempts/publish terminal outcome/clean worktree/clear active/release claims or locks.",
+              "Do not re-raise through unconditional finally; guard repo/ephemeral and outer cleanup.",
+              "Observe stopped recovery only; no dispatch/retry/deadline reset/renewal-as-authority."
+            ],
+            "dependencies": [
+              "PI-P04-07",
+              "PI-P04-11"
+            ],
+            "evidence_ids": [
+              "E26",
+              "E27",
+              "E28",
+              "E29",
+              "E30",
+              "E32",
+              "E38",
+              "E39"
+            ],
+            "id": "PI-P04-12",
+            "minimal_patch_scope": [
+              "Typed pending branch, finalizer gates and original trusted host observation-only handler."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "finalizer_gates_source_controls_passed_resumption_not_implemented",
+            "title": "Handle typed pending before every generic handler/finalizer"
+          },
+          {
+            "completion_criteria": [
+              "Unknown Git wait/group closure retains actual freezer owner/Popen/reference graph even when provider stopped.",
+              "Public stopped release follows independent exact original group/process/path proof and durability.",
+              "Bounded typed holder in V03 if traceback lifetime insufficient; no copied PID/receipt permission."
+            ],
+            "dependencies": [
+              "PI-P04-12"
+            ],
+            "evidence_ids": [
+              "E35",
+              "E36",
+              "E39"
+            ],
+            "id": "PI-P04-13",
+            "minimal_patch_scope": [
+              "Freezer successor Git failure holder plus host branch; no V02 changes."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "prior_genuine_Git_custody_component_preserved_host_join_unqualified",
+            "title": "Preserve uncertain freezer child cleanup separately"
+          },
+          {
+            "completion_criteria": [
+              "Independently prove same Docker/runtime/CID/name/kernel/private paths/provider groups and freezer group stopped.",
+              "Release original public consumers, forget after row drain, durable outputs, public stopped owner.release if revoked.",
+              "Preserve ordinal3/claims/lifecycle until resolved; no automatic rearm/reset; no host-death guarantee."
+            ],
+            "dependencies": [
+              "PI-P04-12",
+              "PI-P04-13"
+            ],
+            "evidence_ids": [
+              "E30",
+              "E32",
+              "E38",
+              "E39"
+            ],
+            "id": "PI-P04-14",
+            "minimal_patch_scope": [
+              "Trusted stopped handler and original producer settlement only after proof."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "genuine_H4_cancel_stopped_ack_component_qualified_full_host_pending",
+            "title": "Finish stopped closeout without changing original ordinal"
+          }
+        ],
+        "title": "Retain original custody and claims on unknown cleanup"
+      },
+      {
+        "id": "PI-P04-S6",
+        "status": "partial_source_or_component_progress_not_runtime_complete",
+        "tasks": [
+          {
+            "completion_criteria": [
+              "Test owned/borrowed SQL/close equivalence; no open/close/DDL on borrowed branch; exact wrong target/thread/poison/transaction refusals; dual-board and pending release order.",
+              "No fake actual owner/callback/connection positive; pure projections stay nonauthoritative."
+            ],
+            "dependencies": [
+              "PI-P04-04",
+              "PI-P04-09",
+              "PI-P04-12",
+              "PI-P04-13"
+            ],
+            "evidence_ids": [
+              "E13",
+              "E14",
+              "E15",
+              "E22",
+              "E26",
+              "E35"
+            ],
+            "id": "PI-P04-15",
+            "minimal_patch_scope": [
+              "New reviewed controls/request; root executes later."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "107_latest_source_and_database_cases_passed_plus2_genuine_wrapper_cases",
+            "title": "Run meaningful source controls under genuine admission"
+          },
+          {
+            "completion_criteria": [
+              "Actual fixture DB/phase/owners prove all I/O uses original connection, no second lock/open, original caller handle stays usable.",
+              "Known-unstarted actual H before_run preserves original exception, zero model/Docker/task dispatch and consumer drain.",
+              "Fresh prep/finalization and source origins joined; no fake grant or production counters."
+            ],
+            "dependencies": [
+              "PI-P04-05",
+              "PI-P04-07",
+              "PI-P04-15"
+            ],
+            "evidence_ids": [
+              "E07",
+              "E15",
+              "E18",
+              "E29",
+              "E31"
+            ],
+            "id": "PI-P04-16",
+            "minimal_patch_scope": [
+              "Separate genuine nonmodel native component fixture/request."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "partial_18_actual_DB_cases_full_original_daemon_fixture_pending",
+            "title": "Qualify actual borrowed state I/O and same-PID host without models"
+          },
+          {
+            "completion_criteria": [
+              "Genuine nonmodel fixtures verify actual exception path retains claims/ordinal/lifecycle until independent cleanup.",
+              "Cancelled child renewal does not restore authority; unknown scope stays held without extra root.",
+              "No production provider/canonical claim/state changes."
+            ],
+            "dependencies": [
+              "PI-P04-14",
+              "PI-P04-16"
+            ],
+            "evidence_ids": [
+              "E26",
+              "E27",
+              "E28",
+              "E35",
+              "E39"
+            ],
+            "id": "PI-P04-17",
+            "minimal_patch_scope": [
+              "Fresh bounded genuine fixtures; preserve failures/root observations."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "actual_H4_cancel_component_qualified_full_host_pending",
+            "title": "Qualify caller stopped custody through cancellation"
+          },
+          {
+            "completion_criteria": [
+              "Publish frozen patch/source/request/root/result hashes and failed runs honestly.",
+              "Live provider callback/freezer positive, genuine candidate observer/native acceptance and requested Codex backup remain separate prerequisites.",
+              "Docs/AST/nonmodel results never enable dispatch."
+            ],
+            "dependencies": [
+              "PI-P04-16",
+              "PI-P04-17"
+            ],
+            "evidence_ids": [
+              "E01",
+              "E21",
+              "E29",
+              "E36"
+            ],
+            "id": "PI-P04-18",
+            "minimal_patch_scope": [
+              "Docs-only reviewed publication; future operational admission separate."
+            ],
+            "provider_dispatch_authorized_by_this_plan": false,
+            "status": "local_readiness_and_task_documentation_authored_runtime_disabled",
+            "title": "Publish exact readiness evidence and keep dispatch disabled"
+          }
+        ],
+        "title": "Qualify and publish without enabling dispatch"
+      }
+    ],
+    "title": "Bind original legal report attempt to genuine same-process callable owners and stopped custody"
+  },
+  "ordering": "Planning dependencies are not runtime grants. Separate genuine admission/review required.",
+  "original_attempt_cap": 2,
+  "original_consumed_attempts": 2,
+  "planning_only": true,
+  "progress_evidence": [
+    {
+      "path": "daemon-source-root-observation-r02.json",
+      "sha256": "f9147d582c06a33ce793035acb2a6c82e9e062db90c139da4bfd98e2c4b3ab3e"
+    },
+    {
+      "path": "freezer-board-root-observation-r01.json",
+      "sha256": "35e6a330879c15c0452f2ed3dd78d11c81b56d9e851380d91386baba6154cc6e"
+    },
+    {
+      "path": "borrowed-state-root-observation-r01.json",
+      "sha256": "abe26f09d44af6db77c2c9afd54215f75f23dc8d11c84b88aab1f318dda8062f"
+    },
+    {
+      "path": "native-host-controls-root-observation-r02.json",
+      "sha256": "00c549fecacf8c03c60faf2688733784dc38bebd38f646726ec8cf56a06cdf82"
+    },
+    {
+      "path": "current-repository-profile-observation-r01.json",
+      "sha256": "7a85423b046d5c499043de1ff7e12a7a3149bad259589282f90d0802be317f35"
+    },
+    {
+      "path": "H4-prestart-root-observation-r01.json",
+      "sha256": "83f6748794c798f8ee8af9a65594af8c499a7f03ebe8cf9dc2c667f4e3ff0f21"
+    },
+    {
+      "path": "native-host-controls-root-observation-r03.json",
+      "sha256": "85f8a5b304dae53545bf651c97a16b3a0527c2312124d5ceb91124c8be3d3f1e"
+    }
+  ],
+  "provider_dispatch_authority": false,
+  "remaining_separate_gates": [
+    "Actual live provider outcome/callback/freezer positive qualification",
+    "Genuine candidate observation/native validator/controller acceptance",
+    "Grok4.7 to Codex GPT6.1Sol backup qualification",
+    "Legal fidelity/decoder accuracy/lake build legal"
+  ],
+  "schema": "legal-ir-daemon-bridge-progress-tasks@1",
+  "source_code_implemented_in_this_bundle": false,
+  "source_plan_only_cap3": true,
+  "supervisor_dispatch_enabled": false,
+  "unchanged_constraints": [
+    "Original64-task identities/frontier/manual status",
+    "Original ID/CID2\u21923 through original producer only; cap3; peer counts unchanged",
+    "No protected74, policy, ledger-format, manual-grant or canonical-acceptance edits",
+    "Frozen G3/H3/C and freezerV02 preserved; additive successors only",
+    "Root3CPU4096MiB16slot; no hidden root/cap raise"
+  ]
+}

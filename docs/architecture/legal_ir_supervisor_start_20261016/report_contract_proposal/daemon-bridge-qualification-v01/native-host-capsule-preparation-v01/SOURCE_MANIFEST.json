@@ -1,0 +1,37 @@
+{
+  "acceptance_authority": false,
+  "capsule_payload_bytes": 106772927,
+  "capsule_payload_files": 2807,
+  "files": [
+    {
+      "bytes": 1333,
+      "path": "README.md",
+      "sha256": "4bc3abe32c7afbf32aad39253f67dcf53315a012411a62b53b590d89178f0aef"
+    },
+    {
+      "bytes": 1451609,
+      "path": "SOURCE_INVENTORY.json",
+      "sha256": "a5660a1ce21bb27dd855fdbdc741570c9a96573d663ec57d7c5309fe96456d2b"
+    },
+    {
+      "bytes": 12230,
+      "path": "prepare_capsule.py",
+      "sha256": "4630d112bb373ca18110d46c8811e743781fb8f9559ad4dbca4ac9f75c87ed42"
+    }
+  ],
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/SOURCE_MANIFEST.json": "1a2d28a952f0bac6a7af951b4754085dcb1110f86fb46ebf319014f2e66062e2",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/README.md": "7ea6299d5f2803a4786b5918d45a5cb5a6ab11cd1af79db9706e608d7b723470",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/SOURCE_MANIFEST.json": "b74455cd469cbf78892d6fda2b09c8234cd5922b7e72f741c845c2b0c2f8f0d8",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/build_sources.py": "beeff6928929bc1846bffc17a436208786c4e35dca4f9ba94ee0f3be36fa8418",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/handoff_v04_additions.py.txt": "1174217d07a2f5d2c5991ea0b1087d9d642702a1e5882fcefb63544603b841f2",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/ordinary_success_handoff-v04.patch": "812479bf9fb0844ca4678d5344924aeabb16f06d8c541a8b218e36a7a8ef77da",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py": "238d21021f2701475c9152c86952396df7050ffce6c56736622ab005625b3b8d",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py": "1929b160e62503dcc8ee2e48286298dd2de1949a04e9eaf6693d241ef41e756a",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/qualify_controls.py": "05277d5bf9f9bf7baa5119d32dfd54e63dc70d31d948beb8f51df2151cfc7a9c",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/test_source_controls.py": "8376e1f890342c38eff48d988a154f605818420af868e59658468e3b134b935c",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r02/preparation/capsule/SOURCE_MANIFEST.json": "71053aea3f7e5917cd218bcfbf6458fe351fb7fb36de64ed723789b0a44cee2d"
+  },
+  "provider_calls_performed": false,
+  "schema": "legal-ir-H4-capsule-preparation-source@1"
+}

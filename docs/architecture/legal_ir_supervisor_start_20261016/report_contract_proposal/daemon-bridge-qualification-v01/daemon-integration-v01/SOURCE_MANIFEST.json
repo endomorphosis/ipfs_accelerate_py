@@ -1,0 +1,43 @@
+{
+  "authored_source_controls": 14,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 480,
+      "path": "ASSEMBLY.json",
+      "sha256": "ce160076eec462cc2d551148f516182c086d808ea46b5bd3c959dbfa108a98f7"
+    },
+    {
+      "bytes": 1444,
+      "path": "README.md",
+      "sha256": "6f4df6e453282869100278d6926d0c4d0547841895d52a7398c482508b567fee"
+    },
+    {
+      "bytes": 14224,
+      "path": "build_patch.py",
+      "sha256": "fcf2f355b40ca4affb63a8b6a2edccc891999607d12b48cc22c336c01ebbe972"
+    },
+    {
+      "bytes": 15201,
+      "path": "implementation_daemon.patch",
+      "sha256": "a210a971084300107be32eba5b60026ed14bafcfa5d4768f331d7735af3fd6cc"
+    },
+    {
+      "bytes": 3648,
+      "path": "qualify_source.py",
+      "sha256": "053cbc31225e6e6ee996d4bb57ca1d588057aa6c058600fbff0eaad1dd7a9805"
+    },
+    {
+      "bytes": 7455,
+      "path": "test_integration_contract.py",
+      "sha256": "457d54237ea60569ec6fa0e3a8817affa138be28844f698a005e251748085f04"
+    }
+  ],
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/build_patch.py": "6b87e6f63b42b970265daa3131042c9651b5fa9319f97314b3490ab478e2b7e4",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+  },
+  "qualification": "not yet executed",
+  "runtime_enabled": false,
+  "schema": "legal-ir-daemon-integration-source@1"
+}
