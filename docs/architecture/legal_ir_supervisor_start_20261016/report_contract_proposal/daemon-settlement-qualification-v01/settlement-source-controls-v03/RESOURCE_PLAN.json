@@ -1,0 +1,51 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "excluded_effects": [
+    "Target daemon import or instantiation",
+    "Canonical task, state, attempt cap or counter mutation",
+    "Provider, model, authentication, Git or Docker command",
+    "Database connection open",
+    "GitHub qualification",
+    "Runtime activation, task acceptance or legal correctness claim"
+  ],
+  "expected_testcases": 38,
+  "launch_policy": "Root reviews exact frozen source, request and capacity immediately before launch; run sequentially with capsule preparation. This authored request is not proof of admission or permission to alter scheduler caps.",
+  "native_profile": {
+    "additional_worker_native_admissions": 0,
+    "child_process_slots": 8,
+    "cpu_slots": 1,
+    "duration_seconds": 900,
+    "external_charges": [],
+    "memory_mb": 4096,
+    "storage_bytes": 33554432
+  },
+  "output_bounds": {
+    "aggregate_storage_enforcement": "Original V05 native owner cooperatively samples the actual charged attempt against32MiB; this is not a hard filesystem quota.",
+    "compiled_source": "Memory only; PYTHONDONTWRITEBYTECODE and sys.dont_write_bytecode enabled before source/test imports",
+    "expected_pytest_and_parent_logs_bytes": 4194304,
+    "log_allowance_is_independent_total_hard_cap": false,
+    "private_JUnit_bytes": 16777216,
+    "private_result_JSON_bytes": 262144,
+    "pytest_fixtures": "No temporary repository, database, model output, tmp_path or target runtime invocation"
+  },
+  "pre_product_import_gate": {
+    "meaning": "Read-only original parent/process/request/receipt/native-ancestry/storage/attached group ordering observation; no reconstructed SDK authority",
+    "sha256": "dba5662443619358e2225d0cf7ccaa2e2b6c5bf51b0a60d2d1809004d1667fb3",
+    "source": "../repository-fixture-v02/parent_attachment_gate.py",
+    "timeout_seconds": 60
+  },
+  "previous_selector_correction_reason": "Correct the original-body selector to distinguish early prompt/context cleanup from actual implementation claim finally; preserve strict full-body AST equality.",
+  "purpose": "controller_preparation",
+  "qualification_executed": false,
+  "runtime_enabled": false,
+  "schema": "legal-ir-settlement-source-control-resource-plan@1",
+  "selected_original_owner": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+  "source_reads": "Exact pinned existing source bytes only; no mutations outside the original charged native attempt",
+  "successor_reason": "Storage-profile-only successor: reserve 32MiB instead of128MiB and use fresh r03 request/attempt/name; tests, checker, target source pins, original parent gate and effect exclusions unchanged.",
+  "testcases": {
+    "existing_authored_refusal_or_source_controls": 17,
+    "genuine_original_daemon_callback_positive_cases": 0,
+    "new_source_integration_controls": 21
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "actual_selected_payload_bytes": 106910476,
+  "actual_selected_payload_file_count": 2810,
+  "bounded_owner_metadata_and_sanitized_log_allowance_bytes": 8388608,
+  "combined_payload_and_source_bytes": 110219921,
+  "inventory_and_capsule_manifest_allowance_bytes": 8388608,
+  "margin_after_conservative_bound_bytes": 7220591,
+  "native_capacity_observation": "Parent reports previous r01 refused before disk admission; wait for unrelated retained native reservations to drain. This plan is not admission.",
+  "original_base_payload_bytes": 106759806,
+  "readonly_external_charges": [],
+  "reservation_bytes": 134217728,
+  "retained_assembled_source_bytes": 3309445,
+  "rule": "Original read-only capsule is counted in the genuine global census. Reserve private copied/assembled outputs only; no cap or quota mutation.",
+  "schema": "legal-ir-capsule-preparation-output-bound@1",
+  "source_only": true,
+  "total_conservative_output_bound_bytes": 126997137
+}

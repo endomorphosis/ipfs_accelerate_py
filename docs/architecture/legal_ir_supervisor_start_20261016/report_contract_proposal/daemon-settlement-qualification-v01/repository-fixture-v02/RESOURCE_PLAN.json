@@ -1,0 +1,29 @@
+{
+  "all_git_children_inherit_original_attached_worker_group": true,
+  "child_process_slots": 8,
+  "cooperative_sampling_not_hard_quota": true,
+  "cpu_slots": 1,
+  "default_recommendation": "selected-source first if fresh global admission cannot grant full clone; never represent selected-source as original full snapshot",
+  "duration_seconds": 1800,
+  "full_clone_bytes": 3221225472,
+  "gate_source_reference": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/pending-fixture-cancellation-v02/cancel_pending_wrapper.py",
+    "scope": "adapted actual parent receipt/ancestry/kernel joins, without target cancellation or SDK recovery calls"
+  },
+  "memory_mb": 4096,
+  "native_executor": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+  "native_sdk_public_read_methods_called_by_worker": false,
+  "new_native_roots_created_by_worker": false,
+  "no_network": true,
+  "no_provider_or_task_execution": true,
+  "original_parent_attachment_gate_required_before_effects": true,
+  "schema": "legal-ir-repository-preparation-resource-plan@1",
+  "selected_source_bytes": 268435456,
+  "source_object_store_metadata_observation": {
+    "apparent_bytes": 1446787935,
+    "file_count": 6241,
+    "largest_file_bytes": 653334552,
+    "scope": "read-only current metadata across original objects and two alternates, not reachable committed inventory"
+  },
+  "worker_deadline_seconds": 1700
+}

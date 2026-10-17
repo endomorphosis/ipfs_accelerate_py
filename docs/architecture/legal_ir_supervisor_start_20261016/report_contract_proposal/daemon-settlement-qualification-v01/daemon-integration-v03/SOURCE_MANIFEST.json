@@ -1,0 +1,41 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 389,
+      "path": "ASSEMBLY.json",
+      "sha256": "d8d458b9bb0bd8cd2394de19224d1be8ec3fabce615196af325103d4882f89eb"
+    },
+    {
+      "bytes": 995,
+      "path": "README.txt",
+      "sha256": "dd3375fbe7e68f3c990be824d273faf54e6dcb9a1154a9182ff106f282286e4c"
+    },
+    {
+      "bytes": 4674,
+      "path": "build_patch.py",
+      "sha256": "f5199a384dfc8ab642582bb68fe78765f61b6958471597180aab4f25c270006e"
+    },
+    {
+      "bytes": 7501,
+      "path": "continuation-successor.patch",
+      "sha256": "50d378bd2307306314a13fd2aa017a106f07347819667fc6793d2bac548a2a79"
+    },
+    {
+      "bytes": 19385,
+      "path": "implementation_daemon.patch",
+      "sha256": "b795338f552a567413da65f58b41f42ea8ca8660166ead430b1f2a49046d88ce"
+    }
+  ],
+  "full_host_qualified": false,
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v02/SOURCE_MANIFEST.json": "2690f6df93740dcfcd7457c33a1f57dcc0a78c86a09cc710baa8484adb97a3fa",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v02/build_patch.py": "38e1fa5c63800a6e10c9ba54788010c75710daad867d41704cc7084677d46870",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py": "5869b6e2bbc9132b7d3d74b236dc3565053310c3532b27fb08f480d7961648e9"
+  },
+  "production_hook_deployed": false,
+  "qualification": "authored; controls and actual fixtures recorded separately",
+  "runtime_enabled": false,
+  "schema": "legal-ir-daemon-finalizer-source@1"
+}

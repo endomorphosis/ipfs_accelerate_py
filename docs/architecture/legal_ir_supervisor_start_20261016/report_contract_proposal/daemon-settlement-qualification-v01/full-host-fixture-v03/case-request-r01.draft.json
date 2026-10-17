@@ -1,0 +1,13 @@
+{
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-full-daemon-missing-host-20261017-r01",
+  "capsule_manifest_sha256": "41a0fdbf91a4aff6240db96483afc85a3b2e25d73aad6c7a5aa0884014e1eb0b",
+  "capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-full-daemon-capsule-20261017-r02/capsule",
+  "parent_request_name": "legal-ir-full-daemon-missing-host-20261017-r01",
+  "parent_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/full-host-fixture-v03/qualify-request-r01.json",
+  "preparation_root_observation_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/capsule-root-observation-r02.json",
+  "preparation_root_observation_sha256": "PENDING_ACTUAL_ROOT_FINALIZATION_OBSERVATION_SHA",
+  "reviewed_composed_daemon_sha256": "4984370456bd304dd9d89550c05e2d364fd9f0ca4849db560cb10caddfe3f407",
+  "schema": "legal-ir-full-original-daemon-missing-host-request@1",
+  "source_manifest_sha256": "703aef17734719ed3e4ed95b9b7c721b5f4027bb57e3756e4484847b131439e4",
+  "storage_bytes": 268435456
+}

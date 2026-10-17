@@ -1,0 +1,13 @@
+{
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-repository-selected-source-20261017-r02",
+  "mode": "selected-source-fixture",
+  "schema": "legal-ir-repository-preparation-spec@1",
+  "selected_source_sha256": {
+    "docs/architecture/legal_ir_supervisor_start_20261016/tasks.todo.md": "5244288f69562663f44b00d27add1ee6ef338f977fed1c0e1c8855725ff372c7",
+    "ipfs_accelerate_py/agent_supervisor/merge/git_checkout_transaction.py": "bdf01fc5f0a9ebb5f3ce5fac0a2319d44aac25b99f804af98cddb6830ac2076a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/ordinary_provider_cleanup.py": "a1a328c2ffc597507237f9df0cfbe7115fa505b0f8b075764c0142d75cf1fd5a",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0"
+  },
+  "storage_bytes": 268435456
+}

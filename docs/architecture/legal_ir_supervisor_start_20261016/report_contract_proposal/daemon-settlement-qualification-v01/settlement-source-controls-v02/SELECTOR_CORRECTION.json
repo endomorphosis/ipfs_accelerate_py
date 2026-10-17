@@ -1,0 +1,37 @@
+{
+  "schema": "legal-ir-original-finalizer-selector-correction@1",
+  "predecessor": "../settlement-source-controls-v01",
+  "predecessor_result": {
+    "controlled_testcases": 37,
+    "passed_testcases": 35,
+    "failures": 2,
+    "errors": 0,
+    "skipped": 0,
+    "returncode": 1,
+    "result_sha256": "5d224dca4c8db0259c87388c7c6df1ae8a1ddf227d0b12a1feec071783e82186",
+    "JUnit_sha256": "911cb3637929290ec36c920210dfb152b70db7e735a18e6ee85dbe8fb3fde1a4",
+    "original_parent_attachment_order_observed": true
+  },
+  "failed_controls": [
+    "test_original_claim_finalizer_body_is_preserved",
+    "test_original_dispatch_intent_finalizer_body_is_preserved"
+  ],
+  "source_audit_finding": "V01 selects any original finally containing _release_implementation_resource_claims anywhere below it. The pinned original _run_implementation has both early prompt/context deferral cleanup at lines 21427 onward and the actual implementation claim finalizer at lines 22844 onward. Both satisfy the broad marker. Both controls stop at the shared ambiguous selector before body equality is evaluated.",
+  "marker_name": "_release_implementation_resource_claims",
+  "marker_occurrences_in_original_run_implementation": [21429, 21457, 22861],
+  "correction": [
+    "Select the claim finalizer by its exact four direct statements: lock-release try; direct resource-release expression on acquired_resource_claims; acquired_resource_claims = []; task-release try.",
+    "Select the pass finalizer by its exact two direct statements: retain_selected_intent assignment; direct original reconciliation expression.",
+    "Keep complete original body AST equality, unique successor nested closure match, zero-argument function checks and the sole permitted nonlocal declaration unchanged.",
+    "Add one focused source control proving that the earlier prompt cleanup is excluded and removing a required main-finalizer statement also refuses selection."
+  ],
+  "authored_successor_testcases": 38,
+  "author_successor_tests_executed": 0,
+  "runtime_host_or_daemon_source_changed_for_this_correction": false,
+  "predecessor_sources_and_native_failure_evidence_preserved": true,
+  "full_original_host_qualified": false,
+  "original_attempt_disposition_settled": false,
+  "runtime_enabled": false,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0
+}

@@ -1,0 +1,44 @@
+{
+  "directories": [
+    "settlement-audit-v01",
+    "native-host-v03",
+    "daemon-integration-v03",
+    "repository-fixture-v02",
+    "full-host-fixture-v02",
+    "full-host-fixture-v03",
+    "full-host-fixture-v04",
+    "settlement-source-controls-v01",
+    "settlement-source-controls-v02",
+    "settlement-source-controls-v03"
+  ],
+  "files": [
+    "NEXT_DISPOSITION_DESIGN.json",
+    "READINESS.md",
+    "TASKS.json",
+    "capsule-root-observation-r02.json",
+    "capsule-storage-refusal-root-observation-r01.json",
+    "full-daemon-root-observation-r01.json",
+    "publication-v01/CONTRACT.json",
+    "publication-v01/EXISTING_REPORT_INVENTORY.json",
+    "publication-v01/README.txt",
+    "publication-v01/SELECTION.json",
+    "publication-v01/SOURCE_MANIFEST.json",
+    "publication-v01/build_packet.py",
+    "publication-v01/build_request.py",
+    "publication-v01/parent_attachment_gate.py",
+    "publication-v01/publish_docs.py",
+    "repository-root-observation-r01.json",
+    "source-controls-root-observation-r01.json",
+    "source-controls-root-observation-r03.json"
+  ],
+  "instructions": "Root authorized final source freeze after completed38source controls and fully finalized original daemon missing-host case. Preserve failed/unexecuted historical source generations as inert documentation. Storage refusal is payload only: no disk admission or native_finalized claim. Exclude full capsule bytes, full-clone execution claims and future publication request/result/packet input cycles.",
+  "root_observations": [
+    "repository-root-observation-r01.json",
+    "source-controls-root-observation-r01.json",
+    "source-controls-root-observation-r03.json",
+    "capsule-root-observation-r02.json",
+    "full-daemon-root-observation-r01.json"
+  ],
+  "schema": "legal-ir-settlement-publication-selection@1",
+  "status": "root_finalized"
+}
