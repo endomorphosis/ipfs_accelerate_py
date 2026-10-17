@@ -775,6 +775,20 @@ need separate accounting. An empty native `--tools` list can enable default
 tools; planning callers must use the separately qualified explicit tool
 allowlist and denylist policy.
 
+Supervisor receipts retain a separate `native_prompt_accounting` observation
+on successful and failed calls. It records main-agent rounds, up to 32 native
+per-model rows, explicit omissions, and reported integer cost ticks
+(10,000,000,000 ticks per USD). Model identifiers are hashed. Missing, invalid,
+conflicting, and zero counters remain distinct. Usable prompt-ledger cost ticks
+require valid ticks and explicitly false incomplete/partial flags; missing
+costs are never converted from floats or treated as free.
+
+Grok's final prompt ledger includes completed subagents and excludes compaction
+and other side-model calls. Round and model-call counters are not HTTP request
+counts. The retained-usage reconciler exposes this coverage and keeps primary,
+auxiliary, and whole-invocation totals unknown. Per-model rows and stream events
+are diagnostics of overlapping usage and are never added to final totals.
+
 Use `trace=True` with `trace_jsonl_path=...` or `trace_dir=...` to retain
 request, session, usage, and cost metadata. Prompt and response text are not
 written to that trace by the router.

@@ -1948,6 +1948,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             else:
                 from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_outcome_receipt, grok_usage_receipt
                 receipt["native_rollout_usage"] = grok_usage_receipt(observation)
+                try:
+                    from ipfs_accelerate_py.cli_runtime.grok_prompt_accounting import grok_prompt_accounting_receipt
+                    receipt["native_prompt_accounting"] = grok_prompt_accounting_receipt(observation)
+                except Exception:
+                    receipt["native_prompt_accounting"] = None
                 receipt["native_provider_outcome"] = grok_outcome_receipt(observation)
                 if purpose == "coding" and observation.get("native_grok_progress") is not None:
                     try:
