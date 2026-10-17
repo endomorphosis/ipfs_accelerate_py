@@ -1,0 +1,17 @@
+{
+  "acceptance_authority": false,
+  "actual_native_custody_binding_qualified": false,
+  "actual_terminal_exit_code": 0,
+  "actual_terminal_native_finalized": true,
+  "canonical_tasks_accepted": 0,
+  "controlled_cases": 35,
+  "provider_calls_performed": false,
+  "request_sha256": "391bf93cdc7b8f3f0277af5fc3e37ad584544e1cd260b8c926d4063140135488",
+  "result_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-custody-controls-20261017-r01/ordinary-custody-controls.json",
+  "result_sha256": "a3f6e54ccab6b7b5e2a006f526966f8436bd046fb1593462db61765b22dede51",
+  "schema": "legal-ir-root-native-control-observation@1",
+  "session_id": 43978,
+  "source_scope": "ordinary-custody-hold-v01",
+  "terminal_output": "{\"receipt\": \"/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-custody-controls-20261017-r01/receipt.json\", \"status\": \"completed\", \"child_returncode\": 0, \"failure_type\": null, \"native_finalized\": true}",
+  "test_scope": "pure correspondence and early refusal controls only"
+}

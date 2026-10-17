@@ -1,0 +1,15 @@
+{
+  "acceptance_authority": false,
+  "actual_custody_unwind_qualifier_passed": null,
+  "actual_nonmodel_gate_qualifier_passed": null,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "native_gate_v01_passed": null,
+  "native_gate_v02_execution_observed": false,
+  "previous_publication_commit": "06eff5086b8653f0a58f5013cc781482693886c5",
+  "production_hook_deployed": false,
+  "qualifier_outcome_policy": "Bind each original V01 case and overall outcome to its actual terminal; separately bind V02 only if genuinely executed. A source-only successor has a null outcome. Preserve original failures, raw environment order and independent native closeout.",
+  "schema": "legal-ir-real-handoff-runtime-qualification-template@3",
+  "source_pipeline_dispatchable": false,
+  "template_only_not_observed_result": true
+}

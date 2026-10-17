@@ -1,0 +1,5 @@
+This is a finite harness for the frozen custody helper's 35 pure correspondence and early-refusal controls. Root may execute the separate reviewed request under the original genuine generic native owner. The author has not run the harness, tests, native scheduler, Docker or providers.
+
+The harness verifies all three frozen helper files and all four held native SDK input pins before and after pytest. It counts unique passed node IDs and requires exactly 35 collected and passed cases with zero failures, errors or skips. JUnit, pytest scratch files and the fsynced result remain in the exact private charged attempt; no external aliases are created. The separate request pins this harness, this source manifest, the complete frozen helper bundle, native owner and cleanup sources, and Python.
+
+A passing result establishes these in-memory controls only. It does not establish genuine custody binding, retained capacity during an unknown cleanup outcome, Docker or kernel cleanup, provider execution, production deployment, canonical task completion or acceptance. Root must observe the actual outer native owner's finalization separately.

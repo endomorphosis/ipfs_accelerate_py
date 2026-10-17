@@ -1,0 +1,473 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 1,
+  "actual_exec_session": 33549,
+  "actual_native_terminal": {
+    "acceptance_authority": false,
+    "actual_phase_closeout": {
+      "lease_id": "5055141dea7748659de8ed86e01da24d",
+      "released": true
+    },
+    "actual_provider_execution_qualified": false,
+    "actual_root_closeout": {
+      "lease_id": "4e3bd39af8c74f2abebc5760be1b05ea",
+      "released": true
+    },
+    "all_case_owner_contexts_exited_after_independent_cleanup": true,
+    "canonical_tasks_accepted": 0,
+    "capsule_manifest_sha256": "b2a78de35845425f533f7a361b3998f41628d472fafbbccb3aa346d7b50e0925",
+    "cases": [
+      {
+        "acceptance_authority": false,
+        "actual_capacity_acknowledged_after_cleanup": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "dispatch_authority": false,
+          "hold_references_forgotten": true,
+          "independent_cleanup_not_authenticated_by_this_helper": true,
+          "native_consumers_acknowledged_and_absent": true,
+          "native_leases_released_by_this_helper": false,
+          "observation_only": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "actual_lifecycle_events": [
+          "invocation_started",
+          "route_selected",
+          "task_started",
+          "watchdog_native_attached",
+          "lease_created",
+          "lease_closed"
+        ],
+        "actual_live_component_capacity_observations": [],
+        "actual_owner_finalization": {
+          "primary": {
+            "native_lease_id": "5693361c9ce54f2d872ba90848ae21c9",
+            "native_lease_released": true,
+            "reservation_id": "d0361f4a5518443a9ab6ad3cd1a93777",
+            "status": "released"
+          },
+          "watchdog": {
+            "native_lease_id": "bf94a0029d9546829f848aabc5304d61",
+            "native_lease_released": true,
+            "reservation_id": "b9fc41d9c33447c3947649cc095e8d54",
+            "status": "released"
+          }
+        },
+        "actual_post_cleanup_capacity_hold": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "capacity_records_retained": true,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "consumer_ancestry_cancelled": [
+            false,
+            false
+          ],
+          "consumer_native_lease_ids": [
+            "9d2612f04e3d4d259c381984927a229c",
+            "07edbd006aaa4b6d9707d87e32898464"
+          ],
+          "consumer_objects_released": [
+            false,
+            false
+          ],
+          "consumer_records_present": [
+            true,
+            true
+          ],
+          "dispatch_authority": false,
+          "host_process_death_survival_guaranteed": false,
+          "independent_stopped_cleanup_required_before_acknowledgement": true,
+          "no_extra_global_root_allocation": true,
+          "observation_only": true,
+          "owner_pid": 1614042,
+          "productive_ancestry_retained": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "actual_pre_effect_capacity_hold": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "capacity_records_retained": true,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "consumer_ancestry_cancelled": [
+            false,
+            false
+          ],
+          "consumer_native_lease_ids": [
+            "9d2612f04e3d4d259c381984927a229c",
+            "07edbd006aaa4b6d9707d87e32898464"
+          ],
+          "consumer_objects_released": [
+            false,
+            false
+          ],
+          "consumer_records_present": [
+            true,
+            true
+          ],
+          "dispatch_authority": false,
+          "host_process_death_survival_guaranteed": false,
+          "independent_stopped_cleanup_required_before_acknowledgement": true,
+          "no_extra_global_root_allocation": true,
+          "observation_only": true,
+          "owner_pid": 1614042,
+          "productive_ancestry_retained": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "both_native_owner_contexts_exited_after_actual_cleanup": true,
+        "canonical_tasks_accepted": 0,
+        "cleanup": {
+          "actual_allocation_observed": true,
+          "actual_kernel_scope_captured": false,
+          "actual_transport_group_dead": true,
+          "actual_watchdog_group_dead": true,
+          "cleanup_known": true,
+          "container_absent_by_id_and_name": true,
+          "kernel_scope_quiescent": true,
+          "lease_home_prompt_absent": true,
+          "preserve_for_recovery_reported": false
+        },
+        "failure_reason": "actual_fixture_config_differs:Env",
+        "failure_type": "RuntimeError",
+        "finish_or_success_callback_called": false,
+        "fixture_case": "positive",
+        "fixture_only": true,
+        "models_called": 0,
+        "passed": false,
+        "positive_immediate_start_race_preserved": true,
+        "private_case_file": {
+          "bytes": 14178,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/native/positive/primary/mechanical-case.json",
+          "sha256": "f0831d712784ae3c54708b85e01a56dd5145342eb9f2580750382ed3edbf07e1",
+          "written_before_owner_finalization": true
+        },
+        "provider_calls_performed": false,
+        "public_wrapper_exercised": false
+      },
+      {
+        "acceptance_authority": false,
+        "actual_capacity_acknowledged_after_cleanup": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "dispatch_authority": false,
+          "hold_references_forgotten": true,
+          "independent_cleanup_not_authenticated_by_this_helper": true,
+          "native_consumers_acknowledged_and_absent": true,
+          "native_leases_released_by_this_helper": false,
+          "observation_only": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "actual_live_component_capacity_observations": [
+          {
+            "Docker_quiescence_verified": false,
+            "acceptance_authority": false,
+            "capacity_records_retained": true,
+            "cleanup_verified": false,
+            "completion_authority": false,
+            "consumer_ancestry_cancelled": [
+              false,
+              false
+            ],
+            "consumer_native_lease_ids": [
+              "cb65bffe738046589c8b27299a6b78d9",
+              "d29e9af9da9c4cd6b0a67418d840bf0b"
+            ],
+            "consumer_objects_released": [
+              false,
+              false
+            ],
+            "consumer_records_present": [
+              true,
+              true
+            ],
+            "dispatch_authority": false,
+            "host_process_death_survival_guaranteed": false,
+            "independent_stopped_cleanup_required_before_acknowledgement": true,
+            "no_extra_global_root_allocation": true,
+            "observation_only": true,
+            "owner_pid": 1614042,
+            "productive_ancestry_retained": true,
+            "productive_authority_granted": false,
+            "provider_execution_qualified": false,
+            "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+          }
+        ],
+        "actual_owner_finalization": {
+          "primary": {
+            "native_lease_id": "7c240246a3734486bf161f3eb6f06e3e",
+            "native_lease_released": true,
+            "reservation_id": "45ffe40584cc418e83300d477fcf3af7",
+            "status": "released"
+          },
+          "watchdog": {
+            "native_lease_id": "d7271f4187ab453793906d3fc30f6f9d",
+            "native_lease_released": true,
+            "reservation_id": "dee07f0c36954aff866b78a58d6391ca",
+            "status": "released"
+          }
+        },
+        "actual_post_cleanup_capacity_hold": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "capacity_records_retained": true,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "consumer_ancestry_cancelled": [
+            false,
+            false
+          ],
+          "consumer_native_lease_ids": [
+            "cb65bffe738046589c8b27299a6b78d9",
+            "d29e9af9da9c4cd6b0a67418d840bf0b"
+          ],
+          "consumer_objects_released": [
+            false,
+            false
+          ],
+          "consumer_records_present": [
+            true,
+            true
+          ],
+          "dispatch_authority": false,
+          "host_process_death_survival_guaranteed": false,
+          "independent_stopped_cleanup_required_before_acknowledgement": true,
+          "no_extra_global_root_allocation": true,
+          "observation_only": true,
+          "owner_pid": 1614042,
+          "productive_ancestry_retained": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "actual_pre_effect_capacity_hold": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "capacity_records_retained": true,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "consumer_ancestry_cancelled": [
+            false,
+            false
+          ],
+          "consumer_native_lease_ids": [
+            "cb65bffe738046589c8b27299a6b78d9",
+            "d29e9af9da9c4cd6b0a67418d840bf0b"
+          ],
+          "consumer_objects_released": [
+            false,
+            false
+          ],
+          "consumer_records_present": [
+            true,
+            true
+          ],
+          "dispatch_authority": false,
+          "host_process_death_survival_guaranteed": false,
+          "independent_stopped_cleanup_required_before_acknowledgement": true,
+          "no_extra_global_root_allocation": true,
+          "observation_only": true,
+          "owner_pid": 1614042,
+          "productive_ancestry_retained": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "actual_returncode": 125,
+        "actual_stderr_bytes": 0,
+        "both_native_owner_contexts_exited_after_actual_cleanup": true,
+        "canonical_tasks_accepted": 0,
+        "cleanup": {
+          "actual_allocation_observed": true,
+          "actual_kernel_scope_captured": true,
+          "actual_transport_group_dead": true,
+          "actual_watchdog_group_dead": true,
+          "cleanup_known": true,
+          "container_absent_by_id_and_name": true,
+          "kernel_scope_quiescent": true,
+          "lease_home_prompt_absent": true,
+          "preserve_for_recovery_reported": false
+        },
+        "finish_or_success_callback_called": false,
+        "fixture_case": "wrong_marker",
+        "fixture_only": true,
+        "models_called": 0,
+        "passed": true,
+        "payload_effect_absent": true,
+        "positive_immediate_start_race_preserved": false,
+        "private_case_file": {
+          "bytes": 15142,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/native/wrong_marker/primary/mechanical-case.json",
+          "sha256": "660166e0ebc5d86cdc1acfdbc2fd765167c4e2e2645908983eb71e9b332c0202",
+          "written_before_owner_finalization": true
+        },
+        "provider_calls_performed": false,
+        "public_wrapper_exercised": false
+      },
+      {
+        "acceptance_authority": false,
+        "actual_capacity_acknowledged_after_cleanup": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "dispatch_authority": false,
+          "hold_references_forgotten": true,
+          "independent_cleanup_not_authenticated_by_this_helper": true,
+          "native_consumers_acknowledged_and_absent": true,
+          "native_leases_released_by_this_helper": false,
+          "observation_only": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "actual_live_component_capacity_observations": [],
+        "actual_owner_finalization": {
+          "primary": {
+            "native_lease_id": "1c9217c8fa62475180f67a329c8b6595",
+            "native_lease_released": true,
+            "reservation_id": "e3374ec473684f8981c3e7ffb9f027ea",
+            "status": "released"
+          },
+          "watchdog": {
+            "native_lease_id": "926b838c670b473b86b6d066ab209f61",
+            "native_lease_released": true,
+            "reservation_id": "1fbb76c1e5584578b7f4cf2adc95bed8",
+            "status": "released"
+          }
+        },
+        "actual_post_cleanup_capacity_hold": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "capacity_records_retained": true,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "consumer_ancestry_cancelled": [
+            false,
+            false
+          ],
+          "consumer_native_lease_ids": [
+            "ada297a1a3b64af2a5915eb6ada6e8fb",
+            "219100bc322c43fb980784e381dc40d0"
+          ],
+          "consumer_objects_released": [
+            false,
+            false
+          ],
+          "consumer_records_present": [
+            true,
+            true
+          ],
+          "dispatch_authority": false,
+          "host_process_death_survival_guaranteed": false,
+          "independent_stopped_cleanup_required_before_acknowledgement": true,
+          "no_extra_global_root_allocation": true,
+          "observation_only": true,
+          "owner_pid": 1614042,
+          "productive_ancestry_retained": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "actual_pre_effect_capacity_hold": {
+          "Docker_quiescence_verified": false,
+          "acceptance_authority": false,
+          "capacity_records_retained": true,
+          "cleanup_verified": false,
+          "completion_authority": false,
+          "consumer_ancestry_cancelled": [
+            false,
+            false
+          ],
+          "consumer_native_lease_ids": [
+            "ada297a1a3b64af2a5915eb6ada6e8fb",
+            "219100bc322c43fb980784e381dc40d0"
+          ],
+          "consumer_objects_released": [
+            false,
+            false
+          ],
+          "consumer_records_present": [
+            true,
+            true
+          ],
+          "dispatch_authority": false,
+          "host_process_death_survival_guaranteed": false,
+          "independent_stopped_cleanup_required_before_acknowledgement": true,
+          "no_extra_global_root_allocation": true,
+          "observation_only": true,
+          "owner_pid": 1614042,
+          "productive_ancestry_retained": true,
+          "productive_authority_granted": false,
+          "provider_execution_qualified": false,
+          "schema": "legal-ir-ordinary-custody-capacity-observation@1"
+        },
+        "both_native_owner_contexts_exited_after_actual_cleanup": true,
+        "canonical_tasks_accepted": 0,
+        "cleanup": {
+          "actual_allocation_observed": true,
+          "actual_kernel_scope_captured": false,
+          "actual_transport_group_dead": true,
+          "actual_watchdog_group_dead": true,
+          "cleanup_known": true,
+          "container_absent_by_id_and_name": true,
+          "kernel_scope_quiescent": true,
+          "lease_home_prompt_absent": true,
+          "preserve_for_recovery_reported": false
+        },
+        "failure_reason": "actual_fixture_config_differs:Env",
+        "failure_type": "RuntimeError",
+        "finish_or_success_callback_called": false,
+        "fixture_case": "partial_eof",
+        "fixture_only": true,
+        "models_called": 0,
+        "passed": false,
+        "positive_immediate_start_race_preserved": false,
+        "private_case_file": {
+          "bytes": 14032,
+          "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/native/partial_eof/primary/mechanical-case.json",
+          "sha256": "294d577f72a7657bbb2170c59b1dbd7587960c29b565d52ab012bf701d7ab7fc",
+          "written_before_owner_finalization": true
+        },
+        "provider_calls_performed": false,
+        "public_wrapper_exercised": false
+      }
+    ],
+    "completion_authority": false,
+    "daemon_storage_outside_named_roots": true,
+    "finish_or_success_callback_called": false,
+    "fixture_only": true,
+    "frozen_hook_manifest_sha256": "59761cd0b0ea3395efb82ef27c6bb9e3fdbe33ce7a118afb8827bea76e2fa5b9",
+    "hard_daemon_disk_quota_claimed": false,
+    "models_called": 0,
+    "passed": false,
+    "production_hook_deployed": false,
+    "profile": "legal-ir-ordinary-handoff-nonmodel-gate-v01",
+    "provider_calls_performed": false,
+    "public_wrapper_exercised": false,
+    "request_sha256": "34a7f2c1f3926f2af724c131e0ff2cec93207fec00f429c27836acb56e740703",
+    "root_and_phase_contexts_finalized_after_cases": true,
+    "schema": "legal-ir-ordinary-handoff-native-mechanics@1",
+    "scope": "synthetic_nonmodel_engineering_fixture_only"
+  },
+  "canonical_tasks_accepted": 0,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-native-mechanical-root-observation@1",
+  "source_manifest_sha256": "4f92449615d3df1e10d3dcd2ec6652877ee5db0f46cf94cefc87fbd9650e9634",
+  "source_request_sha256": "34a7f2c1f3926f2af724c131e0ff2cec93207fec00f429c27836acb56e740703",
+  "source_scope": "native-gate-v01",
+  "terminal_provenance": "Exact actual final stdout JSON record from session33549 after actual exec exit1 and original root/phase release; earlier progress records are not a terminal or authority.",
+  "terminal_sha256": "6660be7b18f7b550775d0ba06050e8717de104ba35406bb95b806806b1eab2f6"
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "legal-ir-ordinary-custody-unwind-resource-plan@1",
+  "root_and_phase": {"cpu_slots": 2, "memory_mb": 1024, "child_process_slots": 12},
+  "primary_owner": {"cpu_slots": 1, "memory_mb": 512, "child_process_slots": 8, "storage_bytes": 33554432},
+  "watchdog_owner": {"cpu_slots": 1, "memory_mb": 256, "child_process_slots": 4, "storage_bytes": 33554432},
+  "each_nested_consumer": {"cpu_slots": 1, "memory_mb": 1, "child_process_slots": 0},
+  "productive_owner_lifetime_seconds": 1800,
+  "acquisition_wait_seconds": 1800,
+  "consumer_acquisition_wait_seconds": 30,
+  "external_storage_precharges": [],
+  "direct_finite_native_entry": true,
+  "additional_outer_root": false,
+  "process_children_started_by_entry": 0,
+  "Docker_started": false,
+  "provider_calls_performed": false,
+  "canonical_tasks_accepted": 0,
+  "acceptance_authority": false,
+  "host_process_death_survival_guaranteed": false
+}

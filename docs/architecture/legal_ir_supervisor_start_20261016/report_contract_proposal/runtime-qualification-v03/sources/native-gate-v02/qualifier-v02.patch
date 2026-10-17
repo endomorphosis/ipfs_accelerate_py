@@ -1,0 +1,162 @@
+--- native-gate-v01/qualify_native_gate.py
++++ native-gate-v02/qualify_native_gate.py
+@@ -24,8 +24,9 @@
+ 
+ HERE = Path(__file__).absolute().parent
+ CUSTODY_SOURCE = HERE.parent / "ordinary-custody-hold-v01/ordinary_custody_hold.py"
+-RUN = Path("/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01")
+-CAPSULE = RUN / "preparation/capsule"
++RUN = Path("/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r02")
++PREPARED_RUN = Path("/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01")
++CAPSULE = PREPARED_RUN / "preparation/capsule"
+ DATASETS = Path("/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets")
+ ROOT = Path("/home/barberb/lift_coding/external/ipfs_datasets")
+ ROOTS = (ROOT / "workspace/test-logs", ROOT / "workspace/todo-queues",
+@@ -42,7 +43,7 @@
+ IMAGE_LABEL = "2026-10-16-ordinary-v1"
+ PYTHON = Path("/usr/bin/python3.12")
+ INNER_PYTHON = "/opt/ipfs-task-tools/bin/python"
+-PROFILE = "legal-ir-ordinary-handoff-nonmodel-gate-v01"
++PROFILE = "legal-ir-ordinary-handoff-nonmodel-gate-v02"
+ CAPSULE_BUDGET = TEMP_BUDGET = 128 * 1024 * 1024
+ CASES = ("positive", "wrong_marker", "partial_eof")
+ NATIVE_NAMES = ("parented_phase_resources", "autoencoder_daemon_resources", "existing_resource_scheduler", "resource_scheduler")
+@@ -214,6 +215,66 @@
+     return manifest
+ 
+ 
++def check_exact_environment(actual, expected):
++    """Pure exact unique bindings; raw order is preserved in private snapshots.
++
++    This permits only ordering differences. Extras, missing keys, duplicates
++    (including identical duplicates), malformed entries and changed values
++    refuse before fixture startup. A mapping grants no execution authority.
++    """
++    def parse(entries):
++        need(type(entries) is list and len(entries) <= 32, "actual_fixture_environment_list_required")
++        result = {}
++        for entry in entries:
++            need(type(entry) is str and 0 < len(entry) <= 4096 and "=" in entry,
++                 "actual_fixture_environment_entry_malformed")
++            key, value = entry.split("=", 1)
++            need(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) is not None and key not in result,
++                 "actual_fixture_environment_duplicate_or_malformed_key")
++            result[key] = value
++        return result
++    need(parse(actual) == parse(expected), "actual_fixture_config_differs:Env")
++
++
++def run_environment_controls():
++    """Finite pure controls under the actual admitted phase, never admission."""
++    expected = ["PATH=/usr/bin:/bin", "HOME=/workspace", "TMPDIR=/workspace", "LANG=C.UTF-8",
++                "LC_ALL=C.UTF-8", "PYTHONDONTWRITEBYTECODE=1"]
++    key_refusal = "actual_fixture_environment_duplicate_or_malformed_key"
++    map_refusal = "actual_fixture_config_differs:Env"
++    entry_refusal = "actual_fixture_environment_entry_malformed"
++    controls = [
++        ("exact", list(expected), expected, None),
++        ("reversed", list(reversed(expected)), expected, None),
++        ("rotated", expected[2:] + expected[:2], expected, None),
++        ("identical_duplicate", expected + [expected[0]], expected, key_refusal),
++        ("changed_duplicate", expected + ["PATH=/unexpected"], expected, key_refusal),
++        ("unknown_extra", expected + ["UNKNOWN=extra"], expected, map_refusal),
++        ("missing", expected[:-1], expected, map_refusal),
++        ("changed_value", ["PATH=/unexpected", *expected[1:]], expected, map_refusal),
++        ("no_equals", ["PATH", *expected[1:]], expected, entry_refusal),
++        ("empty_key", ["=/usr/bin:/bin", *expected[1:]], expected, key_refusal),
++        ("non_string", [None, *expected[1:]], expected, entry_refusal),
++        ("non_list", tuple(expected), expected, "actual_fixture_environment_list_required"),
++        ("invalid_key", ["BAD KEY=value", *expected[1:]], expected, key_refusal),
++        ("duplicate_expected", expected, expected + [expected[0]], key_refusal),
++        ("first_equals", ["EXAMPLE=left=right"], ["EXAMPLE=left=right"], None),
++    ]
++    observed = []
++    for label, actual, wanted, reason in controls:
++        try:
++            check_exact_environment(actual, wanted)
++        except RuntimeError as error:
++            need(reason is not None and str(error) == reason, "environment_control_wrong_refusal:" + label)
++            observed.append({"case": label, "outcome": "refused", "reason": str(error)})
++        else:
++            need(reason is None, "environment_control_did_not_refuse:" + label)
++            observed.append({"case": label, "outcome": "accepted"})
++    return {"schema": "legal-ir-exact-fixture-environment-controls@1", "pure_controls_only": True,
++            "controlled_testcases": len(observed), "passed_testcases": len(observed), "passed": True,
++            "cases": observed, "models_called": 0, "acceptance_authority": False}
++
++
+ def process_group_dead(original_pid):
+     """Independent bounded actual /proc census, never native grant/receipt."""
+     need(type(original_pid) is int and original_pid > 1, "actual_owned_group_pid_required")
+@@ -289,7 +350,10 @@
+              and row.get("Name") == "/" + self.lease.container_name, "actual_fixture_container_identity_differs")
+         config, host = row.get("Config", {}), row.get("HostConfig", {})
+         for key, value in expected["config"].items():
+-            need(config.get(key) == value, "actual_fixture_config_differs:" + key)
++            if key == "Env":
++                check_exact_environment(config.get(key), value)
++            else:
++                need(config.get(key) == value, "actual_fixture_config_differs:" + key)
+         required = {"NetworkMode": "none", "ReadonlyRootfs": True, "Privileged": False,
+             "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges"], "PidsLimit": 4,
+             "Memory": 268435456, "MemorySwap": 268435456, "NanoCpus": 1000000000,
+@@ -374,10 +438,12 @@
+         need(re.fullmatch("[0-9a-f]{64}", self.cid), "actual_cidfile_required")
+         self.created_known = True
+         row = self.inspect(self.cid)
++        # Retain the bounded actual observation even if profile validation
++        # refuses. This is private diagnostic evidence, not a passed profile.
++        save(self.owner.directory / "created-container.json", row)
+         self.check_container(row)
+         need(row.get("State", {}).get("Status") == "created" and row["State"].get("Pid") == 0,
+              "actual_created_inert_fixture_required")
+-        save(self.owner.directory / "created-container.json", row)
+         progress(self.case, "actual_created_inert_profile_checked")
+         return start
+ 
+@@ -605,12 +671,12 @@
+                     result.update(fixture.run_component(command))
+                 progress(case, "actual_helper_returned")
+                 row = fixture.inspect(fixture.cid)
++                save(primary.directory / "actual-exited-container.json", row)
+                 fixture.check_container(row)
+                 expected_exit = 0 if case == "positive" else 125
+                 need(row.get("State", {}).get("Running") is False and row["State"].get("ExitCode") == expected_exit
+                      and row["State"].get("OOMKilled") is False and row["State"].get("Error") == "",
+                      "actual_fixture_container_exit_differs")
+-                save(primary.directory / "actual-exited-container.json", row)
+                 result["passed"] = True
+             except BaseException as error:
+                 result.update(passed=False, failure_type=type(error).__name__, failure_reason=str(error)[:2048])
+@@ -687,7 +753,10 @@
+         signal.signal(number, lambda _number, _frame: cancelled.set())
+     scheduler = open_existing_scheduler(STATE, POLICY)
+     native_root = RUN / "native"
+-    need(CAPSULE.is_dir() and not native_root.exists(), "real_prepared_capsule_and_fresh_native_run_required")
++    need(CAPSULE.is_dir() and not os.path.lexists(RUN) and RUN.parent.is_dir()
++         and RUN.parent.resolve(strict=True) == RUN.parent
++         and not any(path.is_symlink() for path in (RUN.parent, *RUN.parent.parents)),
++         "real_prepared_capsule_and_fresh_native_run_required")
+     with scheduler.acquire(ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=16,
+             timeout=1800, cancel_event=cancelled, request_id=PROFILE) as root:
+         with root.acquire_child(lane=ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096,
+@@ -708,10 +777,19 @@
+             C = importlib.util.module_from_spec(spec)
+             sys.modules[spec.name] = C
+             spec.loader.exec_module(C)
++            environment_controls = run_environment_controls()
++            progress("pure_environment_controls", "actual_fifteen_pure_environment_controls_passed")
++            RUN.mkdir(mode=0o700)
++            fsync_directory(RUN.parent)
+             native_root.mkdir(mode=0o700)
++            fsync_directory(RUN)
+             results = [run_case(G, H, C, phase, ParentedPhaseResourceReservation, request, case) for case in CASES]
+             result = {"schema": "legal-ir-ordinary-handoff-native-mechanics@1", "fixture_only": True,
+                 "scope": "synthetic_nonmodel_engineering_fixture_only", "profile": PROFILE,
++                "qualifier_source_revision": "native-gate-v02",
++                "environment_check": "exact_unique_key_value_mapping_ignoring_order_only",
++                "environment_controls": environment_controls,
++                "reused_readonly_capsule_root": str(CAPSULE),
+                 "request_sha256": sys.argv[2], "capsule_manifest_sha256": request["capsule_manifest_sha256"],
+                 "frozen_hook_manifest_sha256": FROZEN_HOOK, "cases": [compact_case(row) for row in results],
+                 "passed": all(row["passed"] for row in results), "models_called": 0, "provider_calls_performed": False,

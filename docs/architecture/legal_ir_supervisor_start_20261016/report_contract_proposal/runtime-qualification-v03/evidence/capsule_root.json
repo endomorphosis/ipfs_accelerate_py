@@ -1,0 +1,27 @@
+{
+  "actual_I_B_command_reviewed_before_productive_execution": true,
+  "actual_exec_exit_code": 0,
+  "actual_exec_session": 85405,
+  "actual_native_terminal": {
+    "child_returncode": 0,
+    "failure_type": null,
+    "native_finalized": true,
+    "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/receipt.json",
+    "status": "completed"
+  },
+  "canonical_tasks_accepted": 0,
+  "capsule_manifest_sha256": "b2a78de35845425f533f7a361b3998f41628d472fafbbccb3aa346d7b50e0925",
+  "initial_root_review_assertion_omitted_isolated_I_flag": true,
+  "original_native_preparation_finalized": true,
+  "payload_bytes": 106710527,
+  "payload_file_count": 2806,
+  "preparation_result_sha256": "5c14708f09c0a30e4bc0092ccd913033e1a15531bd8e5b1fba5316367c30c31b",
+  "production_hook_deployed": false,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-handoff-capsule-root-observation@1",
+  "source_inventory_sha256": "920eee1617fdf1832d74219b0a778c044fe675e493f2128ba9c516575602e8fc",
+  "source_manifest_sha256": "13653fd01ea820e4d229b85bf387fb321754c600f99219da421ea79c8649abb1",
+  "source_request_sha256": "33b8353c6211895d518d22f4a7ebc31a82af5b22ac5f13143da217427a4c93fd",
+  "terminal_provenance": "Actual exec85405 terminal after original genuine preparation native scope finalized; producer pending-closeout JSON alone is not finalization evidence.",
+  "two_owner_native_gate_qualified": false
+}

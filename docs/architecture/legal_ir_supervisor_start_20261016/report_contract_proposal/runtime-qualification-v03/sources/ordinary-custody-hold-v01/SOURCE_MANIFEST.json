@@ -1,0 +1,63 @@
+{
+  "acceptance_authority": false,
+  "author_performed_source_AST_review_only": true,
+  "completion_authority": false,
+  "controlled_testcases": 35,
+  "files": [
+    {
+      "bytes": 7157,
+      "path": "README.md",
+      "sha256": "1a52e5b0b71b36199f657525e996d643c8df9c1a64dfcf43e1aaa7e9eb4199b3"
+    },
+    {
+      "bytes": 15131,
+      "path": "ordinary_custody_hold.py",
+      "sha256": "e84b97fb4bfb0e9cc2cd880681e1a907e1234bff8c54f8d7b43faa1d3ec42331"
+    },
+    {
+      "bytes": 10588,
+      "path": "test_custody_hold_memory.py",
+      "sha256": "122d01c16aeac9d2738b4f830e58d0cc61ecc3ef650315d075c0ca4648a1d21b"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 15440,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "role": "held_native_public_API_source",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "bytes": 40999,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "role": "held_native_public_API_source",
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+    },
+    {
+      "bytes": 17545,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "role": "held_native_public_API_source",
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d"
+    },
+    {
+      "bytes": 121503,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "role": "held_native_public_API_source",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    }
+  ],
+  "native_Docker_provider_jobs_performed_by_author": false,
+  "native_capacity_acquired_by_helper": false,
+  "native_capacity_released_by_helper": false,
+  "pending": [
+    "genuine_finite_control_execution",
+    "actual_native_child_binding_and_unwind_retention",
+    "independent_Docker_kernel_private_path_and_group_closeout_before_public_acknowledgement",
+    "automatic_trusted_stopped_cleanup_handler",
+    "durable_host_death_cleanup_protocol"
+  ],
+  "production_or_frozen_hook_mutated": false,
+  "schema": "legal-ir-ordinary-custody-hold-source@1",
+  "status": "frozen_source_capacity_barrier_pending_root_controls_and_native_binding",
+  "tests_executed_by_author": false
+}

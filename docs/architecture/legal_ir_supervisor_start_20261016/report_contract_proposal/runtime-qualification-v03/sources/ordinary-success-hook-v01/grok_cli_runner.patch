@@ -1,0 +1,181 @@
+--- a/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py
+@@ -55,6 +55,8 @@
+         and Path(entry).resolve(strict=False) != _PACKAGE_ROOT
+     ],
+ ]
++
++from ipfs_accelerate_py.agent_supervisor.runtime import ordinary_success_handoff as _ordinary_handoff
+ 
+ from ipfs_accelerate_py.agent_supervisor.runtime.hash_pressure import (
+     hashing_lock,
+@@ -195,12 +197,14 @@
+         list(command),
+         env=env,
+         stderr=subprocess.PIPE,
+-    )
++        **_ordinary_handoff.ordinary_transport_kwargs(),
++    )
++    _ordinary_handoff.ordinary_provider_started(process, command)
+     assert process.stderr is not None
+     retained = bytearray()
+     total = 0
+     while True:
+-        chunk = process.stderr.read(64 * 1024)
++        chunk = _ordinary_handoff.ordinary_stderr_chunk(process, 64 * 1024)
+         if not chunk:
+             break
+         total += len(chunk)
+@@ -208,7 +212,8 @@
+         if remaining > 0:
+             retained.extend(chunk[:remaining])
+     process.stderr.close()
+-    returncode = int(process.wait())
++    returncode = int(_ordinary_handoff.ordinary_provider_wait(process))
++    _ordinary_handoff.ordinary_provider_returned(process, returncode)
+     return returncode, bytes(retained), total, total > MAX_GROK_ERROR_BYTES
+ 
+ 
+@@ -2691,7 +2696,7 @@
+ 
+     if task_execution is not True:
+         raise ValueError("ordinary successor requires the task execution profile")
+-    return _docker_grok_command_for_pinned_image(
++    command = _docker_grok_command_for_pinned_image(
+         grok_command=grok_command,
+         grok_bin=grok_bin,
+         workspace=workspace,
+@@ -2710,6 +2715,10 @@
+         required_commands=required_commands,
+         _expected_task_image=_ordinary_task_toolchain_image_pin(),
+     )
++    return _ordinary_handoff.prepare_ordinary_gated_create(
++        command, image=_ordinary_task_toolchain_image_pin(),
++        original_entrypoint=str(_CODEX_TASK_TOOLCHAIN_PYTHON),
++        python_entrypoint=str(_CODEX_TASK_TOOLCHAIN_PYTHON))
+ 
+ 
+ def _docker_grok_command_for_pinned_image(
+@@ -3137,7 +3146,7 @@
+ ) -> list[str]:
+     """Build the ordinary Codex command from its qualified source image pin."""
+ 
+-    return _docker_codex_fallback_command_for_pinned_image(
++    command = _docker_codex_fallback_command_for_pinned_image(
+         codex_command=codex_command,
+         workspace=workspace,
+         source_auth=source_auth,
+@@ -3150,6 +3159,10 @@
+         base_env=base_env,
+         _expected_task_image=_ordinary_task_toolchain_image_pin(),
+     )
++    return _ordinary_handoff.prepare_ordinary_gated_create(
++        command, image=_ordinary_task_toolchain_image_pin(),
++        original_entrypoint="/usr/bin/env",
++        python_entrypoint=str(_CODEX_TASK_TOOLCHAIN_PYTHON))
+ 
+ 
+ def _docker_codex_fallback_command_for_pinned_image(
+@@ -3537,7 +3550,9 @@
+             encoding="utf-8",
+             errors="replace",
+             bufsize=1,
+-        )
++            **_ordinary_handoff.ordinary_transport_kwargs(stdin_already_present=True),
++        )
++        _ordinary_handoff.ordinary_provider_started(process, start_command)
+         if process.stdin is None or process.stdout is None or process.stderr is None:
+             raise RuntimeError("Codex fallback process pipes were not created")
+         stdout_thread = threading.Thread(
+@@ -3558,6 +3573,7 @@
+         except BrokenPipeError:
+             pass
+         returncode = int(process.wait())
++        _ordinary_handoff.ordinary_provider_returned(process, returncode)
+         stdout_thread.join()
+         stderr_thread.join()
+         if effect_terminal is not None:
+@@ -4687,7 +4703,9 @@
+         encoding="utf-8",
+         errors="replace",
+         bufsize=1,
+-    )
++        **_ordinary_handoff.ordinary_transport_kwargs(),
++    )
++    _ordinary_handoff.ordinary_provider_started(process, command)
+     if docker_lease is not None:
+         docker_lease.capture_running_termination_fence()
+         docker_lease.finish_provider_input(b"")
+@@ -4706,6 +4724,7 @@
+     stdout_thread.start()
+     stderr_thread.start()
+     returncode = int(process.wait())
++    _ordinary_handoff.ordinary_provider_returned(process, returncode)
+     stdout_thread.join()
+     stderr_thread.join()
+     return returncode
+@@ -5946,6 +5965,7 @@
+             file=sys.stderr,
+         )
+         return 2
++    _ordinary_handoff.select_ordinary_route(route_plan, model)
+     max_turns_raw = (
+         str(args.max_turns).strip()
+         or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS", "").strip()
+@@ -6285,6 +6305,7 @@
+                 raise _AgentRouteEffectDenied(str(exc)) from exc
+             outcome_route = fresh_route
+             effect_verifier_status = effect_decision.verifier_status
++            _ordinary_handoff.select_ordinary_fallback(fresh_route, effect_decision)
+             _mirror_grok_effect_boundary(str(getattr(effect_decision, "content_id", "") or ""))
+ 
+         def claim_provider_effect(
+@@ -6750,6 +6771,7 @@
+                 else 127
+             )
+ 
++    _ordinary_handoff.begin_ordinary_task()
+     if prompt is None:
+         prompt = sys.stdin.read()
+     if not prompt.strip():
+@@ -6880,7 +6902,7 @@
+ 
+             base_env = os.environ.copy()
+             isolation_backend = _select_grok_isolation_backend(
+-                require_container_boundary=bool(codex_fallback_command),
++                require_container_boundary=(bool(codex_fallback_command) or _ordinary_handoff.ordinary_requires_docker()),
+             )
+             cmd = build_grok_cli_command(
+                 mode=str(args.mode),
+@@ -7522,7 +7544,7 @@
+             docker_config.rmdir()
+             lease_root.rmdir()
+             raise ValueError("Docker cleanup watchdog failed to start")
+-        return cls(
++        lease = cls(
+             docker_bin=str(docker_path),
+             container_name=container_name,
+             lease_root=lease_root,
+@@ -7533,6 +7555,14 @@
+             write_fd=write_fd,
+             watchdog=watchdog,
+         )
++        try:
++            _ordinary_handoff.ordinary_lease_created(lease, provider)
++        except BaseException:
++            # The factory already owns a live watchdog. Observer failure must
++            # not lose its only lease object before the caller receives it.
++            lease.close(docker_run_finished=False)
++            raise
++        return lease
+ 
+     def mark_cas_owned(self) -> None:
+         if self._cas_owned:
+@@ -7677,6 +7707,7 @@
+             self.lease_root.rmdir()
+         except (FileNotFoundError, OSError):
+             pass
++        _ordinary_handoff.ordinary_lease_closed(self)
+ 
+ 
+ def _remove_legacy_task_container_launchers(lease_root: Path) -> bool:
