@@ -151,6 +151,34 @@ def unknown_row(row: Mapping[str, Any], *, task_cid: str, identity: Mapping[str,
              "native UNKNOWN callback owner/claim/lease/fence differs")
 
 
+def original_process_crosswalk(owner: Mapping[str, Any], fence: Mapping[str, Any], processes: Any) -> None:
+    """Join original stopped generations without inventing a receipt field.
+
+    Original finite-owner v05 has no child_birth_marker. Its genuine observer
+    records the exact child's birth as master_start_time_ticks when that child
+    is itself the native master. This narrow case may use that existing proof;
+    a descendant master still requires the separately recorded child birth.
+    This helper is only a subcheck after the complete native terminal joins.
+    """
+    child_pid, master_pid = owner.get("child_pid"), fence.get("master_pid")
+    need(type(child_pid) is int and child_pid > 1 and type(master_pid) is int and master_pid > 1,
+         "original child/master PID types differ")
+    if "child_birth_marker" not in owner:
+        child_ticks = fence.get("master_start_time_ticks")
+        need(child_pid == master_pid and type(child_ticks) is int and child_ticks > 0,
+             "unrecorded child birth requires the exact direct-child native master")
+    else:
+        marker = owner["child_birth_marker"]
+        need(type(marker) is str and marker.isascii() and marker.isdecimal() and int(marker) > 0 and marker == str(int(marker)),
+             "recorded original child birth marker differs")
+        child_ticks = int(marker)
+    need(type(fence.get("master_start_time_ticks")) is int and fence["master_start_time_ticks"] > 0
+         and any(row["pid"] == owner.get("owner_pid") for row in processes)
+         and any(row["pid"] == child_pid and row["start_time_ticks"] == child_ticks for row in processes)
+         and any(row["pid"] == master_pid and row["start_time_ticks"] == fence["master_start_time_ticks"] for row in processes),
+         "original owner/child/master process birth crosswalk differs")
+
+
 def verify_custody(context: Mapping[str, Any], snapshot: Mapping[str, Any], *, check_current_file: bool) -> None:
     """Bind named native launch/terminal/status/maintenance artifacts.
 
@@ -182,10 +210,7 @@ def verify_custody(context: Mapping[str, Any], snapshot: Mapping[str, Any], *, c
          and Path(context["stores"]["execution"]).is_relative_to(Path(artifacts["master_terminal"]["path"]).parent),
          "original native launch/terminal/store crosswalk differs")
     processes = context["stopped_processes"]
-    need(any(row["pid"] == owner.get("owner_pid") for row in processes)
-         and any(row["pid"] == owner.get("child_pid") and str(row["start_time_ticks"]) == owner.get("child_birth_marker") for row in processes)
-         and any(row["pid"] == fence.get("master_pid") and row["start_time_ticks"] == fence.get("master_start_time_ticks") for row in processes),
-         "original owner/child/master process birth crosswalk differs")
+    original_process_crosswalk(owner, fence, processes)
     from .native_execution_status_owner import NativeExecutionStatusBinding, OBSERVATION_SCHEMA
     from .native_execution_wal_maintenance import NativeExecutionWalMaintenanceBinding, RECEIPT_SCHEMA
     status_binding = NativeExecutionStatusBinding.from_dict(decoded["status_binding"])
