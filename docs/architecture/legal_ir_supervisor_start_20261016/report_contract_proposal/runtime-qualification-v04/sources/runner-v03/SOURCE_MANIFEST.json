@@ -1,0 +1,139 @@
+{
+  "acceptance_authority": false,
+  "actual_owned_controller_modified": false,
+  "authored_control_ids": [
+    "CallableInputControls.test_valid_inputs_are_immutable_snapshot",
+    "CallableInputControls.test_prompt_and_environment_are_not_in_repr",
+    "CallableInputControls.test_constructor_is_not_serializable",
+    "CallableInputControls.test_empty_prompt_refuses",
+    "CallableInputControls.test_nul_prompt_refuses",
+    "CallableInputControls.test_large_prompt_refuses",
+    "CallableInputControls.test_relative_cwd_refuses",
+    "CallableInputControls.test_parent_path_refuses",
+    "CallableInputControls.test_relative_peer_environment_path_refuses",
+    "CallableInputControls.test_missing_home_refuses",
+    "CallableInputControls.test_relative_path_entry_refuses",
+    "CallableInputControls.test_empty_path_entry_refuses",
+    "CallableInputControls.test_ambient_temp_fallback_refuses",
+    "CallableInputControls.test_invalid_env_key_refuses",
+    "CallableInputControls.test_large_env_refuses",
+    "CallableInputControls.test_global_stream_fd_refuses",
+    "CallableInputControls.test_shared_fd_refuses",
+    "CallableInputControls.test_boolean_fd_refuses",
+    "CallableInputControls.test_unbounded_output_refuses",
+    "CallableInputControls.test_valid_primary_options",
+    "CallableInputControls.test_fallback_refuses",
+    "CallableInputControls.test_preflight_refuses",
+    "CallableInputControls.test_real_parser_invocation_id_flag_refuses",
+    "CallableInputControls.test_receipt_fd_refuses",
+    "CallableInputControls.test_ambient_receipt_env_refuses",
+    "CallableInputControls.test_workspace_drift_refuses",
+    "CallableInputControls.test_implicit_binary_refuses",
+    "CallableInputControls.test_chat_scope_refuses",
+    "ParserAndCallsiteControls.test_parser_does_not_read_environment_or_provider",
+    "ParserAndCallsiteControls.test_parser_help_and_invalid_emit_no_global_output",
+    "ParserAndCallsiteControls.test_parser_requires_explicit_sequence",
+    "ParserAndCallsiteControls.test_parser_bounds_explicit_argv",
+    "ParserAndCallsiteControls.test_cli_parser_definition_preserved",
+    "ParserAndCallsiteControls.test_protected_route_local_is_not_callable_parameter",
+    "ParserAndCallsiteControls.test_callable_transport_uses_explicit_cwd_and_two_pipes",
+    "ParserAndCallsiteControls.test_guarded_mux_and_actual_returned_hooks_present",
+    "ParserAndCallsiteControls.test_create_intent_and_known_cid_order",
+    "ParserAndCallsiteControls.test_pending_cleanup_gates_all_private_paths",
+    "ParserAndCallsiteControls.test_callable_mount_join_is_only_exact_readonly_grok_destination",
+    "ParserAndCallsiteControls.test_callable_actual_trusted_resolver_and_host_join_precede_route",
+    "ParserAndCallsiteControls.test_callable_guard_joins_actual_invocation_identity",
+    "ParserAndCallsiteControls.test_public_validator_and_run_share_actual_preeffect_validator"
+  ],
+  "authored_controlled_testcases": 42,
+  "baseline_manifest_sha256": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e",
+  "baseline_runner_sha256": "6bc26dc792b7994ea73e12e92d20949caf62b85940badf6a2d594cb3388a7706",
+  "canonical_mutations": false,
+  "complete_runtime_source_closure_claimed": false,
+  "controlled_testcases": 42,
+  "dispatch_authority": false,
+  "docker_operations": false,
+  "earlier_frozen_sources_modified": false,
+  "external_integration_inputs": "Require frozen H3/C, current SDK/project source closure and fresh readonly capsule in root-reviewed qualification request. No future H3/capsule digest is fabricated.",
+  "files": [
+    {
+      "bytes": 658,
+      "path": "BASELINE.json",
+      "sha256": "5e86c39dd4c8604e3b508db2101cc8f3b4ba1101553ab08c2dc42258b93011d1"
+    },
+    {
+      "bytes": 4282,
+      "path": "README.txt",
+      "sha256": "34d1f6d3b2d0a02ad62f9910916ec0f280f8d5123fa0d7d052bd8bc0a9be3a76"
+    },
+    {
+      "bytes": 2107,
+      "path": "runner-v03.patch",
+      "sha256": "adbd038cf9a4013f3b5979069c930bea5cf5f812f8966640da34e46d2e46d0f3"
+    },
+    {
+      "bytes": 16581,
+      "path": "test_callable_contract.py",
+      "sha256": "4af31403311114dc43996be1fd5de6f575fd37cdb0552d6eba12d01afe65e48c"
+    },
+    {
+      "bytes": 655286,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24"
+    }
+  ],
+  "git_operations": false,
+  "input_sources": [
+    {
+      "bytes": 9124,
+      "context_only_not_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/SOURCE_MANIFEST.json",
+      "sha256": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e"
+    },
+    {
+      "bytes": 654771,
+      "context_only_not_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "6bc26dc792b7994ea73e12e92d20949caf62b85940badf6a2d594cb3388a7706"
+    },
+    {
+      "bytes": 9535,
+      "context_only_not_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/README.txt",
+      "sha256": "10b38f517a8f44e18820bc865dceab4f878f82836abfb1bba7a504340ca20670"
+    },
+    {
+      "bytes": 636526,
+      "context_only_not_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "d23b34181bc376f418e024c10d7b741c9fe2657572c27035f146063482c5c898"
+    }
+  ],
+  "input_sources_are_context_not_runtime_admission": true,
+  "native_operations": false,
+  "paired_H_V03_required_even_for_CLI_hook_availability": true,
+  "patch_hunks": 3,
+  "precise_issue": "Source-proven readonly-mount resolved-versioned-basename correspondence; no runtime/model failure at that seam was observed. Prior _run resolver condition was fallback-only, not an immediate unconditional callable failure.",
+  "provider_model_calls": false,
+  "remaining_gates": [
+    "genuine public prestart wrapper control under paired H3/C/G3",
+    "actual dual-pipe Docker mechanical fixture under fresh capsule",
+    "actual provider/candidate/native acceptance integration",
+    "Codex backup successor qualification"
+  ],
+  "required_additive_H_contract": [
+    "ordinary_trusted_binary_resolved(actual_resolver_result)",
+    "ordinary_callable_binary_mount_allowed(actual_resolved_source) returns False with no current callable context; exact actual expected-source/native-guard check otherwise"
+  ],
+  "runtime_checks_performed": [],
+  "schema": "legal-ir-explicit-callable-runner-source-manifest@3",
+  "scope": "Callable-only trusted executable join plus narrowly scoped readonly fixed Grok mount correspondence; no global resolver relaxation; V02 explicit-callable implementation preserved.",
+  "source_checks_performed": [
+    "Python AST parses",
+    "exact three-hunk V02-to-V03 patch",
+    "42 unique AST test methods",
+    "unchanged global trusted resolver AST",
+    "root and independent backend bounded source review passed"
+  ],
+  "status": "frozen_source_proposal_not_runtime_qualified"
+}

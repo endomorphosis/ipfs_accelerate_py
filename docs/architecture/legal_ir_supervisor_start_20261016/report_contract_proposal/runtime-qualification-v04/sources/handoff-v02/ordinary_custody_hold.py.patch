@@ -1,0 +1,38 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/ordinary_custody_hold.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py
+@@ -262,3 +262,35 @@
+         "native_leases_released_by_this_helper": False, "independent_cleanup_not_authenticated_by_this_helper": True}
+     del _HOLDS[handle]
+     return observation
++
++
++def require_bound_ordinary_custody_hold(handle, *, primary_owner, watchdog_owner):
++    """Verify actual same-process owner identity and original charged consumers.
++
++    This grants no admission and accepts no portable owner/proof mapping.
++    Cancellation observation is separate: the caller checks productive owner
++    authority before dispatch; stopped cleanup may inspect cancelled records.
++    """
++    entry = _entry(handle)
++    need(entry["owners"][0] is primary_owner and entry["owners"][1] is watchdog_owner,
++         "actual_bound_custody_owner_identity_differs")
++    observed = observe_ordinary_custody_hold(handle)
++    need(observed["capacity_records_retained"] and observed["consumer_objects_released"] == [False, False],
++         "original_unacknowledged_custody_consumers_required")
++
++
++def retain_ordinary_custody_references(handle, references):
++    """Keep original trusted caller objects alive; no cleanup/grant inferred.
++
++    The native binder already authenticates its actual hold. References are
++    retained only, never executed, inspected as authority, copied or serialized.
++    This prevents loss of original TemporaryDirectory/watchdog/process objects
++    when an unknown-cleanup exception crosses a caller scope.
++    """
++    entry = _entry(handle)
++    need(type(references) is tuple and 1 <= len(references) <= 16,
++         "bounded_original_custody_references_required")
++    previous = entry.get("custody_references")
++    need(previous is None or len(previous) == len(references) and all(
++        old is new for old, new in zip(previous, references)), "original_custody_references_cannot_be_replaced")
++    entry["custody_references"] = references

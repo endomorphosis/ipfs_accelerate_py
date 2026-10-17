@@ -1,0 +1,17 @@
+{
+  "controlled_testcases": 170,
+  "files": [
+    {
+      "bytes": 365,
+      "path": "README.txt",
+      "sha256": "f71305242ae7fd4f6407bed2c5e4e8517853c4962cf325c0b23310a0cde62041"
+    },
+    {
+      "bytes": 5732,
+      "path": "qualify_controls.py",
+      "sha256": "cd60439aac1ff78ec9584adb3c66aca2344aedb11c1e90945b56d0a1cc460d70"
+    }
+  ],
+  "schema": "legal-ir-callable-memory-controls-source@1",
+  "source_review_only": true
+}

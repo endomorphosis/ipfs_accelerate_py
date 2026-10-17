@@ -1,0 +1,18 @@
+{
+  "authored_control_cases": 68,
+  "canonical_tasks_accepted": 0,
+  "execution_performed": false,
+  "files": [
+    {
+      "bytes": 591,
+      "path": "README.md",
+      "sha256": "5da85024663a0280ad4f070bab5b8966db42a6120c4f2aeebd4757366b7ab740"
+    },
+    {
+      "bytes": 7149,
+      "path": "qualify_freezer_controls.py",
+      "sha256": "c486dba181d8b1a88341a0c4d758049b26f6d1c0925499325fd71643f0c91b3f"
+    }
+  ],
+  "schema": "legal-ir-report-freezer-control-harness-source@1"
+}

@@ -1,0 +1,233 @@
+{
+  "acceptance_authority": false,
+  "author_operations": {
+    "Docker_queries": 0,
+    "Git_network_calls": 0,
+    "native_jobs": 0,
+    "product_imports": 0,
+    "provider_auth_model_calls": 0,
+    "source_reads_hashes_AST_JSON_authoring_only": true,
+    "tests": 0
+  },
+  "canonical_tasks_accepted": 0,
+  "findings": {
+    "admin_is_in_either_attached_owner_group": false,
+    "hard_admin_quota": false,
+    "main_thread_and_watchdog_cleanup_can_overlap": true,
+    "native_admin_child_attachment_qualified": false,
+    "native_admin_group_attachment_available_in_selected_G_H_API": false,
+    "proves_arbitrary_Docker_descendant_count": false,
+    "provider_transport_and_admin_can_overlap": true,
+    "source_bound_main_thread_top_level_admin_children": 1,
+    "watchdog_cleanup_child_charged_to_original_watchdog_group": true
+  },
+  "input_sources": [
+    {
+      "bytes": 655286,
+      "context_only_not_native_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "role": "G",
+      "sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24"
+    },
+    {
+      "bytes": 54117,
+      "context_only_not_native_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "role": "H",
+      "sha256": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a"
+    },
+    {
+      "bytes": 55822,
+      "context_only_not_native_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-native-v02/qualify_dual_pipe.py",
+      "role": "fixture16",
+      "sha256": "a313c57370aa6790c0eaadeed79a62c2472e5b2343c8a8decc8149258cbb08f4"
+    },
+    {
+      "bytes": 55822,
+      "context_only_not_native_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-native-v03/qualify_dual_pipe.py",
+      "role": "fixture12",
+      "sha256": "17aeb9637a33c03b48955e443764c00e9b19cb8cb30191b0221f88b728daab3a"
+    },
+    {
+      "bytes": 15440,
+      "context_only_not_native_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "role": "native_parented",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "bytes": 121503,
+      "context_only_not_native_grant": true,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "role": "native_scheduler",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    },
+    {
+      "bytes": 88725,
+      "context_only_not_native_grant": true,
+      "path": "/usr/lib/python3.12/subprocess.py",
+      "role": "stdlib_subprocess",
+      "sha256": "baa9f9138d8d20df6284f67e7d2e790f847f65e2c5370de322d54cccd737f2d9"
+    }
+  ],
+  "line_proofs": [
+    {
+      "finding": "One retained provider Popen is attached through H; output drain uses main-thread select/os.read and guarded wait, no extra reader thread or administration Popen in this function.",
+      "first_line": 385,
+      "id": "ADMIN-01",
+      "last_line": 427,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_run_callable_transport"
+    },
+    {
+      "finding": "When invocation is not None, immediately selects actual dual-pipe helper; the threaded legacy default branch is excluded from this fixture.",
+      "first_line": 430,
+      "id": "ADMIN-02",
+      "last_line": 465,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_run_grok_with_bounded_stderr"
+    },
+    {
+      "finding": "One synchronous subprocess.run exact argv/DEVNULL/pipes/finite timeout; no start_new_session or native child attachment. Calls remain trusted-controller administrative work outside the two attached groups.",
+      "first_line": 3856,
+      "id": "ADMIN-03",
+      "last_line": 3878,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_bounded_docker_query"
+    },
+    {
+      "finding": "One synchronous actual inert-create subprocess.run finishes before synchronous require_startable inspect; returns exact start argv only after creation binding.",
+      "first_line": 3243,
+      "id": "ADMIN-04",
+      "last_line": 3293,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_create_grok_container_and_build_start_command"
+    },
+    {
+      "finding": "One synchronous finite exact-CID inspect subprocess.run; no concurrent spawn or native attachment.",
+      "first_line": 3192,
+      "id": "ADMIN-05",
+      "last_line": 3240,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_require_startable_docker_container"
+    },
+    {
+      "finding": "Two subprocess.run inspect calls separated by kernel capture and parsed identity validation; they are sequential, not two simultaneous administration children.",
+      "first_line": 11017,
+      "id": "ADMIN-06",
+      "last_line": 11175,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_attest_exact_docker_execution"
+    },
+    {
+      "finding": "Filesystem stat/metadata only; no subprocess. It must not be counted as an extra Docker child.",
+      "first_line": 2277,
+      "id": "ADMIN-07",
+      "last_line": 2298,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_docker_runtime_receipt"
+    },
+    {
+      "finding": "Factory creates exactly one separate-session watchdog; H attaches it to watchdog owner. close normally waits it; timeout fallback can execute one main-thread removal helper while the watchdog still lives.",
+      "first_line": 7740,
+      "id": "ADMIN-08",
+      "last_line": 8028,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_LegacyDockerContainerLease"
+    },
+    {
+      "finding": "Watchdog cleanup_started guard prevents signal/loop reentry from starting an additional cleanup sequence. Its exact removal helper is synchronous; watchdog-owned children inherit its process group.",
+      "first_line": 8106,
+      "id": "ADMIN-09",
+      "last_line": 8288,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_legacy_docker_cleanup_watchdog_main"
+    },
+    {
+      "finding": "Each loop runs rm then (if needed) ls synchronously with timeouts; no thread/session change. One top-level command at a time in whichever original process called this helper.",
+      "first_line": 8291,
+      "id": "ADMIN-10",
+      "last_line": 8364,
+      "source_role": "G",
+      "source_sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "symbol": "_legacy_remove_exact_docker_container"
+    },
+    {
+      "finding": "started attaches the actual provider transport before main-thread image/daemon/identity inspections; watchdog allocation attaches actual original watchdog separately. Admin commands are not relabeled as provider or watchdog-owned.",
+      "first_line": 325,
+      "id": "ADMIN-11",
+      "last_line": 566,
+      "source_role": "H",
+      "source_sha256": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a",
+      "symbol": "_Lifecycle"
+    },
+    {
+      "finding": "Actual same-process object reserves nested capacity, renews/cancels/releases it; has no host subprocess attachment/check_usage API. Root/phase native capacity is cooperative authority, not hard per-admin-group enforcement.",
+      "first_line": 878,
+      "id": "ADMIN-12",
+      "last_line": 1013,
+      "source_role": "native_scheduler",
+      "source_sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986",
+      "symbol": "ResourceLease"
+    },
+    {
+      "finding": "Sum of sibling native child process-slot declarations must fit the actual parent. Provider8 +watchdog4 leaves zero at12 and leaves one cooperative host-admin slot at13.",
+      "first_line": 1644,
+      "id": "ADMIN-13",
+      "last_line": 1669,
+      "source_role": "native_scheduler",
+      "source_sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986",
+      "symbol": "_child_can_grant"
+    },
+    {
+      "finding": "Public PID attachment requires a direct child isolated process-group leader and one live group at a time; current ordinary admin subprocess.run callers do not use it.",
+      "first_line": 182,
+      "id": "ADMIN-14",
+      "last_line": 227,
+      "source_role": "native_parented",
+      "source_sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9",
+      "symbol": "check_usage"
+    },
+    {
+      "finding": "POSIX synchronous run waits/communicates before returning; timeout kills and waits. This supports one top-level main-thread child at a time on the reviewed normal/timeout fixture paths, not arbitrary Docker descendant/fork proof.",
+      "first_line": 506,
+      "id": "ADMIN-15",
+      "last_line": 573,
+      "source_role": "stdlib_subprocess",
+      "source_sha256": "baa9f9138d8d20df6284f67e7d2e790f847f65e2c5370de322d54cccd737f2d9",
+      "symbol": "run"
+    }
+  ],
+  "original_attempts_consumed": 0,
+  "required_observations_before_any_execution": [
+    "Root review of fresh additive V04 source/request with explicit13 and false attachment/quota fields.",
+    "Original waiting V02 execution must be independently known exited/nonadmitted or otherwise closed before any replacement is launched; no unobserved cancellation inferred.",
+    "Actual fresh root/phase admission under unchanged global caps; other agents/leases untouched."
+  ],
+  "resource_conclusion": {
+    "original16_contract": "Actual admitted root/phase3CPU4096MiB16slots with sibling provider8/watchdog4 and four cooperative trusted-controller admin slots; no third native owner was claimed.",
+    "phase_authority_requirement": "Actual retained same-interpreter original root and nested phase ResourceLease objects under existing held SDK; no parent ID/JSON/metadata reconstruction.",
+    "proposed13_contract": "Preserve same cooperative trusted-phase ownership and source-sequential administration scope, explicitly13=provider8+watchdog4+trusted-controller-admin1. Preserve3CPU4096MiB, leaf budgets, source G3/H3/C, confinement, physical cases and cleanup.",
+    "rejected12_contract": "8+4 leaves no declaration for actual controller-side Docker administration; frozenV03 remains unqualified and unexecuted.",
+    "stronger_claim_excluded": "13 is capacity right-sizing of existing cooperative control work; it does not provide native admin group attachment, hard process quota, new SDK authority or stronger process provenance."
+  },
+  "schema": "legal-ir-dual-pipe-admin-source-audit@1",
+  "scope": "Reviewed actual nonmodel fixture callable branch only; no general claim for all ordinary/protected/default runner routes.",
+  "status": "source_audit_for_additive_cooperative13slot_proposal_not_runtime_qualification",
+  "unsupported_stronger_alternatives": [
+    "A separately attached admin owner would require a genuine isolated process-group launcher and retained real Popen before command effects; existing subprocess.run callsites do not expose that contract.",
+    "A persistent broker would add itself plus a Docker child and changes source/custody/attachment requirements; no such broker is implemented.",
+    "Reattaching many serial admin groups to one existing parented owner is bounded by native child-history and cannot be silently substituted."
+  ]
+}

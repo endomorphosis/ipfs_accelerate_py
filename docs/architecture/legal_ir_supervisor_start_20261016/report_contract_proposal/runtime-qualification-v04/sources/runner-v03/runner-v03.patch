@@ -1,0 +1,41 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py
+@@ -6195,7 +6195,7 @@
+     if not grok_bin and protected_recovery_reservation is None:
+         emit("grok CLI not found on PATH", file=diagnostic_stream)
+         return 127
+-    if codex_fallback_command and protected_recovery_reservation is None:
++    if (codex_fallback_command or callable_invocation is not None) and protected_recovery_reservation is None:
+         grok_bin = _resolve_trusted_grok_bin(
+             configured=grok_bin,
+             workspace=workspace,
+@@ -6207,6 +6207,11 @@
+                 file=diagnostic_stream,
+             )
+             return 2
++    if callable_invocation is not None:
++        # Actual configured entrypoint has now been resolved by the original
++        # trust recipe. H binds its exact result to the admitted invocation's
++        # pre-effect source pin; a claimed path/string is never a grant.
++        _ordinary_handoff.ordinary_trusted_binary_resolved(grok_bin)
+ 
+     model = (
+         str(args.model).strip()
+@@ -12131,11 +12136,13 @@
+                 or (
+                     provider == "grok"
+                     and destination == Path("/opt/ipfs-accelerate/grok")
+-                    and _resolve_trusted_grok_bin(
+-                        configured=str(resolved_source),
+-                        workspace=resolved_cwd,
++                    and (
++                        _resolve_trusted_grok_bin(
++                            configured=str(resolved_source),
++                            workspace=resolved_cwd,
++                        ) == str(resolved_source)
++                        or _ordinary_handoff.ordinary_callable_binary_mount_allowed(resolved_source)
+                     )
+-                    == str(resolved_source)
+                 )
+             )
+             if not readonly_source_allowed:

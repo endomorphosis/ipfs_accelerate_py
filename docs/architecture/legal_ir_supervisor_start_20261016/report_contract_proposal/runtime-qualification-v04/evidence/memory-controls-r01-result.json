@@ -1,0 +1,27 @@
+{
+  "Docker_calls": 0,
+  "acceptance_authority": false,
+  "canonical_task_attempts": 0,
+  "canonical_tasks_accepted": 0,
+  "errors": [],
+  "expected_tests": 170,
+  "failures": [
+    "callable_memory_suite_0.MemoryHandoffControls.test_fake_owner_never_invokes_callback_or_imports_product"
+  ],
+  "native_custody_qualified": false,
+  "passed": false,
+  "production_hook_deployed": false,
+  "provider_calls": 0,
+  "provider_execution_qualified": false,
+  "schema": "legal-ir-callable-memory-controls@1",
+  "scope": "cold input/source and necessary-condition controls only",
+  "skipped": 0,
+  "source_suite_counts": [
+    80,
+    35,
+    15,
+    40
+  ],
+  "test_native_admissions": 0,
+  "tests_run": 170
+}

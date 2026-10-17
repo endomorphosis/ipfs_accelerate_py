@@ -1,0 +1,33 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 1712,
+      "path": "README.txt",
+      "sha256": "543501f25f163a78efab156639ae031c302fed69f6f9f33149a5b7bb4287e8b4"
+    },
+    {
+      "bytes": 6689,
+      "path": "publication_helpers.py",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 32955,
+      "path": "publish_callable.py",
+      "sha256": "574550c605e3b67e222a43988b3e42d866b30e30cac0330a39c380152e1a6d11"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 65855,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/handoff-publication-v06/publish_handoff.py",
+      "role": "immutable_original_V06_helper_source",
+      "sha256": "61167cba86fb6f155b73c809d4dc49d766b9dceaa013252667124f688c276ada"
+    }
+  ],
+  "production_hook_deployed": false,
+  "provider_calls": 0,
+  "schema": "legal-ir-callable-publication-source@1",
+  "status": "source_reviewed_not_executed"
+}

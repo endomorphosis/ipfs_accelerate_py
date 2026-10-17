@@ -1,0 +1,26 @@
+{
+  "schema": "legal-ir-report-freezer-source-baseline@2",
+  "inputs": [
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "bytes": 3300743,
+      "proposed_sha256": "60aa2303b5221c5f685dd1b724cf80e10de758e30c5c31aa0996cf4c97abb60b",
+      "proposed_bytes": 3303534,
+      "patch": "implementation_daemon.patch"
+    },
+    {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/git_checkout_transaction.py",
+      "sha256": "bdf01fc5f0a9ebb5f3ce5fac0a2319d44aac25b99f804af98cddb6830ac2076a",
+      "bytes": 13312,
+      "proposed_sha256": "a9b77330d19e2db1e3cc442cd4290b6a37504a53dcf9eac89f524c728033497a",
+      "proposed_bytes": 14353,
+      "patch": "git_checkout_transaction.patch"
+    }
+  ],
+  "product_sources_mutated": false,
+  "patches_applied": false,
+  "tests_executed": false,
+  "git_calls_performed": false,
+  "provider_calls_performed": false
+}

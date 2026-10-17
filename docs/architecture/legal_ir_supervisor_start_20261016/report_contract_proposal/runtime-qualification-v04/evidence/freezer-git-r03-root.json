@@ -1,0 +1,197 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 0,
+  "actual_exec_session_id": 32625,
+  "actual_final_terminal": {
+    "acceptance_authority": false,
+    "active_success_callback_minted": false,
+    "actual_Popen_objects": 33,
+    "actual_anchor_source_controls": {
+      "acceptance_authority": false,
+      "actual_Popen_objects": 1,
+      "actual_native_group_attachments": 1,
+      "actual_original_consumer_released": true,
+      "actual_returncode": 0,
+      "canonical_tasks_accepted": 0,
+      "controlled_testcases": 13,
+      "errors": 0,
+      "failures": 0,
+      "native_admissions_by_test_cases": false,
+      "passed": true,
+      "passed_testcases": 13,
+      "private_capture_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-report-freezer-git-component-20261017-r03/component/anchor-source-controls.log",
+      "private_capture_sha256": "8256ba7211dfc142335eb50715abbdeb37641d3cb739cfa99ee7f272e14a95b4",
+      "private_junit_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-report-freezer-git-component-20261017-r03/component/anchor-source-controls.junit.xml",
+      "private_junit_sha256": "9eb225b7bf12ba9293276f0ecff500a4ac2c5adf3aed95752224143eaa2ca943",
+      "provider_calls_performed": false,
+      "scope": "cold cases; enclosing actual native owner/control consumer are genuine",
+      "skipped": 0,
+      "source_manifest_sha256": "7e54b071ec805cc38d8a7265d11eebf221f5d51e3ec44adc0b9886b36922a7a7",
+      "source_test_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v03/test_anchor_controls.py",
+      "source_test_sha256": "8d6e3cae1efd4b397bcb40bfc983f98eb377a8957af2b048b5974775203308c5"
+    },
+    "actual_four_slot_native_owner": true,
+    "actual_git_children": 29,
+    "actual_group_anchor_processes": 3,
+    "actual_group_sessions": [
+      {
+        "SDK_documented_new_session_topology_unchanged": false,
+        "actual_anchor_birth": "126328837",
+        "actual_anchor_pid": 2518919,
+        "actual_anchor_returncode": 0,
+        "actual_consumer_released": true,
+        "actual_group_empty": true,
+        "actual_joined_git_Popen_count": 23,
+        "actual_native_group_attachments": 1,
+        "same_session_isolated_PGID": true
+      },
+      {
+        "SDK_documented_new_session_topology_unchanged": false,
+        "actual_anchor_birth": "126338360",
+        "actual_anchor_pid": 2536543,
+        "actual_anchor_returncode": 0,
+        "actual_consumer_released": true,
+        "actual_group_empty": true,
+        "actual_joined_git_Popen_count": 6,
+        "actual_native_group_attachments": 1,
+        "same_session_isolated_PGID": true
+      },
+      {
+        "SDK_documented_new_session_topology_unchanged": false,
+        "actual_anchor_birth": "126342127",
+        "actual_anchor_pid": 2544197,
+        "actual_anchor_returncode": 0,
+        "actual_consumer_released": true,
+        "actual_group_empty": true,
+        "actual_joined_git_Popen_count": 0,
+        "actual_native_group_attachments": 1,
+        "same_session_isolated_PGID": true
+      }
+    ],
+    "actual_native_group_attachments": 4,
+    "actual_owner_closeout_method": "public_stopped_release_after_group_zero_and_durable_artifacts",
+    "actual_owner_finalization": {
+      "native_lease_id": "f3e2946a347844b28d9d3846d25d0ebd",
+      "native_lease_released": true,
+      "reservation_id": "c393b8f6e1cd4af3b72a69171867e632",
+      "status": "released"
+    },
+    "actual_phase_closeout": {
+      "lease_id": "df43766ca2b44f31af4c876b84bb9543",
+      "released": true
+    },
+    "actual_provider_execution_qualified": false,
+    "actual_provider_outcome_observed": false,
+    "actual_root_closeout": {
+      "lease_id": "67ea197144e0443eb1f112f1991c7602",
+      "released": true
+    },
+    "canonical_attempt_counters_changed": false,
+    "canonical_tasks_accepted": 0,
+    "cases": [
+      {
+        "case": "actual_factored_original_lock_reentrant",
+        "passed": true
+      },
+      {
+        "actual_git_children": 19,
+        "baseline_commit": "43bbac24a0a16cd8f21f628ba8fb6d24dc06ea81",
+        "board_sha256": "5244288f69562663f44b00d27add1ee6ef338f977fed1c0e1c8855725ff372c7",
+        "candidate_commit": "2f42c6801ae5d585dec7fe43811b30da4a487b77",
+        "candidate_parent": "43bbac24a0a16cd8f21f628ba8fb6d24dc06ea81",
+        "candidate_tree": "642f6d3fe2bf8fbd2154f0f7dd2ae8468bb1819b",
+        "case": "actual_ignored_report_forced_staged_and_original_tail_committed",
+        "passed": true,
+        "public_provider_freezer_exercised": false,
+        "report_sha256": "ec82983dd771633a74382f8e4cb61efbe70a4ece26212e691f3232f542e858cc"
+      },
+      {
+        "actual_refusal": "checkout_git_foreign_lock_present",
+        "case": "foreign_index_lock_preserved",
+        "passed": true
+      },
+      {
+        "actual_refusal": "checkout_git_retained_contention_requires_recovery",
+        "case": "pending_custody_marker_preserved",
+        "passed": true
+      },
+      {
+        "actual_refusal": "extra_dirty_path_refused",
+        "case": "untracked_extra_path_refused",
+        "passed": true
+      },
+      {
+        "actual_refusal": "extra_dirty_path_refused",
+        "case": "ignored_extra_path_refused",
+        "passed": true
+      },
+      {
+        "actual_refusal": "exact_single_baseline_parent_required",
+        "case": "actual_commit_wrong_baseline_parent_refused",
+        "passed": true
+      },
+      {
+        "actual_refusal": "provider_created_commit_or_baseline_drift_refused",
+        "case": "existing_candidate_is_not_original_baseline",
+        "passed": true
+      },
+      {
+        "actual_refusal": "report_only_diff_required",
+        "case": "actual_extra_staged_path_refused",
+        "passed": true
+      },
+      {
+        "actual_refusal": "report_or_staged_preimage_changed",
+        "case": "actual_report_preimage_drift_refused",
+        "passed": true
+      },
+      {
+        "actual_refusal": "staged_commit_preimage_changed",
+        "case": "actual_index_preimage_drift_refused",
+        "passed": true
+      }
+    ],
+    "completion_authority": false,
+    "controlled_cases": 11,
+    "derived_source_components": {
+      "daemon_successor_sha256": "60aa2303b5221c5f685dd1b724cf80e10de758e30c5c31aa0996cf4c97abb60b",
+      "lock_successor_sha256": "a9b77330d19e2db1e3cc442cd4290b6a37504a53dcf9eac89f524c728033497a",
+      "selected_component_source_sha256": "db03169fdf7ebd6d0215a17ca2daf9afe4466ab7c2fa7740957857d93a1b23b7",
+      "selected_original_shared_tail_AST_sha256": "0ffc050b2df086e11caac3bc7d7970f3e4273ab0d0186c62587635ed990b5a71",
+      "selection_scope": "actual shared-tail AST only; full daemon/provider/freezer never instantiated"
+    },
+    "freezer_source_manifest_sha256": "7e54b071ec805cc38d8a7265d11eebf221f5d51e3ec44adc0b9886b36922a7a7",
+    "native_validation_qualified": false,
+    "passed": true,
+    "production_hook_deployed": false,
+    "provider_calls_performed": false,
+    "public_report_freezer_qualified": false,
+    "schema": "legal-ir-report-freezer-git-component@1",
+    "scope": "synthetic genuine Git/lock/shared-tail mechanics only",
+    "separate_genuine_inert_custody_probe": {
+      "acceptance_authority": false,
+      "actual_acknowledgment_after_original_pipe_stop": true,
+      "actual_acknowledgment_while_live": false,
+      "actual_anchor_returncode": 0,
+      "actual_anchor_was_live": true,
+      "actual_idempotent_close_after_acknowledgment": true,
+      "actual_original_consumer_row_drained": true,
+      "actual_original_consumer_row_held_while_live": true,
+      "actual_registry_forgotten": true,
+      "canonical_tasks_accepted": 0,
+      "kernel_failure_recovery_tested": false,
+      "passed": true,
+      "provider_calls_performed": false,
+      "scope": "deliberate_known_live_inert_hold_then_original_pipe_stop_only"
+    },
+    "source_request_sha256": "0ad3c17f0caa1dbdcfe70c4dab8805dfb417ac0f32d7aa8de84e3fe11706f37b"
+  },
+  "canonical_tasks_accepted": 0,
+  "schema": "legal-ir-callable-direct-root-observation@1",
+  "source_manifest_sha256": "b9311e1f566b3319de8c39fc0072d4a71131d66d823e14ed6ae54487201aec02",
+  "source_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-request-r03-v01.json",
+  "source_request_sha256": "0ad3c17f0caa1dbdcfe70c4dab8805dfb417ac0f32d7aa8de84e3fe11706f37b",
+  "source_scope": "report-freezer-git-component-v03",
+  "terminal_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-r03-terminal.json",
+  "terminal_sha256": "674cd0f99b04ecf5469df102429fab4a2845504fd13c4529a812d1322f184c30"
+}

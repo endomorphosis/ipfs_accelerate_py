@@ -1,0 +1,23 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 1,
+  "actual_exec_session_id": 83373,
+  "actual_final_terminal": {
+    "child_returncode": 1,
+    "failure_type": null,
+    "native_finalized": true,
+    "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-pending-wrapper-cancellation-20261017-r01/receipt.json",
+    "status": "failed"
+  },
+  "canonical_tasks_accepted": 0,
+  "receipt_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-pending-wrapper-cancellation-20261017-r01/receipt.json",
+  "receipt_sha256": "0dbcf419181a03b70a3d18e512d91454db35105f3cb866c83326d811b94607a9",
+  "result_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-pending-wrapper-cancellation-20261017-r01/cancellation-result.json",
+  "result_sha256": "e361b224376e8d38a5c8649f5c0a7a723307f5fb831bec5e9d40d72c86333869",
+  "schema": "legal-ir-pending-wrapper-cancellation-root-observation@1",
+  "scope": "guarded_cancellation_refused_after_original_fixture_completed",
+  "signals_sent_observed": 0,
+  "source_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/pending-fixture-cancellation-v02/request-v01.json",
+  "source_request_sha256": "86af0761347493b07212e762b57090bb9859ff0eb3d62cdcbc79abdaf63f64be",
+  "target_wrapper_qualification_already_observed": true
+}

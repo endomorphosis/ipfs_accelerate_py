@@ -1,0 +1,21 @@
+{
+  "Docker_operations_performed": false,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "failure_reason": "[Errno 2] No such file or directory: '/proc/1812898/stat'",
+  "failure_type": "FileNotFoundError",
+  "native_finalization_observed_by_child": false,
+  "passed": false,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-pending-wrapper-cancellation-result@1",
+  "scope": "owned_waiting_nonmodel_engineering_cancellation",
+  "signal_number": 2,
+  "signals_sent": 0,
+  "source_manifest_sha256": "5b70559b3aa86c7ea83e9952a197d976cb92b3b69c520fc730c4ed0fa1eab725",
+  "source_request_sha256": "86af0761347493b07212e762b57090bb9859ff0eb3d62cdcbc79abdaf63f64be",
+  "target_birth": 125964024,
+  "target_cmdline_sha256": "bc29d987f18e1c6c620b5d36149681f6f02e94282a7d51e1ee11e1bc2402784e",
+  "target_count": 1,
+  "target_pid": 1812898,
+  "target_request_sha256": "fb54a1a1fd537b3b3bf5d09970a2f9eb52c2cb72a2b4275351819c1578c0e6b5"
+}

@@ -1,0 +1,86 @@
+--- publication-v03/publish_callable.py
++++ publication-v04/publish_callable.py
+@@ -261,14 +261,73 @@
+                  and result.get('public_report_freezer_qualified') is False and result.get('provider_calls_performed') is False,
+                  'actual synthetic Git component scope required')
+             released_owner(result.get('actual_owner_finalization')); released_root_phase(result)
++            component_schema = manifest.get('schema')
++            need(component_schema in {'legal-ir-report-freezer-git-component-source@1',
++                                      'legal-ir-report-freezer-git-component-source@2',
++                                      'legal-ir-report-freezer-git-component-source@3'},
++                 'explicit executed Git component source schema required')
++            count_field = ('controlled_cases' if component_schema.endswith('@3')
++                           else 'controlled_component_cases')
++            component_count = manifest.get(count_field)
++            need(type(component_count) is int and component_count == 11,
++                 'schema-specific executed component population required')
+             cases = result.get('cases')
+             if cases is None:
+                 need(check['passed'] is False and type(result.get('failure_reason')) is str and result['failure_reason'],
+                      'failed component may not invent successful cases')
+             else:
+-                need(type(cases) is list and len(cases) == result.get('controlled_cases') == manifest.get('controlled_component_cases') == 11
++                need(type(cases) is list and len(cases) == result.get('controlled_cases') == component_count
+                      and all(type(row.get('passed')) is bool for row in cases)
+                      and all(row['passed'] for row in cases) is check['passed'], 'actual component case outcomes required')
++            if component_schema.endswith('@3') and check['passed']:
++                expected = {'expected_cold_source_controls': 13, 'expected_actual_Git_commands': 29,
++                            'expected_actual_Popen_objects': 33, 'expected_actual_anchor_processes': 3,
++                            'expected_actual_native_history_attachments': 4}
++                need(all(type(manifest.get(key)) is int and manifest[key] == value for key, value in expected.items())
++                     and manifest.get('separate_genuine_inert_custody_probe') is True
++                     and manifest.get('freezer_source_manifest_sha256') == result.get('freezer_source_manifest_sha256'),
++                     'exact anchored component source population and freezer join required')
++                controls = result.get('actual_anchor_source_controls')
++                need(type(controls) is dict and controls.get('passed') is True
++                     and all(type(controls.get(key)) is int and controls[key] == value for key, value in
++                             {'controlled_testcases': 13, 'passed_testcases': 13, 'failures': 0, 'errors': 0,
++                              'skipped': 0, 'actual_returncode': 0, 'actual_Popen_objects': 1,
++                              'actual_native_group_attachments': 1}.items())
++                     and controls.get('source_manifest_sha256') == result.get('freezer_source_manifest_sha256')
++                     and request['source_sha256'].get(controls.get('source_test_path')) == controls.get('source_test_sha256')
++                     and type(controls.get('source_test_sha256')) is str
++                     and bool(re.fullmatch(r'[0-9a-f]{64}', controls['source_test_sha256']))
++                     and controls.get('actual_original_consumer_released') is True
++                     and controls.get('native_admissions_by_test_cases') is False
++                     and controls.get('provider_calls_performed') is False
++                     and controls.get('canonical_tasks_accepted') == 0 and controls.get('acceptance_authority') is False,
++                     'actual thirteen stopped cold controls and exact executed source join required')
++                need(all(type(result.get(key)) is int and result[key] == value for key, value in
++                         {'actual_git_children': 29, 'actual_Popen_objects': 33,
++                          'actual_group_anchor_processes': 3, 'actual_native_group_attachments': 4}.items()),
++                     'exact actual anchored Git command/process/attachment counts required')
++                sessions = result.get('actual_group_sessions')
++                need(type(sessions) is list and len(sessions) == 3
++                     and all(type(row) is dict and row.get('actual_group_empty') is True
++                             and row.get('actual_consumer_released') is True
++                             and type(row.get('actual_anchor_returncode')) is int and row['actual_anchor_returncode'] == 0
++                             and type(row.get('actual_joined_git_Popen_count')) is int and row['actual_joined_git_Popen_count'] >= 0
++                             and type(row.get('actual_native_group_attachments')) is int and row['actual_native_group_attachments'] == 1
++                             for row in sessions)
++                     and sum(row['actual_joined_git_Popen_count'] for row in sessions) == 29,
++                     'all actual anchored groups stopped and original consumers released required')
++                probe = result.get('separate_genuine_inert_custody_probe')
++                need(type(probe) is dict and probe.get('passed') is True
++                     and all(probe.get(key) is True for key in
++                             ('actual_anchor_was_live', 'actual_original_consumer_row_held_while_live',
++                              'actual_acknowledgment_after_original_pipe_stop', 'actual_original_consumer_row_drained',
++                              'actual_registry_forgotten', 'actual_idempotent_close_after_acknowledgment'))
++                     and probe.get('actual_acknowledgment_while_live') is False
++                     and type(probe.get('actual_anchor_returncode')) is int and probe['actual_anchor_returncode'] == 0
++                     and probe.get('kernel_failure_recovery_tested') is False
++                     and probe.get('provider_calls_performed') is False
++                     and probe.get('canonical_tasks_accepted') == 0 and probe.get('acceptance_authority') is False,
++                     'separate known-live inert custody probe must stop before acknowledgement and drain')
+         else:
+             need(request.get('schema') == 'legal-ir-callable-dual-pipe-mechanical-request@1'
+                  and request.get('qualifier_manifest_sha256') == result.get('qualifier_manifest_sha256') == digest
+@@ -360,7 +419,7 @@
+         root = canonical(row['absolute_path'])
+         need(root.parent == PHASE and root.name == role, 'exact campaign source bundle required')
+         sources[role] = verify_bundle(root, row['manifest_sha256'])
+-    need(bundles.get('publication-v03', {}).get('manifest_sha256') == pins[str(HERE / 'SOURCE_MANIFEST.json')],
++    need(bundles.get('publication-v04', {}).get('manifest_sha256') == pins[str(HERE / 'SOURCE_MANIFEST.json')],
+          'publisher self-source must be archived with exact reviewed manifest')
+     rows = config['evidence']
+     need(type(rows) is dict and 1 <= len(rows) <= 64, 'finite selected public evidence required')

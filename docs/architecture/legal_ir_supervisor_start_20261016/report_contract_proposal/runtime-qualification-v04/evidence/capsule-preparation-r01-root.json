@@ -1,0 +1,20 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 0,
+  "actual_exec_session_id": 72232,
+  "actual_native_terminal": {
+    "child_returncode": 0,
+    "failure_type": null,
+    "native_finalized": true,
+    "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r01/preparation/receipt.json",
+    "status": "completed"
+  },
+  "canonical_tasks_accepted": 0,
+  "capsule_manifest_sha256": "75992b24f5389b30be5d19ce3fcf68e7eeadabc0508e593af9af6c30b1e38e68",
+  "original_native_preparation_finalized": true,
+  "preparation_result_sha256": "d0a526e68d188f71551fa7a0501384a10f933d0460f72038ecf8e7e74bebd0cc",
+  "provider_calls_performed": false,
+  "schema": "legal-ir-callable-capsule-root-observation@1",
+  "source_manifest_sha256": "21f158ab582d70a123d3ee32d69e12b763ad40842fded37cd6a7265b18d08686",
+  "source_request_sha256": "be904b65fb2d8dc81fc57e89e46ee9f1130652e329abd8be3e5712692d36261b"
+}

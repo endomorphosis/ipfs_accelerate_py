@@ -1,0 +1,75 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "case_count": 2,
+  "cases": [
+    "within_cap",
+    "over_cap"
+  ],
+  "consumer_each": {
+    "child_process_slots": 0,
+    "cpu_slots": 1,
+    "memory_mb": 1
+  },
+  "container": {
+    "cpu": 1,
+    "ipc": "none",
+    "memory_bytes": 268435456,
+    "mount_count": 4,
+    "network": "none",
+    "pids": 4,
+    "provider_auth_mounts": 0,
+    "readonly_root": true
+  },
+  "daemon_disk_outside_named_roots": true,
+  "expected_aggregate_bytes": 1245184,
+  "expected_stderr_bytes": 65536,
+  "expected_stdout_bytes": 1179648,
+  "explicit_admin_remainder": {
+    "child_process_slots": 0,
+    "cpu_slots": 1,
+    "interpretation": "No separate administrative or freezer process-slot leaf. Existing finite trusted-controller Docker queries are unchanged; root/phase slots equal actual primary8+watchdog4 allocations.",
+    "memory_mb": 2560
+  },
+  "external_promises": [
+    "readonly_capsule",
+    "private_temp",
+    "disjoint_workspace"
+  ],
+  "external_promises_each_bytes": 134217728,
+  "genuine_consumers_per_case": 2,
+  "genuine_preparation_finalization_required": true,
+  "hard_daemon_disk_quota_claimed": false,
+  "leaf_deadline_seconds_max": 3600,
+  "native_or_provider_execution_by_author": false,
+  "output_caps_bytes": {
+    "over_cap": 65536,
+    "within_cap": 2097152
+  },
+  "previous_source_preserved": "dual-pipe-native-v02",
+  "primary_leaf": {
+    "child_process_slots": 8,
+    "cpu_slots": 1,
+    "memory_mb": 1024,
+    "storage_bytes": 536870912
+  },
+  "root_and_phase": {
+    "child_process_slots": 12,
+    "cpu_slots": 3,
+    "lane": "orchestration",
+    "memory_mb": 4096
+  },
+  "root_only_execution": true,
+  "run_namespace": "legal-ir-callable-dual-pipe-native-20261017-r02",
+  "runtime_qualification_claimed": false,
+  "schema": "legal-ir-callable-dual-pipe-resource-plan@1",
+  "source_only_not_admission": true,
+  "source_revision": "dual-pipe-native-v03",
+  "unchanged_CPU_memory_policy_caps": true,
+  "watchdog_leaf": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "memory_mb": 512,
+    "storage_bytes": 134217728
+  }
+}

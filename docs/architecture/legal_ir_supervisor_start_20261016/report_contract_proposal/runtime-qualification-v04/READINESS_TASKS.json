@@ -1,0 +1,315 @@
+{
+  "acceptance_authority": false,
+  "board_mutations_authorized": false,
+  "canonical_tasks_accepted": 0,
+  "document_status": "closed_scoped_engineering_evidence_production_tasks_pending",
+  "goal": "Connect actual legally grounded provider outputs to independently checked report-only candidates without losing resource custody or original task history.",
+  "original_attempt_policy": {
+    "current_configuration_evidence_scope": "Unchanged original source configuration; no new daemon execution/admission claim.",
+    "current_configuration_source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json",
+    "current_configuration_source_sha256": "d8f9de44cfcf522009f3c1180d9dfc0938642c0822224751a0490299f4b5b902",
+    "current_effective_cap": 2,
+    "current_original_configuration_max_task_attempts": 2,
+    "currently_new_original_attempt_authorized": false,
+    "later_cap_enabled_by_this_campaign": false,
+    "other_original_tasks_remain_blocked": true,
+    "previous_consumed_attempts": 2,
+    "proposed_later_cap_requires_separate_reviewed_packet": true,
+    "proposed_later_only_attempt": 3,
+    "proposed_later_total_cap": 3,
+    "refund_or_reset_allowed": false
+  },
+  "production_hook_deployed": false,
+  "provider_calls": 0,
+  "schema": "legal-ir-callable-readiness-tasks@1",
+  "source_audit_plan": {
+    "actual_source_pins": 22,
+    "evidence_path": "sources/daemon-host-bridge-audit-v01/EVIDENCE.json",
+    "goal": "PI-P04",
+    "line_proofs": 40,
+    "manifest_sha256": "c3ad2e96ac606feb92ddcab046328596911e7104bb9344f634458e624e581252",
+    "ordered_tasks": 18,
+    "plan_path": "sources/daemon-host-bridge-audit-v01/PI_P04_PLAN.md",
+    "runtime_qualified": false,
+    "source_bundle": "daemon-host-bridge-audit-v01",
+    "source_code_implemented": false,
+    "subgoals": 6,
+    "tasks_path": "sources/daemon-host-bridge-audit-v01/TASKS.json"
+  },
+  "tasks": [
+    {
+      "completed": [
+        "Effect-free public parser and immutable explicit invocation.",
+        "Explicit cwd/environment/temp and borrowed private regular output descriptors.",
+        "Finite combined stdout/stderr cap, main-thread native guard pulses and reader cleanup.",
+        "G3 callable-only actual trusted-binary identity and exact readonly mount seam."
+      ],
+      "completion_evidence": [
+        "memory-controls-r03",
+        "dual-pipe-r02"
+      ],
+      "depends_on": [],
+      "does_not_qualify": [
+        "Real model dispatch",
+        "Original daemon callable integration"
+      ],
+      "goal": "Provide explicit callable runner inputs.",
+      "id": "PI-P01",
+      "mechanical_qualification_source": "dual-pipe-native-v04",
+      "qualification_status": "174source_controls_and_actual_two_case_dual_helper_mechanics_passed_full_G_run_pending",
+      "remaining": [
+        "Original full callable G._run provider integration and isolated real-provider qualification remain separate PI-P04 gates."
+      ],
+      "source_bundles": [
+        "runner-v02",
+        "runner-v03"
+      ],
+      "status": "implemented_source_controls_passed"
+    },
+    {
+      "completed": [
+        "Two actual sibling owners and preacquired native consumer capacity hold required.",
+        "Exact invocation identity and bounded source/storage checks before effect.",
+        "Original private allocations/create intent/watchdog/process references retained on unknown cleanup.",
+        "Active same-interpreter callback authentication; no portable outcome authority.",
+        "Actual original public wrapper passed5/5 known-unstarted/refusal cases, preserved borrowedFDs/globals, drained original consumers and finalized both native owners/root/phase; no G._run/Docker/finish/success callback.",
+        "Actual corrected13slot dual mechanical fixture passed both output/cap cases with real attached owners, actual independent cleanup and all four owner/root/phase releases; admin attachment/hard quota remain false."
+      ],
+      "completion_evidence": [
+        "memory-controls-r03",
+        "public-wrapper-prestart-r02",
+        "dual-pipe-r02"
+      ],
+      "depends_on": [
+        "PI-P01"
+      ],
+      "does_not_qualify": [
+        "Unknown-custody durable recovery after host death",
+        "Real provider success"
+      ],
+      "goal": "Preserve genuine same-process pre-effect custody and authenticated successful callback.",
+      "id": "PI-P02",
+      "qualification_status": "actual_public_wrapper5of5_and_dual_mechanics2of2_passed_no_real_success_callback",
+      "remaining": [
+        "Integrate early OrdinaryCustodyPending branch before original daemon generic cleanup/finalize."
+      ],
+      "source_budget_change": "Original16slot source/request preserved. V03/12 omitted the controller admin allowance, remains unqualified and was not executed. Actual V04/13 passed both nonmodel physical cases with13=8+4+1 cooperative admin; admin native attachment and hard quota remain false. Corrected actual request adds C to the exact H hook20 pins; real-provider integration remains pending.",
+      "source_bundles": [
+        "handoff-v02",
+        "handoff-v03",
+        "public-wrapper-prestart-v01",
+        "public-wrapper-prestart-v02",
+        "dual-pipe-native-v02",
+        "dual-pipe-native-v03",
+        "dual-pipe-native-v04"
+      ],
+      "status": "source_and_scoped_nonmodel_controls_passed_production_pending"
+    },
+    {
+      "accepted_component_source": "report-freezer-git-component-v03",
+      "actual_component_observation": {
+        "actual_Git_cases": 11,
+        "actual_Popen_objects": 33,
+        "actual_git_commands": 29,
+        "actual_groups_and_consumers_drained": true,
+        "actual_native_group_attachments": 4,
+        "actual_owner_root_phase_released": true,
+        "historical_failed_checks": [
+          "freezer-git-r01",
+          "freezer-git-r02"
+        ],
+        "historical_r02_failure": {
+          "actual_command_ordinal": 17,
+          "actual_owner_root_phase_released": true,
+          "actual_process_reaped_returncode": -9,
+          "failure_reason": "reservation child history bound exceeded"
+        },
+        "latest_check": "freezer-git-r03",
+        "latest_passed": true,
+        "public_freezer_qualified": false,
+        "separate_known_live_inert_custody_probe_passed": true
+      },
+      "completed": [
+        "Public freezer source requires actual active H success, identical invocation and original private dispatch capture.",
+        "Same original serialized checkout lock and extracted common commit tail; exact single-report staging, baseline/board/tree/index guards.",
+        "Genuine local state connection and original enforcing decision guard retained.",
+        "68 corrected pure/source controls passed; original failure remains evidence.",
+        "Actual anchored Git component passed11 cases/29 commands under one genuine four-slot owner;33 real Popen objects/4 SDK attachments include13 cold controls and the separate inert custody probe. Actual groups/consumers/owner/root/phase released.",
+        "Actual known-live inert hold refused acknowledgement while live, then original stdin stop allowed acknowledgement, consumer drain, registry forget and idempotent close."
+      ],
+      "completion_evidence": [
+        "freezer-controls-r02",
+        "freezer-git-r03"
+      ],
+      "depends_on": [
+        "PI-P01",
+        "PI-P02"
+      ],
+      "does_not_qualify": [
+        "Constructible outcome dataclass",
+        "Synthetic callback success",
+        "Accepted task"
+      ],
+      "goal": "Freeze only the actual declared report under original decision and checkout lock.",
+      "id": "PI-P03",
+      "new_anchor_control_status": "13_actual_cold_cases_passed_with_no_failure_error_or_skip",
+      "remaining": [
+        "Qualify the actual public freezer only from a genuine real-provider callback after PI-P04; isolated Git/shared-tail mechanics do not authenticate such a callback.",
+        "Retain the explicit same-session isolated-PGID topology variance from the SDK documentation; preserve actual PPID/PGID/birth checks, bounded group cleanup and unchanged native caps/history policy."
+      ],
+      "source_bundles": [
+        "report-freezer-v02",
+        "report-freezer-controls-v02",
+        "report-freezer-git-component-v01",
+        "report-freezer-git-component-v02",
+        "report-freezer-v03",
+        "report-freezer-git-component-v03"
+      ],
+      "source_control_generation_already_passed": "report-freezer-v02_68_corrected_cases",
+      "source_detected_native_history_blocker": {
+        "actual_component_confirmed": true,
+        "actual_producer_git_commands_more_than": 25,
+        "actual_v03_component_mechanics_passed": true,
+        "component_git_commands": 29,
+        "current_fixed_source_production_freezer_qualified": false,
+        "existing_native_isolated_child_history_bound": 16,
+        "frozen_successor_source": "report-freezer-v03"
+      },
+      "status": "source_controls_and_actual_Git_component_passed_public_freezer_production_pending"
+    },
+    {
+      "completion_evidence": [],
+      "depends_on": [
+        "PI-P01",
+        "PI-P02",
+        "PI-P03"
+      ],
+      "does_not_qualify": [
+        "Passing non-model wrapper/Docker/Git fixtures do not complete any of these original production integration tasks."
+      ],
+      "freezer_successor_base_manifest_sha256": "7e54b071ec805cc38d8a7265d11eebf221f5d51e3ec44adc0b9886b36922a7a7",
+      "goal": "Implement original trusted daemon callable dispatch and cleanup bridge.",
+      "id": "PI-P04",
+      "implementation_plan_status": "source_audit_complete_implementation_and_qualification_planned",
+      "native_16slot_full_production_pipeline_already_supported": false,
+      "ordered_plan_task_ids": [
+        "PI-P04-01",
+        "PI-P04-02",
+        "PI-P04-03",
+        "PI-P04-04",
+        "PI-P04-05",
+        "PI-P04-06",
+        "PI-P04-07",
+        "PI-P04-08",
+        "PI-P04-09",
+        "PI-P04-10",
+        "PI-P04-11",
+        "PI-P04-12",
+        "PI-P04-13",
+        "PI-P04-14",
+        "PI-P04-15",
+        "PI-P04-16",
+        "PI-P04-17",
+        "PI-P04-18"
+      ],
+      "qualification": [
+        "Isolated known-unstarted/refusal controls first.",
+        "Then separately reviewed noncanonical real-provider canary; never spend original ordinal3 for a canary."
+      ],
+      "required_tasks": [
+        "Preserve and observe the original authoritative two-consumed-attempt state before native admission; no increment/refund/reset in preparation.",
+        "Accept the actual same-interpreter native orchestration parent object in the original host launcher; external parent IDs or an extra scheduler root cannot substitute.",
+        "Capture actual original task CID/revision/authoritative board SHA/baseline/state/ordinal before provider effects.",
+        "Derive the workspace baseline board copy from the original authoritative board without mutating daemon.todo_path or accepting a caller-supplied board as authority.",
+        "Borrow the original genuine local DuckDB connection across all attempt state I/O; do not close/reconnect it or open a competing flocked connection for the frozen freezer.",
+        "Keep the explicit borrowed prompt/cwd/environment/temp/output invocation and original FD ownership across the entire active attempt; no process-global replacements.",
+        "Call the public H wrapper in the original trusted controller interpreter with genuine sibling owners, actual C consumer hold and the identical immutable invocation.",
+        "Preserve original route and actual model-child PID/birth; trusted host PID cannot stand in for model PID.",
+        "Run the concrete actual-success callback report freeze and separate fresh-owner V03 candidate observation.",
+        "Handle OrdinaryCustodyPending before generic cleanup/finalize; retain actual original task/lifecycle/storage claims and strong references until independently known stopped.",
+        "Only independent same-daemon CID/name, kernel/group and private-path stopped proof permits original consumer release/row drain/forget and explicit owner finalize or stopped release.",
+        "Implement an additive freezer capture successor for the original authoritative board and derived workspace baseline; frozen V02 board-layout guard stays unchanged.",
+        "Build the authoritative-board/state/I/O successor on frozen report-freezer-v03/7e54b071ec805cc38d8a7265d11eebf221f5d51e3ec44adc0b9886b36922a7a7. Handle its exact GitCustodyPending.actual_session and acknowledge_stopped_git_custody API before generic finalizers: retain original actual session/consumer/native owner on unknown Git cleanup, then acknowledge only after independent stopped proof. Preserve the existing anchored command accounting; the older V02 audit alone must not reintroduce isolated-child history overflow.",
+        "Account for Docker administration nested inside H3.require_active_ordinary_success\u2192reap_observed_transport_after_failure while freezer_owner is already admitted: provider8+watchdog4+freezer4 fills16. Qualify a reviewed charging/order/API successor within unchanged16; simple before/after-callback scheduling does not cover this nested path. Separately assess cleanup capacity on unknown freezer custody; no unproven native admin attachment or stronger provenance claim."
+      ],
+      "source_bundles": [
+        "daemon-host-bridge-audit-v01",
+        "report-freezer-v03"
+      ],
+      "status": "pending_source_integration"
+    },
+    {
+      "depends_on": [
+        "PI-P04"
+      ],
+      "goal": "Join actual real candidate to independent native validation and one-use controller acceptance.",
+      "id": "PI-P05",
+      "qualification": [
+        "Isolated noncanonical real-provider validation canary before original-board work."
+      ],
+      "required_tasks": [
+        "Keep fixture backend as fixture; real backend requires actual callback/context joins before Docker and issuance.",
+        "Fresh source/task/report/commit/board/provider identity observation before validation.",
+        "Use actual independent checker process, actual native finalization and separate one-use controller completion authority.",
+        "Refuse replay, serialized/copy outcomes, source/report/board/role/daemon drift and live descendants."
+      ],
+      "source_bundles": [],
+      "status": "pending_source_integration"
+    },
+    {
+      "depends_on": [
+        "PI-P04"
+      ],
+      "goal": "Support requested Grok 4.7 primary and Codex GPT 6.1 Sol backup safely.",
+      "id": "PI-P06",
+      "qualification": [
+        "Builder/call-order/source controls followed by isolated real-provider fallback canary."
+      ],
+      "required_tasks": [
+        "Track every productive preflight/task/verifier child with actual native attachment before input.",
+        "Two sequential separately fenced provider routes share one consumed task attempt.",
+        "Allow backup only from actual typed primary quota exhaustion; preserve exact model/reasoning choice.",
+        "Current callable source must keep unsupported fallback/preflight/receipt/protected paths refused before effects."
+      ],
+      "source_bundles": [],
+      "status": "pending_separate_lifecycle_successor"
+    },
+    {
+      "depends_on": [
+        "PI-P04",
+        "PI-P05",
+        "PI-P06"
+      ],
+      "goal": "Prepare the original final task attempt only after all upstream gates.",
+      "id": "PI-P07",
+      "required_tasks": [
+        "Reobserve original durable two-consumed-attempt history and current effective cap2; only a separately reviewed later total-cap3 packet could expose ordinal3 after all integration gates.",
+        "Keep LIR-9001 manual and the other63 original cards blocked.",
+        "No reset/rearm/refund for dispatched nonzero/timeout/unknown/callback/native failure.",
+        "Root reviews a concrete exact original ordinal3 packet only after isolated qualification; no attempt is authorized by this documentation."
+      ],
+      "source_bundles": [],
+      "status": "blocked_on_real_integration"
+    },
+    {
+      "creates_or_unblocks_original_task_card": false,
+      "depends_on": [
+        "PI-P07"
+      ],
+      "goal": "Resume legal autoformalization quality work through the existing task board.",
+      "id": "LEGAL-FOLLOWUP",
+      "informational_future_scope_only": true,
+      "qualification": [
+        "No training accuracy, Lean4 build or legal fidelity result is asserted by the current engineering campaign."
+      ],
+      "required_tasks": [
+        "Evaluate real US Code source fidelity, references, exceptions, definitions, entities and graph aggregation against reviewed references.",
+        "Measure valid logic-family syntax separately from semantic fidelity, quantifier/scope accuracy and entailment.",
+        "Build the intended Lean4 corpus with the actual lake build legal command and retain exact build evidence.",
+        "Compare 8D/384D/768D autoencoders and existing decoder architectures on held-out nonleaking tasks; publish real weights and measured results only after actual training."
+      ],
+      "source_bundles": [],
+      "status": "blocked_on_PI-P07_or_separately_authorized_isolated_research"
+    }
+  ]
+}

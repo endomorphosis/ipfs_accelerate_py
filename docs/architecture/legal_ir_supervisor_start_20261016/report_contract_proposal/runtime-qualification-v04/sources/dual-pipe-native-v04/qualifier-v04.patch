@@ -1,0 +1,76 @@
+--- dual-pipe-native-v03/qualify_dual_pipe.py
++++ dual-pipe-native-v04/qualify_dual_pipe.py
+@@ -29,6 +29,8 @@
+ CUSTODY_SOURCE = CAPSULE / "ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py"
+ RUNNER_MANIFEST = NEW / "runner-v03/SOURCE_MANIFEST.json"
+ HANDOFF_MANIFEST = NEW / "handoff-v03/SOURCE_MANIFEST.json"
++ADMIN_AUDIT = NEW / "dual-pipe-admin-source-audit-v01.json"
++ADMIN_AUDIT_SHA = "ab24b59c2dffba4560d4298c91eafc96cbbcf34b466078614f229b5d1f47faea"
+ RUNNER_MANIFEST_SHA = "1a2d28a952f0bac6a7af951b4754085dcb1110f86fb46ebf319014f2e66062e2"
+ HANDOFF_MANIFEST_SHA = "6ca1a9ca25f1bb477841a006e2b77ba34c0c647d5930b3eaabf7537e6dbf6879"
+ PREPARATION_OBSERVATION = NEW / "capsule-preparation-root-observation-r02.json"
+@@ -47,7 +49,7 @@
+ IMAGE_LABEL = "2026-10-16-ordinary-v1"
+ PYTHON = Path("/usr/bin/python3.12")
+ INNER_PYTHON = "/opt/ipfs-task-tools/bin/python"
+-PROFILE = "legal-ir-callable-dual-pipe-nonmodel-v03"
++PROFILE = "legal-ir-callable-dual-pipe-nonmodel-v04"
+ CAPSULE_BUDGET = TEMP_BUDGET = 128 * 1024 * 1024
+ CASES = ("within_cap", "over_cap")
+ OUTPUT_LIMITS = {"within_cap": 2 * 1024 * 1024, "over_cap": 64 * 1024}
+@@ -140,6 +142,7 @@
+ def verify_sources(request):
+     pins = request["source_sha256"]
+     need(type(pins) is dict and 16 <= len(pins) <= 128, "finite_source_pins_required")
++    need(pins.get(str(ADMIN_AUDIT)) == ADMIN_AUDIT_SHA, "exact_reviewed_admin_capacity_source_audit_required")
+     native_paths = {str(DATASETS / "ipfs_datasets_py/optimizers/logic_theorem_optimizer" / (name + ".py")) for name in NATIVE_NAMES}
+     entry_paths = {str(DATASETS / name) for name in (
+         "ipfs_datasets_py/__init__.py", "ipfs_datasets_py/router_deps.py",
+@@ -759,6 +762,12 @@
+          and request.get("handoff_source_manifest_sha256") == HANDOFF_MANIFEST_SHA
+          and type(request.get("duration_seconds")) is int and 60 <= request["duration_seconds"] <= 3600
+          and request.get("cases") == list(CASES)
++         and request.get("resource_envelope", {}).get("root_phase_process_slots") == 13
++         and request["resource_envelope"].get("actual_owner_process_slots") == [8, 4]
++         and request["resource_envelope"].get("trusted_controller_admin_process_slots") == 1
++         and request.get("admin_source_audit_sha256") == ADMIN_AUDIT_SHA
++         and request.get("admin_native_child_attachment_qualified") is False
++         and request.get("hard_admin_quota") is False
+          and type(request.get("preparation_root_observation_path")) is str
+          and request["preparation_root_observation_path"] == str(PREPARATION_OBSERVATION)
+          and all(type(request.get(name)) is str and re.fullmatch("[0-9a-f]{64}", request[name]) for name in
+@@ -784,10 +793,18 @@
+          and RUN.parent.resolve(strict=True) == RUN.parent
+          and not any(path.is_symlink() for path in (RUN.parent, *RUN.parent.parents)),
+          "real_prepared_capsule_and_fresh_native_run_required")
+-    with scheduler.acquire(ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=12,
++    with scheduler.acquire(ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=13,
+             timeout=1800, cancel_event=cancelled, request_id=PROFILE) as root:
+         with root.acquire_child(lane=ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096,
+-                child_process_slots=12, timeout=1800, cancel_event=cancelled, request_id=PROFILE + ":phase") as phase:
++                child_process_slots=13, timeout=1800, cancel_event=cancelled, request_id=PROFILE + ":phase") as phase:
++            need(root.owner_pid == phase.owner_pid == os.getpid()
++                 and phase.parent_lease_id == root.lease_id
++                 and root.child_process_slots == phase.child_process_slots == 13
++                 and root.cpu_slots == phase.cpu_slots == 3
++                 and root.memory_mb == phase.memory_mb == 4096
++                 and not root.released and not phase.released
++                 and not root.cancelled and not phase.cancelled,
++                 "actual_same_process_13slot_phase_capacity_required")
+             verify_sources(request)
+             verify_capsule(request)
+             need(not any(name == "ipfs_accelerate_py" or name.startswith("ipfs_accelerate_py.") for name in sys.modules),
+@@ -806,7 +823,12 @@
+             results = [run_case(G, H, C, phase, ParentedPhaseResourceReservation, request, case) for case in CASES]
+             result = {"schema": "legal-ir-callable-dual-pipe-native-mechanics@1", "fixture_only": True,
+                 "scope": "synthetic_nonmodel_dual_pipe_engineering_fixture_only", "profile": PROFILE,
+-                "qualifier_source_revision": "dual-pipe-native-v03",
++                "qualifier_source_revision": "dual-pipe-native-v04",
++                "declared_process_slot_budget": {"primary": 8, "watchdog": 4, "trusted_controller_admin": 1, "root_phase": 13},
++                "admin_source_bound_main_thread_top_level_clients": 1,
++                "admin_capacity_scope": "actual_same_process_phase_cooperative_trusted_controller",
++                "admin_native_child_attachment_qualified": False, "hard_admin_quota": False,
++                "admin_source_audit_sha256": ADMIN_AUDIT_SHA,
+                 "request_sha256": sys.argv[2], "qualifier_manifest_sha256": request["qualifier_manifest_sha256"],
+                 "capsule_manifest_sha256": request["capsule_manifest_sha256"],
+                 "runner_source_manifest_sha256": RUNNER_MANIFEST_SHA, "handoff_source_manifest_sha256": HANDOFF_MANIFEST_SHA,

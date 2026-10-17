@@ -1,0 +1,42 @@
+--- dual-pipe-native-v02/qualify_dual_pipe.py
++++ dual-pipe-native-v03/qualify_dual_pipe.py
+@@ -24,7 +24,7 @@
+ 
+ HERE = Path(__file__).absolute().parent
+ NEW = HERE.parent
+-RUN = Path("/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-dual-pipe-native-20261017-r01")
++RUN = Path("/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-dual-pipe-native-20261017-r02")
+ CAPSULE = Path("/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r02/preparation/capsule")
+ CUSTODY_SOURCE = CAPSULE / "ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py"
+ RUNNER_MANIFEST = NEW / "runner-v03/SOURCE_MANIFEST.json"
+@@ -47,7 +47,7 @@
+ IMAGE_LABEL = "2026-10-16-ordinary-v1"
+ PYTHON = Path("/usr/bin/python3.12")
+ INNER_PYTHON = "/opt/ipfs-task-tools/bin/python"
+-PROFILE = "legal-ir-callable-dual-pipe-nonmodel-v02"
++PROFILE = "legal-ir-callable-dual-pipe-nonmodel-v03"
+ CAPSULE_BUDGET = TEMP_BUDGET = 128 * 1024 * 1024
+ CASES = ("within_cap", "over_cap")
+ OUTPUT_LIMITS = {"within_cap": 2 * 1024 * 1024, "over_cap": 64 * 1024}
+@@ -784,10 +784,10 @@
+          and RUN.parent.resolve(strict=True) == RUN.parent
+          and not any(path.is_symlink() for path in (RUN.parent, *RUN.parent.parents)),
+          "real_prepared_capsule_and_fresh_native_run_required")
+-    with scheduler.acquire(ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=16,
++    with scheduler.acquire(ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=12,
+             timeout=1800, cancel_event=cancelled, request_id=PROFILE) as root:
+         with root.acquire_child(lane=ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096,
+-                child_process_slots=16, timeout=1800, cancel_event=cancelled, request_id=PROFILE + ":phase") as phase:
++                child_process_slots=12, timeout=1800, cancel_event=cancelled, request_id=PROFILE + ":phase") as phase:
+             verify_sources(request)
+             verify_capsule(request)
+             need(not any(name == "ipfs_accelerate_py" or name.startswith("ipfs_accelerate_py.") for name in sys.modules),
+@@ -806,7 +806,7 @@
+             results = [run_case(G, H, C, phase, ParentedPhaseResourceReservation, request, case) for case in CASES]
+             result = {"schema": "legal-ir-callable-dual-pipe-native-mechanics@1", "fixture_only": True,
+                 "scope": "synthetic_nonmodel_dual_pipe_engineering_fixture_only", "profile": PROFILE,
+-                "qualifier_source_revision": "dual-pipe-native-v02",
++                "qualifier_source_revision": "dual-pipe-native-v03",
+                 "request_sha256": sys.argv[2], "qualifier_manifest_sha256": request["qualifier_manifest_sha256"],
+                 "capsule_manifest_sha256": request["capsule_manifest_sha256"],
+                 "runner_source_manifest_sha256": RUNNER_MANIFEST_SHA, "handoff_source_manifest_sha256": HANDOFF_MANIFEST_SHA,

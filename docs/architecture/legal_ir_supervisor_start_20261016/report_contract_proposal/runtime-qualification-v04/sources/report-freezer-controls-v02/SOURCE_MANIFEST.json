@@ -1,0 +1,36 @@
+{
+  "acceptance_authority": false,
+  "authored_control_cases": 68,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "files": [
+    {
+      "bytes": 1403,
+      "path": "README.md",
+      "sha256": "022e5114afce6bb464b3993cf1ce2ea0aa64c18a0c1eaa24a633a505b4240653"
+    },
+    {
+      "bytes": 995,
+      "path": "SOURCE_DIAGNOSIS.json",
+      "sha256": "784c7ee6c6b58e614e6d1f333d9cb92f6306c6d3ce1ae0cedb60d4bf26de9748"
+    },
+    {
+      "bytes": 8265,
+      "path": "qualify_freezer_controls.py",
+      "sha256": "5646f6d693801c93c41d32b87528ed4cf0a599b6517cd795076b2efea2ec685b"
+    },
+    {
+      "bytes": 11353,
+      "path": "test_source_contract.py",
+      "sha256": "e00c55996ec7bbae158ff5ee795fe5f71a18b0af428ab58371931b727fb51d7a"
+    }
+  ],
+  "freezer_manifest_sha256": "2e88a05782c96aed0f64583f414209a3535502c034b7a8f610f8577d60ae345e",
+  "producer_source_changed": false,
+  "schema": "legal-ir-report-freezer-corrected-controls-source@2",
+  "test_cases_by_file": {
+    "corrected_source_contract": 12,
+    "unchanged_original_memory": 56
+  },
+  "tests_executed_by_author": false
+}

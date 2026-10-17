@@ -1,0 +1,76 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/public-wrapper-prestart-v01/qualify_public_wrapper.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/public-wrapper-prestart-v02/qualify_public_wrapper.py
+@@ -17,8 +17,9 @@
+ 
+ HERE = Path(__file__).absolute().parent
+ PHASE = HERE.parent
+-RUN = Path('/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r02')
+-CAPSULE = RUN / 'preparation/capsule'
++RUN = Path('/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r03')
++PREPARATION_RUN = RUN.with_name('legal-ir-callable-handoff-20261017-r02')
++CAPSULE = PREPARATION_RUN / 'preparation/capsule'
+ NATIVE_RUN = RUN / 'public-wrapper-prestart'
+ EXTERNAL = NATIVE_RUN / 'external'
+ WORKSPACE, TEMP, HOME = (EXTERNAL / name for name in ('workspace', 'provider-temp', 'home'))
+@@ -38,7 +39,7 @@
+ HANDOFF_MANIFEST = '6ca1a9ca25f1bb477841a006e2b77ba34c0c647d5930b3eaabf7537e6dbf6879'
+ PREP_MANIFEST = 'df9caa66dbb9484614bc4c1829da0a21d53260b909c72786ae55da58995c0c56'
+ PREP_REQUEST = '64f5e53aadbe05d6d3a045a3c849668011e00043090dea0e421b4f178fdf4da5'
+-PROFILE = 'legal-ir-callable-public-wrapper-prestart-r02'
++PROFILE = 'legal-ir-callable-public-wrapper-prestart-r03'
+ CASES = ('known_unstarted_abort','missing_callback','receipt_forbidden','missing_runner_pin','missing_bound_hold')
+ NO_AUTHORITY = {name:False for name in ('acceptance_authority','completion_authority','dispatch_authority','actual_provider_execution_qualified','production_hook_deployed','actual_live_callable_transport_qualified')}
+ 
+@@ -149,7 +150,7 @@
+     need(pins[str(HERE / "SOURCE_MANIFEST.json")] == request["source_manifest_sha256"]
+          == hashlib.sha256(manifest_raw).hexdigest(), "exact_fixture_manifest_join_required")
+     manifest = strict(manifest_raw)
+-    need(manifest.get("schema") == "legal-ir-callable-public-wrapper-prestart-source@1"
++    need(manifest.get("schema") == "legal-ir-callable-public-wrapper-prestart-source@2"
+          and manifest.get("cases") == list(CASES) and manifest.get("controlled_cases") == 5
+          and manifest.get("owner_lifetime_seconds") == 3600,
+          "exact_reviewed_fixture_source_generation_required")
+@@ -180,7 +181,7 @@
+     need(terminal.get("status") == "completed" and terminal.get("native_finalized") is True
+          and terminal.get("child_returncode") == 0 and terminal.get("failure_type") is None,
+          "actual_preparation_owner_terminal_required")
+-    result_raw = read_stable(RUN / "preparation/capsule-preparation.json")
++    result_raw = read_stable(PREPARATION_RUN / "preparation/capsule-preparation.json")
+     result = strict(result_raw)
+     manifest_raw = read_stable(CAPSULE / "SOURCE_MANIFEST.json")
+     digest = hashlib.sha256(manifest_raw).hexdigest()
+@@ -410,7 +411,8 @@
+     need(hashlib.sha256(request_raw).hexdigest() == sys.argv[2], "reviewed_fixture_request_changed")
+     request = strict(request_raw)
+     need(request.get("schema") == "legal-ir-callable-public-wrapper-prestart-request@1"
+-         and request.get("cases") == list(CASES) and request.get("owner_lifetime_seconds") == 3600,
++         and request.get("cases") == list(CASES) and request.get("owner_lifetime_seconds") == 3600
++         and request.get("root_and_phase_envelope") == {"cpu_slots": 3, "memory_mb": 4096, "child_process_slots": 12},
+          "exact_finite_five_case_fixture_request_required")
+     source_guard(request)
+     ready_capsule(request)
+@@ -428,10 +430,13 @@
+     need(all(getattr(scheduler.config, name) is None for name in (
+         "max_memory_percent", "max_swap_percent", "max_gpu_memory_percent")),
+         "existing_CPU_policy_must_skip_external_process_telemetry")
++    need(not os.path.lexists(RUN) and RUN.parent.is_dir() and RUN.parent.resolve(strict=True) == RUN.parent
++         and not any(path.is_symlink() for path in (RUN.parent, *RUN.parent.parents)),
++         "fresh_canonical_public_wrapper_campaign_required")
+     need(not os.path.lexists(NATIVE_RUN), "fresh_public_wrapper_fixture_attempt_required")
+-    with scheduler.acquire(resource.ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=16,
++    with scheduler.acquire(resource.ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=12,
+             timeout=1800, request_id=PROFILE) as root:
+-        with root.acquire_child(cpu_slots=3, memory_mb=4096, child_process_slots=16, timeout=1800, request_id=PROFILE + ":phase") as phase:
++        with root.acquire_child(cpu_slots=3, memory_mb=4096, child_process_slots=12, timeout=1800, request_id=PROFILE + ":phase") as phase:
+             source_guard(request)
+             ready_capsule(request)
+             sys.path.insert(0, str(CAPSULE))
+@@ -439,6 +444,8 @@
+                 "grok_cli_runner", "ordinary_success_handoff", "ordinary_custody_hold")]
+             need(all(Path(module.__file__).absolute() == RUNTIME / name for module, name in zip((G, H, C), (
+                 "grok_cli_runner.py", "ordinary_success_handoff.py", "ordinary_custody_hold.py"))), "actual_readonly_callable_modules_required")
++            RUN.mkdir(mode=0o700)
++            fsync_directory(RUN.parent)
+             NATIVE_RUN.mkdir(mode=0o700)
+             primary_dir, watchdog_dir = NATIVE_RUN / "primary", NATIVE_RUN / "watchdog"
+             for path in (primary_dir, watchdog_dir):

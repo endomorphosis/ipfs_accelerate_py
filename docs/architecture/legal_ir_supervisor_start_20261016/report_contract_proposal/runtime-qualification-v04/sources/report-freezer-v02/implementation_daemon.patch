@@ -1,0 +1,138 @@
+--- a/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ b/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -5089,6 +5089,7 @@
+         manual_completion_authority_epoch_id: str = "",
+         manual_completion_authority_revalidation_only: bool = False,
+         preserve_task_attempts: bool = False,
++        report_only_candidate_freezing: bool = False,
+         objective_path: Path | None = None,
+         objective_bundle_dir: Path | None = None,
+         generated_status_paths: Sequence[Path | str] = (),
+@@ -5313,6 +5314,11 @@
+         if not isinstance(preserve_task_attempts, bool):
+             raise ValueError("preserve_task_attempts must be boolean")
+         self.preserve_task_attempts = preserve_task_attempts
++        if type(report_only_candidate_freezing) is not bool:
++            raise ValueError("report_only_candidate_freezing must be boolean")
++        self.report_only_candidate_freezing = report_only_candidate_freezing
++        self._report_only_before_attempt = None
++        self._report_only_dispatch = None
+         self.manual_completion_authority_revalidation_only = bool(
+             manual_completion_authority_revalidation_only
+         )
+@@ -34405,6 +34411,13 @@
+         branch_name: str = "",
+         consume_attempt: bool = True,
+     ) -> None:
++        if self.report_only_candidate_freezing:
++            from .report_only_candidate_freezer import capture_before_attempt
++
++            self._report_only_before_attempt = capture_before_attempt(
++                self, state, task, attempt, consume_attempt=consume_attempt,
++            )
++            self._report_only_dispatch = None
+         state.active_task_id = task.task_id
+         identity = self._identity_for_task(task)
+         state.active_task_key = identity.canonical_task_key
+@@ -34892,8 +34905,15 @@
+         task: PortalTask,
+         attempt: int,
+         workspace_path: Path,
++        baseline_ref: str = "",
++        callable_invocation: object = None,
++        control_plane_connection: object = None,
+     ) -> None:
+-        """Start a fresh no-worker grace window immediately before Popen."""
++        """Start a fresh no-worker grace window immediately before Popen.
++
++        The opt-in callable bridge supplies actual retained objects, never JSON.
++        Legacy callsites remain unchanged and cannot enable report freezing.
++        """
+ 
+         try:
+             workspace_value = str(
+@@ -34923,6 +34943,13 @@
+         state.heartbeat_at = timestamp
+         state.last_progress_at = timestamp
+         state.save(self.state_path)
++        if self.report_only_candidate_freezing:
++            from .report_only_candidate_freezer import capture_dispatch
++
++            self._report_only_dispatch = capture_dispatch(
++                self, state, task, attempt, workspace_path, baseline_ref,
++                callable_invocation, control_plane_connection,
++            )
+ 
+     def _mark_active_phase(
+         self,
+@@ -38535,7 +38562,29 @@
+             if submodule_results:
+                 result["submodule_results"] = submodule_results
+             return result
+-        self._run_git(
++        result = self._commit_staged_worktree_changes(
++            worktree_path, task, attempt, status=status,
++        )
++        if submodule_results:
++            result["submodule_results"] = submodule_results
++        return result
++
++    def _commit_staged_worktree_changes(
++        self,
++        worktree_path: Path,
++        task: PortalTask,
++        attempt: int,
++        *,
++        status: str,
++        git_runner: Callable[..., Any] | None = None,
++    ) -> dict[str, Any]:
++        """Original commit tail shared by normal and guarded report-only paths.
++
++        The opt-in public method supplies its internal native bounded runner.
++        This private tail supplies neither staging nor mutation permission.
++        """
++        run_git = self._run_git if git_runner is None else git_runner
++        run_git(
+             [
+                 "-c",
+                 "user.name=Implementation Daemon",
+@@ -38549,15 +38598,30 @@
+             ],
+             cwd=worktree_path,
+         )
+-        commit_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
+-        result = {
+-            "committed": True,
+-            "commit": commit_ref,
+-            "status": status,
+-        }
+-        if submodule_results:
+-            result["submodule_results"] = submodule_results
+-        return result
++        commit_ref = run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
++        return {"committed": True, "commit": commit_ref, "status": status}
++
++    def freeze_report_only_candidate(
++        self,
++        *,
++        outcome: object,
++        freezer_owner: object,
++        protected_source_sha256: dict[str, str],
++        declared_external_storage: dict[str, int],
++    ) -> dict[str, Any]:
++        """Freeze the original report during the genuine active success callback.
++
++        No task/baseline/counter binding is accepted from the caller. The
++        original dispatch capture, current SELECT row, decision runtime and
++        checkout lock must all agree. No validation or acceptance is issued.
++        """
++        from .report_only_candidate_freezer import freeze
++
++        return freeze(
++            self, outcome=outcome, freezer_owner=freezer_owner,
++            protected_source_sha256=protected_source_sha256,
++            declared_external_storage=declared_external_storage,
++        )
+ 
+     @staticmethod
+     def _resolved_commit_ref(cwd: Path, ref: str) -> str:

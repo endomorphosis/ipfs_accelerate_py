@@ -1,0 +1,48 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 1,
+  "actual_exec_session_id": 7303,
+  "actual_final_terminal": {
+    "acceptance_authority": false,
+    "active_success_callback_minted": false,
+    "actual_owner_finalization": {
+      "native_lease_id": "4d5ea070e9814280b3dd84cb1973eebb",
+      "native_lease_released": true,
+      "reservation_id": "ae4f06bd83e24ce7aa10db5c8a75a374",
+      "status": "released"
+    },
+    "actual_phase_closeout": {
+      "lease_id": "676f81b9a7934e959963197ceec14995",
+      "released": true
+    },
+    "actual_provider_execution_qualified": false,
+    "actual_provider_outcome_observed": false,
+    "actual_root_closeout": {
+      "lease_id": "06fe28f7d50f443ead78b6cc735ff78b",
+      "released": true
+    },
+    "canonical_attempt_counters_changed": false,
+    "canonical_tasks_accepted": 0,
+    "completion_authority": false,
+    "failure_reason": "actual_git_command_failed",
+    "failure_type": "ReportFreezerRefusal",
+    "freezer_source_manifest_sha256": "2e88a05782c96aed0f64583f414209a3535502c034b7a8f610f8577d60ae345e",
+    "native_validation_qualified": false,
+    "passed": false,
+    "production_hook_deployed": false,
+    "provider_calls_performed": false,
+    "public_report_freezer_qualified": false,
+    "schema": "legal-ir-report-freezer-git-component@1",
+    "scope": "synthetic Git component only",
+    "source_request_sha256": "d598f30ac4a28d2bdb04c4e99f1c6dbd3fbcc185bd319864caf91da820995232"
+  },
+  "canonical_tasks_accepted": 0,
+  "provider_calls": 0,
+  "schema": "legal-ir-callable-direct-root-observation@1",
+  "source_manifest_sha256": "06e5a8b7d96254ad81765f2eb8c3f260ca4e5732d131b3034669a310589f92d6",
+  "source_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-request-v02.json",
+  "source_request_sha256": "d598f30ac4a28d2bdb04c4e99f1c6dbd3fbcc185bd319864caf91da820995232",
+  "source_scope": "report-freezer-git-component-v01",
+  "terminal_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-r01-terminal.json",
+  "terminal_sha256": "ae14af3b4c2aefc2e7fbf1768091fa3754af40b8753262271a43a4ed2d340b61"
+}

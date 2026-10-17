@@ -1,0 +1,191 @@
+{
+  "acceptance_authority": false,
+  "author_AST_only": true,
+  "author_native_Docker_provider_jobs_performed": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 2201,
+      "path": "README.md",
+      "sha256": "b12b48329b7d5349376390eab8a33ccf75c7a4a9569f887bd64a82c86e00e258"
+    },
+    {
+      "bytes": 1445996,
+      "path": "SOURCE_INVENTORY.json",
+      "sha256": "c3404a30986c25dbf87ec22f3d9bcec342daa7da5b6fc955a066a3901b24deb3"
+    },
+    {
+      "bytes": 12001,
+      "path": "prepare_capsule.py",
+      "sha256": "0e5b54163da36f4177db5c40871be8957d7780558a94564e344a69545d768455"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 2544,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/README.txt",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "fc8648d0736427dc560d798b5cac328c7874ef69a6425b488884951b11bdbe88"
+    },
+    {
+      "bytes": 2741,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/SOURCE_MANIFEST.json",
+      "role": "frozen_callable_source_manifest",
+      "sha256": "f7d06829c5c49b45171baf8a5d80c9f28b91fb49950a4b42f6ca11f117693b18"
+    },
+    {
+      "bytes": 2094,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/ordinary_custody_hold.py.patch",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "3013bfe37598f9a6081eb6c4dd366a29f336cfa74bdeec426a9ef47bb807fe90"
+    },
+    {
+      "bytes": 20236,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/ordinary_success_handoff.py.patch",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "f3a38f2c56d4d228209b546d2aec78223fe9eb073f9dae5f62f895cfd73add9c"
+    },
+    {
+      "bytes": 16803,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb"
+    },
+    {
+      "bytes": 52429,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "9666d65d6503934bc1b865fefa52a02c514ea468c1c2af96c9842fe31cc93eae"
+    },
+    {
+      "bytes": 4614,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/test_callable_handoff_refusals.py",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "65097bb9bf40448890335a8f123e6d1a5725e75664c7d67a1ee1a3928eb5b145"
+    },
+    {
+      "bytes": 10639,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/test_custody_hold_memory.py",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "12e8c6afc9b67bfc72f264c563ca128a6be7571661e37e6d51311c50a1708c9b"
+    },
+    {
+      "bytes": 17380,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/test_handoff_memory.py",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "7a665945fa60024ab5ab24c4427c73d2d8d01893062ec563fbcd6b6bbddb01e2"
+    },
+    {
+      "bytes": 726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/BASELINE.json",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "04b867424871e6ccea9f1fa86227cf1fd68c0470bb6105a06c78a105ef677539"
+    },
+    {
+      "bytes": 9535,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/README.txt",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "10b38f517a8f44e18820bc865dceab4f878f82836abfb1bba7a504340ca20670"
+    },
+    {
+      "bytes": 9124,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/SOURCE_MANIFEST.json",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e"
+    },
+    {
+      "bytes": 654771,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "6bc26dc792b7994ea73e12e92d20949caf62b85940badf6a2d594cb3388a7706"
+    },
+    {
+      "bytes": 52513,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/runner-v02.patch",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "3e65c0bb90ab0490a991765839f901960683921b0ac660590e8cd8983586d37f"
+    },
+    {
+      "bytes": 14298,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/test_callable_contract.py",
+      "role": "frozen_callable_bundle_source",
+      "sha256": "62074232f0c444754dbc7c636f3c2e24ca5107c01873b60d3f657e4e495eb43f"
+    },
+    {
+      "bytes": 15131,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/ordinary_custody_hold.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "e84b97fb4bfb0e9cc2cd880681e1a907e1234bff8c54f8d7b43faa1d3ec42331"
+    },
+    {
+      "bytes": 11227,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/SOURCE_MANIFEST.json",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "59761cd0b0ea3395efb82ef27c6bb9e3fdbe33ce7a118afb8827bea76e2fa5b9"
+    },
+    {
+      "bytes": 636526,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "d23b34181bc376f418e024c10d7b741c9fe2657572c27035f146063482c5c898"
+    },
+    {
+      "bytes": 40401,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "3ff140dc04154f79dd4593a0998d5be928a9e0e6a9895f944103d70ece288d0c"
+    },
+    {
+      "bytes": 564424,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/SOURCE_MANIFEST.json",
+      "role": "actual_original_readonly_capsule_manifest",
+      "sha256": "b2a78de35845425f533f7a361b3998f41628d472fafbbccb3aa346d7b50e0925"
+    },
+    {
+      "bytes": 1026,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/hash_pressure.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "63c6831518647017eb49c88693fe6bbf54ba8c586b9b9826356be4b099df817d"
+    },
+    {
+      "bytes": 70975,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "5bf693ae0eb41bac1d30fcaf8c168bec5fd17b29accbdf7d527afa84e38d42e3"
+    },
+    {
+      "bytes": 17434,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "5df9895bbe8c030b6ba447de3efdf808a880a90720f253273496fa5590f1efaa"
+    },
+    {
+      "bytes": 17009,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/provider_command_environment.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "63350e9eface1a90b2c5bebc0513c6836cd8641406681983435d4ef83821856f"
+    },
+    {
+      "bytes": 12307,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "9b71ae6942bc60a574052e58aa4666563ae02fdaeaa7ae72b5c1958d714adddc"
+    },
+    {
+      "bytes": 141908,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "a5c0bd01ba08f8abd6bf257cc8cdc77a04ef8c2a2e4c11886032df28bb90cb01"
+    },
+    {
+      "bytes": 573274,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/llm_router.py",
+      "role": "frozen_declared_context_or_input_source",
+      "sha256": "fa9edb968434eb46f8c46af70166cde55c7219d5625fb4b9c9cff78b5b9b726b"
+    }
+  ],
+  "payload_bytes": 106757603,
+  "payload_file_count": 2807,
+  "schema": "legal-ir-callable-capsule-preparation-source@1",
+  "status": "source_only_frozen_pending_root_genuine_execution"
+}

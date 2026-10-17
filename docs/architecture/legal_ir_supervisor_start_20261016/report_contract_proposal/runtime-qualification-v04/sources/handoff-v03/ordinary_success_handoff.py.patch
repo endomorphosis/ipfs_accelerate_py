@@ -1,0 +1,62 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py
+@@ -336,6 +336,7 @@
+         self.external_storage = tuple(dict(row) for row in external_storage)
+         self.allocated_leases = []
+         self.invocation = None
++        self.trusted_binary = None
+         self.custody_hold = None
+         self.custody_module = None
+         self.callback_outcome = None
+@@ -783,9 +784,10 @@
+     need(str(getattr(args, "model", "") or "").strip() in {"", "grok-4.7"},
+          "actual_primary_grok_4_7_model_required")
+     bound_args = argparse.Namespace(**vars(args))
+-    bound_args.workspace, bound_args.grok_bin, bound_args.model = workspace, trusted_binary, "grok-4.7"
++    bound_args.workspace, bound_args.grok_bin, bound_args.model = workspace, selected_binary, "grok-4.7"
+     lifecycle = _Lifecycle(owner, watchdog_owner, dict(source_sha256), runner, uuid.uuid4().hex, declared_external_storage)
+     lifecycle.invocation, lifecycle.custody_hold, lifecycle.custody_module = invocation, custody_hold, custody
++    lifecycle.trusted_binary = trusted_binary
+     custody.retain_ordinary_custody_references(custody_hold, (lifecycle, invocation))
+     token = _ACTIVE.set(lifecycle)
+     try:
+@@ -843,6 +845,39 @@
+     for owner in (current.owner, current.watchdog_owner):
+         need(owner.heartbeat(), "actual_callable_owner_heartbeat_failed")
+         owner.check_usage(owner.directory)
++
++
++def ordinary_trusted_binary_resolved(binary):
++    """Join the actual callable resolver result to the original pinned binary.
++
++    No configured alias, basename, UUID or source map alone supplies authority.
++    The trusted wrapper retains the actual original resolver result and both
++    genuine owners before G can allocate private paths or dispatch a provider.
++    """
++    current = _current()
++    need(current is not None and current.invocation is not None
++         and type(binary) is str and current.trusted_binary == binary
++         and binary in current.source_sha256, "actual_original_callable_binary_required")
++    ordinary_callable_context_required(current.invocation)
++    _read_pinned(Path(binary), current.source_sha256[binary])
++
++
++def ordinary_callable_binary_mount_allowed(source):
++    """Only the active callable's identical pinned resolved binary may mount.
++
++    Returns False outside the optional context, retaining all legacy/protected
++    resolver policy. G limits this necessary join to its existing readonly Grok
++    mount at the fixed provider binary destination; no other mount is allowed.
++    """
++    current = _current()
++    if current is None or current.invocation is None:
++        return False
++    need(type(source) is Path or isinstance(source, Path), "actual_resolved_callable_binary_path_required")
++    need(source.is_absolute() and source.resolve(strict=True) == source
++         and not any(item.is_symlink() for item in (source, *source.parents)),
++         "actual_unaliased_callable_binary_mount_required")
++    ordinary_trusted_binary_resolved(str(source))
++    return True
+ 
+ 
+ def ordinary_provider_guard():
