@@ -1,0 +1,35 @@
+{
+  "schema": "legal-ir-bootstrap-hook-call-order-review@1",
+  "runtime_enabled": false,
+  "review_method": "Read-only original source and AST; no actual import, constructor, Git or native execution",
+  "entry_order": [
+    "Final host process admits the genuine original3CPU4096MiB16-slot root and phase before productive bootstrap.",
+    "Import canonical runtime.native_admin_execution, whose own source is stdlib-only and does not import todo_daemon. Package-root imports remain original and need actual fixture observation.",
+    "Enter actual parented admin1CPU512MiB4-slot owner under that exact phase. Construct real executor, bind it in current PID/main thread, start and publicly attach its persistent anchor before importing todo_daemon.",
+    "Original implementation_daemon module eagerly invokes _capture_imported_control_plane_generation before import returns. Its source-generation and immutable-object queries use route._agent_git_output. Original outer OSError/ValueError/SubprocessError catch stays exact.",
+    "Original constructor configures original source/state, optional pool and lifecycle, actual process birth, configured merge target, repository identity, merge queue/DB and target binding, validation cache, GC and checkpoint state in original order.",
+    "With supported private fixture settings the three constructor hooks cover configured branch existence and original common-directory producers. Actual call stacks and ancestry still require genuine observation.",
+    "Stop/reap/release admin group and consumer, then release actual admin owner before binding genuine ReportOnlyNativeHost to the same phase and real caller-owned DB. Pending failures retain original in-process custody references."
+  ],
+  "private_fixture_settings": {
+    "merge_target_branch": "Explicit existing private branch required; absent main/master fallback reaches unhooked _git_current_branch and is not covered by this four-hook composition.",
+    "worktree_pool_enabled": false,
+    "startup_dead_owner_reclaim": "Disable original startup reclaim through its exact supported environment option before constructor; do not mutate canonical lifecycle state.",
+    "production_provider_options": "No production provider policy or route authorization environment; no custom task source or decision runtime.",
+    "paths_and_permissions": "Private state, Git repository, queue/cache and orchestration paths only; child-private umask0077 before creation is not a shared-store migration.",
+    "source_generation": "Do not bypass original source-generation/capsule validation or falsify sealed generation. Dirty/non-Git sources retain original capsule=None fallback for genuine ordinary Git results only. Bound custody failure must escape as dedicated BaseException."
+  },
+  "allocation_limits": {
+    "original_route_manifest_max_bytes": 2097152,
+    "original_route_file_max_bytes": 4194304,
+    "original_route_archive_max_bytes": 67108864,
+    "clean_import_effect": "Successful original eager sealing can allocate original temporary capsule and perform more than six queries. Reserve that actual output allocation before import; finite native command/stdout limits may refuse without fallback.",
+    "old_constructor_breakdown": "Six checkout common-dir, two namespace and one explicit branch query were source inference, not an observed call stack or general constructor bound."
+  },
+  "unqualified": [
+    "Actual full bootstrap, executor/native anchor, host/borrow/cap2 path until separate genuine fixture",
+    "Arbitrary constructor modes, providers, other Git producers, Docker administration and cancellation",
+    "Consumed attempt publication, parked closeout, candidate/legal/logic-family/Lean correctness",
+    "Constructor/pre-decorator/all-writer admission guarantee"
+  ]
+}

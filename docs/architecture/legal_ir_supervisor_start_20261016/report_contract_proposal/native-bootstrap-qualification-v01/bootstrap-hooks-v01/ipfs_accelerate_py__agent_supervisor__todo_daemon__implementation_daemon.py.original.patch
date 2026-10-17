@@ -1,0 +1,455 @@
+--- before/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -4481,6 +4481,9 @@
+         if routed:
+             payload = routed
+         elif routed == {}:
++            from .portal_task_state_control_plane import task_state_connection_is_borrowed
++            if task_state_connection_is_borrowed(path):
++                raise RuntimeError("borrowed task state requires its original authoritative row")
+             if not path.exists():
+                 return cls()
+             try:
+@@ -5089,6 +5092,7 @@
+         manual_completion_authority_epoch_id: str = "",
+         manual_completion_authority_revalidation_only: bool = False,
+         preserve_task_attempts: bool = False,
++        report_only_candidate_freezing: bool = False,
+         objective_path: Path | None = None,
+         objective_bundle_dir: Path | None = None,
+         generated_status_paths: Sequence[Path | str] = (),
+@@ -5313,6 +5317,12 @@
+         if not isinstance(preserve_task_attempts, bool):
+             raise ValueError("preserve_task_attempts must be boolean")
+         self.preserve_task_attempts = preserve_task_attempts
++        if type(report_only_candidate_freezing) is not bool:
++            raise ValueError("report_only_candidate_freezing must be boolean")
++        self.report_only_candidate_freezing = report_only_candidate_freezing
++        self._report_only_before_attempt = None
++        self._report_only_dispatch = None
++        self._report_only_native_host = None
+         self.manual_completion_authority_revalidation_only = bool(
+             manual_completion_authority_revalidation_only
+         )
+@@ -15223,6 +15233,11 @@
+     def run_once(self) -> dict[str, Any]:
+         """Run one pass and establish its durable file-cursor boundary."""
+ 
++        if self.report_only_candidate_freezing:
++            from .report_only_disposition_gate import require_clear_report_only_disposition
++
++            require_clear_report_only_disposition(self)
++            self._require_report_only_native_host().guard_pass_entry(self)
+         retained = self._retained_provider_capacity_deferral()
+         if retained is not None:
+             return {"implementation_result": retained}
+@@ -15237,6 +15252,34 @@
+             if callable(synchronize_file_cursors):
+                 synchronize_file_cursors()
+         return result
++
++    def _require_report_only_native_host(self):
++        from .report_only_native_host import require_report_only_native_host
++
++        return require_report_only_native_host(self)
++
++    def preflight_report_only_candidate(
++        self, state, *, task, preflight_owner, parent_phase,
++        control_plane_connection, protected_source_sha256, declared_external_storage,
++    ):
++        from .report_only_candidate_freezer import preflight_report_only_candidate
++
++        return preflight_report_only_candidate(
++            self, state, task=task, preflight_owner=preflight_owner,
++            parent_phase=parent_phase, control_plane_connection=control_plane_connection,
++            protected_source_sha256=protected_source_sha256,
++            declared_external_storage=declared_external_storage,
++        )
++
++    def report_only_preflight_workspace(self, state, *, task):
++        from .report_only_candidate_freezer import report_only_preflight_workspace
++
++        return report_only_preflight_workspace(self, state, task=task)
++
++    def report_only_preflight_storage_roots(self, state, *, task):
++        from .report_only_candidate_freezer import report_only_preflight_storage_roots
++
++        return report_only_preflight_storage_roots(self, state, task=task)
+ 
+     def _manual_completion_revalidation_store_path(self) -> Path:
+         """Return the shared, board-scoped durable revalidation store."""
+@@ -18574,17 +18617,28 @@
+                 else:
+                     implementation_result = self._run_implementation(selected, state)
+         finally:
+-            retain_selected_intent = bool(
+-                selected is not None
+-                and implementation_result is not None
+-                and implementation_result.get("dispatch_intent_retained")
+-                is True
+-            )
+-            self._reconcile_unselected_implementation_dispatch_intents(
+-                reusable_dispatch_intents,
+-                selected=selected if retain_selected_intent else None,
+-                reason="retained_intent_not_preserved_after_dispatch",
+-            )
++            def _settle_report_only_dispatch_intents():
++                retain_selected_intent = bool(
++                    selected is not None
++                    and implementation_result is not None
++                    and implementation_result.get("dispatch_intent_retained")
++                    is True
++                )
++                self._reconcile_unselected_implementation_dispatch_intents(
++                    reusable_dispatch_intents,
++                    selected=selected if retain_selected_intent else None,
++                    reason="retained_intent_not_preserved_after_dispatch",
++                )
++            if self.report_only_candidate_freezing:
++                from .report_only_native_host import run_original_finalizer
++
++                run_original_finalizer(
++                    self, stage='pass_dispatch_intent_reconciliation',
++                    original_frame={'selected': selected, 'state': state, 'implementation_result': implementation_result, 'reusable_dispatch_intents': reusable_dispatch_intents},
++                    continuation=_settle_report_only_dispatch_intents,
++                )
++            else:
++                _settle_report_only_dispatch_intents()
+         provider_backoff_result = bool(
+             implementation_result
+             and implementation_result.get("reason") == "provider_capacity_backoff"
+@@ -21006,6 +21060,11 @@
+ 
+     @_workspace_mutation_boundary(pool=True)
+     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
++        if self.report_only_candidate_freezing:
++            from .report_only_disposition_gate import require_clear_report_only_disposition
++
++            require_clear_report_only_disposition(self)
++            self._require_report_only_native_host().require_attempt_profile(self, task, state)
+         retained = self._retained_provider_capacity_deferral()
+         if retained is not None:
+             return retained
+@@ -21515,6 +21574,13 @@
+                     result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
+                 self._record_event("implementation_skipped", result)
+                 return result
++            if self.report_only_candidate_freezing:
++                self._require_report_only_native_host().capture_attempt_frame(
++                    self, task=task, state=state, attempt=attempt,
++                    task_claim_path=task_claim_path, task_claim_metadata=task_claim_metadata,
++                    acquired_resource_claims=acquired_resource_claims,
++                    lock_path=lock_path, lock_metadata=lock_metadata,
++                )
+             if authority_revalidation_only:
+                 return self._run_manual_completion_authority_revalidation(
+                     task=task,
+@@ -22667,6 +22733,11 @@
+             self._record_event("implementation_finished", result)
+             return result
+         except subprocess.TimeoutExpired as timeout_exc:
++            if self.report_only_candidate_freezing:
++                return self._require_report_only_native_host().handle_attempt_exception(
++                    self, timeout_exc, task=task, state=state,
++                    lifecycle_record=self._active_worktree_lifecycle,
++                )
+             if protected_path_snapshot is not None:
+                 protected_path_violation = (
+                     self._finalize_implementation_protected_path_fence(
+@@ -22761,6 +22832,11 @@
+             self._record_event("implementation_finished", result)
+             return result
+         except Exception as exc:
++            if self.report_only_candidate_freezing:
++                return self._require_report_only_native_host().handle_attempt_exception(
++                    self, exc, task=task, state=state,
++                    lifecycle_record=self._active_worktree_lifecycle,
++                )
+             if isinstance(exc, provider_capacity_custody.RetentionError):
+                 # Publication failure cannot become a settled callback failure.
+                 # Preserve active accounting/custody and let the native owner
+@@ -22842,38 +22918,50 @@
+             self._record_event("implementation_finished", result)
+             return result
+         finally:
+-            try:
+-                if acquired_lock and not self._release_implementation_lock(
+-                    lock_path,
+-                    lock_metadata,
+-                ):
++            def _settle_report_only_implementation_claims():
++                nonlocal acquired_resource_claims
++                try:
++                    if acquired_lock and not self._release_implementation_lock(
++                        lock_path,
++                        lock_metadata,
++                    ):
++                        logger.warning(
++                            "Refusing to remove implementation lock no longer "
++                            "owned by this attempt: %s",
++                            lock_path,
++                        )
++                except (OSError, RuntimeError):
+                     logger.warning(
+-                        "Refusing to remove implementation lock no longer "
+-                        "owned by this attempt: %s",
++                        "Failed to coordinate removal of implementation lock %s",
+                         lock_path,
++                        exc_info=True,
+                     )
+-            except (OSError, RuntimeError):
+-                logger.warning(
+-                    "Failed to coordinate removal of implementation lock %s",
+-                    lock_path,
+-                    exc_info=True,
+-                )
+-            self._release_implementation_resource_claims(
+-                acquired_resource_claims
+-            )
+-            acquired_resource_claims = []
+-            try:
+-                if acquired_task_claim and not self._release_implementation_task_claim(
+-                    task_claim_path,
+-                    task_claim_metadata,
+-                ):
+-                    logger.warning(
+-                        "Refusing to remove implementation task claim no "
+-                        "longer owned by this attempt: %s",
++                self._release_implementation_resource_claims(
++                    acquired_resource_claims
++                )
++                acquired_resource_claims = []
++                try:
++                    if acquired_task_claim and not self._release_implementation_task_claim(
+                         task_claim_path,
+-                    )
+-            except OSError:
+-                logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
++                        task_claim_metadata,
++                    ):
++                        logger.warning(
++                            "Refusing to remove implementation task claim no "
++                            "longer owned by this attempt: %s",
++                            task_claim_path,
++                        )
++                except OSError:
++                    logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
++            if self.report_only_candidate_freezing:
++                from .report_only_native_host import run_original_finalizer
++
++                run_original_finalizer(
++                    self, stage='implementation_claim_release',
++                    original_frame={'task': task, 'state': state, 'attempt': attempt, 'task_claim_path': task_claim_path, 'task_claim_metadata': task_claim_metadata, 'acquired_task_claim': acquired_task_claim, 'resource_claims': acquired_resource_claims, 'lock_path': lock_path, 'lock_metadata': lock_metadata, 'acquired_lock': acquired_lock, 'lifecycle': self._active_worktree_lifecycle},
++                    continuation=_settle_report_only_implementation_claims,
++                )
++            else:
++                _settle_report_only_implementation_claims()
+ 
+     @staticmethod
+     def _manual_completion_authority_checkout_snapshot(
+@@ -31462,6 +31550,10 @@
+                             "lifecycle_finalize": lifecycle_finalize,
+                         },
+                     )
++            if self.report_only_candidate_freezing:
++                self._require_report_only_native_host().preflight_candidate(
++                    self, state, task, command=tuple(command),
++                )
+             self._mark_implementation_started(
+                 state,
+                 task=task,
+@@ -31645,6 +31737,12 @@
+                                     checkpoint_dir=checkpoint_dir,
+                                 )
+                             )
++                            if self.report_only_candidate_freezing:
++                                return self._require_report_only_native_host().dispatch_provider(
++                                    self, state=state, task=task, attempt=attempt,
++                                    prompt=prompt, environment=provider_environment,
++                                    log_path=log_path, command=tuple(command),
++                                )
+                             progress_observer = (
+                                 self._implementation_progress_observer(
+                                     state,
+@@ -31743,6 +31841,8 @@
+                             },
+                             invoke_provider,
+                         )
++            if self.report_only_candidate_freezing:
++                return self._require_report_only_native_host().require_candidate_result(self, completed)
+             if retry_no_change_probe_only:
+                 probe_reason = str(
+                     (
+@@ -32614,6 +32714,10 @@
+                             ),
+                         }
+         except subprocess.TimeoutExpired as timeout_exc:
++            if self.report_only_candidate_freezing:
++                return self._require_report_only_native_host().handle_attempt_exception(
++                    self, timeout_exc, task=task, state=state, lifecycle_record=lifecycle_record,
++                )
+             returncode = 124
+             if protected_path_snapshot is not None:
+                 protected_path_violation = (
+@@ -33138,6 +33242,10 @@
+                     exception_result=timeout_result,
+                 )
+         except Exception as exc:
++            if self.report_only_candidate_freezing:
++                return self._require_report_only_native_host().handle_attempt_exception(
++                    self, exc, task=task, state=state, lifecycle_record=lifecycle_record,
++                )
+             returncode = 1
+             lifecycle_race_exception = (
+                 isinstance(exc, WorktreeLifecycleError)
+@@ -34405,6 +34513,14 @@
+         branch_name: str = "",
+         consume_attempt: bool = True,
+     ) -> None:
++        if self.report_only_candidate_freezing:
++            from .report_only_candidate_freezer import capture_before_attempt
++
++            self._report_only_before_attempt = capture_before_attempt(
++                self, state, task, attempt, consume_attempt=consume_attempt,
++                worktree_path=worktree_path, branch_name=branch_name,
++            )
++            self._report_only_dispatch = None
+         state.active_task_id = task.task_id
+         identity = self._identity_for_task(task)
+         state.active_task_key = identity.canonical_task_key
+@@ -34892,8 +35008,15 @@
+         task: PortalTask,
+         attempt: int,
+         workspace_path: Path,
++        baseline_ref: str = "",
++        callable_invocation: object = None,
++        control_plane_connection: object = None,
+     ) -> None:
+-        """Start a fresh no-worker grace window immediately before Popen."""
++        """Start a fresh no-worker grace window immediately before Popen.
++
++        The opt-in callable bridge supplies actual retained objects, never JSON.
++        Legacy callsites remain unchanged and cannot enable report freezing.
++        """
+ 
+         try:
+             workspace_value = str(
+@@ -34923,6 +35046,13 @@
+         state.heartbeat_at = timestamp
+         state.last_progress_at = timestamp
+         state.save(self.state_path)
++        if self.report_only_candidate_freezing:
++            from .report_only_candidate_freezer import capture_dispatch
++
++            self._report_only_dispatch = capture_dispatch(
++                self, state, task, attempt, callable_invocation,
++                control_plane_connection,
++            )
+ 
+     def _mark_active_phase(
+         self,
+@@ -38535,7 +38665,29 @@
+             if submodule_results:
+                 result["submodule_results"] = submodule_results
+             return result
+-        self._run_git(
++        result = self._commit_staged_worktree_changes(
++            worktree_path, task, attempt, status=status,
++        )
++        if submodule_results:
++            result["submodule_results"] = submodule_results
++        return result
++
++    def _commit_staged_worktree_changes(
++        self,
++        worktree_path: Path,
++        task: PortalTask,
++        attempt: int,
++        *,
++        status: str,
++        git_runner: Callable[..., Any] | None = None,
++    ) -> dict[str, Any]:
++        """Original commit tail shared by normal and guarded report-only paths.
++
++        The opt-in public method supplies its internal native bounded runner.
++        This private tail supplies neither staging nor mutation permission.
++        """
++        run_git = self._run_git if git_runner is None else git_runner
++        run_git(
+             [
+                 "-c",
+                 "user.name=Implementation Daemon",
+@@ -38549,15 +38701,30 @@
+             ],
+             cwd=worktree_path,
+         )
+-        commit_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
+-        result = {
+-            "committed": True,
+-            "commit": commit_ref,
+-            "status": status,
+-        }
+-        if submodule_results:
+-            result["submodule_results"] = submodule_results
+-        return result
++        commit_ref = run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
++        return {"committed": True, "commit": commit_ref, "status": status}
++
++    def freeze_report_only_candidate(
++        self,
++        *,
++        outcome: object,
++        freezer_owner: object,
++        protected_source_sha256: dict[str, str],
++        declared_external_storage: dict[str, int],
++    ) -> dict[str, Any]:
++        """Freeze the original report during the genuine active success callback.
++
++        No task/baseline/counter binding is accepted from the caller. The
++        original dispatch capture, current SELECT row, decision runtime and
++        checkout lock must all agree. No validation or acceptance is issued.
++        """
++        from .report_only_candidate_freezer import freeze
++
++        return freeze(
++            self, outcome=outcome, freezer_owner=freezer_owner,
++            protected_source_sha256=protected_source_sha256,
++            declared_external_storage=declared_external_storage,
++        )
+ 
+     @staticmethod
+     def _resolved_commit_ref(cwd: Path, ref: str) -> str:
+@@ -57777,16 +57944,29 @@
+     def _git_ref_exists(self, ref: str) -> bool:
+         if not ref:
+             return False
+-        try:
+-            result = subprocess.run(
++        from ipfs_accelerate_py.agent_supervisor.runtime.native_admin_execution import (
++            native_admin_execution_is_bound,
++            run_bound_native_admin_if_present,
++        )
++        if native_admin_execution_is_bound():
++            result = run_bound_native_admin_if_present(
+                 ["git", "rev-parse", "--verify", "--quiet", ref],
+                 cwd=self.repo_root,
+                 text=True,
+                 capture_output=True,
+                 check=False,
+             )
+-        except OSError:
+-            return False
++        else:
++            try:
++                result = subprocess.run(
++                    ["git", "rev-parse", "--verify", "--quiet", ref],
++                    cwd=self.repo_root,
++                    text=True,
++                    capture_output=True,
++                    check=False,
++                )
++            except OSError:
++                return False
+         return result.returncode == 0
+ 
+     def _implementation_lock_path(self) -> Path:

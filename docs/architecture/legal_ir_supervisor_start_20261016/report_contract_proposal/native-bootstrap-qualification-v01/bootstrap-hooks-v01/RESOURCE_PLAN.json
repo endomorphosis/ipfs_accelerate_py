@@ -1,0 +1,27 @@
+{
+  "schema": "legal-ir-bootstrap-hook-source-control-resource-plan@1",
+  "status": "root_reviewed_source_frozen_tests_unexecuted_by_author",
+  "expected_testcases": 26,
+  "expected_testcases_by_file": {"test_source_controls.py": 26},
+  "native_owner": "Existing original run_image_owner_v05; root1CPU4096MiB8slots and actual attached source worker group",
+  "storage_bytes": 33554432,
+  "external_charges": [],
+  "duration_seconds": 900,
+  "gate": "Exact original parent_attachment_gate before pytest, source assembler, runtime or product imports. Gate is an ordering observation, not a native grant.",
+  "finite_outputs": {
+    "junit_and_result_allowance_bytes": 2097152,
+    "regular_test_scratch_allowance_bytes": 4194304,
+    "original_parent_logs_and_receipts_allowance_bytes": 12582912,
+    "remaining_margin_bytes": 14680064,
+    "bytecode_and_pytest_cache": "Disabled",
+    "temporary_case_directories": "Local request-only0700 tmp_path fixture, no tmp_path_factory; preserve regular evidence and reject retained aliases/multilinks in bounded4096-entry post-test scan"
+  },
+  "readonly_input_scope": "Pinned original4module bytes, complete previous daemon source-assembler chain, agreed runtime source/manifest and small native admission/gate closure. Immutable readonly inputs need no external output charge.",
+  "worker_does_not": [
+    "Import original package/runtime/product modules or open a database",
+    "Launch Git/Docker/provider/model/auth/child processes or acquire native leases",
+    "Construct positive native host, executor, daemon, lifecycle or connection stand-ins",
+    "Write runtime sources, canonical state/board/counters/caps, change policy or recover old reservations"
+  ],
+  "qualification": "Source/cold refusal only; worker pass and genuine original parent native finalization remain separate"
+}

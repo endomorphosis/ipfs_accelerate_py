@@ -1,0 +1,61 @@
+{
+  "acceptance_authority": false,
+  "author_executed_jobs_or_tests": false,
+  "canonical_configured_attempt_cap": 2,
+  "canonical_tasks_accepted": 0,
+  "final_same_PID_owner": {
+    "hard_kernel_quota_claimed": false,
+    "host_self_attachment": false,
+    "maximum_admin_commands": 128,
+    "maximum_stderr_bytes": 262144,
+    "maximum_stdout_bytes": 4194304,
+    "maximum_total_output_bytes": 16777216,
+    "must_not_run_under_generic1CPU8slot_owner": true,
+    "native_admin_lifetime_seconds": 600,
+    "original_root_and_phase": {
+      "child_process_slots": 16,
+      "cpu_slots": 3,
+      "memory_mb": 4096
+    },
+    "siblings": [
+      {
+        "child_process_slots": 8,
+        "cpu_slots": 1,
+        "memory_mb": 3072,
+        "role": "fixture_data",
+        "storage_bytes": 134217728
+      },
+      {
+        "child_process_slots": 4,
+        "cpu_slots": 1,
+        "memory_mb": 512,
+        "role": "bootstrap_admin",
+        "storage_bytes": 33554432
+      }
+    ],
+    "status": "draft_wait_for_actual_preparation_and_root_observation"
+  },
+  "partial_admission_and_unknown_custody_cleanup_qualified": false,
+  "preparation": {
+    "actual_original_owner": "run_image_owner_v05.py",
+    "actual_source_inputs_are_readonly": true,
+    "child_process_slots": 8,
+    "complete_capsule_file_count": 2813,
+    "complete_capsule_payload_bytes": 106984106,
+    "cpu_slots": 1,
+    "duration_seconds": 900,
+    "external_charges": [],
+    "four_assembled_module_bytes": 3807556,
+    "four_full_hook_modules_written_only_after_actual_attachment": true,
+    "manifests_result_parent_receipt_and_log_allowance_bytes": 8388608,
+    "maximum_seed_payload_bytes": 1048576,
+    "memory_mb": 4096,
+    "remaining_envelope_bytes": 13988882,
+    "reviewed_maximum_output_bytes": 120228846,
+    "storage_bytes": 134217728
+  },
+  "qualification_scope": "Configured-profile cap2 refusal with actual SELECT-only borrow witness. No canonical selection/cap-exhaustion, consumed attempt, productive pass or legal/Lean claim.",
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-bootstrap-full-host-resource-plan@1",
+  "source_only_authored": true
+}

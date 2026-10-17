@@ -1,0 +1,31 @@
+{
+  "author_tests_executed": 0,
+  "bounds": {
+    "JUnit_bytes_postwrite_guard": 16777216,
+    "final_apparent_bytes": 33554432,
+    "final_inventory_entries": 4096,
+    "log_planning_allowance_bytes": 4194304,
+    "result_bytes": 262144
+  },
+  "caveat": "Aggregate original SDK storage/process/RSS sampling is cooperative, not kernel quota; log allowance is planning, not separate hard cap. Worker pass is not native finalization.",
+  "duration_seconds": 900,
+  "external_charges": [],
+  "name": "legal-ir-native-admin-source-controls-r01",
+  "ordering": "Actual parent attachment gate before pytest, runtime alias or product effects. Runtime is imported under denial-only alias; audit guards forbid process/project-package imports inside controls.",
+  "parent": "unchanged actual original V05 generic1CPU4096MiB8slot root/phase/leaf, not a positive3CPU16 host grant",
+  "positive_native_executor_cases": 0,
+  "productive_actions_forbidden": [
+    "subprocess/Git/Docker/HTTP",
+    "providers/models/authentication",
+    "database open",
+    "new native admissions beyond original parent",
+    "fake positive SDK owner/host/connection",
+    "canonical board/cap/counter mutation",
+    "runtime installation",
+    "GitHub qualification"
+  ],
+  "schema": "legal-ir-native-admin-source-controls-resource-plan@1",
+  "source_only": true,
+  "storage_bytes": 33554432,
+  "test_fixture": "module-local0700 tmp_path under charged TMPDIR/cases, no builtin tmp_path_factory/current aliases; explicit own aliases/hardlinks cleaned in finally"
+}
