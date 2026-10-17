@@ -90,6 +90,8 @@ LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS: Final = 125.0
 _LOCAL_COMPLETION_REQUEST_DEADLINE = ContextVar("local_completion_request_deadline", default=None)
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+PLANNING_UNKNOWN_ABANDONMENT_OPERATION: Final = "planning_unknown_abandonment_decide/v1"
+PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID: Final = "planning-unknown-abandonment-administrator"
 NAMESPACE_GUARD_ADJUDICATION_OPERATION: Final = (
     "namespace_guard_nonreachability_adjudicate/v1"
 )
@@ -463,6 +465,7 @@ _NATIVE_EXECUTION_STATUS_CONTROL_KEYS: Final = frozenset({
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         NAMESPACE_GUARD_ADJUDICATION_OPERATION,
+        PLANNING_UNKNOWN_ABANDONMENT_OPERATION,
         "source.get",
         NATIVE_EXECUTION_STATUS_OPERATION,
         "local.task.validation.run",
@@ -1121,6 +1124,7 @@ class OwnerClientGrant:
             "task_cid",
             "reviewed_preflight_cid",
             "recovery_scope_cid",
+            "abandonment_scope_cid",
             NATIVE_EXECUTION_STATUS_SCOPE,
             "subscription_id",
             "consumer_id",
@@ -5525,6 +5529,9 @@ class TypedStateOwnerGateway:
         self._native_execution_status_creator = (os.getpid(), _process_start_time_ticks(os.getpid()))
         self._legacy_merge_queue_service: Any | None = None
         self._legacy_merge_recovery_service: Any | None = None
+        self._planning_unknown_abandonment_service: Any | None = None
+        self._planning_unknown_abandonment_creator_pid = os.getpid()
+        self._planning_unknown_abandonment_creator_birth = kernel_process_birth_id(os.getpid())
         self._namespace_guard_adjudication_service: Any | None = None
         self._namespace_guard_adjudication_creator_pid = os.getpid()
         self._namespace_guard_adjudication_creator_birth = kernel_process_birth_id(os.getpid())
@@ -6098,6 +6105,105 @@ class TypedStateOwnerGateway:
         _mirror_legacy_merge_binding(
             "legacy_merge_recovery_binding", repository_id, target_branch
         )
+
+    def _require_planning_unknown_abandonment_owner(self) -> None:
+        self._require_live_server_binding()
+        if (os.getpid() != self._planning_unknown_abandonment_creator_pid
+                or kernel_process_birth_id(os.getpid())
+                != self._planning_unknown_abandonment_creator_birth):
+            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment requires its original creator process")
+
+
+    def bind_planning_unknown_abandonment_service(
+        self, *, expected_identity: Mapping[str, Any],
+        authority_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Register one registered administrative decision context with the exclusive owner.
+
+        Only the host administrator calls this binding API. Transport callers
+        provide a context identity and CAS revision, never paths or source bytes.
+        Binding opens no database and issues no ordinary worker capability.
+        """
+        from ..todo_daemon.planning_unknown_abandonment import scope as planning_unknown_abandonment_scope
+        from .database_task_source import DatabaseTaskSource
+        from .intent_repository import IntentRepository
+
+        frozen = canonical_json_bytes(dict(authority_context))
+        if len(frozen) > 64 * 1024:
+            raise TypedStateOwnerProtocolError("UNKNOWN abandonment context exceeds its bound")
+        with self._transaction_lock:
+            self._require_planning_unknown_abandonment_owner()
+            if (canonical_json_bytes(dict(expected_identity))
+                    != canonical_json_bytes(dict(self.identity))):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment owner identity differs")
+            if self._planning_unknown_abandonment_service is not None:
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment service is already bound")
+            context = json.loads(frozen)
+            if (canonical_json_bytes(context.get("registered_owner_identity"))
+                    != canonical_json_bytes(dict(self.identity))
+                    or canonical_json_bytes(context.get("registered_creator"))
+                    != canonical_json_bytes({
+                        "pid": os.getpid(), "process_birth_id": kernel_process_birth_id(os.getpid())})):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment registered owner/creator differs")
+            scope = dict(planning_unknown_abandonment_scope(context))
+            database_paths = [(row[0],) for row in self._connection.execute(
+                "SELECT path FROM duckdb_databases() WHERE database_name = current_database()"
+            ).fetchall()]
+            if (database_paths != [(scope["canonical_store_id"],)]
+                    or scope["logical_store_id"] != self.store_id
+                    or self.identity.get("store_id") != self.store_id):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment canonical store differs")
+            repository = IntentRepository(
+                bound_connection=self._connection, install_schema=False,
+                owner_id=str(self.identity["server_id"]),
+                session_id=PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID,
+            )
+            source = DatabaseTaskSource(intent=repository, install_schema=False)
+            self._planning_unknown_abandonment_service = (source, frozen, scope)
+            return MappingProxyType(dict(scope))
+
+
+    def issue_planning_unknown_abandonment_grant(
+        self, *, peer_pid: int | None = None,
+        ttl_seconds: float = 60.0,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Issue a dedicated ADMIN service capability, never a worker grant."""
+        with self._transaction_lock:
+            self._require_planning_unknown_abandonment_owner()
+            service = self._planning_unknown_abandonment_service
+            if service is None:
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment service is unavailable")
+            scope = service[2]
+            selected_pid = os.getpid() if peer_pid is None else int(peer_pid)
+            return self.issue_grant(
+                client_id=PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID,
+                process_birth_id=kernel_process_birth_id(selected_pid),
+                peer_pid=selected_pid, ttl_seconds=ttl_seconds,
+                allowed_operations=(PLANNING_UNKNOWN_ABANDONMENT_OPERATION,),
+                entity_scopes={"task_cid": scope["task_cid"],
+                               "abandonment_scope_cid": scope["abandonment_scope_cid"]},
+            )
+
+
+    def _require_planning_unknown_abandonment_grant(
+        self, grant: OwnerClientGrant,
+    ) -> tuple[Any, bytes, Mapping[str, Any]]:
+        self._require_planning_unknown_abandonment_owner()
+        service = self._planning_unknown_abandonment_service
+        if service is None:
+            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment service is unavailable")
+        scope = service[2]
+        if (grant.client_id != PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID
+                or grant.allowed_operations != frozenset({PLANNING_UNKNOWN_ABANDONMENT_OPERATION})
+                or grant.allowed_command_operations or grant.allowed_database_task_commands
+                or grant.tenant_id or grant.federation_id or grant.authority_profile
+                or not grant.process_birth_id
+                or dict(grant.entity_scopes) != {
+                    "task_cid": scope["task_cid"],
+                    "abandonment_scope_cid": scope["abandonment_scope_cid"]}):
+            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment requires its exact ADMIN grant")
+        return service
+
 
     def _require_namespace_guard_adjudication_owner(self) -> None:
         self._require_live_server_binding()
@@ -6753,6 +6859,10 @@ class TypedStateOwnerGateway:
             self._require_namespace_guard_adjudication_grant(grant)
             if grant.process_birth_id != kernel_process_birth_id(selected_pid):
                 raise TypedStateOwnerAuthorizationError("adjudication administrator birth differs")
+        if PLANNING_UNKNOWN_ABANDONMENT_OPERATION in operations:
+            self._require_planning_unknown_abandonment_grant(grant)
+            if grant.process_birth_id != kernel_process_birth_id(selected_pid):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment administrator birth differs")
         if NATIVE_EXECUTION_STATUS_OPERATION in operations:
             with self._transaction_lock:
                 self._require_native_execution_status_grant(grant)
@@ -7052,6 +7162,10 @@ class TypedStateOwnerGateway:
             self._namespace_guard_adjudication_service = None
             if adjudication_service is not None:
                 adjudication_service[0].close()
+            abandonment_service = self._planning_unknown_abandonment_service
+            self._planning_unknown_abandonment_service = None
+            if abandonment_service is not None:
+                abandonment_service[0].close()
             with self._eaaef_service_bind_lock:
                 plan_service = self._eaaef_plan_r2_owner_service
                 command_service = self._eaaef_typed_owner_command_service
@@ -7938,6 +8052,25 @@ class TypedStateOwnerGateway:
                             )
                             source, frozen_context, _scope = self._require_namespace_guard_adjudication_grant(grant)
                             result = source.adjudicate_namespace_guard_nonreachability(
+                                request["payload"], authority_context=json.loads(frozen_context),
+                            )
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": dict(result)}
+                    elif action == PLANNING_UNKNOWN_ABANDONMENT_OPERATION:
+                        if (set(request) != {"schema", "action", "request_id", "payload"}
+                                or request.get("schema") != TYPED_STATE_OWNER_SCHEMA):
+                            raise TypedStateOwnerProtocolError("UNKNOWN abandonment request fields differ")
+                        if transaction_active or type(request.get("payload")) is not dict:
+                            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment requires a standalone request")
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError("UNKNOWN abandonment owner is busy")
+                        try:
+                            grant = self._require_active_grant(
+                                grant, peer_identity=peer_identity, session_id=session_id,
+                            )
+                            source, frozen_context, _scope = self._require_planning_unknown_abandonment_grant(grant)
+                            result = source.record_planning_unknown_abandonment_decision(
                                 request["payload"], authority_context=json.loads(frozen_context),
                             )
                         finally:
@@ -14631,6 +14764,25 @@ class TypedStateOwnerConnection:
             )
         return dict(result)
 
+    def record_planning_unknown_abandonment_decision(
+        self, context_cid: str, expected_task_revision: int,
+    ) -> Mapping[str, Any]:
+        """Append/replay a separately granted decision; grant no settlement/retry."""
+        if self._active:
+            raise TypedStateOwnerProtocolError("UNKNOWN abandonment requires a standalone request")
+        payload = {"operation": PLANNING_UNKNOWN_ABANDONMENT_OPERATION,
+                   "context_cid": context_cid, "expected_task_revision": expected_task_revision}
+        try:
+            response = self._request(PLANNING_UNKNOWN_ABANDONMENT_OPERATION, payload=payload)
+            result = response.get("result")
+            if not isinstance(result, Mapping):
+                raise TypedStateOwnerProtocolError("UNKNOWN abandonment result is invalid")
+        except TypedStateOwnerRemoteError:
+            raise
+        except (OSError, TypedStateOwnerProtocolError) as exc:
+            raise TypedStateOwnerPlanningUnknownAbandonmentOutcomeUnknownError(context_cid) from exc
+        return MappingProxyType(dict(result))
+
     def adjudicate_namespace_guard_nonreachability(
         self, payload: Mapping[str, Any],
     ) -> Mapping[str, Any]:
@@ -14757,6 +14909,9 @@ def open_typed_state_owner_connection(
 
 
 __all__ = [
+    "PLANNING_UNKNOWN_ABANDONMENT_OPERATION",
+    "PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID",
+    "TypedStateOwnerPlanningUnknownAbandonmentOutcomeUnknownError",
     "NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID",
     "NAMESPACE_GUARD_ADJUDICATION_OPERATION",
     "TypedStateOwnerNamespaceGuardOutcomeUnknownError",
@@ -14887,6 +15042,14 @@ class TypedStateOwnerDatabaseTaskCommandError(TypedStateOwnerError):
         # Never forward a repository or driver exception message over the
         # wire. It can contain SQL, paths, or caller-controlled values.
         super().__init__("database-task command failed an owner gate")
+
+class TypedStateOwnerPlanningUnknownAbandonmentOutcomeUnknownError(TypedStateOwnerError):
+    """A separate ADMIN decision may be durable despite response loss."""
+
+    def __init__(self, context_cid: str) -> None:
+        self.context_cid = str(context_cid or "")
+        super().__init__("UNKNOWN abandonment audit outcome is unknown")
+
 
 class TypedStateOwnerNamespaceGuardOutcomeUnknownError(TypedStateOwnerError):
     """An exact ADMIN audit may have committed without a received response."""

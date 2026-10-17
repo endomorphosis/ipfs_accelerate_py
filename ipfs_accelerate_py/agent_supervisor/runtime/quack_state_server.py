@@ -4602,6 +4602,29 @@ class QuackStateServer:
         gateway.bind_database_status_scope(**binding)
         _mirror_quack_owner_status_scope_ready()
 
+    def bind_planning_unknown_abandonment_service(
+        self, *, authority_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Bind the reviewed audit-only ADMIN service to this original owner.
+
+        The live server supplies its identity and existing exclusive handle.
+        Callers cannot choose an alternate connection, owner or catalog path.
+        """
+        with self._lock:
+            if (self._lifecycle is not ServerLifecycle.READY
+                    or self._command_gateway is None or self._identity is None):
+                raise QuackStateServerNotRunningError(
+                    "UNKNOWN abandonment requires a ready original state owner"
+                )
+            gateway = self._command_gateway
+            if (gateway._connection is not self._connection
+                    or gateway._transaction_lock is not self._lock):
+                raise QuackStateServerControlError("UNKNOWN abandonment owner binding changed")
+            return gateway.bind_planning_unknown_abandonment_service(
+                expected_identity=self._identity.to_dict(), authority_context=authority_context,
+            )
+
+
     def bind_namespace_guard_adjudication_service(
         self, *, authority_context: Mapping[str, Any],
     ) -> Mapping[str, Any]:
