@@ -84,12 +84,13 @@ def test_omitted_explicit_namespace_preserves_existing_branch_inference(tmp_path
     assert not list(tmp_path.rglob('*.duckdb'))
 
 
-def test_legacy_configured_board_keeps_existing_namespace_inference_inputs():
+def test_legacy_configured_board_preserves_declared_namespace_and_branch_inputs():
     board=_board()
     legacy=DatabaseProgramConfig(authority_mode='legacy_markdown',task_source_kind='legacy-markdown',
                                  explicit_legacy=True)
     common=scheduler.configured_board_common_args(replace(board,database_program=legacy),implement=False)
-    assert '--board-namespace' not in common
+    assert common.count('--board-namespace')==1
+    assert common[common.index('--board-namespace')+1]==board.board_namespace
     assert common[common.index('--merge-target-branch')+1]==MISMATCHED_BRANCH
 
 
