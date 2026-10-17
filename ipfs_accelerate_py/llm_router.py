@@ -8733,7 +8733,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         cmd.extend(["--resume", resume_session_id])
                         env = named_lifetime.environment
                         timeout = named_lifetime.headless_timeout(timeout)
-                    elif temperature_supplied:
+                    elif temperature_supplied or output_token_budget is not None:
                         env = sampling_scope.enter_context(_grok_zero_temperature_environment(
                             env, model=model, command=cmd, zero_temperature=temperature_supplied,
                             output_token_budget=output_token_budget))
