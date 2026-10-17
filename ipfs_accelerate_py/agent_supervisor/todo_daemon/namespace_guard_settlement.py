@@ -113,8 +113,22 @@ def _rows(daemon: Any, table: str, attempt_id: str) -> list[dict[str, Any]]:
 def _find_native_audit(daemon: Any, adjudication: Mapping[str, Any]) -> dict[str, Any]:
     evidence_id = proof._cid({"namespace": proof.EVIDENCE_KIND,
                               "task_cid": proof.TASK_CID, "proof_id": adjudication["proof_id"]})
-    actual = [dict(item) for item in daemon.task_source.current_evidence_for_task(proof.TASK_CID)
-              if item["evidence_id"] == evidence_id]
+    # Administrative adjudication is immutable history, not expiring current
+    # completion evidence. Preserve the repository's normal freshness policy;
+    # read only this exact protected audit through its real native connection.
+    columns = ("evidence_id", "parent_evidence_id", "task_cid", "evidence_kind",
+               "digest", "created_at", "body_json")
+    with daemon.task_source.intent._connection(write=False) as connection:
+        rows = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,created_at,body_json "
+            "FROM evidence_nodes WHERE evidence_id = ? AND task_cid = ? AND evidence_kind = ? LIMIT 2",
+            [evidence_id, proof.TASK_CID, proof.EVIDENCE_KIND],
+        ).fetchall()
+    actual = []
+    for row in rows:
+        record = dict(row) if isinstance(row, Mapping) else dict(zip(columns, row))
+        record["body"] = proof._decode(record.pop("body_json"))
+        actual.append(record)
     audit = proof._one(actual, noun="durable canonical ADMIN audit")
     proof._need(audit["task_cid"] == proof.TASK_CID and audit["evidence_kind"] == proof.EVIDENCE_KIND
                 and audit["parent_evidence_id"] == "" and audit["digest"] == proof._cid(adjudication)
@@ -122,8 +136,9 @@ def _find_native_audit(daemon: Any, adjudication: Mapping[str, Any]) -> dict[str
     return audit
 
 
-def _audit_event(daemon: Any, evidence_id: str) -> dict[str, Any]:
+def _audit_event(daemon: Any, audit: Mapping[str, Any]) -> dict[str, Any]:
     """Read the unique real native event, without manufacturing an event ID."""
+    evidence_id = audit["evidence_id"]
     matches = []
     after = 0
     for _page in range(16):
@@ -141,6 +156,17 @@ def _audit_event(daemon: Any, evidence_id: str) -> dict[str, Any]:
                 and event["task_cid"] == proof.TASK_CID
                 and event["body"]["body"]["evidence_id"] == evidence_id,
                 "native ADMIN audit event subject differs")
+    envelope = event["body"]
+    proof._need(set(envelope) == {"schema", "event_type", "subject_id", "body", "recorded_at", "owner_id"}
+                and envelope["event_type"] == event["event_type"]
+                and envelope["recorded_at"] == event["recorded_at"]
+                and envelope["body"] == {"evidence_id": evidence_id, "parent_evidence_id": "",
+                    "task_cid": proof.TASK_CID, "evidence_kind": proof.EVIDENCE_KIND,
+                    "digest": audit["digest"], "body": audit["body"],
+                    "created_at": audit["created_at"], "revision": 0}
+                and event["event_id"] == proof._cid({key: event[key] for key in
+                    ("stream_id", "sequence", "global_sequence", "event_type", "body")}),
+                "native ADMIN audit event/content binding differs")
     return event
 
 
@@ -164,7 +190,7 @@ def settle_namespace_guard_adjudicated_attempt(
     snapshot, identity = proof._load_authority(authority_context, check_live_stores=False)
     adjudication = proof._adjudication_receipt(snapshot, identity, authority_context)
     audit = _find_native_audit(daemon, adjudication)
-    audit_event = _audit_event(daemon, audit["evidence_id"])
+    audit_event = _audit_event(daemon, audit)
     expected = snapshot["execution"]["2"]
     before_provider = _rows(daemon, "provider_invocations", proof.ATTEMPT_ID)
     before_effect = _rows(daemon, "effect_claims", proof.ATTEMPT_ID)
@@ -272,7 +298,7 @@ def rearm_namespace_guard_settled_attempt(
     snapshot, identity = proof._load_authority(authority_context, check_live_stores=False)
     adjudication = proof._adjudication_receipt(snapshot, identity, authority_context)
     audit = _find_native_audit(daemon, adjudication)
-    event = _audit_event(daemon, audit["evidence_id"])
+    event = _audit_event(daemon, audit)
     original = snapshot["execution"]["2"]
     provider = _rows(daemon, "provider_invocations", proof.ATTEMPT_ID)
     effects = _rows(daemon, "effect_claims", proof.ATTEMPT_ID)
