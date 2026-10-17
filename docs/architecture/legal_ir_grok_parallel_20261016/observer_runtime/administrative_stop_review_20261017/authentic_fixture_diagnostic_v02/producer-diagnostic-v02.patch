@@ -1,0 +1,122 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/produce_authentic_unknown_master_v01.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/produce_authentic_unknown_master_diagnostic_v02.py
+@@ -172,11 +172,75 @@
+     return found[0]
+ 
+ 
++# Diagnostic state never includes audit arguments, command text, addresses,
++# environment values, local variables, source text, or exception reprs.
++# It records only the first and last blocked event, a bounded frame crosswalk,
++# and an exact exception-object join when main catches the propagated refusal.
++_DIAGNOSTIC_REPO = None
++_DIAGNOSTIC_STAGE = "before_native_imports"
++_DIAGNOSTIC_BLOCK_COUNT = 0
++_DIAGNOSTIC_FIRST = None
++_DIAGNOSTIC_LAST = None
++_DIAGNOSTIC_LAST_ERROR = None
++
++
++def diagnostic_frame(frame):
++    filename = frame.f_code.co_filename
++    qualified_prefix = (_DIAGNOSTIC_REPO + "/") if _DIAGNOSTIC_REPO else None
++    stdlib_prefix = str(Path(os.__file__).parent) + "/"
++    if qualified_prefix and filename.startswith(qualified_prefix):
++        source_root, name = "qualified_product", filename[len(qualified_prefix):]
++    elif filename == __file__:
++        source_root, name = "diagnostic_producer", Path(__file__).name
++    elif filename.startswith(stdlib_prefix):
++        source_root, name = "python_stdlib", filename[len(stdlib_prefix):]
++    elif filename.startswith("<") and filename.endswith(">") and len(filename) <= 128:
++        source_root, name = "python_pseudo_filename", filename
++    else:
++        # An unregistered filename is identified by hash, without exposing
++        # an ambient pathname. Parent can join it to its admitted source map.
++        source_root, name = "outside_known_source_roots", None
++    if name is not None and (len(name) > 768 or any(ord(c) < 32 or ord(c) > 126 for c in name)):
++        name = None
++    function = frame.f_code.co_name
++    if len(function) > 128 or any(ord(c) < 32 or ord(c) > 126 for c in function):
++        function = "<unrepresentable-function-name>"
++    return {"source_root": source_root, "filename": name,
++            "filename_sha256": hashlib.sha256(filename.encode("utf-8", "replace")).hexdigest(),
++            "line": frame.f_lineno, "function": function}
++
++
++def refused_dispatch(event, message):
++    global _DIAGNOSTIC_BLOCK_COUNT, _DIAGNOSTIC_FIRST, _DIAGNOSTIC_LAST, _DIAGNOSTIC_LAST_ERROR
++    _DIAGNOSTIC_BLOCK_COUNT += 1
++    frames = []
++    frame = sys._getframe(2)
++    try:
++        while frame is not None and len(frames) < 24:
++            frames.append(diagnostic_frame(frame))
++            frame = frame.f_back
++        truncated = frame is not None
++    finally:
++        del frame
++    diagnostic = {"schema": "authentic-fixture-denied-dispatch-observation@2",
++        "event": event, "stage": _DIAGNOSTIC_STAGE,
++        "blocked_event_ordinal": _DIAGNOSTIC_BLOCK_COUNT,
++        "frames": frames, "frames_truncated": truncated,
++        "audit_arguments_exported": False, "environment_exported": False,
++        "local_variables_exported": False, "dispatch_authorized": False}
++    error = RuntimeError(message)
++    if _DIAGNOSTIC_FIRST is None:
++        _DIAGNOSTIC_FIRST = diagnostic
++    _DIAGNOSTIC_LAST = diagnostic
++    _DIAGNOSTIC_LAST_ERROR = error
++    raise error
++
++
+ def forbid_external(event, args):
+     if event in {"subprocess.Popen", "os.system", "os.posix_spawn", "os.exec", "socket.connect", "socket.getaddrinfo"}:
+-        raise RuntimeError("authentic fixture forbids provider/process/network dispatch")
++        refused_dispatch(event, "authentic fixture forbids provider/process/network dispatch")
+     if event == "socket.__new__" and len(args) > 1 and args[1] != 1:
+-        raise RuntimeError("authentic fixture forbids nonlocal sockets")
++        refused_dispatch(event, "authentic fixture forbids nonlocal sockets")
+ 
+ 
+ class InertFactoryRefusal(RuntimeError):
+@@ -264,8 +328,12 @@
+     write_new(root / "producer-request.json", raw=raw)
+     # From this point all attempted child/network dispatch is a qualification
+     # failure; native runner empty tracks must not silently start a supervisor.
++    global _DIAGNOSTIC_REPO, _DIAGNOSTIC_STAGE
++    _DIAGNOSTIC_REPO = str(repo)
++    _DIAGNOSTIC_STAGE = "prepare_pinned_backend_and_imports"
+     sys.addaudithook(forbid_external)
+     loader, duckdb, installed = prepare_imports(request, root)
++    _DIAGNOSTIC_STAGE = "import_native_product_classes"
+     from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import DatabaseCoordinator, TASK_CLAIM_FAILURE_REARM_OPERATION
+     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import DatabaseTaskSource
+     from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+@@ -274,6 +342,7 @@
+     from ipfs_accelerate_py.agent_supervisor.todo_daemon import planning_unknown_abandonment as policy
+     from ipfs_accelerate_py.agent_supervisor.runtime import multi_supervisor_runner
+     loader._loaded_product_sources(request["product_sources"])
++    _DIAGNOSTIC_STAGE = "construct_native_canonical_store"
+     source = DatabaseTaskSource(intent=IntentRepository(root / "canonical.duckdb"))
+     repository = source.intent
+     repository.upsert_objective(objective_id="authentic-fixture-objective", objective_alias="FIXTURE-O", title="DISPOSABLE FIXTURE ONLY")
+@@ -399,6 +468,7 @@
+                  "genuine native ACTIVE observation differs")
+             active_pin = write_new(root / "master-active-binding-observed.json", raw=active_raw)
+ 
++    _DIAGNOSTIC_STAGE = "run_genuine_empty_track_native_master"
+     summary = multi_supervisor_runner.run_supervisor_tracks([], repo_root=repo, common_args=(),
+         duration_seconds=request["master_duration_seconds"], heartbeat_interval_seconds=0.1,
+         stop_grace_seconds=1.0, python_executable=sys.executable, master_pid_path=master,
+@@ -473,7 +543,11 @@
+         produce(args.request, args.request_sha256)
+     except Exception as error:
+         sys.stderr.write(json.dumps({"fixture_failed": True, "error_type": type(error).__name__,
+-            "error_message": str(error).encode("utf-8", "replace")[:4096].decode("utf-8", "ignore")}) + "\n")
++            "error_message": str(error).encode("utf-8", "replace")[:4096].decode("utf-8", "ignore"),
++            "dispatch_diagnostic": {"blocked_event_count": _DIAGNOSTIC_BLOCK_COUNT,
++                "first_blocked_event": _DIAGNOSTIC_FIRST, "last_blocked_event": _DIAGNOSTIC_LAST,
++                "propagated_error_is_last_blocked_event": error is _DIAGNOSTIC_LAST_ERROR,
++                "observation_only": True, "historical_unknown_resolved": False}}) + "\n")
+         sys.stderr.flush()
+         os._exit(2)
+ 

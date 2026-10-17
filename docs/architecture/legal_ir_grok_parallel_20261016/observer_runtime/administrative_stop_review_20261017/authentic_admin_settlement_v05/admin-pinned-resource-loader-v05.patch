@@ -1,0 +1,11 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_admin_worker_v04.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py
+@@ -32,7 +32,7 @@
+ MAX_SOURCE = 8 * 1024**2
+ MAX_DATABASE = 64 * 1024**2
+ AB_MANIFEST_SHA = "244016f11f23d14788da81456825dfb900dc2dc2cd1bb8461ab9ba2e7d28ad31"
+-LOADER_SHA = "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
++LOADER_SHA = "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+ REQUEST_KEYS = {"schema", "fixture_only", "production_access", "unbound_input_pin",
+     "worker_source_pin", "python_pin", "parent_kernel_identity", "control_scope",
+     "control_scope_identity", "deadline_monotonic_ns", "nonce"}

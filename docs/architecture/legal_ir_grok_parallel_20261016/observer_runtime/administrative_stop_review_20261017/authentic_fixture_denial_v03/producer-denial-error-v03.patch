@@ -1,0 +1,11 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/produce_authentic_unknown_master_diagnostic_v02.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-denial-v03/produce_authentic_unknown_master_diagnostic_v03.py
+@@ -228,7 +228,7 @@
+         "frames": frames, "frames_truncated": truncated,
+         "audit_arguments_exported": False, "environment_exported": False,
+         "local_variables_exported": False, "dispatch_authorized": False}
+-    error = RuntimeError(message)
++    error = PermissionError(message)
+     if _DIAGNOSTIC_FIRST is None:
+         _DIAGNOSTIC_FIRST = diagnostic
+     _DIAGNOSTIC_LAST = diagnostic

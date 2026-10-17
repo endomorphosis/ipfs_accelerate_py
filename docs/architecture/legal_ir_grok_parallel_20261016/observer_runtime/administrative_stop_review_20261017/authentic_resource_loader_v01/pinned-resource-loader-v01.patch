@@ -1,0 +1,365 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py
+@@ -18,6 +18,8 @@
+ import argparse
+ import hashlib
+ import importlib.abc
++import importlib.resources.abc
++import io
+ import importlib.util
+ import json
+ import os
+@@ -46,6 +48,16 @@
+ MAX_STREAM = 65536
+ MAX_PRODUCT_FILES = 4096
+ MAX_PRODUCT_BYTES = 256 * 1024 * 1024
++MAX_PRODUCT_ENTRIES = 32768
++MAX_RESOURCE_BYTES = 1024 * 1024
++MAX_RESOURCE_TOTAL = 4 * 1024 * 1024
++RESOURCE_PACKAGE = "ipfs_accelerate_py.agent_supervisor.task_sources"
++RESOURCE_DIRECTORY = "ipfs_accelerate_py/agent_supervisor/task_sources/sql"
++RESOURCE_FILENAMES = (
++    "0001_control_plane.sql", "0002_causal_event_federation_core.sql",
++    "0002_tasks_index_repair.sql", "0003_state_server_restart_identity.sql",
++    "0004_hash_observations.sql", "0005_tasks_index_repair.sql",
++)
+ # Parent-controlled hard termination starts by 25 seconds and has a separate
+ # five-second reap allowance. The child begins its own graceful teardown early.
+ CHILD_SECONDS = 25.0
+@@ -195,68 +207,316 @@
+     return product_root
+ 
+ 
++def _product_root(root):
++    root = Path(root)
++    package = root / "ipfs_accelerate_py"
++    if (not root.is_absolute() or root.resolve(strict=True) != root
++            or package.resolve(strict=True) != package or not package.is_dir()):
++        raise ValueError("pinned product root or package alias")
++    return root
++
++
++def _sql_paths(root):
++    root = _product_root(root)
++    directory = root / RESOURCE_DIRECTORY
++    if directory.resolve(strict=True) != directory or not directory.is_dir():
++        raise ValueError("pinned SQL directory alias or absence")
++    found, count = {}, 0
++    with os.scandir(directory) as entries:
++        for entry in entries:
++            count += 1
++            if count > 64:
++                raise ValueError("pinned SQL directory entry bound")
++            info = entry.stat(follow_symlinks=False)
++            if not stat.S_ISREG(info.st_mode):
++                raise ValueError("pinned SQL directory alias or special entry")
++            if entry.name.endswith(".sql"):
++                if entry.name not in RESOURCE_FILENAMES:
++                    raise ValueError("unregistered SQL package resource")
++                found[entry.name] = Path(entry.path)
++    if set(found) != set(RESOURCE_FILENAMES) or directory.resolve(strict=True) != directory:
++        raise ValueError("pinned SQL resource closure differs")
++    return tuple(found[name] for name in RESOURCE_FILENAMES)
++
++
+ def _package_pins(product_root):
+-    package = product_root / "ipfs_accelerate_py"
+-    paths = sorted(package.rglob("*.py"))
++    root = _product_root(product_root)
++    package = root / "ipfs_accelerate_py"
++    paths, stack, count = [], [package], 0
++    while stack:
++        directory = stack.pop()
++        if directory.resolve(strict=True) != directory:
++            raise ValueError("product source directory alias")
++        with os.scandir(directory) as entries:
++            for entry in entries:
++                count += 1
++                if count > MAX_PRODUCT_ENTRIES:
++                    raise ValueError("product source inventory entry bound")
++                info = entry.stat(follow_symlinks=False)
++                if stat.S_ISDIR(info.st_mode):
++                    stack.append(Path(entry.path))
++                elif stat.S_ISREG(info.st_mode):
++                    if entry.name.endswith(".py"):
++                        paths.append(Path(entry.path))
++                        if len(paths) + len(RESOURCE_FILENAMES) > MAX_PRODUCT_FILES:
++                            raise ValueError("product source file population bound")
++                else:
++                    raise ValueError("product source inventory alias or special entry")
++    paths.extend(_sql_paths(root))
+     if not 1 <= len(paths) <= MAX_PRODUCT_FILES:
+-        raise ValueError("admin-owner product Python population bound")
+-    rows, total = {}, 0
+-    for path in paths:
+-        value = _pin(path, nonempty=False)
++        raise ValueError("product Python and SQL population bound")
++    rows, total, sql_total = {}, 0, 0
++    for path in sorted(paths):
++        is_sql = path.suffix == ".sql"
++        value = _pin(path, MAX_RESOURCE_BYTES if is_sql else MAX_SOURCE, nonempty=is_sql)
+         total += value["bytes"]
+-        if total > MAX_PRODUCT_BYTES:
+-            raise ValueError("admin-owner aggregate product source bound")
++        sql_total += value["bytes"] if is_sql else 0
++        if total > MAX_PRODUCT_BYTES or sql_total > MAX_RESOURCE_TOTAL:
++            raise ValueError("aggregate pinned product or SQL source bound")
+         rows[str(path)] = value
+     if str(package / "__init__.py") not in rows:
+-        raise ValueError("admin-owner actual product initializer absent")
++        raise ValueError("actual pinned product initializer absent")
+     return rows
+ 
+ 
++def _resource_values(root, pins):
++    root = _product_root(root)
++    if type(pins) is not dict or not 1 <= len(pins) <= MAX_PRODUCT_FILES:
++        raise ValueError("pinned Python and SQL map bound")
++    expected = {str(path) for path in _sql_paths(root)}
++    selected, total, all_bytes = {}, 0, 0
++    package = root / "ipfs_accelerate_py"
++    for name, value in pins.items():
++        if (type(name) is not str or type(value) is not dict
++                or set(value) != {"path", "bytes", "sha256"}
++                or value["path"] != name or type(value["bytes"]) is not int
++                or not 0 <= value["bytes"] <= MAX_SOURCE
++                or type(value["sha256"]) is not str or len(value["sha256"]) != 64
++                or any(c not in "0123456789abcdef" for c in value["sha256"])):
++            raise ValueError("pinned product map row differs")
++        path = Path(name)
++        if not path.is_absolute() or not path.is_relative_to(package) or ".." in path.parts:
++            raise ValueError("pinned product path escapes exact package")
++        all_bytes += value["bytes"]
++        if all_bytes > MAX_PRODUCT_BYTES:
++            raise ValueError("pinned product map aggregate bound")
++        if name in expected:
++            if value["bytes"] <= 0:
++                raise ValueError("empty pinned SQL resource")
++            _read_pin(value, MAX_RESOURCE_BYTES)
++            total += value["bytes"]
++            selected[path.name] = dict(value)
++        elif path.suffix != ".py":
++            raise ValueError("unregistered non-Python product pin")
++    if set(selected) != set(RESOURCE_FILENAMES) or total > MAX_RESOURCE_TOTAL:
++        raise ValueError("exact pinned SQL resource population or byte bound")
++    return root, selected
++
++
++class _ReadOnlyResourceBytes(io.BytesIO):
++    def writable(self):
++        return False
++
++    def write(self, value):
++        raise io.UnsupportedOperation("pinned package resources are read-only")
++
++    def writelines(self, lines):
++        raise io.UnsupportedOperation("pinned package resources are read-only")
++
++    def truncate(self, size=None):
++        raise io.UnsupportedOperation("pinned package resources are read-only")
++
++    def getbuffer(self):
++        return memoryview(self.getvalue())
++
++
++class _PinnedSqlResourceTree:
++    def __init__(self, root, package_pin, resource_pins):
++        self.root = _product_root(root)
++        self.package_pin = dict(package_pin)
++        expected = self.root / "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py"
++        if self.package_pin["path"] != str(expected):
++            raise ValueError("resource reader package initializer differs")
++        if type(resource_pins) is not dict or set(resource_pins) != set(RESOURCE_FILENAMES):
++            raise ValueError("resource reader fixed six-file set differs")
++        self.pins = {name: dict(value) for name, value in resource_pins.items()}
++        self.verify()
++
++    def verify(self):
++        _read_pin(self.package_pin)
++        if {str(path) for path in _sql_paths(self.root)} != {value["path"] for value in self.pins.values()}:
++            raise ValueError("resource reader physical SQL closure differs")
++        total = 0
++        for name in RESOURCE_FILENAMES:
++            value = self.pins[name]
++            if value["path"] != str(self.root / RESOURCE_DIRECTORY / name) or value["bytes"] <= 0:
++                raise ValueError("resource reader pin escapes SQL directory or is empty")
++            total += len(_read_pin(value, MAX_RESOURCE_BYTES))
++        if total > MAX_RESOURCE_TOTAL:
++            raise ValueError("resource reader SQL aggregate bound")
++        _read_pin(self.package_pin)
++
++
++class _PinnedSqlTraversable(importlib.resources.abc.Traversable):
++    def __init__(self, tree, parts=()):
++        if parts not in {(), ("sql",)} and not (len(parts) == 2 and parts[0] == "sql" and parts[1] in RESOURCE_FILENAMES):
++            raise FileNotFoundError("resource outside the closed pinned package tree")
++        self.tree, self.parts = tree, tuple(parts)
++
++    @property
++    def name(self):
++        return self.parts[-1] if self.parts else RESOURCE_PACKAGE.rsplit(".", 1)[1]
++
++    def is_dir(self):
++        self.tree.verify()
++        return len(self.parts) < 2
++
++    def is_file(self):
++        self.tree.verify()
++        return len(self.parts) == 2
++
++    def iterdir(self):
++        self.tree.verify()
++        if len(self.parts) == 2:
++            raise NotADirectoryError("pinned SQL resource is a file")
++        names = ("sql",) if not self.parts else RESOURCE_FILENAMES
++        result = tuple(type(self)(self.tree, self.parts + (name,)) for name in names)
++        self.tree.verify()
++        return iter(result)
++
++    def joinpath(self, *descendants):
++        if not descendants or len(descendants) > 2:
++            raise ValueError("bounded literal resource components required")
++        parts = self.parts
++        for child in descendants:
++            if (type(child) is not str or not 1 <= len(child) <= 128
++                    or child in {".", ".."} or "/" in child or "\\" in child
++                    or any(ord(c) < 32 or ord(c) > 126 for c in child)):
++                raise ValueError("resource path escape or alias refused")
++            parts += (child,)
++        result = type(self)(self.tree, parts)
++        self.tree.verify()
++        return result
++
++    def open(self, mode="r", *args, **kwargs):
++        if mode not in {"r", "rt", "rb"}:
++            raise ValueError("pinned resource write/update mode refused")
++        if len(self.parts) != 2:
++            raise IsADirectoryError("pinned resource open requires a SQL file")
++        keys = ("encoding", "errors", "newline")
++        if len(args) > len(keys) or set(kwargs) - set(keys):
++            raise TypeError("resource open accepts only bounded text options")
++        options = dict(zip(keys, args))
++        if set(options).intersection(kwargs):
++            raise TypeError("duplicate resource text option")
++        options.update(kwargs)
++        if mode == "rb" and options:
++            raise TypeError("binary resource open takes no text options")
++        if (options.get("encoding") not in {None, "utf-8", "utf8"}
++                or options.get("errors") not in {None, "strict"}
++                or options.get("newline") not in {None, "", "\n", "\r", "\r\n"}):
++            raise ValueError("resource text option outside fixed read-only policy")
++        self.tree.verify()
++        value = self.tree.pins[self.parts[1]]
++        raw = _read_pin(value, MAX_RESOURCE_BYTES)
++        self.tree.verify()
++        if raw != _read_pin(value, MAX_RESOURCE_BYTES):
++            raise ValueError("pinned SQL bytes changed during resource read")
++        stream = _ReadOnlyResourceBytes(raw)
++        if mode == "rb":
++            return stream
++        return io.TextIOWrapper(stream, encoding="utf-8", errors="strict", newline=options.get("newline"))
++
++
++class _PinnedSqlResourceReader(importlib.resources.abc.TraversableResources):
++    def __init__(self, root, package_pin, resource_pins):
++        self.tree = _PinnedSqlResourceTree(root, package_pin, resource_pins)
++
++    def files(self):
++        self.tree.verify()
++        return _PinnedSqlTraversable(self.tree)
++
++    def resource_path(self, resource):
++        raise FileNotFoundError("pinned resource reader exposes no filesystem fallback")
++
++
+ class _PinnedProductLoader(importlib.abc.Loader):
+-    def __init__(self, pin):
+-        self.pin = pin
++    def __init__(self, pin, *, package_name=None, resource_pins=None, product_root=None):
++        self.pin = dict(pin)
++        self.package_name = package_name
++        self.resource_reader = None
++        if resource_pins is not None:
++            if package_name != RESOURCE_PACKAGE or product_root is None:
++                raise ValueError("SQL reader bound to wrong exact package")
++            self.resource_reader = _PinnedSqlResourceReader(product_root, self.pin, resource_pins)
+ 
+     def create_module(self, spec):
+         return None
+ 
+     def exec_module(self, module):
+-        # Compile the source bytes just verified; existing bytecode is unused.
+         raw = _read_pin(self.pin)
+         exec(compile(raw, self.pin["path"], "exec", dont_inherit=True), module.__dict__)
+         _read_pin(self.pin)
+ 
++    def get_resource_reader(self, fullname):
++        if self.resource_reader is None:
++            return None
++        if fullname != self.package_name or fullname != RESOURCE_PACKAGE:
++            raise ValueError("resource reader request crosses exact package")
++        return self.resource_reader
++
+ 
+ class _PinnedProductFinder(importlib.abc.MetaPathFinder):
+     def __init__(self, root, pins):
+-        self.root, self.pins = root, pins
++        self.root, resources = _resource_values(root, pins)
++        self.pins = {name: dict(value) for name, value in pins.items()}
++        self.resources = resources
+ 
+     def find_spec(self, fullname, path=None, target=None):
+         if fullname != "ipfs_accelerate_py" and not fullname.startswith("ipfs_accelerate_py."):
+             return None
++        if any(not part.isidentifier() for part in fullname.split(".")):
++            raise ModuleNotFoundError("pinned product module path is not canonical")
+         base = self.root.joinpath(*fullname.split("."))
+         for source, package in ((base / "__init__.py", True), (base.with_suffix(".py"), False)):
+             value = self.pins.get(str(source))
+             if value is not None:
+-                return importlib.util.spec_from_file_location(fullname, source,
+-                    loader=_PinnedProductLoader(value),
++                loader = _PinnedProductLoader(value, package_name=fullname if package else None,
++                    resource_pins=self.resources if package and fullname == RESOURCE_PACKAGE else None,
++                    product_root=self.root if package and fullname == RESOURCE_PACKAGE else None)
++                return importlib.util.spec_from_file_location(fullname, source, loader=loader,
+                     submodule_search_locations=[str(base)] if package else None)
+-        # Genuine namespace directories can exist without an initializer.
+-        if base.is_dir() and any(Path(name).is_relative_to(base) for name in self.pins):
++        # SQL-only directories are resources, never an ambient NamespaceLoader
++        # fallback. Genuine Python namespace packages still need pinned .py.
++        if base.is_dir() and base.resolve(strict=True) == base and any(
++                Path(name).suffix == ".py" and Path(name).is_relative_to(base) for name in self.pins):
+             spec = importlib.util.spec_from_loader(fullname, loader=None, is_package=True)
+             spec.submodule_search_locations = [str(base)]
+             return spec
+-        raise ModuleNotFoundError("admin-owner product import absent from pinned source closure: " + fullname)
++        raise ModuleNotFoundError("product import absent from pinned Python/SQL closure: " + fullname)
+ 
+ 
+ def _loaded_product_sources(pins):
++    initializers = [Path(name) for name in pins if name.endswith("/ipfs_accelerate_py/__init__.py")]
++    if len(initializers) != 1:
++        raise ValueError("loaded product source root is ambiguous")
++    root, resources = _resource_values(initializers[0].parents[1], pins)
+     for module_name, module in tuple(sys.modules.items()):
+         if module_name == "ipfs_accelerate_py" or module_name.startswith("ipfs_accelerate_py."):
+             origin = getattr(module, "__file__", None)
+             if origin is not None:
+                 value = pins.get(str(Path(origin)))
+-                if value is None:
+-                    raise ValueError("actual loaded product module outside source pins")
++                spec = getattr(module, "__spec__", None)
++                actual = getattr(spec, "loader", None)
++                if (value is None or not isinstance(actual, _PinnedProductLoader)
++                        or getattr(module, "__loader__", None) is not actual
++                        or actual.pin != value or getattr(spec, "origin", None) != value["path"]):
++                    raise ValueError("actual loaded product source/loader outside exact pins")
+                 _read_pin(value)
++    package_pin = pins.get(str(root / "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py"))
++    if package_pin is None:
++        raise ValueError("pinned SQL package initializer missing")
++    _PinnedSqlResourceTree(root, package_pin, resources).verify()
+ 
+ 
+ def fixture_argv(root, marker_sha):

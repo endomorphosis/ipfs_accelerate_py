@@ -1,0 +1,72 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/authentic_unknown_native_parent_v04.py
+@@ -38,6 +38,46 @@
+ def need(value, reason):
+     if not value:
+         raise ValueError(reason)
++
++
++def parent_failure_observation(runtime, error, request_sha):
++    """Bounded diagnostics before outer close; never an exit/reap witness."""
++    source = runtime.request["parent_source_pin"]["path"]
++    argument_sha, argument_bytes = None, None
++    if type(error) is ValueError and len(error.args) == 1 and type(error.args[0]) is str and len(error.args[0]) <= 512:
++        encoded = error.args[0].encode("utf-8", errors="strict")
++        if len(encoded) <= 2048:
++            argument_sha, argument_bytes = hashlib.sha256(encoded).hexdigest(), len(encoded)
++    frames, scanned, truncated = [], 0, False
++    trace = error.__traceback__
++    while trace is not None and scanned < 64:
++        scanned += 1
++        code = trace.tb_frame.f_code
++        if code.co_filename == source:
++            if len(frames) < 16:
++                name = code.co_name
++                frames.append({"source_path": source, "line": trace.tb_lineno,
++                    "function": name if len(name) <= 96 and name.isascii() else "unrepresentable"})
++            else:
++                truncated = True
++        trace = trace.tb_next
++    truncated = truncated or trace is not None
++    child = runtime.child
++    bookkeeping = None if child is None else {"pid": child.pid, "start_time_ticks": child.start,
++        "boot_id": child.boot, "group_bound": child.group_bound, "reaped": child.reaped,
++        "Popen_returncode": child.process.returncode}
++    name = type(error).__name__
++    return {"schema": "authentic-native-parent-operation-failure-observation@4", "fixture_only": True,
++        "diagnostic_only": True, "request_sha256": request_sha,
++        "parent_source_pin": runtime.request["parent_source_pin"], "operation": runtime.request["operation"],
++        "exception_type": name if len(name) <= 96 and name.isascii() and name.isidentifier() else "unrepresentable",
++        "bounded_ValueError_argument_sha256": argument_sha, "bounded_ValueError_argument_bytes": argument_bytes,
++        "source_traceback_scope": "pinned_parent_source_only", "source_traceback_frames": frames,
++        "source_traceback_truncated": truncated, "child_bookkeeping_before_outer_close": bookkeeping,
++        "child_polled_or_reaped_by_this_diagnostic": False, "kernel_or_resource_state_requeried": False,
++        "capture_boundary": "before_OUTER_actual_child_close", "operation_returned": False,
++        "actual_child_exit_witness_created_by_this_diagnostic": False, "native_owner_receipt_created": False,
++        "completion_authority": False, "automatic_retry_admitted": False}
+ 
+ 
+ def load_ab():
+@@ -243,7 +283,7 @@
+                                   and not self.socket_ready_verified):
+                                 self.socket_pin = observed
+                             need(self.socket_pin == observed, "owned socket generation changed")
+-                            if self.child.process.poll() is not None:
++                            if self.child.observe() is not None:
+                                 need(self.child.reaped and self.socket_ready_verified and not group_live(self.child.pid),
+                                      "stale socket lacks actual ready+reaped owner")
+                             total += info.st_size
+@@ -643,6 +683,13 @@
+                 runtime.guard(full=True)
+                 try:
+                     result = admin(runtime, loader) if request["operation"] == "admin" else settle(runtime)
++                except BaseException as error:
++                    try:
++                        ab.new_json(attempt / "parent-operation-failure-observation.json",
++                                    parent_failure_observation(runtime, error, request_sha))
++                    except BaseException:
++                        pass  # Diagnostic failure cannot replace the actual operation exception.
++                    raise
+                 finally:
+                     if runtime.child is not None:
+                         ab.close_native_custody(runtime.child, attempt, "actual-child", runtime)

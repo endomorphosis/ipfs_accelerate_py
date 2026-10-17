@@ -1,0 +1,61 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/authentic_unknown_settlement_worker_v05.py
+@@ -267,6 +267,40 @@
+     os._exit(0)
+ 
+ 
++def settlement_failure_observation(error):
++    """Error-only bounded stderr diagnostic; no native handles or request reads."""
++    source = str(Path(__file__))
++    source = source if 0 < len(source) <= 512 else None
++    argument_sha, argument_bytes = None, None
++    if len(error.args) == 1 and type(error.args[0]) is str and len(error.args[0]) <= 512:
++        encoded = error.args[0].encode("utf-8", errors="strict")
++        if len(encoded) <= 2048:
++            argument_sha, argument_bytes = hashlib.sha256(encoded).hexdigest(), len(encoded)
++    frames, scanned, truncated = [], 0, False
++    trace = error.__traceback__
++    while trace is not None and scanned < 64:
++        scanned += 1
++        code = trace.tb_frame.f_code
++        if source is not None and code.co_filename == source:
++            if len(frames) < 16:
++                name = code.co_name
++                frames.append({"line": trace.tb_lineno,
++                    "function": name if len(name) <= 96 and name.isascii() else "unrepresentable"})
++            else:
++                truncated = True
++        trace = trace.tb_next
++    name = type(error).__name__
++    return {"schema": "authentic-native-settlement-failure-diagnostic@5", "fixture_only": True,
++        "fixture_failed": True, "diagnostic_only": True,
++        "error_type": name if len(name) <= 96 and name.isascii() and name.isidentifier() else "unrepresentable",
++        "bounded_string_argument_sha256": argument_sha, "bounded_string_argument_bytes": argument_bytes,
++        "source_traceback_scope": "exact_worker_source_only", "source_path": source,
++        "source_traceback_frames": frames, "source_traceback_truncated": truncated or trace is not None,
++        "stage_omitted": True, "new_request_or_database_read": False,
++        "native_handle_close_claimed": False, "native_operation_replayed": False,
++        "exit_or_commit_witness_created": False, "completion_authority": False}
++
++
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--request", type=Path, required=True)
+@@ -275,9 +309,14 @@
+     try:
+         run(args.request, args.request_sha256)
+     except BaseException as error:
+-        sys.stderr.write(json.dumps({"fixture_failed": True, "error_type": type(error).__name__,
+-            "native_handle_close_claimed": False, "completion_authority": False}) + "\n")
+-        sys.stderr.flush()
++        try:
++            diagnostic = json.dumps(settlement_failure_observation(error), sort_keys=True,
++                separators=(",", ":"), ensure_ascii=True, allow_nan=False) + "\n"
++            if len(diagnostic.encode("utf-8")) <= 8192:
++                sys.stderr.write(diagnostic)
++                sys.stderr.flush()
++        except BaseException:
++            pass  # Best-effort diagnostic never adds native close/replay or changes exit2.
+         os._exit(2)
+ 
+ 

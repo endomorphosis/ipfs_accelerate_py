@@ -1,0 +1,85 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/authentic_fixture_maintenance_owner_v02.py
+@@ -555,6 +555,48 @@
+     return code
+ 
+ 
++def maintenance_guard_arguments(*, force_ack=False, check_only=False):
++    need(type(force_ack) is bool and type(check_only) is bool,
++         "maintenance guard flags require exact Boolean values")
++    # Native monitor(False,True) is local, without renewal or global census.
++    # Explicit host full guards(True,True) and native ACKs(True,False) remain.
++    return {"force_ack": force_ack, "check_only": force_ack and check_only}
++
++
++def maintenance_failure_observation(component, error, native_error_type):
++    def reason(value):
++        return value if type(value) is str and len(value) <= 128 and re.fullmatch(r"maintenance_[a-z0-9_]+", value) else None
++    actual_reason = reason(error.args[0]) if type(error) is native_error_type and len(error.args) == 1 else None
++    state, readable = {}, False
++    try:
++        observed = component.failure_state  # Detached genuine public state; no DB query.
++        if type(observed) is dict and len(observed) <= 32:
++            readable = True
++            for key in ("physical_mutation_possible", "original_checkpoint_verified", "connection_close_verified",
++                        "original_locks_released", "backup_verified", "completion_authority", "automatic_retry_admitted",
++                        "semantic_admission", "shadow_preflight_verified", "close_retry_required"):
++                if key in observed and type(observed[key]) is bool:
++                    state[key] = observed[key]
++            if observed.get("phase") in {"not_started", "backing_up_originals", "shadow_replay", "original_replay",
++                    "original_readonly_verification", "verified_pending_close", "closed_verified"}:
++                state["phase"] = observed["phase"]
++            if reason(observed.get("failure_reason")) is not None:
++                state["failure_reason"] = reason(observed["failure_reason"])
++            backups = observed.get("backup_sha256")
++            if type(backups) is dict and set(backups) == {"database", "wal"} and all(
++                    type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value) for value in backups.values()):
++                state["backup_sha256"] = dict(backups)
++    except BaseException:
++        pass  # Diagnostics cannot replace the original native exception.
++    name = type(error).__name__
++    return {"schema": "authentic-native-maintenance-run-failure-observation@2", "fixture_only": True,
++        "exception_type": name if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,95}", name) else "unrepresentable",
++        "native_reason": actual_reason, "public_failure_state_readable": readable, "public_failure_state": state,
++        "diagnostic_only": True, "native_run_returned": False, "native_resource_ack_created": False,
++        "maintenance_receipt_published_by_this_diagnostic": False, "native_operation_replayed": False,
++        "completion_authority": False, "automatic_retry_admitted": False}
++
++
+ def maintenance(request, owner, loader, guard_sources):
+     payload = request["payload"]
+     need(type(payload) is dict and set(payload) == {"custody_pins", "product_sources", "logical_store_id", "original_A_proof_pin"}
+@@ -616,7 +658,7 @@
+                  == terminal["terminal_receipt_cid"], "actual A/C plain-JSON terminal identity protocols disagree")
+ 
+         def guard(*, force_ack=False, check_only=False):
+-            actual_guard(force_ack=force_ack, check_only=check_only)
++            actual_guard(**maintenance_guard_arguments(force_ack=force_ack, check_only=check_only))
+             for value in pins.values():
+                 read_pin(value, MAX_JSON)
+             policy.stopped_processes(stopped)
+@@ -658,6 +700,13 @@
+                                                            custody_guard=guard)
+         try:
+             report = component.run()
++        except BaseException as error:
++            try:
++                new_json(attempt / "maintenance-run-failure-observation.json",
++                         maintenance_failure_observation(component, error, wal.NativeExecutionWalMaintenanceError))
++            except BaseException:
++                pass  # Preserve the actual exception even if diagnostic publication fails.
++            raise
+         finally:
+             close_native_custody(component, attempt, "wal-maintenance", actual_guard)
+         need(report["connection_close_verified"] is True and report["original_locks_released"] is True
+@@ -703,8 +752,8 @@
+     parser.add_argument("--request-sha256", required=True)
+     args = parser.parse_args()
+     request, owner, loader, guard = request_data(args.request, args.request_sha256)
+-    return {"prepare_launch": prepare_launch, "launch": launch, "maintenance": maintenance}[request["operation"]](
+-        request, owner, loader, guard)
++    need(request["operation"] == "maintenance", "this derivative admits only physical fixture maintenance")
++    return maintenance(request, owner, loader, guard)
+ 
+ 
+ if __name__ == "__main__":

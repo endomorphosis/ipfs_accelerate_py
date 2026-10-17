@@ -1,0 +1,61 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_native_parent_v02.py
++++ /home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py
+@@ -1,4 +1,4 @@
+-"""Draft retained real-F07 parent for future authentic C/D fixture gates.
++"""Timing-corrected retained real-F07 parent for future authentic C/D gates.
+ 
+ Run directly, never inside another native resource owner. Runtime code below
+ opens ONE existing F07 root/phase/disk owner, registers each real isolated child
+@@ -271,14 +271,21 @@
+     def spawn(self, worker_request, role):
+         need(self.child is None, "only one actual worker group admitted per native job")
+         name = "admin-request.json" if role == "admin" else "settlement-request.json"
+-        value = self.ab.new_json(self.control / name, worker_request)
+         log = self.attempt / "worker.sanitized.log"
++        # The genuine full check walks all named roots (about17s observed),
++        # so complete it before publishing the child's finite30s window.
+         self.guard(full=True)
+         need(str(Path(sys.executable).resolve(strict=True)) == self.unbound["python_pin"]["path"],
+              "actual parent/child Python origin differs")
+         self.ab.read_pin(self.unbound["python_pin"], 128 * 1024**2)
+         descriptor = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+         try:
++            now_ns = time.monotonic_ns()
++            sealed_deadline = min(int(self.deadline * 1e9), now_ns + 30_000_000_000)
++            need(not self.cancel.is_set() and sealed_deadline > now_ns,
++                 "actual parent ended during full prelaunch census")
++            worker_request["deadline_monotonic_ns"] = sealed_deadline
++            value = self.ab.new_json(self.control / name, worker_request)
+             process = subprocess.Popen([str(Path(sys.executable).resolve(strict=True)), "-I", "-S", "-B",
+                 worker_request["worker_source_pin"]["path"], "--request", value["path"], "--request-sha256", value["sha256"]],
+                 cwd=self.request["repo_root"], env=dict(os.environ), stdin=subprocess.DEVNULL,
+@@ -290,7 +297,9 @@
+             os.close(descriptor)
+         # Keep real Popen even if kernel birth/registration fails afterward.
+         self.child.bind()
+-        self.disk.check_usage(self.attempt, child_pid=process.pid, full=True)
++        # Genuine immediate registration retains all ancestry/local/RSS/group
++        # and strict-attempt checks; defer the global census until actual reap.
++        self.disk.check_usage(self.attempt, child_pid=process.pid, full=False)
+         return value
+ 
+     def wait_file(self, path):
+@@ -316,7 +325,6 @@
+             "worker_source_pin": self.unbound["worker_pins"][role], "python_pin": self.unbound["python_pin"],
+             "parent_kernel_identity": self.parent, "control_scope": str(self.control),
+             "control_scope_identity": self.control_identity,
+-            "deadline_monotonic_ns": min(int(self.deadline * 1e9), time.monotonic_ns() + 30_000_000_000),
+             "nonce": uuid.uuid4().hex}
+ 
+ 
+@@ -427,7 +435,9 @@
+     need(replay.get("replayed") is True and replay.get("decision", {}).get("context_cid") == context["context_cid"],
+          "same-live real ADMIN exact replay missing")
+     response_pin = ab.new_json(control / "audit-response.json", replay)
+-    runtime.guard(full=True)
++    # The real child is still live: retain genuine local/source/ancestry and
++    # bounded external checks here; wait_exit performs the full check after reap.
++    runtime.guard()
+     exited_pin = None
+     if payload["admin_exit_mode"] == "graceful":
+         runtime.stop_pin = ab.new_json(control / "admin-stop.json", {"schema": "authentic-native-unknown-admin-stop@2",

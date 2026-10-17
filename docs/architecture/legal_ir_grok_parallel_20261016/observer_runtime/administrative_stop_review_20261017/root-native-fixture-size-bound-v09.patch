@@ -1,0 +1,11 @@
+--- a/tests/native_unknown_admin_owner_fixture.py
++++ b/tests/native_unknown_admin_owner_fixture.py
+@@ -41,7 +41,7 @@
+ FAILURE = "admin-owner-failure.json"
+ SOCKET = "admin.sock"
+ MAX_SOURCE = 8 * 1024 * 1024
+-MAX_DATABASE = 16 * 1024 * 1024
++MAX_DATABASE = 64 * 1024 * 1024
+ MAX_INPUT = 2 * 1024 * 1024
+ MAX_STREAM = 65536
+ MAX_PRODUCT_FILES = 4096
