@@ -7,44 +7,56 @@
     "export_profile": "",
     "failover_policy": "fail_closed",
     "interface": "DatabaseProgramConfig@1",
-    "quack_endpoint": "quack:127.0.0.1:33423",
+    "quack_endpoint": "quack:127.0.0.1:32829",
     "runtime_registry_path": "",
     "schema": "ipfs_accelerate_py/agent-supervisor/database-program-config@1",
     "schema_revision": "5",
-    "store_generation": "9",
+    "store_generation": "13",
     "store_id": "legal-ir-catalog02.duckdb",
     "task_source_kind": "duckdb",
     "worktree_root": ""
   },
   "actual_owner_identity": {
     "contract_version": 1,
-    "credential_generation": 9,
+    "credential_generation": 13,
     "database_uuid": "4c589646-c92d-400a-9ee7-633a72e9174e",
     "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
-    "fence_epoch": 9,
-    "generation": 9,
+    "fence_epoch": 13,
+    "generation": 13,
     "interface": "StateServerIdentity@1",
-    "listen_uri": "quack:127.0.0.1:33423",
+    "listen_uri": "quack:127.0.0.1:32829",
     "process_birth": {
       "boot_id": "82e446b4-5572-47d2-a5ea-4259f31bb2d9",
-      "parent_pid": 657346,
-      "pid": 675393,
-      "start_time_ticks": 120872360
+      "parent_pid": 2516780,
+      "pid": 2533842,
+      "start_time_ticks": 121662980
     },
-    "process_birth_id": "birth:c8b4762763340eeb440659f5aaf95ce0",
+    "process_birth_id": "birth:b4551180854df53970f45a7e62b223c1",
     "repository_id": "legal-ir-retained-catalog02",
     "revision": 0,
     "schema": "ipfs_accelerate_py/agent-supervisor/state-server-identity@1",
     "schema_fingerprint": "sha256:e2d9ad1f50d4a517c8f44cc2e5bf823954127cd471a155f07f43fb875e21456d",
     "schema_revision": 5,
     "secret_handle": "env://IPFS_LEGAL_IR_GROK_START_QUACK_TOKEN",
-    "server_id": "server:4e5e9afe-8c08-4d5a-9612-ebca850ba261",
-    "started_at": "2026-10-16T22:44:11Z",
-    "startup_epoch": 1792190651,
+    "server_id": "server:5568480a-973a-48cb-875c-31957cb21c5a",
+    "started_at": "2026-10-17T00:55:57Z",
+    "startup_epoch": 1792198557,
     "status": "ready",
     "store_id": "legal-ir-catalog02.duckdb"
   },
-  "actual_receipt_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch05/worker-receipts",
+  "actual_receipt_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/worker-receipts",
+  "allocator_qualification_pins": [
+    {
+      "bytes": 637,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-allocator-resume-protocol-controls-20261017-01/receipt.json",
+      "sha256": "bc05e78f871cb30cc71acf38bf3825b09b97bd94e68c6a287bc779c9f53ca386"
+    },
+    {
+      "bytes": 5721,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/allocator-resume-protocol-controls-request-v01.json",
+      "sha256": "c3f48fcc763d637c2746ef9e365d10b2fb893c1122665c49b3c528a9214e3b12"
+    }
+  ],
   "authoring_population": {
     "dependency_edges": 115,
     "goals": 34,
@@ -55,9 +67,9 @@
   "code_edit_allowlist": [],
   "completion_mode": "auto",
   "corpus_model_or_database_payload_access": false,
-  "execution_packet_revision": 6,
+  "execution_packet_revision": 11,
   "factual_acceptance_qualified": true,
-  "factual_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-factual05",
+  "factual_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-factual06",
   "implementation_command_argv_template": [
     "/usr/bin/python3",
     "-B",
@@ -67,9 +79,9 @@
     "--controller-manifest-sha256",
     "5e018fc27b66cd82cdca9512cf10d61206818ce24ef6f8a63d09533441024eba",
     "--receipt-root",
-    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch05/worker-receipts"
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/worker-receipts"
   ],
-  "implementation_command_text_template": "/usr/bin/python3 -B /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016/planning_worker.py --controller-prefix /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016 --controller-manifest-sha256 5e018fc27b66cd82cdca9512cf10d61206818ce24ef6f8a63d09533441024eba --receipt-root /home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch05/worker-receipts",
+  "implementation_command_text_template": "/usr/bin/python3 -B /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016/planning_worker.py --controller-prefix /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016 --controller-manifest-sha256 5e018fc27b66cd82cdca9512cf10d61206818ce24ef6f8a63d09533441024eba --receipt-root /home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/worker-receipts",
   "initial_task_statuses": {
     "LIR-0101": "blocked",
     "LIR-0102": "blocked",
@@ -137,27 +149,78 @@
     "LIR-9108": "blocked"
   },
   "inputs_manifest_sha256": "5e018fc27b66cd82cdca9512cf10d61206818ce24ef6f8a63d09533441024eba",
+  "namespace_guard_recovery_pins": [
+    {
+      "bytes": 84247,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-namespace-guard-recovery-20261016-01/namespace-guard-recovery-result.json",
+      "sha256": "7a0d772e92769e3747a918883cf614d6c76b1d277548f8ad6f54eb6c7214cbbe"
+    },
+    {
+      "bytes": 2679,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-namespace-guard-recovery-20261016-01/receipt.json",
+      "sha256": "7f9d54d97ce40d12adf5fbdc45f42b616bd595487617c84d332a4954f0b12990"
+    },
+    {
+      "bytes": 5375,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-namespace-admin-audit-20261016-02/actual-admin-audit.json",
+      "sha256": "5bddb64878f68315df7c3b90d142e625deba400fc65ec2350fc97e74471af6df"
+    },
+    {
+      "bytes": 636,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-namespace-admin-audit-20261016-02/receipt.json",
+      "sha256": "6e900ba54eea3e54860fbbefe84468b3ca86f50240d0671b4ad7ccd4af29daf1"
+    },
+    {
+      "bytes": 43584,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-namespace-guard-recovery-20261016-01/native-failure-settlement.json",
+      "sha256": "cde8860bf8c63daea727ca49428e20ea058f1d9c26e3c7f461c6645c85a28282"
+    },
+    {
+      "bytes": 47385,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-namespace-guard-recovery-20261016-01/native-operator-rearm.json",
+      "sha256": "db26d5105eeeebfffd2360cd502e8910f0d51a07bbdc28c126b1c036b9c1c9d4"
+    }
+  ],
+  "namespace_guard_recovery_qualified": true,
   "native_owner_identity_verified": true,
   "operative_launch_binding": "Root appends the genuine multi_supervisor_runner --implementation-supervisor-command option to the rendered argv and pins that complete materialized launch request. Scheduler JSON metadata is not an operative command override.",
   "output": "data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json",
-  "owner_gate": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch05/factual-gate.json",
+  "owner_gate": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/factual-gate.json",
   "positive_owner_probe": {
-    "bytes": 1756,
-    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-preparation07/positive-quack-owner-probe.json",
-    "sha256": "54a053f7f63065f7bb194b989a00c207745e32b674cb3a62e7080e3915fbf778"
+    "bytes": 1761,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-preparation10/positive-quack-owner-probe.json",
+    "sha256": "683d7bd830449a5be06e3f298c4511facb46cdb5193baca3c6ec0ac37ab71edc"
   },
+  "preserved_attempt_ordinal": 1,
   "remaining_owner_steps": [
     "Observe and authenticate actual Quack owner/generation and historical task aliases",
     "Bind exact native receipt root, acceptance revision and typed task specification with compare-and-swap",
     "Review, commit and preflight finished controls",
     "Acquire native capacity and launch the genuine multi-supervisor command"
   ],
-  "runtime_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r05",
+  "runtime_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/workspace/legal-ir-grok-parallel-20261016-r06",
   "schema": "legal-ir-grok-planning-execution-packet/v1",
   "selected_task_cid": "baguqeeraqk2ln7d3plwfonnyycsxkr5tjrpo7e5uq4p7rhe6vi6btpxsaeyq",
   "status": "actual_native_owner_and_spec_bound",
+  "successor_refresh_predecessor_pins": [
+    {
+      "bytes": 10706,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-preparation08/qualified-initial-planning-packet.json",
+      "sha256": "59d0348db0c2a90daf6d7f6cd263d51599534de12564cc6ce442e8cee35cbd09"
+    },
+    {
+      "bytes": 639,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-preparation08/receipt.json",
+      "sha256": "590e04a66988da8a57fc98c327f890da6e01e8af49a24b7485f2a63291a8407d"
+    },
+    {
+      "bytes": 625167,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-preparation08/native-after-packet-refresh.json",
+      "sha256": "5fb4728347b145de13c8c04808682c9c08192409c52c50728880e91ea328d0b8"
+    }
+  ],
   "task_id": "LIR-9001",
   "task_spec_cas_completed": true,
-  "validation_command": "/usr/bin/python3 -B /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016/factual_native_gate_v02.py --check-report data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json --controller-prefix /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016 --validator /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016/factual_acceptance_v02.py --receipt-root /home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch05/worker-receipts --owner-gate /home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch05/factual-gate.json --wait-seconds 300",
+  "validation_command": "/usr/bin/python3 -B /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016/factual_native_gate_v02.py --check-report data/legal_ir_span_graph_lean_20261016/LIR-9001/handoff-reconciliation.json --controller-prefix /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016 --validator /home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/docs/architecture/legal_ir_grok_parallel_20261016/factual_acceptance_v02.py --receipt-root /home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/worker-receipts --owner-gate /home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-parallel-20261016-launch06/factual-gate.json --wait-seconds 600",
   "worker_calls": 0
 }
