@@ -1,0 +1,14 @@
+{
+  "acceptance_authority": false,
+  "case": "valid_lowlevel_denial",
+  "completion_authority": false,
+  "fixed_reason": "original_report_only_attempt_is_parked",
+  "gate_calls": 1,
+  "host_accessor_calls": 0,
+  "observed_type": "AttemptDispositionDenied",
+  "quarantine_created": false,
+  "schema": "legal-ir-disposition-entry-case-diagnostic@1",
+  "scope_calls": 1,
+  "source_assertions_evaluated": false,
+  "stage": "original_public_run_once_returned_or_raised"
+}

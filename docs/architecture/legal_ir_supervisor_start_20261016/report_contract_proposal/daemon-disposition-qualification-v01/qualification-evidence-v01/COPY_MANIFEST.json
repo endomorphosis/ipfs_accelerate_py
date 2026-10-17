@@ -1,0 +1,99 @@
+{
+  "acceptance_authority": false,
+  "copy_only": true,
+  "failed_generations_preserved": [
+    "journal-failed-closeout-r02",
+    "entry-failed-r01"
+  ],
+  "files": [
+    {
+      "bytes": 636,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-sticky-host-source-controls-20261017-r01/receipt.json",
+      "path": "sticky-host-30/receipt.json",
+      "sha256": "8b998b708f167980ca060c530f992f5a22dbf86ac51ba38446e0c01aff012f81"
+    },
+    {
+      "bytes": 1424,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-sticky-host-source-controls-20261017-r01/sticky-host-source-controls.json",
+      "path": "sticky-host-30/sticky-host-source-controls.json",
+      "sha256": "1e722bab632bb5286686ef608fcae68d9b29408a150943d7d6cf5a2a0d8405bd"
+    },
+    {
+      "bytes": 4313,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-sticky-host-source-controls-20261017-r01/sticky-host-source-controls.xml",
+      "path": "sticky-host-30/sticky-host-source-controls.xml",
+      "sha256": "13327a0b03d916e4ac0d4023855cea89aa1e10dce944826395ec9a935e453b7b"
+    },
+    {
+      "bytes": 636,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-source-controls-20261017-r01/receipt.json",
+      "path": "entry-source-6/receipt.json",
+      "sha256": "f5d85edffa646ed4d33867b287067b682f49f2c0fbc190be3bf2ed9216e0f23e"
+    },
+    {
+      "bytes": 1438,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-source-controls-20261017-r01/disposition-entry-source-controls.json",
+      "path": "entry-source-6/disposition-entry-source-controls.json",
+      "sha256": "ef9e8fe9c1e11741b8bfad0ee1894a7716f34dece5371d3a384f29e2f5690ab9"
+    },
+    {
+      "bytes": 995,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-source-controls-20261017-r01/disposition-entry-source-controls.xml",
+      "path": "entry-source-6/disposition-entry-source-controls.xml",
+      "sha256": "76321a5131428da6867b715f36f755bc61a5189f774636d298de77af77167d9d"
+    },
+    {
+      "bytes": 636,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/receipt.json",
+      "path": "journal-failed-closeout-r02/receipt.json",
+      "sha256": "86b1b1e613c77a42a2bb51138fe66e79ed0815886660e3b37ff765c4832bc9e7"
+    },
+    {
+      "bytes": 1281,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/attempt-disposition-controls.json",
+      "path": "journal-failed-closeout-r02/attempt-disposition-controls.json",
+      "sha256": "9dc7ca125d4669b2c9a7d07542c842ac6a54d46b1c6ef84889e81be89e332a87"
+    },
+    {
+      "bytes": 4457,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/attempt-disposition-controls.xml",
+      "path": "journal-failed-closeout-r02/attempt-disposition-controls.xml",
+      "sha256": "23b64ebae1a0e29147a2916eeb46f1c95a54ce253a0b7809bc682d2976fb0d33"
+    },
+    {
+      "bytes": 636,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r03/receipt.json",
+      "path": "journal-qualified-r03/receipt.json",
+      "sha256": "9bc9cf6c3045520164bd06420f96276b86cd67561aa1595141896d45c4266095"
+    },
+    {
+      "bytes": 1412,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r03/attempt-disposition-controls.json",
+      "path": "journal-qualified-r03/attempt-disposition-controls.json",
+      "sha256": "12a0f69f956b6c9e819dddf96b9a877d6ea72c55ff2cd2b24d613075790e335d"
+    },
+    {
+      "bytes": 4457,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r03/attempt-disposition-controls.xml",
+      "path": "journal-qualified-r03/attempt-disposition-controls.xml",
+      "sha256": "7191253685ca3eaa91b59de063b4fc7e72b9b1578b133ed756664c02cebf4ce9"
+    },
+    {
+      "bytes": 633,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r01/receipt.json",
+      "path": "entry-failed-r01/receipt.json",
+      "sha256": "70e3c6e3904ed292e2b30380647b76d4055d0e4657b799a4ae9aec803bd1bc13"
+    },
+    {
+      "bytes": 679,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r01/child.sanitized.log",
+      "path": "entry-failed-r01/child.sanitized.log",
+      "sha256": "7f0038e937317784f42e36fcd1267f8070d9a431e39e96cffd4c9fc3a2a719e8"
+    }
+  ],
+  "original_worker_pass_and_native_finalization_are_separate": true,
+  "originals_unchanged": true,
+  "runtime_enabled": false,
+  "schema": "legal-ir-qualification-evidence-copies@1",
+  "total_bytes": 23633
+}

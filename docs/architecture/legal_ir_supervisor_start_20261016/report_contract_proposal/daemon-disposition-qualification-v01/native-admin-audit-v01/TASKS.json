@@ -1,0 +1,138 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "goal": {
+    "id": "NADM-G1",
+    "status": "planned",
+    "subgoals": [
+      {
+        "id": "NADM-S1",
+        "tasks": [
+          {
+            "acceptance": [
+              "Actual same-PID main-thread owner/source checks and explicit nonportable scope; no todo_daemon import or arbitrary injected callable.",
+              "Persistent actual attached PGID anchor and pre-start native consumer; finite command/time/output limits; preserve real CompletedProcess/nonzero semantics.",
+              "Pending retains actual objects before exception; public stopped release after original group0/consumer drain."
+            ],
+            "depends_on": [],
+            "id": "NADM-01",
+            "status": "planned",
+            "title": "Implement a stdlib-only concrete native administrative runtime component"
+          },
+          {
+            "acceptance": [
+              "Patch only four functions in CALL_SITES bootstrap_Git_hooks.",
+              "Unbound legacy code path preserved; bound native failure cannot fall back.",
+              "Do not change original source-generation, repository identity, branch check or error/fallback validators."
+            ],
+            "depends_on": [
+              "NADM-01"
+            ],
+            "id": "NADM-02",
+            "status": "planned",
+            "title": "Add four narrow explicit original Git call-site hooks"
+          },
+          {
+            "acceptance": [
+              "Original public SDK actual3CPU4096MiB16slot root+phase in final host PID; no generic1CPU8root or reconstructed keys.",
+              "Actual full original daemon import/constructor, actual private Git, actual private original DuckDB wrapper, actual ReportOnlyNativeHost; cap2 refusal before original pass/SQL writes.",
+              "Record exact source call sites, group birth/membership, history1, stopped native/disk release; no fake positive authority."
+            ],
+            "depends_on": [
+              "NADM-02"
+            ],
+            "id": "NADM-03",
+            "status": "planned",
+            "title": "Qualify genuine same-PID bootstrap and bound-host cap2 refusal"
+          }
+        ],
+        "title": "Same-PID original bootstrap"
+      },
+      {
+        "id": "NADM-S2",
+        "tasks": [
+          {
+            "acceptance": [
+              "Follow READONLY_DOCKER_OBSERVER.json exactly: fixed GET /info plus exact original owned ID/name inspect, strict daemon/socket binding, exact present/absent projections and bounds.",
+              "Use original retained same-PID/thread lifecycle only; no arbitrary arguments/URI/method, new Popen/owner/slot/history, raw Env/Auth/container JSON or untrusted body in evidence/errors.",
+              "Do not modify shared G3 _bounded_docker_query: protected Codex inspect/fallback and7200-second wait are excluded. Productive create/start/wait/rm contracts unchanged.",
+              "Keep the original authenticated freezer exclusion and all original stopped kernel/native/process/path/runtime/source predicates. Readonly socket observations do not grant productive authority."
+            ],
+            "depends_on": [],
+            "id": "NADM-04",
+            "status": "planned",
+            "title": "Implement three H4 readonly observations with a fixed bounded Unix HTTP observer"
+          },
+          {
+            "acceptance": [
+              "Cover ordinary-only direct G3 image/startability/execution inspect, inert create and host fallback rm using actual native owner/groups; watchdog descendants retain original attached group. Do not broaden H4 readonly mapping.",
+              "Normal provider8+watchdog4+admin4 then provider8+watchdog4+freezer4 remains3CPU16slots; stop/drain/release actual admin before freezer. Authenticate charged scope instead of phantom spare+1.",
+              "For post-freezer nonproductive H4 observation use the qualified original retained same-PID readonly observer without new child grants; no request while freezer guard held. If that design fails qualification, retain pending or separately review a public SDK cleanup protocol.",
+              "Unknown productive cleanup or missing stopped proof preserves original finalizer/disposition/custody holds. No fresh owner/root after ancestry revocation."
+            ],
+            "depends_on": [
+              "NADM-01",
+              "NADM-04"
+            ],
+            "id": "NADM-05",
+            "status": "planned",
+            "title": "Integrate remaining productive ordinary admin owners and freezer lifetime"
+          },
+          {
+            "acceptance": [
+              "Existing inert image and actual original source; no provider/model/authentication or canonical attempt.",
+              "Actual productive CLI Popen/barriers/native attachments plus H4 fixed readonly socket path, exact source identities, bounded output and independent stopped cleanup/native finalization.",
+              "Qualify actual present200 then removed404, replacement name, daemon/socket change, overflow/timeout/malformed body and secret projection refusal. No mocks counted as real positive evidence.",
+              "Exercise before/during/after freezer cancellation; H4 readonly observation makes no Popen/owner/history growth and refuses while freezer held. Productive uncertainty retains actual owner/consumer/anchor/process refs."
+            ],
+            "depends_on": [
+              "NADM-03",
+              "NADM-05"
+            ],
+            "id": "NADM-06",
+            "status": "planned",
+            "title": "Qualify real inert ordinary admin ownership and H4 readonly cancellation observations"
+          }
+        ],
+        "title": "Ordinary Docker/freezer native lifetime"
+      },
+      {
+        "id": "NADM-S3",
+        "tasks": [
+          {
+            "acceptance": [
+              "Retain exact original task/state/lifecycle/connection/claims plus admin object references before generic finally.",
+              "No new task attempt/refund/acceptance or serialized/copyable authority.",
+              "Full stopped proof and disposition evidence required before original productive holds release."
+            ],
+            "depends_on": [
+              "NADM-06"
+            ],
+            "id": "NADM-07",
+            "status": "planned",
+            "title": "Integrate native admin pending with original disposition/finalizer holds"
+          },
+          {
+            "acceptance": [
+              "Additive owned draft documentation with immutable source/evidence pins; skip GitHub qualification.",
+              "Keep canonical cap2/counters and runtime disabled until separately reviewed activation readiness; report engineering validity separately from legal/Lean/accuracy results."
+            ],
+            "depends_on": [
+              "NADM-03",
+              "NADM-06",
+              "NADM-07"
+            ],
+            "id": "NADM-08",
+            "status": "planned",
+            "title": "Publish exact reviewed findings and remaining gaps"
+          }
+        ],
+        "title": "Retained original settlement and evidence"
+      }
+    ],
+    "title": "Use original public native owners for real daemon Git and ordinary Docker administration"
+  },
+  "not_a_canonical_board_or_attempt_authorization": true,
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-admin-goals@1"
+}

@@ -1,0 +1,38 @@
+{
+  "GitHub_qualification": "skipped_by_user",
+  "acceptance_authority": false,
+  "actual_consumed_ordinal_qualified": false,
+  "author_jobs_executed": false,
+  "completion_authority": false,
+  "full_original_host_qualified": false,
+  "original_caps_and_counters_mutated": false,
+  "original_positive_publish_failure_qualified": false,
+  "preparation": {
+    "base_readonly_payload_bytes": 106910476,
+    "combined_payload_bytes": 110252799,
+    "conservative_output_bound_bytes": 127030015,
+    "duration_seconds": 1800,
+    "external_charges": [],
+    "manifest_inventory_owner_log_allowance_bytes": 16777216,
+    "margin_bytes": 7187713,
+    "new_capsule_payload_bytes": 106943056,
+    "new_capsule_payload_file_count": 2812,
+    "original_native_envelope": {
+      "child_process_slots": 8,
+      "cpu_slots": 1,
+      "memory_mb": 4096
+    },
+    "retained_assembled_daemon_bytes": 3309743,
+    "storage_bytes": 134217728
+  },
+  "qualification": {
+    "controlled_cases": 5,
+    "duration_seconds": 1800,
+    "external_charges": [],
+    "full_original_constructor_calls": 5,
+    "maximum_inherited_Git_children": 128,
+    "storage_bytes": 67108864
+  },
+  "runtime_enabled": false,
+  "schema": "legal-ir-disposition-entry-fixture-resource-plan@1"
+}

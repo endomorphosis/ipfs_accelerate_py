@@ -1,0 +1,353 @@
+{
+  "actual_parent_exit_code": 1,
+  "actual_parent_finalized": false,
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02",
+  "canonical_tasks_accepted": 0,
+  "error_detail": "symlink in attempt inventory: pytest/test_missing_original_attempt_current",
+  "error_type": "DaemonResourceError",
+  "framework_symlinks": [
+    {
+      "ctime_ns": 1792258084268043741,
+      "device": 66306,
+      "inode": 75277247,
+      "mode": 41471,
+      "mtime_ns": 1792258084268043741,
+      "path": "pytest/test_actual_file_fsync_precedecurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_actual_file_fsync_precede0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084215044083,
+      "device": 66306,
+      "inode": 75274238,
+      "mode": 41471,
+      "mtime_ns": 1792258084215044083,
+      "path": "pytest/test_board_status_digest_changcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_board_status_digest_chang0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084240043922,
+      "device": 66306,
+      "inode": 75274247,
+      "mode": 41471,
+      "mtime_ns": 1792258084240043922,
+      "path": "pytest/test_changed_content_identity_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_changed_content_identity_0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084277043683,
+      "device": 66306,
+      "inode": 75277251,
+      "mode": 41471,
+      "mtime_ns": 1792258084277043683,
+      "path": "pytest/test_directory_fsync_failure_pcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_directory_fsync_failure_p0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084207044135,
+      "device": 66306,
+      "inode": 75274234,
+      "mode": 41471,
+      "mtime_ns": 1792258084207044135,
+      "path": "pytest/test_display_alias_cannot_chancurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_display_alias_cannot_chan0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084224044025,
+      "device": 66306,
+      "inode": 75274242,
+      "mode": 41471,
+      "mtime_ns": 1792258084224044025,
+      "path": "pytest/test_distinct_revision_recordscurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_distinct_revision_records0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084242041285,
+      "device": 66306,
+      "inode": 75274254,
+      "mode": 41471,
+      "mtime_ns": 1792258084242041285,
+      "path": "pytest/test_duplicate_JSON_keys_are_ncurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_duplicate_JSON_keys_are_n0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084176044335,
+      "device": 66306,
+      "inode": 75274222,
+      "mode": 41471,
+      "mtime_ns": 1792258084176044335,
+      "path": "pytest/test_exact_publication_is_idemcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_exact_publication_is_idem0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084246043883,
+      "device": 66306,
+      "inode": 75274276,
+      "mode": 41471,
+      "mtime_ns": 1792258084246043883,
+      "path": "pytest/test_hard_link_record_is_refuscurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_hard_link_record_is_refus0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084246776358,
+      "device": 66306,
+      "inode": 75274280,
+      "mode": 41471,
+      "mtime_ns": 1792258084246776358,
+      "path": "pytest/test_incomplete_publication_macurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_incomplete_publication_ma0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084261167434,
+      "device": 66306,
+      "inode": 75274307,
+      "mode": 41471,
+      "mtime_ns": 1792258084261167434,
+      "path": "pytest/test_inventory_overflow_fails_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_inventory_overflow_fails_0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084249697876,
+      "device": 66306,
+      "inode": 75274300,
+      "mode": 41471,
+      "mtime_ns": 1792258084249697876,
+      "path": "pytest/test_journal_missing_state_is_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_journal_missing_state_is_0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084241594280,
+      "device": 66306,
+      "inode": 75274252,
+      "mode": 41471,
+      "mtime_ns": 1792258084241594280,
+      "path": "pytest/test_missing_original_attempt_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_missing_original_attempt_0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084242313715,
+      "device": 66306,
+      "inode": 75274258,
+      "mode": 41471,
+      "mtime_ns": 1792258084242313715,
+      "path": "pytest/test_noncanonical_existing_JSOcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_noncanonical_existing_JSO0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084244114040,
+      "device": 66306,
+      "inode": 75274266,
+      "mode": 41471,
+      "mtime_ns": 1792258084244114040,
+      "path": "pytest/test_nonprivate_directory_is_rcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_nonprivate_directory_is_r0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084249090216,
+      "device": 66306,
+      "inode": 75274296,
+      "mode": 41471,
+      "mtime_ns": 1792258084249090216,
+      "path": "pytest/test_original_open_directory_rcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_original_open_directory_r0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084286043625,
+      "device": 66306,
+      "inode": 75277255,
+      "mode": 41471,
+      "mtime_ns": 1792258084286043625,
+      "path": "pytest/test_original_store_namespace_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_original_store_namespace_0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084260043793,
+      "device": 66306,
+      "inode": 75274303,
+      "mode": 41471,
+      "mtime_ns": 1792258084260043793,
+      "path": "pytest/test_oversized_existing_journacurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_oversized_existing_journa0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084241114091,
+      "device": 66306,
+      "inode": 75274250,
+      "mode": 41471,
+      "mtime_ns": 1792258084241114091,
+      "path": "pytest/test_positive_authority_flag_icurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_positive_authority_flag_i0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084164357882,
+      "device": 66306,
+      "inode": 75274218,
+      "mode": 41471,
+      "mtime_ns": 1792258084164357882,
+      "path": "pytest/test_real_private_immutable_pucurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_real_private_immutable_pu0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084248043870,
+      "device": 66306,
+      "inode": 75274288,
+      "mode": 41471,
+      "mtime_ns": 1792258084248043870,
+      "path": "pytest/test_record_directory_entry_iscurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_record_directory_entry_is0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084248840841,
+      "device": 66306,
+      "inode": 75274292,
+      "mode": 41471,
+      "mtime_ns": 1792258084248840841,
+      "path": "pytest/test_record_mode_change_fails_current",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_record_mode_change_fails_0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084198044193,
+      "device": 66306,
+      "inode": 75274230,
+      "mode": 41471,
+      "mtime_ns": 1792258084198044193,
+      "path": "pytest/test_revision_denial_is_not_ficurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_revision_denial_is_not_fi0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084188044257,
+      "device": 66306,
+      "inode": 75274226,
+      "mode": 41471,
+      "mtime_ns": 1792258084188044257,
+      "path": "pytest/test_same_revision_conflict_prcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_same_revision_conflict_pr0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084245034514,
+      "device": 66306,
+      "inode": 75274269,
+      "mode": 41471,
+      "mtime_ns": 1792258084245034514,
+      "path": "pytest/test_symlink_directory_is_refucurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_symlink_directory_is_refu0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084245043890,
+      "device": 66306,
+      "inode": 75274272,
+      "mode": 41471,
+      "mtime_ns": 1792258084245043890,
+      "path": "pytest/test_symlink_record_is_refusedcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_symlink_record_is_refused0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084247226036,
+      "device": 66306,
+      "inode": 75274284,
+      "mode": 41471,
+      "mtime_ns": 1792258084247226036,
+      "path": "pytest/test_unknown_directory_populatcurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_unknown_directory_populat0",
+      "uid": 1000
+    },
+    {
+      "ctime_ns": 1792258084243175422,
+      "device": 66306,
+      "inode": 75274262,
+      "mode": 41471,
+      "mtime_ns": 1792258084243175422,
+      "path": "pytest/test_wrong_revision_filename_icurrent",
+      "target": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02/pytest/test_wrong_revision_filename_i0",
+      "uid": 1000
+    }
+  ],
+  "github_qualification": "skipped_by_user",
+  "original_child_pid_absent": true,
+  "original_owner_pid_absent": true,
+  "original_receipt_does_not_prove_finalization": true,
+  "original_receipt_status": "completed",
+  "preserved_artifacts": {
+    "attempt-disposition-controls.json": "9dc7ca125d4669b2c9a7d07542c842ac6a54d46b1c6ef84889e81be89e332a87",
+    "attempt-disposition-controls.xml": "23b64ebae1a0e29147a2916eeb46f1c95a54ce253a0b7809bc682d2976fb0d33",
+    "child.sanitized.log": "7e158ef93d3ea271aee7160cbcdd30e6eaf7d3c5bca06daaef3a7507cebd592f",
+    "receipt.json": "86b1b1e613c77a42a2bb51138fe66e79ed0815886660e3b37ff765c4832bc9e7"
+  },
+  "qualification_passed": false,
+  "reason": "Original strict final disk inventory rejected pytest-generated current-directory symlinks.",
+  "recovery_performed": false,
+  "runtime_enabled": false,
+  "schema": "legal-ir-disposition-controls-failed-finalization-observation@1",
+  "selected_record_sha256": "3672394aedfcb7ffdc026c19acff92a7c5c0626b2d2017deaf4237a6c3ee05f1",
+  "selected_retained_record": {
+    "artifacts_durable_asserted": false,
+    "attempt_directory": {
+      "device": 66306,
+      "inode": 75274210,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-disposition-controls-20261017-r02"
+    },
+    "child": {
+      "birth": "127615740",
+      "pid": 750376
+    },
+    "child_process_slots": 8,
+    "cpu_slots": 1,
+    "created_at": 1792258083.8245494,
+    "external_charges": {},
+    "last_usage": {
+      "additional_requested_bytes": 134217728,
+      "charged_bytes": 158544652709,
+      "inventory": {
+        "apparent_bytes": 121442116197,
+        "entry_count": 1553648,
+        "special_file_count": 61,
+        "symlink_count": 2693
+      },
+      "limit_bytes": 160000000000,
+      "minimum_filesystem_free_bytes": 350508199936,
+      "observed_apparent_bytes": 121442116197,
+      "outstanding_full_reservations_bytes": 36968318784,
+      "scope": "named_roots_only_apparent_bytes"
+    },
+    "memory_mb": 4096,
+    "native_lease_id": "f3d591c59ad94a19a9139bdcd291f4c3",
+    "owner_pid": 740900,
+    "parent_lease_id": "1a0f36637e644388a51777df55b861ab",
+    "prior_children": [],
+    "reservation_id": "0c6581ac42d74eb3a181ab5094680658",
+    "retention_reason": "context_failed",
+    "scheduler_lane": "orchestration",
+    "scheduler_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "scheduler_state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+    "status": "retained",
+    "storage_bytes": 134217728,
+    "workload": "canonical_parented_phase"
+  },
+  "worker_pytest_passed": true,
+  "worker_testcases": 33
+}

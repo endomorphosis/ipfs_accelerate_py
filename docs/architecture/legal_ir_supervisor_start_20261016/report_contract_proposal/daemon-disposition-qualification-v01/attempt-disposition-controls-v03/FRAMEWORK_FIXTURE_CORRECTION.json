@@ -1,0 +1,35 @@
+{
+  "schema": "legal-ir-pytest-framework-fixture-correction@1",
+  "predecessor": "../attempt-disposition-controls-v02",
+  "predecessor_worker_outcome": {
+    "controlled_testcases": 33,
+    "passed_testcases": 33,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "returncode": 0,
+    "worker_result_sha256": "9dc7ca125d4669b2c9a7d07542c842ac6a54d46b1c6ef84889e81be89e332a87",
+    "JUnit_sha256": "23b64ebae1a0e29147a2916eeb46f1c95a54ce253a0b7809bc682d2976fb0d33"
+  },
+  "predecessor_native_finalization": {
+    "root_reported_failed": true,
+    "qualified": false,
+    "reason": "Pytest's built-in tmp_path fixture leaves *_current directory symlinks in its temporary root. Original V05 strict native final storage inventory rejects these aliases even after all33 worker cases pass.",
+    "recovery": "Root owns independent finite public recovery of exact framework aliases and retained original reservation. This source author performs no recovery, native action or quota mutation."
+  },
+  "correction": [
+    "Override tmp_path locally with a request-only pytest fixture. Create fresh regular0700 case directories under the original TMPDIR/cases using stable node-id hashes.",
+    "Never request builtin tmp_path_factory. Preserve the33 refusal/privateFS assertions and unchanged source helper.",
+    "Keep exact fixture-created symlink and extra-hardlink finally cleanup from V02.",
+    "After pytest completes, perform a bounded read-only scan of the original private attempt. Reject directory aliases or nonregular/multi-link/foreign-owned files before emitting passed=True.",
+    "Use a fresh r03 request and64MiB original storage envelope; no external charges or additional native admissions."
+  ],
+  "source_helper_sha256": "980597e97d337aaa90c0a93527229be37974db1f6351b0eb33a98c95cc8fe43b",
+  "authored_control_cases": 33,
+  "author_tests_executed": 0,
+  "worker_success_is_not_native_finalization": true,
+  "actual_original_object_join_positive_cases": 0,
+  "runtime_enabled": false,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0
+}

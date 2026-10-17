@@ -1,0 +1,39 @@
+{
+  "bounds_caveat": "Aggregate32MiB is original cooperative native storage accounting, not a filesystem quota. Framework log planning allowance is not a separate hard cap. Original global160GB/root/policy unchanged.",
+  "capacity_policy": "require_capacity (default), keep old128MiB and new32MiB fully charged until API verifies release; refuse rather than raise cap/close other claims.",
+  "cooperative_quiescence_caveat": "Retained nofollow parent FD and immediate metadata/readlink checks do not provide atomic inode-conditional unlink against a malicious same-UID final-name replacement. Full pre/post inventories and original owner/group absence mandatory; any mismatch refuses.",
+  "crash_caveat": "An unlink/fsync can precede its new-attempt journal publication. Partial failure needs separately reviewed new capture; missing aliases are not silently accepted.",
+  "evidence_scope": "33 passed source/private-FS controls, original native finalization failed; successful later explicit closeout is a separate observation and cannot rewrite that history.",
+  "external_charges": [],
+  "forbidden": [
+    "Git",
+    "Docker or HTTP",
+    "providers/models/auth",
+    "pytest/test rerun",
+    "new nested native reservations",
+    "private key or capability reconstruction",
+    "manual ledger mutation",
+    "administrative_closeout override",
+    "quota increase",
+    "other claim mutation",
+    "original regular artifact mutation",
+    "canonical cap/state/board/counter mutation"
+  ],
+  "new_output_hard_bounds": {
+    "capture_copy_bytes": 1048576,
+    "log_planning_bytes": 4194304,
+    "planning_overhead_bytes": 8388608,
+    "public_recovery_projection_bytes": 2097152,
+    "regular_inventory_bytes": 1048576,
+    "removed_alias_journal_bytes": 1048576,
+    "result_bytes": 262144
+  },
+  "new_output_scope": "Only fresh charged attempt; capture, incremental removed-alias journal, regular inventory, API projection, result and original parent logs/receipt.",
+  "new_storage_bytes": 33554432,
+  "old_mutation_scope": "Only28 captured direct pytest framework symlink names via nofollow retained parent-directory FD; no regular/target/directory deletion or original evidence rewrite.",
+  "original_parent": "run_image_owner_v05.py unchanged, actual1CPU4096MiB8slot original public SDK parent/phase/leaf",
+  "runtime_enabled": false,
+  "schema": "legal-ir-failed-fixture-recovery-resource-plan@1",
+  "shared_metadata_mutation": "Only public reconcile_retained_reservation may atomically update exactly the selected old ledger claim; original owner also performs its normal SDK ledger bookkeeping. These administrative metadata writes are intrinsic to the public API, not external payload publication.",
+  "source_only": true
+}

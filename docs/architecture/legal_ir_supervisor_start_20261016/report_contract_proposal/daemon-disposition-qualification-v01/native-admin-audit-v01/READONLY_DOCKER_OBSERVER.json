@@ -1,0 +1,181 @@
+{
+  "acceptance_authority": false,
+  "actual_Docker_HTTP_or_CLI_requests_executed": 0,
+  "excluded_shared_G3_callers": [
+    {
+      "definition": "_inspect_recorded_codex_effect",
+      "line": 4380,
+      "query_line": 4425,
+      "shape": "Protected Codex full container inspect consumes State/Image/Id/Name and has separate source/CAS validation. Do not route through this H4-only observer."
+    },
+    {
+      "definition": "_inspect_recorded_codex_effect",
+      "query_line": 4441,
+      "shape": "Protected recovery fallback container ls uses name=^<name>$ with {{.ID}}, distinct from H4 slash/name output."
+    },
+    {
+      "definition": "_wait_for_recorded_codex_effect",
+      "line": 4517,
+      "query_line": 4548,
+      "shape": "container wait with7200-second timeout; productive/wait contract unchanged, never mapped to finite GET observation."
+    }
+  ],
+  "native_ownership_assessment": {
+    "additional_native_child_slots": 0,
+    "additional_native_history_attachments": 0,
+    "existing_intent": "H4 reap_observed_transport_after_failure(stopped=True) and _acknowledge_independently_stopped_custody already retain the original context to make independent nonproductive observations before release. The latter currently reaches subprocess-producing query, which creates the cancellation gap.",
+    "main_process_resources": "Finite parsing/socket work remains in the original retained host process. Zero added child slots is not a claim of zero CPU/RSS or a new free reservation.",
+    "new_design": "A direct fixed readonly socket observation in that original same-PID retained context avoids a new child/process group/native-history attachment or post-revocation child grant. This is compatible with the purpose of that existing stopped observer, subject to an explicit reviewed source successor and qualification.",
+    "not_established": "There is no public native SDK HTTP-observer API or already-qualified implementation in these pinned sources. This audit does not establish blanket permission to execute after cancellation, confer productive authority, or waive original stopped proof/custody checks.",
+    "release": "HTTP absence is only one predicate. Require original native/proc kernel-scope quiescence, actual transport/watchdog reap, original paths gone, same runtime/source identity, all original consumers/finalizers/disposition conditions. Unknown preserves original holds."
+  },
+  "original_query_contract": {
+    "argv_prefix": [
+      "/usr/bin/docker",
+      "--host=unix:///var/run/docker.sock",
+      "--config",
+      "/nonexistent"
+    ],
+    "definition": "_Lifecycle.query",
+    "line": 363,
+    "projected_stdout_maximum_bytes": 4096,
+    "success": "Original requires returncode0 and strips bytes; a successor should expose typed fields internally, preserving these exact callers rather than emulate an arbitrary CLI.",
+    "timeout_seconds": 5
+  },
+  "original_sources": {
+    "G3": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24"
+    },
+    "H4": {
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-controls-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "sha256": "238d21021f2701475c9152c86952396df7050ffce6c56736622ab005625b3b8d"
+    }
+  },
+  "proposed_lifetime_and_bounds": {
+    "connect_deadline_seconds_proposed": 1,
+    "cumulative_accounting": "Counters/deadlines are on the original retained lifecycle and cannot reset when an observation fails or cancellation occurs. Refuse/pending on any exceeded bound.",
+    "daemon_identity": "Bound /info ID before/after each absence batch. Refuse on daemon or socket change. Do not accept an unknown-route404; qualify this exact supported endpoint using actual owned present200 then removed404 behavior first.",
+    "endpoint": "Literal AF_UNIX /var/run/docker.sock only. Never DOCKER_HOST/context/environment/proxy/TCP/SSH, arbitrary URI, method, query string, redirects, auth or credentials.",
+    "freezer": "No Docker socket request while the actual authenticated freezer scope remains active, including failure paths. Only after its original guard has exited may the original retained observer inspect stopped custody.",
+    "json": "Strict UTF-8; reject duplicate keys/nonfinite constants/malformed types and excessive depth/field counts; one bounded body, no reusable raw response cache. Parsing/allocation bounds are cooperative, not a kernel memory quota.",
+    "maximum_body_bytes_proposed": 262144,
+    "maximum_concurrent_sockets": 1,
+    "maximum_header_bytes_proposed": 16384,
+    "maximum_lifecycle_requests_proposed": 64,
+    "maximum_owned_targets_per_batch_proposed": 4,
+    "maximum_projected_bytes": 4096,
+    "per_batch_wall_seconds_proposed": 20,
+    "per_request_wall_seconds_proposed": 5,
+    "same_process": "Original _Lifecycle instance, original host PID and thread, actual runner/module/source identities, original actual provider/watchdog refs and retained cleanup context. No receipt/boolean/source hash grants authority.",
+    "secrets": "Container inspect JSON can contain Config.Env and other sensitive fields. Never return, persist, log, hash into public evidence, or include raw HTTP bodies/headers in exceptions. Keep only ID/name/absent projection and fixed stage/refusal codes; discard bodies promptly.",
+    "socket_identity": "Capture and later check original resolved socket device/inode/mode and local peer identity; preserve the original /var/run alias rather than inventing a parent-symlink ban. Exact supported identity rules require future host qualification."
+  },
+  "required_future_qualification": [
+    "Verify exact supported local Docker HTTP API semantics without widening methods/paths.",
+    "Actual owned inert container present200 and removed404 by exact ID/name; replacement-name presence, wrong daemon/socket, invalid response/type/identity, overflow/timeouts/disconnect all remain pending.",
+    "Original same-PID3CPU16 host, actual retained H4 objects, no child/Popen/slot/history growth for these observations.",
+    "Before/during/after-freezer cancellation including refusal of any socket call while freezer held; no new productive authority after revocation.",
+    "Sensitive Env/error-body sentinel never reaches projected return/evidence/error text; protected shared G3 callers byte unchanged.",
+    "No complete-positive claim until all remaining original productive subprocess producers are natively owned and original finalizer/disposition holds settle."
+  ],
+  "runtime_enabled": false,
+  "schema": "legal-ir-readonly-docker-observer-design@1",
+  "scope": "Only the three readonly forms from the original H4 _Lifecycle.query. Do not replace the shared G3 _bounded_docker_query or productive Docker transport.",
+  "source_only": true,
+  "status": "source_design_only_unimplemented_unqualified",
+  "unchanged_out_of_scope": [
+    "Original G3 image probes, startability and execution attestation remain separate direct subprocess producers requiring actual native administrative integration before positive-host activation.",
+    "create/start/wait/rm keep original native-group and kernel execution contracts; no new Docker transport abstraction in this step.",
+    "Original watchdog descendants remain in their actual attached watchdog PGID.",
+    "Protected74, protected Codex _DockerContainerLease/CAS recovery, original canonical cap/counters/board/policy and provider/authentication behavior remain unchanged."
+  ],
+  "whitelist": [
+    {
+      "acceptance": "HTTP200, one strict JSON mapping and string ID matching original lowercase UUID regex; match originally retained daemon ID on later observations. Do not expose the other info fields.",
+      "allowed_projection": [
+        "ID"
+      ],
+      "callsites": [
+        {
+          "definition": "_Lifecycle.daemon",
+          "line": 371
+        }
+      ],
+      "operation": "original_daemon_id",
+      "original_arguments": [
+        "info",
+        "--format",
+        "{{.ID}}"
+      ],
+      "proposed_HTTP": {
+        "method": "GET",
+        "path": "/info"
+      }
+    },
+    {
+      "acceptance": "Only a qualified exact-route404 on the same bound daemon counts as absent. HTTP200 is present and must validate returned full Id and bound Name; mismatch, non200/404 or any ambiguity remains pending. Return only a typed present/absent result, or the exact expected public ID when preserving original bytes shape.",
+      "allowed_projection": [
+        "Id",
+        "Name"
+      ],
+      "callsites": [
+        {
+          "definition": "_Lifecycle.finish",
+          "line": 476
+        },
+        {
+          "definition": "_Lifecycle.reap_observed_transport_after_failure",
+          "line": 553
+        }
+      ],
+      "operation": "exact_fenced_container_id_absent",
+      "original_arguments": [
+        "container",
+        "ls",
+        "--all",
+        "--no-trunc",
+        "--filter",
+        "id=<exact full64hex retained fence ID>",
+        "--format",
+        "{{.ID}}"
+      ],
+      "proposed_HTTP": {
+        "method": "GET",
+        "path": "/containers/<exact full64hex retained fence ID>/json"
+      }
+    },
+    {
+      "acceptance": "Name must come from an actual retained _LegacyDockerContainerLease allocation, not a caller string, with original grok naming profile. Only same-daemon qualified404 is absent. HTTP200 with exact /Name is present even if its Id differs from an earlier fence; a replacement container with that name must block cleanup. Malformed or mismatched responses remain pending.",
+      "allowed_projection": [
+        "Id",
+        "Name"
+      ],
+      "callsites": [
+        {
+          "definition": "_Lifecycle.finish",
+          "line": 477
+        },
+        {
+          "definition": "_Lifecycle.reap_observed_transport_after_failure",
+          "line": 549
+        }
+      ],
+      "operation": "exact_allocated_container_name_absent",
+      "original_arguments": [
+        "container",
+        "ls",
+        "--all",
+        "--no-trunc",
+        "--filter",
+        "name=^/<exact original allocated name>$",
+        "--format",
+        "{{.Names}}"
+      ],
+      "proposed_HTTP": {
+        "method": "GET",
+        "path": "/containers/<exact original allocated name>/json"
+      }
+    }
+  ]
+}

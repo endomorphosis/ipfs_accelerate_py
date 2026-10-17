@@ -1,0 +1,107 @@
+{
+  "critical_cancellation_gap": "Post-freezer CLI query cannot acquire a fresh native owner after revocation. Proposed smaller successor performs only H4 fixed readonly observations in its actual retained same-PID context without new child/slot/history; unimplemented/unqualified. Otherwise retain pending original capability/finalizer/disposition holds.",
+  "existing_phase": {
+    "child_process_slots": 16,
+    "cpu_slots": 3,
+    "memory_mb": 4096,
+    "owner": "Actual same-PID already admitted ResourceLease beneath original3CPU4096MiB16slot root; do not obtain it by nesting under1CPU8worker or reconstructing private keys."
+  },
+  "forbidden_combination": {
+    "child_process_slots": 20,
+    "cpu_slots": 4,
+    "owners": [
+      "provider8",
+      "watchdog4",
+      "freezer4",
+      "admin4"
+    ]
+  },
+  "limits": "Reservations/group checks are cooperative observations, not kernel quotas. Child slots cover child groups, not self-attachment of the host. Collect host and group RSS in the actual future qualification.",
+  "normal_path_only_not_revocation_solution": true,
+  "normal_path_sibling_budgets": [
+    {
+      "child_process_slots": 4,
+      "cpu_slots": 1,
+      "memory_mb": 512,
+      "owners": [
+        "admin1CPU512MiB4slots"
+      ],
+      "stage": "bootstrap import/constructor"
+    },
+    {
+      "child_process_slots": 4,
+      "cpu_slots": 1,
+      "memory_mb": 512,
+      "owners": [
+        "preflight1CPU512MiB4slots"
+      ],
+      "stage": "existing report preflight"
+    },
+    {
+      "child_process_slots": 16,
+      "cpu_slots": 3,
+      "memory_mb": 2048,
+      "owners": [
+        "provider1CPU1024MiB8slots",
+        "watchdog1CPU512MiB4slots",
+        "admin1CPU512MiB4slots"
+      ],
+      "stage": "ordinary provider and host admin"
+    },
+    {
+      "child_process_slots": 16,
+      "cpu_slots": 3,
+      "memory_mb": 2048,
+      "owners": [
+        "provider1CPU1024MiB8slots",
+        "watchdog1CPU512MiB4slots",
+        "freezer1CPU512MiB4slots"
+      ],
+      "stage": "freezer after admin stopped/released"
+    },
+    {
+      "child_process_slots": 16,
+      "cpu_slots": 3,
+      "memory_mb": 2048,
+      "owners": [
+        "provider1CPU1024MiB8slots",
+        "watchdog1CPU512MiB4slots",
+        "new admin1CPU512MiB4slots"
+      ],
+      "stage": "post-freezer observations while ancestry still live"
+    }
+  ],
+  "preferred_first_admin_profile": {
+    "absolute_lifetime_seconds_proposed": 600,
+    "child_process_slots": 4,
+    "command_count_bound_proposed": 128,
+    "cpu_slots": 1,
+    "memory_mb": 512,
+    "native_child_consumer": {
+      "child_process_slots": 0,
+      "cpu_slots": 1,
+      "memory_mb": 1,
+      "nested_under": "actual admin native leaf, not phase sibling"
+    },
+    "owner_history_attachments_per_scope": 1,
+    "reason": "Matches mechanically qualified freezer anchor shape. Two slots would cover anchor+simple command but has not been qualified for this new executor; do not silently narrow the established4slot envelope."
+  },
+  "preferred_readonly_observer_alternative": {
+    "additional_child_slots": 0,
+    "additional_native_history_attachments": 0,
+    "effect": "May eliminate the post-freezer administrative child owner for these three H4 observation forms only; does not cover productive G3 image/create/inspect/rm children.",
+    "freezer_exclusion": "No socket query while original authenticated freezer scope active.",
+    "host_CPU_memory": "Still original main-PID finite work, not zeroCPU or newly granted authority.",
+    "no_new_Popen_or_owner_after_revocation": true,
+    "source_contract": "READONLY_DOCKER_OBSERVER.json",
+    "status": "source_design_unqualified"
+  },
+  "same_session_anchor": {
+    "attachment": "public actual owner.check_usage(owner.directory,child_pid=anchor.pid,full=True) once, then public group samples",
+    "commands": "actual direct-child gated Popen(process_group=anchor.pid)",
+    "launch": "actual direct-child Popen(process_group=0)",
+    "variance": "SDK examples say start_new_session=True; actual implementation verifies direct PPID/PGID==PID/birth and qualified freezer uses same-session anchor. This variance remains explicit; joining a different session is invalid."
+  },
+  "schema": "legal-ir-native-admin-resource-topology@1",
+  "storage": "Admin wrapper logs alone can be small, but original eager clean-control-plane import can allocate/copy its capsule. Precharge exact actual temporary/repository roots before import; this audit does not claim32MiB covers a complete clean import. Existing512MiB preflight/owner storage policies and global160GB cap remain unchanged."
+}

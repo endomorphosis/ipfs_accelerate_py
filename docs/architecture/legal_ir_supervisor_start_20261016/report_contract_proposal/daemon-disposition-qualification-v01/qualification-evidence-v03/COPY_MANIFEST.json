@@ -1,0 +1,53 @@
+{
+  "acceptance_authority": false,
+  "copy_only": true,
+  "files": [
+    {
+      "bytes": 635,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r02/receipt.json",
+      "path": "receipt.json",
+      "sha256": "8083059c967aee541391e186e50f7e0bdd11c8363ff84186e5c761254d947a94"
+    },
+    {
+      "bytes": 10367,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r02/disposition-entry-qualification.json",
+      "path": "disposition-entry-qualification.json",
+      "sha256": "499df4a1820b2707cedde3cd402c502af1e496c27c4e6e5030e745f15a448703"
+    },
+    {
+      "bytes": 443,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r02/entry-diagnostic-corrupt_journal.json",
+      "path": "entry-diagnostic-corrupt_journal.json",
+      "sha256": "0fe0ba5040f347b7ffbfe81e372782160e2143cebfa2028af3b39cf2f50080ba"
+    },
+    {
+      "bytes": 466,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r02/entry-diagnostic-incomplete_journal.json",
+      "path": "entry-diagnostic-incomplete_journal.json",
+      "sha256": "cd1ce916ce9a0a01e353bd8153a8ed507d1267a86c9c8a0962631e19a66ab072"
+    },
+    {
+      "bytes": 458,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r02/entry-diagnostic-missing_journal.json",
+      "path": "entry-diagnostic-missing_journal.json",
+      "sha256": "d6a0196281636ba1c226264bd4be23604a3d036cd6a8601e72cffbfdd242fb19"
+    },
+    {
+      "bytes": 471,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r02/entry-diagnostic-quarantine_without_journal.json",
+      "path": "entry-diagnostic-quarantine_without_journal.json",
+      "sha256": "9fce76766d309ee8b46fa822fef5a4bc655e3e01e732698eb263f77e56cf62ef"
+    },
+    {
+      "bytes": 467,
+      "original_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r02/entry-diagnostic-valid_lowlevel_denial.json",
+      "path": "entry-diagnostic-valid_lowlevel_denial.json",
+      "sha256": "9c4cf4114db1698818801108e1b510db37ef4655eedc400599dcf13dca52dceb"
+    }
+  ],
+  "originals_unchanged": true,
+  "runtime_enabled": false,
+  "schema": "legal-ir-qualification-evidence-copies@1",
+  "scope": "Five genuine fullmodule public entry refusals; no positive nativehost or consumed attempt.",
+  "total_bytes": 13307
+}
