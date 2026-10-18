@@ -132,22 +132,48 @@ def peer(channel):
     return process(pid)
 
 
-def send(channel, value):
+def _remaining_rpc_timeout(channel, deadline_monotonic):
+    """One caller-owned absolute clock; byte arrivals cannot renew it."""
+    need(type(deadline_monotonic) in (int, float) and math.isfinite(deadline_monotonic),
+         'owner_rpc_absolute_deadline_invalid')
+    remaining = deadline_monotonic-time.monotonic()
+    need(remaining > 0, 'owner_rpc_absolute_deadline_expired')
+    channel.settimeout(min(1.0, remaining))
+
+
+def _connect_with_deadline(channel, endpoint, deadline_monotonic):
+    _remaining_rpc_timeout(channel, deadline_monotonic)
+    channel.connect(endpoint)
+    _remaining_rpc_timeout(channel, deadline_monotonic)
+
+
+def send(channel, value, *, deadline_monotonic=None):
     raw = canonical(value)
     need(len(raw) <= MAX_FRAME, 'owner_frame_bound')
+    if deadline_monotonic is not None:
+        _remaining_rpc_timeout(channel, deadline_monotonic)
     channel.sendall(raw)
+    if deadline_monotonic is not None:
+        _remaining_rpc_timeout(channel, deadline_monotonic)
 
 
-def receive(channel):
+def receive(channel, *, deadline_monotonic=None):
     raw = bytearray()
     while b'\n' not in raw:
+        if deadline_monotonic is not None:
+            _remaining_rpc_timeout(channel, deadline_monotonic)
         part = channel.recv(min(1024, MAX_FRAME+1-len(raw)))
+        if deadline_monotonic is not None:
+            _remaining_rpc_timeout(channel, deadline_monotonic)
         need(bool(part), 'owner_unexpected_EOF')
         raw.extend(part)
         need(len(raw) <= MAX_FRAME, 'owner_frame_bound')
     body, _, tail = raw.partition(b'\n')
     need(not tail, 'owner_multiple_frames_forbidden')
-    return decode(bytes(body))
+    value = decode(bytes(body))
+    if deadline_monotonic is not None:
+        _remaining_rpc_timeout(channel, deadline_monotonic)
+    return value
 
 
 def validate_context(context):
@@ -243,9 +269,9 @@ class ProductionOwnerGuardClient:
             started = time.monotonic()
             remaining = context['work_deadline_monotonic']-started
             need(math.isfinite(remaining) and remaining > 3, 'owner_client_original_deadline')
+            rpc_deadline = min(started+1.0, context['work_deadline_monotonic']-3.0)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
-                channel.settimeout(min(1.0, remaining-3))
-                channel.connect(str(endpoint))
+                _connect_with_deadline(channel, str(endpoint), rpc_deadline)
                 observed = peer(channel)
                 need(observed['pid'] == context['owner_pid'] and observed['birth'] == context['owner_birth'] and
                      self._owner_peer in (None, observed), 'owner_client_actual_owner_peer')
@@ -254,9 +280,10 @@ class ProductionOwnerGuardClient:
                     'request_sha256': context['request_sha256'], 'context_sha256': context['context_sha256'],
                     'nonce': context['nonce'], 'pid': self._own['pid'], 'birth': self._own['birth'],
                     'process_group': self._own['group_pid']}
-                send(channel, request)
-                response = receive(channel)
+                send(channel, request, deadline_monotonic=rpc_deadline)
+                response = receive(channel, deadline_monotonic=rpc_deadline)
             finished = time.monotonic()
+            need(finished < rpc_deadline, 'owner_rpc_absolute_deadline_expired')
             expected = {'schema': RPC_SCHEMA, 'status': 'current', 'sequence': sequence, 'stage': stage,
                 **{key: context[key] for key in ('request_sha256', 'context_sha256', 'nonce', 'owner_pid',
                     'owner_birth', 'worker_pid', 'worker_birth', 'worker_process_group',
@@ -269,14 +296,20 @@ class ProductionOwnerGuardClient:
                  finished < context['work_deadline_monotonic']-3, 'owner_client_ACK_not_fresh_or_deadline')
             need(socket_identity(endpoint) == actual and process(os.getpid()) == self._own,
                  'owner_client_identity_changed_during_RPC')
-            self._owner_peer = observed
-            self._sequence = sequence
-            self._receipts.append({'sequence': sequence, 'stage': stage, 'request_sha256': context['request_sha256'],
+            receipt = {'sequence': sequence, 'stage': stage, 'request_sha256': context['request_sha256'],
                 'context_sha256': context['context_sha256'], 'owner_pid': observed['pid'], 'owner_birth': observed['birth'],
                 'owner_process_group': observed['group_pid'], 'client_pid': self._own['pid'], 'client_birth': self._own['birth'],
                 'client_process_group': self._own['group_pid'], 'observed_monotonic': moment,
                 'received_monotonic': finished, 'response_sha256': digest(response),
-                'actual_kernel_peer_owner_verified': True, 'observation_is_not_native_authority': True})
+                'actual_kernel_peer_owner_verified': True, 'observation_is_not_native_authority': True}
+            # Final identity reads and response hashing can consume the original
+            # clock. Commit no client state based on the earlier receive time.
+            accepted = time.monotonic()
+            need(accepted < rpc_deadline and accepted < context['work_deadline_monotonic']-3,
+                 'owner_rpc_absolute_deadline_expired')
+            self._owner_peer = observed
+            self._sequence = sequence
+            self._receipts.append(receipt)
         except BaseException:
             self._failed = True
             raise
