@@ -78899,316 +78899,323 @@ def main(argv: list[str] | None = None) -> None:
     # inside owner RPC or portal construction before the first live heartbeat;
     # retain its child stack without relaxing the lifecycle health deadline.
     native_startup_watchdog = args.state_owner_bootstrap_fd != -1
-    if native_startup_watchdog:
-        import faulthandler
-        faulthandler.dump_traceback_later(10, repeat=True)
-        logger.info("Native owner startup stage: main entered")
-    if args.llm_merge_resolver_command:
-        os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
-    if args.llm_merge_resolver_timeout_seconds is not None:
-        os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
-
-    program = database_program_from_daemon_namespace(args)
-    database_path = getattr(args, "database_path", None)
-    if database_path is None and program is not None and program.store_id:
-        candidate = Path(program.store_id)
-        if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
-            database_path = candidate
-    if database_path is None and str(getattr(args, "todo_path", "") or "").endswith(
-        (".duckdb", ".ddb")
-    ):
-        database_path = Path(args.todo_path)
-
-    use_database_daemon = (
-        program is not None
-        and is_database_authority_mode(
-            authority_mode=program.authority_mode,
-            task_source_kind=program.task_source_kind,
-        )
-        and database_path is not None
-    ) or (
-        database_path is not None
-        and is_database_authority_mode(
-            authority_mode=str(getattr(args, "authority_mode", "") or ""),
-            task_source_kind=str(getattr(args, "task_source_kind", "") or ""),
-        )
-    )
-
-    if use_database_daemon:
-        from .native_owner_bootstrap import database_owner_bootstrap_kwargs
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: bootstrap starting")
-        owner_bootstrap = database_owner_bootstrap_kwargs(args, program)
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: bootstrap attached")
-        authority_mode = (
-            program.authority_mode
-            if program is not None
-            else str(getattr(args, "authority_mode", "") or "quack")
-        )
-        task_source_kind = (
-            program.task_source_kind
-            if program is not None
-            else str(getattr(args, "task_source_kind", "") or "duckdb")
-        )
-        daemon: Any = DatabaseImplementationDaemon(
-            database_path=Path(database_path),
-            coordination_path=getattr(args, "coordination_path", None),
-            state_dir=Path(args.state_dir),
-            state_prefix=str(args.state_prefix),
-            owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
-            authority_mode=authority_mode or "quack",
-            task_source_kind=task_source_kind or "duckdb",
-            quack_uri=str(getattr(args, "quack_endpoint", "") or ""),
-            # Database authority never receives the canonical Markdown board.
-            markdown_path=None,
-            # JSON projections optional under database authority.
-            state_path=None,
-            strategy_path=None,
-            events_path=None,
-            pid_path=None,
-            queue_path=None,
-            require_real_execution=bool(args.implement),
-            max_task_attempts=int(args.max_task_attempts),
-            execution_slice_task_cids=tuple(args.execution_slice_task_cid),
-            execution_slice_task_ids=tuple(args.execution_slice_task_id),
-            task_prefix=str(getattr(args, "task_prefix", "") or ""),
-            task_shard_count=args.task_shard_count,
-            task_shard_index=args.task_shard_index,
-            strict_task_sharding=args.strict_task_sharding,
-            **owner_bootstrap,
-        )
-        from ..runtime.native_dispatch_drain import from_native_admission
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: database daemon constructed")
-        daemon._native_dispatch_control = from_native_admission(
-            admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
-            repo_root=REPO_ROOT,
-        )
-        bind_database_portal_execution_from_args(
-            daemon,
-            args,
-            repo_root=REPO_ROOT,
-            portal_daemon_class=PortalImplementationDaemon,
-            configured_board_live_admission=(
-                _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
-            ),
-        )
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: portal execution bound")
-    else:
-        if args.state_owner_bootstrap_fd != -1 or args.state_owner_client_id:
-            raise ValueError("native owner bootstrap cannot enter the legacy daemon")
-        daemon = PortalImplementationDaemon(
-            todo_path=args.todo_path,
-            task_source=(
-                args.todo_path
-                if args.task_source_kind in {"markdown", "duckdb"}
-                else None
-            ),
-            task_source_kind=(
-                args.task_source_kind
-                if args.task_source_kind in {"markdown", "duckdb"}
-                else ""
-            ),
-            expected_task_source_root_id=args.expected_task_source_root,
-            expected_task_source_repository_root_id=(
-                args.expected_task_source_repository_root
-            ),
-            state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
-            strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
-            events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
-            repo_root=REPO_ROOT,
-            board_namespace=str(getattr(args, "board_namespace", "") or ""),
-            task_header_prefix=args.task_prefix,
-            implement=args.implement,
-            implementation_command=args.implementation_command or None,
-            production_provider_policy=args.production_provider_policy,
-            production_provider_context_budget_tokens=args.production_provider_context_budget_tokens,
-            production_provider_timeout_seconds=args.production_provider_timeout_seconds,
-            production_provider_review_authority_key_path=args.production_provider_review_authority_key_path,
-            production_provider_launch_authority_receipt_path=args.production_provider_launch_authority_receipt_path,
-            production_provider_launch_authority_receipt_content_id=args.production_provider_launch_authority_receipt_content_id,
-            implementation_timeout=args.implementation_timeout,
-            max_task_attempts=args.max_task_attempts,
-            use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
-            worktree_root=args.worktree_root,
-            merge_target_branch=args.merge_target_branch,
-            merge_queue_dir=args.merge_queue_dir,
-            worktree_submodule_paths=args.worktree_submodule_path or None,
-            implementation_protected_paths=args.implementation_protected_path,
-            manual_completion_authority_task_ids=(
-                args.manual_completion_authority_task_id
-            ),
-            manual_completion_authority_required_task_ids=(
-                args.manual_completion_authority_required_task_id
-            ),
-            manual_completion_authority_epoch_id=(
-                args.manual_completion_authority_epoch_id
-            ),
-            manual_completion_authority_revalidation_only=(
-                args.manual_completion_authority_revalidation_only
-            ),
-            objective_path=args.objective_path,
-            objective_bundle_dir=args.objective_bundle_dir,
-            generated_status_paths=args.generated_status_path,
-            external_reservation_manifest_paths=args.external_reservation_manifest_path,
-            assumed_completed_task_ids=args.assume_completed_task_id,
-            execution_slice_task_ids=args.execution_slice_task_id,
-            execution_slice_task_cids=args.execution_slice_task_cid,
-            llm_merge_resolver_command=args.llm_merge_resolver_command or None,
-            llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
-            merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
-            merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
-            task_shard_count=args.task_shard_count,
-            task_shard_index=args.task_shard_index,
-            strict_task_sharding=args.strict_task_sharding,
-            idle_lane_work_stealing=args.idle_lane_work_stealing,
-            validation_max_workers=args.validation_max_workers,
-            validation_resource_budget=args.validation_resource_budget,
-            maintenance_interval_seconds=args.maintenance_interval_seconds,
-        )
-    native_owner_heartbeat = None
-    if use_database_daemon and owner_bootstrap:
-        from .native_owner_bootstrap import NativeOwnerHeartbeat
-        native_owner_heartbeat = NativeOwnerHeartbeat(
-            credentials=owner_bootstrap["state_owner_bootstrap_credentials"],
-            state_dir=Path(args.state_dir), state_prefix=str(args.state_prefix),
-        ).start()
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: live heartbeat published")
-            faulthandler.cancel_dump_traceback_later()
-    handlers_installed = threading.current_thread() is threading.main_thread()
-    previous_term: Any = None
-    previous_int: Any = None
-    shutdown = None
-    if use_database_daemon:
-        from .database_shutdown import DatabaseDaemonShutdown
-
-        shutdown = DatabaseDaemonShutdown()
-        daemon._cooperative_shutdown = shutdown
-
-    def request_stop(signum: int, _frame: object) -> None:
-        if shutdown is not None:
-            shutdown.request(signum)
-        else:
-            raise SystemExit(128 + signum)
-
-    if handlers_installed:
-        previous_term = signal.signal(signal.SIGTERM, request_stop)
-        previous_int = signal.signal(signal.SIGINT, request_stop)
+    startup_watchdog = None
     try:
-        if args.reset_manual_completion_authority_renewal_task_id:
-            reset_fn = getattr(
-                daemon, "reset_manual_completion_authority_renewal_quarantine", None
+        if native_startup_watchdog:
+            from .native_owner_startup_watchdog import NativeOwnerStartupWatchdog
+            startup_watchdog = NativeOwnerStartupWatchdog(logger=logger)
+            startup_watchdog.start()
+            logger.info("Native owner startup stage: main entered")
+        if args.llm_merge_resolver_command:
+            os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
+        if args.llm_merge_resolver_timeout_seconds is not None:
+            os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
+
+        program = database_program_from_daemon_namespace(args)
+        database_path = getattr(args, "database_path", None)
+        if database_path is None and program is not None and program.store_id:
+            candidate = Path(program.store_id)
+            if candidate.suffix.lower() in {".duckdb", ".ddb"} or candidate.exists():
+                database_path = candidate
+        if database_path is None and str(getattr(args, "todo_path", "") or "").endswith(
+            (".duckdb", ".ddb")
+        ):
+            database_path = Path(args.todo_path)
+
+        use_database_daemon = (
+            program is not None
+            and is_database_authority_mode(
+                authority_mode=program.authority_mode,
+                task_source_kind=program.task_source_kind,
             )
-            if not callable(reset_fn):
-                raise SystemExit(
-                    "manual-completion renewal reset requires legacy "
-                    "PortalImplementationDaemon"
-                )
-            result = reset_fn(args.reset_manual_completion_authority_renewal_task_id)
-            print(json.dumps(result, indent=2, sort_keys=True))
-            if not result.get("reset"):
-                raise SystemExit(2)
-            return
-        if args.clear_protected_path_incident:
-            clear_fn = getattr(
-                daemon, "clear_implementation_protected_path_incident", None
+            and database_path is not None
+        ) or (
+            database_path is not None
+            and is_database_authority_mode(
+                authority_mode=str(getattr(args, "authority_mode", "") or ""),
+                task_source_kind=str(getattr(args, "task_source_kind", "") or ""),
             )
-            if not callable(clear_fn):
-                raise SystemExit(
-                    "protected-path incident clearance requires legacy "
-                    "PortalImplementationDaemon"
-                )
-            result = clear_fn(
-                approved_commits=args.approve_protected_path_commit,
-                operator_note=args.operator_clearance_note,
-                approve_disposed_ephemeral_workspace=(
-                    args.approve_disposed_ephemeral_workspace
+        )
+
+        if use_database_daemon:
+            from .native_owner_bootstrap import database_owner_bootstrap_kwargs
+            if native_startup_watchdog:
+                logger.info("Native owner startup stage: bootstrap starting")
+            owner_bootstrap = database_owner_bootstrap_kwargs(args, program)
+            if native_startup_watchdog:
+                logger.info("Native owner startup stage: bootstrap attached")
+            authority_mode = (
+                program.authority_mode
+                if program is not None
+                else str(getattr(args, "authority_mode", "") or "quack")
+            )
+            task_source_kind = (
+                program.task_source_kind
+                if program is not None
+                else str(getattr(args, "task_source_kind", "") or "duckdb")
+            )
+            daemon: Any = DatabaseImplementationDaemon(
+                database_path=Path(database_path),
+                coordination_path=getattr(args, "coordination_path", None),
+                state_dir=Path(args.state_dir),
+                state_prefix=str(args.state_prefix),
+                owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
+                authority_mode=authority_mode or "quack",
+                task_source_kind=task_source_kind or "duckdb",
+                quack_uri=str(getattr(args, "quack_endpoint", "") or ""),
+                # Database authority never receives the canonical Markdown board.
+                markdown_path=None,
+                # JSON projections optional under database authority.
+                state_path=None,
+                strategy_path=None,
+                events_path=None,
+                pid_path=None,
+                queue_path=None,
+                require_real_execution=bool(args.implement),
+                max_task_attempts=int(args.max_task_attempts),
+                execution_slice_task_cids=tuple(args.execution_slice_task_cid),
+                execution_slice_task_ids=tuple(args.execution_slice_task_id),
+                task_prefix=str(getattr(args, "task_prefix", "") or ""),
+                task_shard_count=args.task_shard_count,
+                task_shard_index=args.task_shard_index,
+                strict_task_sharding=args.strict_task_sharding,
+                **owner_bootstrap,
+            )
+            from ..runtime.native_dispatch_drain import from_native_admission
+            if native_startup_watchdog:
+                logger.info("Native owner startup stage: database daemon constructed")
+            daemon._native_dispatch_control = from_native_admission(
+                admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
+                repo_root=REPO_ROOT,
+            )
+            bind_database_portal_execution_from_args(
+                daemon,
+                args,
+                repo_root=REPO_ROOT,
+                portal_daemon_class=PortalImplementationDaemon,
+                configured_board_live_admission=(
+                    _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
                 ),
             )
-            print(json.dumps(result, indent=2, sort_keys=True))
-            if not result.get("cleared") and not result.get("already_clear"):
-                raise SystemExit(2)
-            return
-        last_idle_info_at: float | None = None
-        database_pass_sequence = 0
-        while True:
+            if native_startup_watchdog:
+                logger.info("Native owner startup stage: portal execution bound")
+        else:
+            if args.state_owner_bootstrap_fd != -1 or args.state_owner_client_id:
+                raise ValueError("native owner bootstrap cannot enter the legacy daemon")
+            daemon = PortalImplementationDaemon(
+                todo_path=args.todo_path,
+                task_source=(
+                    args.todo_path
+                    if args.task_source_kind in {"markdown", "duckdb"}
+                    else None
+                ),
+                task_source_kind=(
+                    args.task_source_kind
+                    if args.task_source_kind in {"markdown", "duckdb"}
+                    else ""
+                ),
+                expected_task_source_root_id=args.expected_task_source_root,
+                expected_task_source_repository_root_id=(
+                    args.expected_task_source_repository_root
+                ),
+                state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
+                strategy_path=args.state_dir / f"{args.state_prefix}_strategy.json",
+                events_path=args.state_dir / f"{args.state_prefix}_events.jsonl",
+                repo_root=REPO_ROOT,
+                board_namespace=str(getattr(args, "board_namespace", "") or ""),
+                task_header_prefix=args.task_prefix,
+                implement=args.implement,
+                implementation_command=args.implementation_command or None,
+                production_provider_policy=args.production_provider_policy,
+                production_provider_context_budget_tokens=args.production_provider_context_budget_tokens,
+                production_provider_timeout_seconds=args.production_provider_timeout_seconds,
+                production_provider_review_authority_key_path=args.production_provider_review_authority_key_path,
+                production_provider_launch_authority_receipt_path=args.production_provider_launch_authority_receipt_path,
+                production_provider_launch_authority_receipt_content_id=args.production_provider_launch_authority_receipt_content_id,
+                implementation_timeout=args.implementation_timeout,
+                max_task_attempts=args.max_task_attempts,
+                use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
+                worktree_root=args.worktree_root,
+                merge_target_branch=args.merge_target_branch,
+                merge_queue_dir=args.merge_queue_dir,
+                worktree_submodule_paths=args.worktree_submodule_path or None,
+                implementation_protected_paths=args.implementation_protected_path,
+                manual_completion_authority_task_ids=(
+                    args.manual_completion_authority_task_id
+                ),
+                manual_completion_authority_required_task_ids=(
+                    args.manual_completion_authority_required_task_id
+                ),
+                manual_completion_authority_epoch_id=(
+                    args.manual_completion_authority_epoch_id
+                ),
+                manual_completion_authority_revalidation_only=(
+                    args.manual_completion_authority_revalidation_only
+                ),
+                objective_path=args.objective_path,
+                objective_bundle_dir=args.objective_bundle_dir,
+                generated_status_paths=args.generated_status_path,
+                external_reservation_manifest_paths=args.external_reservation_manifest_path,
+                assumed_completed_task_ids=args.assume_completed_task_id,
+                execution_slice_task_ids=args.execution_slice_task_id,
+                execution_slice_task_cids=args.execution_slice_task_cid,
+                llm_merge_resolver_command=args.llm_merge_resolver_command or None,
+                llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+                merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+                merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
+                task_shard_count=args.task_shard_count,
+                task_shard_index=args.task_shard_index,
+                strict_task_sharding=args.strict_task_sharding,
+                idle_lane_work_stealing=args.idle_lane_work_stealing,
+                validation_max_workers=args.validation_max_workers,
+                validation_resource_budget=args.validation_resource_budget,
+                maintenance_interval_seconds=args.maintenance_interval_seconds,
+            )
+        native_owner_heartbeat = None
+        if use_database_daemon and owner_bootstrap:
+            from .native_owner_bootstrap import NativeOwnerHeartbeat
+            native_owner_heartbeat = NativeOwnerHeartbeat(
+                credentials=owner_bootstrap["state_owner_bootstrap_credentials"],
+                state_dir=Path(args.state_dir), state_prefix=str(args.state_prefix),
+            ).start()
+            if native_startup_watchdog:
+                logger.info("Native owner startup stage: live heartbeat published")
+                startup_watchdog.close()
+        handlers_installed = threading.current_thread() is threading.main_thread()
+        previous_term: Any = None
+        previous_int: Any = None
+        shutdown = None
+        if use_database_daemon:
+            from .database_shutdown import DatabaseDaemonShutdown
+
+            shutdown = DatabaseDaemonShutdown()
+            daemon._cooperative_shutdown = shutdown
+
+        def request_stop(signum: int, _frame: object) -> None:
             if shutdown is not None:
-                shutdown.checkpoint()
-            if use_database_daemon and owner_bootstrap and not args.implement:
-                from .native_owner_bootstrap import observe_typed_database_without_dispatch
-                result = observe_typed_database_without_dispatch(daemon)
+                shutdown.request(signum)
             else:
-                result = daemon.run_once()
-            if use_database_daemon:
-                database_pass_sequence += 1
-                publish_database_daemon_pass_heartbeat(
-                    state_dir=Path(args.state_dir),
-                    state_prefix=str(args.state_prefix),
-                    sequence=database_pass_sequence,
-                    result=result,
-                    process_instance_id=str(
-                        getattr(daemon, "process_instance_id", "") or ""
-                    ),
-                    owner_session_id=str(
-                        getattr(daemon, "owner_session_id", "") or ""
-                    ),
-                    authority_mode=str(
-                        getattr(daemon, "authority_mode", authority_mode) or ""
-                    ),
-                    task_source_kind=str(
-                        getattr(daemon, "task_source_kind", task_source_kind) or ""
-                    ),
-                    task_shard_count=int(args.task_shard_count),
-                    task_shard_index=int(args.task_shard_index),
-                    strict_task_sharding=bool(args.strict_task_sharding),
-                )
-            now = time.monotonic()
-            emit_idle_info = (
-                bool(args.once)
-                or last_idle_info_at is None
-                or now - last_idle_info_at >= IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS
-            )
-            log_daemon_pass_result(
-                logger,
-                "Portal implementation daemon pass complete: %s",
-                result,
-                emit_idle_info=emit_idle_info,
-            )
-            if daemon_pass_is_idle(result) and emit_idle_info:
-                last_idle_info_at = now
-            if shutdown is not None:
-                shutdown.checkpoint()
-            if args.once:
-                break
-            wait_timeout = bounded_daemon_wait_timeout(
-                result,
-                default_timeout=args.interval,
-            )
-            wait_for_wake = getattr(daemon, "wait_for_wake", None)
-            if callable(wait_for_wake):
-                wait_for_wake(timeout=wait_timeout)
-            else:
-                time.sleep(wait_timeout)
-    finally:
+                raise SystemExit(128 + signum)
+
+        if handlers_installed:
+            previous_term = signal.signal(signal.SIGTERM, request_stop)
+            previous_int = signal.signal(signal.SIGINT, request_stop)
         try:
-            if native_owner_heartbeat is not None:
-                native_owner_heartbeat.close()
-            close_event_runtime = getattr(daemon, "close_event_runtime", None)
-            if callable(close_event_runtime):
-                close_event_runtime()
-            else:
-                close = getattr(daemon, "close", None)
-                if callable(close):
-                    close()
+            if args.reset_manual_completion_authority_renewal_task_id:
+                reset_fn = getattr(
+                    daemon, "reset_manual_completion_authority_renewal_quarantine", None
+                )
+                if not callable(reset_fn):
+                    raise SystemExit(
+                        "manual-completion renewal reset requires legacy "
+                        "PortalImplementationDaemon"
+                    )
+                result = reset_fn(args.reset_manual_completion_authority_renewal_task_id)
+                print(json.dumps(result, indent=2, sort_keys=True))
+                if not result.get("reset"):
+                    raise SystemExit(2)
+                return
+            if args.clear_protected_path_incident:
+                clear_fn = getattr(
+                    daemon, "clear_implementation_protected_path_incident", None
+                )
+                if not callable(clear_fn):
+                    raise SystemExit(
+                        "protected-path incident clearance requires legacy "
+                        "PortalImplementationDaemon"
+                    )
+                result = clear_fn(
+                    approved_commits=args.approve_protected_path_commit,
+                    operator_note=args.operator_clearance_note,
+                    approve_disposed_ephemeral_workspace=(
+                        args.approve_disposed_ephemeral_workspace
+                    ),
+                )
+                print(json.dumps(result, indent=2, sort_keys=True))
+                if not result.get("cleared") and not result.get("already_clear"):
+                    raise SystemExit(2)
+                return
+            last_idle_info_at: float | None = None
+            database_pass_sequence = 0
+            while True:
+                if shutdown is not None:
+                    shutdown.checkpoint()
+                if use_database_daemon and owner_bootstrap and not args.implement:
+                    from .native_owner_bootstrap import observe_typed_database_without_dispatch
+                    result = observe_typed_database_without_dispatch(daemon)
+                else:
+                    result = daemon.run_once()
+                if use_database_daemon:
+                    database_pass_sequence += 1
+                    publish_database_daemon_pass_heartbeat(
+                        state_dir=Path(args.state_dir),
+                        state_prefix=str(args.state_prefix),
+                        sequence=database_pass_sequence,
+                        result=result,
+                        process_instance_id=str(
+                            getattr(daemon, "process_instance_id", "") or ""
+                        ),
+                        owner_session_id=str(
+                            getattr(daemon, "owner_session_id", "") or ""
+                        ),
+                        authority_mode=str(
+                            getattr(daemon, "authority_mode", authority_mode) or ""
+                        ),
+                        task_source_kind=str(
+                            getattr(daemon, "task_source_kind", task_source_kind) or ""
+                        ),
+                        task_shard_count=int(args.task_shard_count),
+                        task_shard_index=int(args.task_shard_index),
+                        strict_task_sharding=bool(args.strict_task_sharding),
+                    )
+                now = time.monotonic()
+                emit_idle_info = (
+                    bool(args.once)
+                    or last_idle_info_at is None
+                    or now - last_idle_info_at >= IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS
+                )
+                log_daemon_pass_result(
+                    logger,
+                    "Portal implementation daemon pass complete: %s",
+                    result,
+                    emit_idle_info=emit_idle_info,
+                )
+                if daemon_pass_is_idle(result) and emit_idle_info:
+                    last_idle_info_at = now
+                if shutdown is not None:
+                    shutdown.checkpoint()
+                if args.once:
+                    break
+                wait_timeout = bounded_daemon_wait_timeout(
+                    result,
+                    default_timeout=args.interval,
+                )
+                wait_for_wake = getattr(daemon, "wait_for_wake", None)
+                if callable(wait_for_wake):
+                    wait_for_wake(timeout=wait_timeout)
+                else:
+                    time.sleep(wait_timeout)
         finally:
-            if handlers_installed:
-                signal.signal(signal.SIGTERM, previous_term)
-                signal.signal(signal.SIGINT, previous_int)
-    if shutdown is not None:
-        shutdown.checkpoint()
+            try:
+                if native_owner_heartbeat is not None:
+                    native_owner_heartbeat.close()
+                close_event_runtime = getattr(daemon, "close_event_runtime", None)
+                if callable(close_event_runtime):
+                    close_event_runtime()
+                else:
+                    close = getattr(daemon, "close", None)
+                    if callable(close):
+                        close()
+            finally:
+                if handlers_installed:
+                    signal.signal(signal.SIGTERM, previous_term)
+                    signal.signal(signal.SIGINT, previous_int)
+        if shutdown is not None:
+            shutdown.checkpoint()
+
+    finally:
+        if startup_watchdog is not None:
+            startup_watchdog.close()
 
 
 def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
