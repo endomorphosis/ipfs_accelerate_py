@@ -52,6 +52,26 @@ component with a null external dimension keeps
 its `source_tokens` or `unbound_component` role and its declared internal widths;
 these widths do not establish an 8D/384D/768D embedding lane.
 
+LegalIR source/span checkpoints also have an explicit metadata-only 4096D route:
+`ir-model-source-binding/v2:` records preserve
+`asset_binding_schema=ir-source-representation-binding/v2`,
+`dimension_role=source_input_representation_width` and task
+`source_text_and_representation_to_legal_ir`. Their checkpoint schema is either
+`native-4096-source-span-checkpoint/v1` or
+`bound-native4096-source-span-checkpoint/v1`; profile and format remain null.
+This route does not introduce a generic 4096D embedding or latent lane. The
+retained pilot consumes source text alongside its representation and uses a
+4-channel internal source projection.
+
+The reader recomputes this v2 content identity and preserves its historical
+source declaration. Evidence content hashes contribute to identity; evidence
+locator paths do not. The producer declaration is opaque here: the importer owns
+its validation and byte authentication. Catalog reads never open the declared
+checkpoint, evidence or library paths and cannot restore a live native
+capability. Source/span records must retain false runtime, native verification,
+source compatibility, teacher and proof flags. Malformed peers still refuse the
+whole refresh, preserving the preceding successful catalog generation.
+
 `result.resolve_ir_binding(request)` selects only within that captured result.
 `source.resolve_ir_binding(request)` validates the request first, reads the
 selected store again, then selects. Requests contain exactly `record_id`,

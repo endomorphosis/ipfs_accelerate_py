@@ -10,6 +10,11 @@ DuckDB reads reuse PersistentCatalogSource's read_only connection and bounded
 row query.  File witnesses are cooperative endpoint checks, not an atomic
 filesystem snapshot or authentication of checkpoint/Hub payloads.  A live
 writer may make the read fail; callers should retain their last good snapshot.
+
+The explicit LegalIR4096 source/span v2 binding is retained as metadata only.
+Its importer-owned producer declaration remains opaque: this reader recomputes
+the record identity but neither revalidates producer evidence nor opens any
+claimed checkpoint, evidence or library path.
 """
 
 from __future__ import annotations
@@ -31,6 +36,15 @@ from .static import CatalogSourceResult
 SCHEMA = "ir-persistent-catalog-source/v1"
 RESOLUTION_SCHEMA = "ir-persisted-binding-resolution/v1"
 COMPONENT_SCHEMA = "ir-decoder-component-binding/v1"
+SOURCE_BINDING_SCHEMA = "ir-source-representation-binding/v2"
+SOURCE_PROFILE_SCHEMA = "ir-native4096-source-profile/v1"
+SOURCE_RECORD_PREFIX = "ir-model-source-binding/v2:"
+_SOURCE_CHECKPOINT_SCHEMAS = {"native-4096-source-span-checkpoint/v1",
+    "bound-native4096-source-span-checkpoint/v1"}
+_SOURCE_TASK = "source_text_and_representation_to_legal_ir"
+_SOURCE_FIELDS = {"schema", "expected_producer", "pooling", "normalization", "attention",
+    "context_tokens", "sequences", "source_text_required", "evidence_pins", "evidence_scope",
+    "ordinary_receipt_is_capability"}
 MAX_CONFIG_BYTES = 8 * 1024 * 1024
 MAX_BINDING_BYTES = 64 * 1024 * 1024
 MAX_STORE_BYTES = 4 * 1024 * 1024 * 1024
@@ -46,7 +60,7 @@ _DECLARATION_FIELDS = _SELECTORS - {"checkpoint_sha256"} | {
 }
 _RECORD_PREFIXES = (
     "ir-model-asset-binding/v1:", "ir-model-component-binding/v1:",
-    "ir-decoder-checkpoint-record/v1:",
+    "ir-decoder-checkpoint-record/v1:", SOURCE_RECORD_PREFIX,
 )
 
 
@@ -129,10 +143,19 @@ def _selectors(value: Any) -> dict:
     _require(result["ir_family_id"] in _FAMILIES if type(result["ir_family_id"]) is str else False,
              "known IR family required")
     dimension, role = result["dimension"], result["dimension_role"]
-    _require((type(dimension) is int and dimension in (8, 384, 768)
-              and role in ("input_embedding", "latent"))
-             or (dimension is None and role in ("source_tokens", "unbound_component")),
-             "exact lane or explicitly detached component required")
+    if result["record_id"].startswith(SOURCE_RECORD_PREFIX):
+        _require(result["ir_family_id"] == "legal_ir" and type(dimension) is int and dimension == 4096
+                 and role == "source_input_representation_width"
+                 and type(result["schema_version"]) is str
+                 and result["schema_version"] in _SOURCE_CHECKPOINT_SCHEMAS
+                 and result["task_id"] == _SOURCE_TASK
+                 and result["profile_id"] is None and result["format_id"] is None,
+                 "explicit LegalIR4096 source/span v2 selectors required")
+    else:
+        _require((type(dimension) is int and dimension in (8, 384, 768)
+                  and role in ("input_embedding", "latent"))
+                 or (dimension is None and role in ("source_tokens", "unbound_component")),
+                 "exact lane or explicitly detached component required")
     for name in ("schema_version", "task_id", "profile_id", "format_id"):
         _text(result[name], name, nullable=True, maximum=512)
     _text(result["role"], "checkpoint role")
@@ -141,7 +164,58 @@ def _selectors(value: Any) -> dict:
     return result
 
 
-def _binding(row: dict, declaration: dict) -> dict:
+def _source_identity(declaration: dict, config: dict) -> dict:
+    """Recompute the imported v2 identity; do not authenticate its producer.
+
+    The producer declaration is retained opaquely. Its full validation and file
+    authentication belong to the importer; this read-only catalog contributes
+    no producer/native/source observation. Evidence paths are not logical IDs.
+    """
+    _require(set(declaration) == _DECLARATION_FIELDS | {"asset_binding_schema", "source_representation"}
+             and declaration["asset_binding_schema"] == SOURCE_BINDING_SCHEMA,
+             "closed source-representation v2 declaration required")
+    _require(all(declaration[name] is False for name in ("runtime_ready", "teacher_qualified", "proof_authority"))
+             and type(config) is dict and all(config.get(name) is False for name in
+                ("complete_runtime_io_contract", "native_execution_verified_by_importer",
+                 "source_compatibility_verified", "live_native_capability_restored")),
+             "source4096 metadata must preserve false runtime/native authority")
+    source = declaration["source_representation"]
+    _require(type(source) is dict and set(source) == _SOURCE_FIELDS
+             and source["schema"] == SOURCE_PROFILE_SCHEMA
+             and source["pooling"] == "last" and source["normalization"] == "l2"
+             and source["attention"] == "causal"
+             and type(source["context_tokens"]) is int and source["context_tokens"] == 512
+             and type(source["sequences"]) is int and source["sequences"] == 1
+             and source["source_text_required"] is True
+             and source["evidence_scope"] == "pinned_historical_metadata_only"
+             and source["ordinary_receipt_is_capability"] is False,
+             "closed preserved source4096 metadata profile required")
+    _require(type(source["expected_producer"]) is dict and bool(source["expected_producer"]),
+             "explicit importer-owned producer declaration required")
+    pins = source["evidence_pins"]
+    _require(type(pins) is list and 1 <= len(pins) <= 8,
+             "bounded explicit historical evidence declarations required")
+    contents, paths = [], set()
+    for pin in pins:
+        _require(type(pin) is dict and set(pin) == {"path", "bytes", "sha256"},
+                 "closed historical evidence declaration required")
+        _text(pin["path"], "declared evidence path", maximum=4096)
+        _require(Path(pin["path"]).is_absolute() and pin["path"] not in paths
+                 and type(pin["bytes"]) is int and 0 <= pin["bytes"] <= MAX_CONFIG_BYTES
+                 and type(pin["sha256"]) is str and _SHA.fullmatch(pin["sha256"]),
+                 "unique absolute bounded historical evidence declaration required")
+        paths.add(pin["path"])
+        contents.append({"bytes": pin["bytes"], "sha256": pin["sha256"]})
+    _require(len({_raw(item) for item in contents}) == len(contents),
+             "unique historical evidence contents required")
+    logical = {**source, "evidence_pins": sorted(contents, key=_raw)}
+    return {"asset_binding_schema": SOURCE_BINDING_SCHEMA,
+        **{name: declaration[name] for name in ("ir_family_id", "dimension", "dimension_role", "role", "schema_version", "task_id")},
+        "checkpoint_sha256": declaration["original_checkpoint_pin"]["sha256"],
+        "source_representation": logical}
+
+
+def _binding(row: dict, declaration: dict, *, config=None) -> dict:
     _require(_DECLARATION_FIELDS <= set(declaration), "complete IR checkpoint declaration required")
     pin = declaration["original_checkpoint_pin"]
     _require(type(pin) is dict and set(pin) == {"path", "bytes", "sha256"}, "closed original checkpoint pin required")
@@ -160,7 +234,10 @@ def _binding(row: dict, declaration: dict) -> dict:
     _require(not declaration["initialization_only"] or declaration["trained"] is not True,
              "initialization-only checkpoint cannot declare trained")
     identity = {name: selected[name] for name in ("ir_family_id", "dimension", "dimension_role", "role", "checkpoint_sha256")}
-    if selected["dimension"] is None:
+    if selected["record_id"].startswith(SOURCE_RECORD_PREFIX):
+        expected = SOURCE_RECORD_PREFIX + hashlib.sha256(_raw(_source_identity(declaration, config))).hexdigest()
+        _require(selected["record_id"] == expected, "source4096 representation identity differs")
+    elif selected["dimension"] is None:
         _require(declaration.get("asset_binding_schema") == COMPONENT_SCHEMA
                  and "external_lane_binding" in declaration and declaration["external_lane_binding"] is None
                  and selected["profile_id"] is None and selected["format_id"] is None,
@@ -315,7 +392,7 @@ class IRPersistentCatalogSource(PersistentCatalogSource):
                     _require(not is_ir_id, "IR record lacks checkpoint declaration")
                     continue
                 _require(type(declaration) is dict, "IR checkpoint declaration must be object")
-                binding = _binding(row, declaration)
+                binding = _binding(row, declaration, config=config)
                 binding_bytes += len(_raw(binding))
                 _require(binding_bytes <= MAX_BINDING_BYTES, "IR binding sidecar exceeds aggregate byte bound")
                 _require(binding["record_id"] not in ids, "duplicate persistent IR record_id")
