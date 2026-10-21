@@ -473,7 +473,7 @@ def evaluate_health(config: dict[str, Any], service: dict[str, Any], evidence: d
         if age is None and now - first_seen < config["startup_grace_seconds"]:
             return decision("observing", "Waiting through startup grace because systemd start time is unavailable", healthy=True)
         return decision("stale_heartbeat", "No fresh native heartbeat or meaningful work event", restart=True)
-    if evidence.get("native_progress_status") == "backpressure":
+    if current_native_status and evidence.get("native_progress_status") == "backpressure":
         return decision("backpressure", "Native supervisor reports a retry, quota, or resource fence; waiting for its bounded recovery")
     idle_reason = str(evidence.get("selection_idle_reason") or "")
     if idle_reason.startswith(("implementation_retry_deferred:", "resource_claim_deferred:")) or idle_reason in {

@@ -189,7 +189,7 @@ def test_dependency_waiting_is_unhealthy_without_changing_contracts(config):
 
 
 def test_native_backpressure_is_unhealthy_without_bypassing_retry_or_resource_fences(config):
-    result = evaluate(config, native=evidence(native_progress_status="backpressure"))
+    result = evaluate(config, native=evidence(native_progress_status="backpressure", native_status_at_epoch=NOW - 1))
     assert result["status"] == "backpressure"
     assert not result["healthy"] and not result["restart_eligible"]
 
@@ -593,3 +593,100 @@ def test_post_restart_observation_log_failure_preserves_actual_action(config, mo
     assert result["restart_attempts_last_hour"] == 1 and result["restart_eligible"] is False
     assert json.loads(Path(config["monitor_state_path"]).read_text())["restart_attempts_at_epoch"] == [NOW]
     assert json.loads(Path(config["health_path"]).read_text()) == result
+
+
+@pytest.mark.parametrize("status_age,service_age", [
+    (900, 2000), (90, 70), (None, 2000),
+], ids=["expired-status", "previous-service-generation", "undated-status"])
+def test_stale_native_backpressure_cannot_hide_fresh_ready_stall(config, monkeypatch, status_age, service_age):
+    calls = stub_runtime(monkeypatch, service(age=service_age))
+    write_json(config["monitor_state_path"], {
+        "service": config["service"], "board_namespace": config["board_namespace"],
+        "first_seen_at_epoch": NOW - 2000, "ready_since_at_epoch": NOW - 1000,
+        "restart_attempts_at_epoch": [],
+    })
+    write_json(config["native_state_path"], {
+        "heartbeat_at": NOW - 900, "task_count": 1, "ready_count": 1,
+        "task_statuses": {"T1": "ready"}, "last_progress_at": NOW - 900,
+    })
+    old_status = {"implementation_progress_status": "backpressure"}
+    if status_age is not None:
+        old_status["updated_at"] = NOW - status_age
+    write_json(config["status_path"], old_status)
+    Path(config["event_path"]).write_text(json.dumps({
+        "type": "daemon_pass", "timestamp": NOW - 1, "ready_count": 1,
+        "selectable_ready_count": 1, "task_count": 1, "selection_idle_reason": "",
+        "execution_slice_task_statuses": {"T1": "ready"},
+    }))
+    result = monitor.monitor(config, apply=True)
+    assert result["evidence"]["last_heartbeat_at_epoch"] == NOW - 1
+    assert result["evidence"]["active"] is False
+    assert result["evidence"]["unresolved_retry_deferrals"] == []
+    assert result["evidence"]["all_ready_tasks_retry_fenced"] is False
+    assert result["status"] == "ready_backlog_stalled"
+    assert result["healthy"] is False and result["restart_eligible"] is True
+    assert result["action"] == "restart_requested"
+    assert calls == [["systemctl", "--user", "restart", config["service"]]]
+    saved = json.loads(Path(config["monitor_state_path"]).read_text())
+    assert saved["restart_attempts_at_epoch"] == [NOW]
+
+
+def test_current_native_backpressure_still_prevents_idle_restart(config, monkeypatch):
+    calls = stub_runtime(monkeypatch, service(age=2000))
+    write_json(config["monitor_state_path"], {
+        "service": config["service"], "board_namespace": config["board_namespace"],
+        "first_seen_at_epoch": NOW - 2000, "ready_since_at_epoch": NOW - 1000,
+        "restart_attempts_at_epoch": [],
+    })
+    write_json(config["native_state_path"], {
+        "heartbeat_at": NOW - 1, "ready_count": 1, "task_count": 1,
+    })
+    write_json(config["status_path"], {
+        "updated_at": NOW - 1, "implementation_progress_status": "backpressure",
+    })
+    result = monitor.monitor(config, apply=True)
+    assert result["status"] == "backpressure"
+    assert result["healthy"] is False and result["restart_eligible"] is False
+    assert result["action"] == "none" and calls == []
+    assert result["restart_attempts_last_hour"] == 0
+
+
+@pytest.mark.parametrize("reason", [
+    "implementation_retry_deferred:provider_task_contract_missing_validation_executables",
+    "resource_claim_deferred:external/module",
+], ids=["missing-capability-fence", "resource-claim-fence"])
+def test_stale_native_label_does_not_remove_current_selection_fence(config, monkeypatch, reason):
+    calls = stub_runtime(monkeypatch, service(age=2000))
+    write_json(config["native_state_path"], {
+        "heartbeat_at": NOW - 900, "ready_count": 1, "task_count": 1,
+    })
+    write_json(config["status_path"], {
+        "updated_at": NOW - 900, "implementation_progress_status": "backpressure",
+    })
+    Path(config["event_path"]).write_text(json.dumps({
+        "type": "daemon_pass", "timestamp": NOW - 1, "ready_count": 1,
+        "selectable_ready_count": 1, "selection_idle_reason": reason,
+    }))
+    result = monitor.monitor(config, apply=True)
+    assert result["evidence"]["selection_idle_reason"] == reason
+    assert result["status"] == "backpressure" and result["restart_eligible"] is False
+    assert result["action"] == "none" and calls == []
+
+
+def test_stale_native_label_preserves_exact_ready_task_retry_fence(config, monkeypatch):
+    calls = stub_runtime(monkeypatch, service(age=2000))
+    _deferred_events(config, at=NOW - 1500)
+    config["task_shard_index"] = int(monitor.hashlib.sha256(b"T1").hexdigest()[:8], 16) % 4
+    events = [json.loads(line) for line in Path(config["event_path"]).read_text().splitlines()]
+    events[-1].update(selectable_ready_count=1, selection_idle_reason="",
+        execution_slice_task_statuses={"T1": "ready"},
+        execution_slice_task_cids_by_id={"T1": "cid-T1"})
+    Path(config["event_path"]).write_text("\n".join(json.dumps(event) for event in events))
+    write_json(config["status_path"], {
+        "updated_at": NOW - 900, "implementation_progress_status": "backpressure",
+    })
+    result = monitor.monitor(config, apply=True)
+    assert result["evidence"]["all_ready_tasks_retry_fenced"] is True
+    assert result["evidence"]["retry_fenced_ready_task_ids"] == ["T1"]
+    assert result["status"] == "backpressure" and result["restart_eligible"] is False
+    assert result["action"] == "none" and calls == []
