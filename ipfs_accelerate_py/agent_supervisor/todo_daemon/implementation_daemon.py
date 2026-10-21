@@ -63390,7 +63390,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
                     route_plan=route_plan,
                 )
-            return _grok_cli_command(workspace_path=workspace_path)
+            # A direct Grok pin grants no implicit authority to run Codex.
+            # Ordered quota routes above retain their explicit fallback policy.
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                enable_codex_fallback=False,
+            )
         if (
             prefer_grok
             and grok_ready
