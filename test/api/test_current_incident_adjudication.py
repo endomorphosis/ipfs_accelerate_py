@@ -68,6 +68,9 @@ print(json.dumps({'launcher':launcher,'dispatch':dispatch,'terminal':terminal}))
     claim['dispatch_authority_cid'] = daemon._implementation_dispatch_authority_cid(claim)
     write(claim_path, claim)
     lease_value=json.loads(lease.read_text())
+    # The generic protected-path fixture adds an implementation_attempt role;
+    # use the actual ordinary builder's shape for this ordinary-custody matrix.
+    lease_value.pop('lease_role',None)
     lease_value.update(pid=tree['dispatch']['pid'], owner_process_birth=tree['dispatch'])
     write(lease,lease_value)
     supervisor = _protected_git_worktree_supervisor(daemon, repo)
@@ -433,3 +436,55 @@ def test_settled_old_quarantine_never_suppresses_new_or_independent_stale_recove
     snapshot,reason=supervisor._stale_recovery_snapshot(state)
     assert snapshot is None and reason in {'strategy_hold_preserved','task_hold_preserved'},(hold,reason)
     assert (asdict(native.PortalTaskState.load(daemon.state_path)),claim_path.read_bytes(),daemon.strategy_path.read_bytes())==before
+
+
+def _native_legacy_lease(daemon):
+    path=daemon._implementation_lock_path()
+    value=json.loads(path.read_text());value.pop('owner_process_birth',None)
+    write(path,value)
+    return path,value
+
+
+def test_native_birthless_ordinary_lease_uses_only_exact_dead_claim_birth(incident):
+    daemon,_,task,_,claim_path,_,request=incident
+    path,lease=_native_legacy_lease(daemon)
+    # Match the actual native builder's closed ordinary schema exactly.
+    assert set(lease)==set(daemon._build_implementation_lock_metadata(task,1,lease['started_at']))
+    request=daemon.review_quiesced_ordinary_incident(task_id=task.task_id,incident_cid=request['incident_cid'])
+    before=path.read_bytes(),asdict(native.PortalTaskState.load(daemon.state_path))
+    result=daemon.adjudicate_quiesced_ordinary_incident(request=request)
+    assert result['reconciled'],result.get('reason')
+    proof=json.loads(Path(result['receipt_path']).read_text())['implementation_lease_proof']
+    assert proof['owner_birth_source']=='exact_pinned_canonical_claim_birth'
+    assert proof['sha256']==request['implementation_lease_sha256'] and proof['lease_preserved'] is True
+    assert (path.read_bytes(),asdict(native.PortalTaskState.load(daemon.state_path)))==before
+    assert not claim_path.exists()
+
+
+@pytest.mark.parametrize('damage',['pid','task','cid','key','namespace','attempt','started_at','repo','state_dir',
+    'missing_id','empty_id','maintenance_role','explicit_null_birth','different_birth','after_review','unknown_owner','pid_reuse_claim'])
+def test_native_legacy_lease_never_borrows_foreign_or_unknown_custody(incident,monkeypatch,damage):
+    daemon,_,task,_,claim_path,_,request=incident
+    path,value=_native_legacy_lease(daemon)
+    field={'pid':'pid','task':'task_id','cid':'canonical_task_cid','key':'canonical_task_key',
+        'namespace':'board_namespace','attempt':'attempt','started_at':'started_at','repo':'repo_root','state_dir':'state_dir'}.get(damage)
+    if field:value[field]=value[field]+1 if type(value[field]) is int else value[field]+'-foreign'
+    elif damage=='missing_id':value.pop('lease_id')
+    elif damage=='empty_id':value['lease_id']=''
+    elif damage=='maintenance_role':value['lease_role']='supervisor_maintenance'
+    elif damage=='explicit_null_birth':value['owner_process_birth']=None
+    elif damage=='different_birth':
+        value['owner_process_birth']=json.loads(claim_path.read_text())['owner_process_birth'];value['owner_process_birth']['start_time_ticks']+=1
+    elif damage=='unknown_owner':monkeypatch.setattr(native,'owner_liveness',lambda *a,**kw:native.OwnerLiveness.UNKNOWN)
+    elif damage=='pid_reuse_claim':
+        claim=json.loads(claim_path.read_text());birth=native.current_process_birth()
+        claim.update(pid=birth.pid,owner_process_birth=birth.to_dict())
+        claim['dispatch_authority_cid']=daemon._implementation_dispatch_authority_cid(claim)
+        write(claim_path,claim)
+    write(path,value)
+    request=daemon.review_quiesced_ordinary_incident(task_id=task.task_id,incident_cid=request['incident_cid'])
+    if damage=='after_review':value['lease_id']='different-issuance';write(path,value)
+    before=path.read_bytes(),claim_path.read_bytes(),daemon.strategy_path.read_bytes(),asdict(native.PortalTaskState.load(daemon.state_path))
+    result=daemon.adjudicate_quiesced_ordinary_incident(request=request)
+    assert result['blocked'] and not result['reconciled'],(damage,result.get('reason'))
+    assert (path.read_bytes(),claim_path.read_bytes(),daemon.strategy_path.read_bytes(),asdict(native.PortalTaskState.load(daemon.state_path)))==before

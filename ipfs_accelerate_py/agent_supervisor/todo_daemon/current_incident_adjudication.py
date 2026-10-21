@@ -121,6 +121,8 @@ def _pins(daemon, task_id: str, incident_cid: str) -> tuple[dict, dict]:
         "task_header_prefix": daemon.task_header_prefix,
         "incident_cid": incident_cid, "runtime_revision": runtime_revision(),
         "state_sha256": _state_hash(daemon), "start_event_id": start["event_id"],
+        "implementation_lease_sha256": (_sha(_read(daemon._implementation_lock_path()))
+            if os.path.lexists(daemon._implementation_lock_path()) else ""),
         "workspace": str(workspace), "baseline_ref": start["baseline_ref"],
         "pins": {name: {"path": str(path), "bytes": len(raw), "sha256": _sha(raw)}
                  for name, path in paths.items() for raw in (_read(path),)}}
@@ -158,7 +160,7 @@ def _validated(daemon, request: dict, journal: dict | None) -> dict:
     _need(type(daemon) is native.PortalImplementationDaemon, "real_native_portal_required")
     _need(set(request) == {"schema", "task_id", "task_cid", "attempt", "incident_cid",
           "runtime_revision", "state_sha256", "start_event_id", "workspace", "baseline_ref", "pins",
-          "repo_root", "state_path", "task_key", "board_namespace", "task_header_prefix"}
+          "repo_root", "state_path", "task_key", "board_namespace", "task_header_prefix", "implementation_lease_sha256"}
           and request["schema"] == SCHEMA, "request_shape_changed")
     _need(daemon.task_source is None and daemon.production_provider_policy is None
           and daemon.production_owner_handoff_factory is None
@@ -219,13 +221,13 @@ def _validated(daemon, request: dict, journal: dict | None) -> dict:
     _need(not os.path.lexists(daemon._protected_path_maintenance_lock_path()), "protected_maintenance_hold")
     _need(daemon.max_task_attempts <= 0 or attempt < daemon.max_task_attempts, "retry_budget_exhausted")
     lock_path = daemon._implementation_lock_path()
+    lease = None
     if os.path.lexists(lock_path):
-        lease = _object(_read(lock_path))
-        lease_birth = native.ProcessBirthIdentity.from_dict(lease.get("owner_process_birth"))
-        _need(lease.get("kind") == "implementation" and lease_birth.pid == lease.get("pid")
-              and lease_birth.start_time_ticks > 0
-              and native.owner_liveness(lease_birth, proc_root=daemon.worktree_lifecycle.proc_root)
-                  is native.OwnerLiveness.DEAD, "implementation_lease_live_or_unknown")
+        lease_raw = _read(lock_path)
+        _need(_sha(lease_raw) == request["implementation_lease_sha256"], "implementation_lease_preimage_changed")
+        lease = _object(lease_raw)
+    else:
+        _need(request["implementation_lease_sha256"] == "", "implementation_lease_preimage_changed")
     pins = request["pins"]
     _need(set(pins) == {"claim", "lifecycle", "strategy", "incident", "launcher", "shutdown", "board", "events", "supervisor_events", "log"},
           "pin_set_changed")
@@ -316,6 +318,8 @@ def _validated(daemon, request: dict, journal: dict | None) -> dict:
               or owner.parent_pid == launch_owner.pid and owner.start_time_ticks >= launch_owner.start_time_ticks,
               "owner_not_in_stopped_launch")
     _need(claim.get("pid") == owners[1].pid, "claim_birth_mismatch")
+    lease_proof = _ordinary_implementation_lease_proof(daemon, request, lease, claim, owners[1])
+
     _need(shutdown.get("status") == "stopped" and shutdown.get("quiesced") is True
           and shutdown.get("reason") == "owned_container_closure_verified"
           and shutdown.get("repo_root") == str(daemon.repo_root.resolve()) and shutdown.get("state_dir") == str(state_dir)
@@ -352,13 +356,55 @@ def _validated(daemon, request: dict, journal: dict | None) -> dict:
     _need(not any(strategy.get(k) for k in ("manual_holds", "manual_hold_tasks", "blocked_task_reasons", "independent_blockers")),
           "independent_or_manual_blocker_present")
     classified = _classify_generated_projection(daemon, request, task, state, values, proof[0])
-    return {"claim": claim, "before_strategy": strategy,
+    return {"claim": claim, "before_strategy": strategy, "implementation_lease_proof": lease_proof,
             "generated_quarantine_projection": classified,
             "claim_raw_base64": (journal["claim_raw_base64"] if journal is not None
                 else base64.b64encode(_read(expected_claim)).decode("ascii")),
             "strategy_raw_base64": (journal["strategy_raw_base64"] if journal is not None
                 else base64.b64encode(_read(daemon.strategy_path)).decode("ascii")), "quarantine": scope,
             "incident_record": record, "owner_birth": birth, "state": state}
+
+
+def _ordinary_implementation_lease_proof(daemon, request: dict, lease: dict | None,
+                                         claim: dict, claim_birth) -> dict | None:
+    """Bind the native ordinary lease's PID to its exact typed dispatch claim.
+
+    The ordinary metadata builder predates birth fields. Missing birth alone
+    grants nothing: every original issuance/scope field and pinned byte must
+    match the proven-dead claim. Maintenance or unknown lease shapes refuse.
+    This operation never deletes or rewrites the implementation lease.
+    """
+    if lease is None:
+        return None
+    from . import implementation_daemon as native
+    keys = {"kind", "lease_id", "pid", "owner_script", "repo_root", "state_dir", "task_id",
+            "canonical_task_key", "canonical_task_cid", "board_namespace", "attempt", "started_at"}
+    _need(set(lease) in (keys, keys | {"owner_process_birth"}), "implementation_lease_shape_unknown")
+    _need(lease.get("kind") == "implementation" and type(lease.get("lease_id")) is str
+          and bool(lease["lease_id"]) and lease.get("pid") == claim.get("pid") == claim_birth.pid
+          and lease.get("owner_script") == claim.get("owner_script")
+          and lease.get("repo_root") == str(daemon.repo_root.resolve())
+          and lease.get("state_dir") == str(daemon.state_path.parent.resolve())
+          and lease.get("task_id") == request["task_id"] and lease.get("canonical_task_cid") == request["task_cid"]
+          and lease.get("canonical_task_key") == request["task_key"]
+          and lease.get("board_namespace") == request["board_namespace"]
+          and type(lease.get("attempt")) is int and lease["attempt"] == request["attempt"]
+          and type(lease.get("started_at")) is str and bool(lease["started_at"])
+          and lease["started_at"] == claim.get("started_at"), "implementation_lease_scope_changed")
+    if "owner_process_birth" in lease:
+        raw = lease["owner_process_birth"]
+        _need(type(raw) is dict, "implementation_lease_birth_unknown")
+        birth = native.ProcessBirthIdentity.from_dict(raw)
+        _need(birth.to_dict() == claim_birth.to_dict(), "implementation_lease_birth_changed")
+        source = "exact_lease_and_canonical_claim_birth"
+    else:
+        source = "exact_pinned_canonical_claim_birth"
+    _need(native.owner_liveness(claim_birth, proc_root=daemon.worktree_lifecycle.proc_root)
+          is native.OwnerLiveness.DEAD, "implementation_lease_live_or_unknown")
+    return {"schema": "ordinary-implementation-lease-custody@1", "sha256": request["implementation_lease_sha256"],
+            "owner_birth_source": source, "owner_birth": claim_birth.to_dict(),
+            "task_id": request["task_id"], "task_cid": request["task_cid"], "attempt": request["attempt"],
+            "lease_preserved": True}
 
 
 def _classify_generated_projection(daemon, request: dict, task, state, values: dict, scope_event: dict) -> dict | None:
@@ -569,6 +615,7 @@ def adjudicate(daemon, *, request: Mapping[str, Any]) -> dict:
                     "before_strategy": before, "after_strategy_sha256": _sha(after_raw),
                     "quarantine": checked["quarantine"], "incident_record": checked["incident_record"],
                     "generated_quarantine_projection": checked["generated_quarantine_projection"],
+                    "implementation_lease_proof": checked["implementation_lease_proof"],
                     "phase": "prepared", "provider_outcome": "unknown", **_FALSE}
             def publish(value):
                 value = {**value, "receipt_id": "sha256:" + _sha(_bytes(value))}
