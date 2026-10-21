@@ -2671,6 +2671,8 @@ def _grok_task_container_environment(
                 raise ValueError("Grok task managed command root is not mounted")
     fixed = _codex_task_container_environment()
     fixed.pop("CODEX_HOME")
+    if "COMMON_CRAWL_AUTO_CLONE_SOURCE" in approved:
+        fixed["COMMON_CRAWL_AUTO_CLONE_SOURCE"] = approved["COMMON_CRAWL_AUTO_CLONE_SOURCE"]
     fixed.update(HOME=str(grok_home), GROK_HOME=str(grok_home),
                  XDG_CONFIG_HOME=str(grok_home / "xdg-config"),
                  XDG_DATA_HOME=str(grok_home / "xdg-data"),
