@@ -47,6 +47,7 @@ from .rescue_planner import (
     RescuePlanner,
     RescuePlanningRequest,
 )
+from .lane_resume import resume_stopped_lane
 from .supervisor_recovery import (
     ProgrammaticRecoveryController,
     ProgrammaticRecoveryPolicy,
@@ -1038,13 +1039,48 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _proc_stat_state(stat_text: str) -> str:
+    """Return the process state from a /proc/<pid>/stat line.
+
+    The command field is wrapped in parentheses and may itself contain
+    parentheses, so the state is the token after the last closing paren.
+    """
+
+    end = stat_text.rfind(")")
+    if end < 0 or end + 2 >= len(stat_text):
+        return ""
+    state = stat_text[end + 2 :].split(None, 1)[0]
+    return state if len(state) == 1 else ""
+
+
+def _pid_is_zombie(pid: int) -> bool:
+    """True when the pid is a zombie or has already disappeared from /proc.
+
+    A missing /proc tree means this host cannot tell, so the caller keeps
+    the kill(0) result. A vanished pid on a host that has /proc is dead.
+    """
+
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return False
+    try:
+        stat = (proc / str(pid) / "stat").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    return _proc_stat_state(stat) == "Z"
+
+
 def pid_alive(pid: int) -> bool:
-    """Check if a process with given PID is alive."""
+    """Check if a process with given PID is alive.
+
+    A zombie still accepts kill(0), but it cannot heartbeat or do work.
+    Reap it when this process is the parent so the next check sees a
+    missing pid and can resume a stopped lane.
+    """
     if isinstance(pid, bool) or pid <= 0:
         return False
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
         return False
     except PermissionError:
@@ -1052,6 +1088,13 @@ def pid_alive(pid: int) -> bool:
         return True
     except OSError:
         return False
+    if not _pid_is_zombie(pid):
+        return True
+    try:
+        os.waitpid(pid, os.WNOHANG)
+    except (ChildProcessError, OSError):
+        pass
+    return False
 
 
 def _lifecycle_state(value: Any) -> str:
@@ -1520,6 +1563,11 @@ def check_lane_heartbeat(
         result["phase"] = str(status.get("active_phase") or status.get("phase") or "")
         result["schema"] = str(status.get("schema") or "")
         result["active_task_id"] = str(status.get("active_task_id") or "")
+        result["last_task_transition_at_ms"] = status.get("last_task_transition_at_ms")
+        result["gate_evidence_fingerprint"] = str(status.get("gate_evidence_fingerprint") or "")
+        result["gate_recovery_needed"] = status.get("gate_recovery_needed") is True
+        result["repair_packet"] = str(status.get("repair_packet") or "")
+        result["next_retry_at_ms"] = status.get("next_retry_at_ms")
         result["heartbeat_at"] = str(status.get("heartbeat_at") or "")
         result["heartbeat_at_ms"] = status.get("heartbeat_at_ms")
         result["updated_at"] = str(status.get("updated_at") or "")
@@ -1704,6 +1752,254 @@ def aggregate_logs(
     }
 
 
+def classify_progress_stall(
+    *,
+    process_alive: bool,
+    heartbeat_stale: bool,
+    active_task_id: str,
+    log_age_seconds: float | None,
+    task_transition_age_seconds: float | None,
+    quiet_seconds: float,
+) -> dict[str, Any]:
+    """Classify a live lane whose heartbeat is fresh but work is not moving.
+
+    A missing log age or transition age is not a stall. Idle lanes with no
+    active task are not stalls. The result never grants completion authority.
+    """
+
+    evidence_present = (
+        log_age_seconds is not None and task_transition_age_seconds is not None
+    )
+    stalled = bool(
+        process_alive
+        and not heartbeat_stale
+        and bool(active_task_id)
+        and evidence_present
+        and float(log_age_seconds) >= quiet_seconds
+        and float(task_transition_age_seconds) >= quiet_seconds
+    )
+    return {
+        "progress_stalled": stalled,
+        "reason": "progress_stall_heartbeat_fresh" if stalled else "",
+        "active_task_id": active_task_id,
+        "log_age_seconds": log_age_seconds,
+        "task_transition_age_seconds": task_transition_age_seconds,
+        "quiet_seconds": quiet_seconds,
+        "completion_authority": False,
+        "work_complete": False,
+    }
+
+
+def _mtime_age_seconds(path: Path) -> float | None:
+    try:
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _millis_age_seconds(value: Any) -> float | None:
+    try:
+        stamp = float(value) / 1000.0
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, time.time() - stamp)
+
+
+_COMPLETED_TODO_STATUSES: Final[frozenset[str]] = frozenset({"completed", "complete", "done"})
+_SELECTABLE_TODO_STATUSES: Final[frozenset[str]] = frozenset(
+    {"pending", "ready", "in_progress"}
+)
+
+
+def _normalize_todo_key(value: str) -> str:
+    chars: list[str] = []
+    previous_break = False
+    for char in value.strip().lower():
+        if char.isalnum():
+            chars.append(char)
+            previous_break = False
+        elif not previous_break:
+            chars.append("_")
+            previous_break = True
+    return "".join(chars).strip("_")
+
+
+def _split_todo_ids(value: str) -> list[str]:
+    items: list[str] = []
+    for raw in str(value or "").split(","):
+        item = " ".join(raw.strip().split())
+        if item and item.lower() not in {"none", "n/a", "-"} and item not in items:
+            items.append(item)
+    return items
+
+
+def parse_todo_task_fields(
+    todo_text: str,
+    *,
+    task_header_prefix: str,
+) -> list[tuple[str, dict[str, str]]]:
+    """Parse task id and metadata fields from an agent-supervisor markdown board."""
+
+    prefix = task_header_prefix.strip()
+    if not prefix:
+        return []
+    if not prefix.startswith("## "):
+        prefix = f"## {prefix}"
+    blocks: list[tuple[str, dict[str, str]]] = []
+    current_id = ""
+    current_fields: dict[str, str] = {}
+
+    def flush() -> None:
+        nonlocal current_id, current_fields
+        if current_id:
+            blocks.append((current_id, dict(current_fields)))
+        current_id = ""
+        current_fields = {}
+
+    for line in todo_text.splitlines():
+        if line.startswith(prefix):
+            flush()
+            header = line[3:].strip()
+            current_id = header.split(" ", 1)[0] if header else ""
+            continue
+        if not current_id:
+            continue
+        stripped = line.strip()
+        if not stripped.startswith("- ") or ":" not in stripped:
+            continue
+        key, value = stripped[2:].split(":", 1)
+        current_fields[_normalize_todo_key(key)] = value.strip()
+    flush()
+    return blocks
+
+
+def selectable_pending_task_ids(
+    todo_text: str,
+    *,
+    task_header_prefix: str,
+) -> list[str]:
+    """Return selectable pending task ids.
+
+    A task is selectable when its status is pending, ready, or in progress and
+    every dependency is completed. Blocked tasks are not selectable. Empty
+    evidence selects nothing and is not a stall by itself.
+    """
+
+    if not todo_text or not task_header_prefix.strip():
+        return []
+    blocks = parse_todo_task_fields(todo_text, task_header_prefix=task_header_prefix)
+    status_by_id = {
+        task_id: str(fields.get("status") or "").strip().lower()
+        for task_id, fields in blocks
+    }
+    selected: list[str] = []
+    for task_id, fields in blocks:
+        if status_by_id.get(task_id, "") not in _SELECTABLE_TODO_STATUSES:
+            continue
+        dependencies = _split_todo_ids(fields.get("depends_on") or "")
+        if all(status_by_id.get(dep, "") in _COMPLETED_TODO_STATUSES for dep in dependencies):
+            selected.append(task_id)
+    return selected
+
+
+def _stopped_pending_resume_signature(
+    heartbeat_check: Mapping[str, Any],
+    pending: Sequence[Any],
+    reasons: Sequence[Any],
+) -> str:
+    """Identity of one stopped-pending resume.
+
+    Ordinary stops share phase, pending ids, and backpressure reasons, so a
+    failed spawn is resumed once. A full budget expiry is a new stop for each
+    exited pid. The same dead pid still matches and is not resumed again.
+    """
+
+    parts = [
+        str(heartbeat_check.get("phase") or ""),
+        ",".join(str(item) for item in pending),
+        ",".join(str(item) for item in reasons),
+    ]
+    if str(heartbeat_check.get("terminal_reason") or "") == "resume_duration_elapsed":
+        exited = heartbeat_check.get("status_pid")
+        if exited in (None, "", 0):
+            exited = heartbeat_check.get("transition_id") or ""
+        parts.append(f"duration:{exited}")
+    return "|".join(parts)
+
+
+def _attempt_backoff_backpressure(reasons: Sequence[Any]) -> bool:
+    """True when every reason is an attempt backoff and at least one exists.
+
+    A blank command or a used bounded implementer is not this class. Those
+    still packet on the second observation.
+    """
+
+    items = [str(item) for item in reasons if str(item)]
+    return bool(items) and all(item.endswith(":attempts_exhausted") for item in items)
+
+
+_ATTEMPT_BACKOFF_PHASES = frozenset(
+    {"deterministic_resume_unavailable", "attempt_retry_wait"}
+)
+
+
+def classify_stopped_pending_stall(
+    *,
+    process_alive: bool,
+    master_alive: bool,
+    heartbeat_stale: bool,
+    observed_state: str,
+    selectable_pending_task_ids: Sequence[str],
+    blocked_phase: str = "",
+    terminal_reason: str = "",
+) -> dict[str, Any]:
+    """Classify a dead lane that still has selectable work.
+
+    A fresh intentional stop is not a stall. A live lane process or a live
+    master is not a stall. Missing pending-task evidence is not a stall.
+    An operator SIGTERM (terminal_reason resume_stopped) is not a stall.
+    A dead degraded lane is a stall when its heartbeat is stale and work is
+    still selectable. A dead blocked lane is a stall only when its phase says
+    the deterministic resume stopped with work still selectable. The result
+    never grants completion authority.
+    """
+
+    pending = [str(item) for item in selectable_pending_task_ids if str(item)]
+    operator_stop = str(terminal_reason or "") == "resume_stopped"
+    # A duration expiry has already exited. Its last heartbeat stays fresh
+    # until the live-lane timeout, and that process will never write another
+    # one. Waiting out lane_timeout only delays the one resume for that pid.
+    duration_expired = str(terminal_reason or "") == "resume_duration_elapsed"
+    repairable_block = bool(
+        not process_alive
+        and not master_alive
+        and observed_state == "blocked"
+        and blocked_phase == "deterministic_resume_unavailable"
+        and pending
+    )
+    stalled = bool(
+        not operator_stop
+        and (
+            repairable_block
+            or (
+                not process_alive
+                and not master_alive
+                and (heartbeat_stale or duration_expired)
+                and observed_state in {"stopped", "failed", "degraded"}
+                and pending
+            )
+        )
+    )
+    return {
+        "stopped_pending_stalled": stalled,
+        "reason": "stopped_with_pending_work" if stalled else "",
+        "selectable_pending_task_ids": pending,
+        "observed_state": observed_state,
+        "completion_authority": False,
+        "work_complete": False,
+    }
+
+
 class SupervisorWatchdog:
     """Outer watchdog that monitors bundle supervisor lanes."""
 
@@ -1748,10 +2044,300 @@ class SupervisorWatchdog:
         self.rescue_orchestrator = rescue_orchestrator
         self.rescue_execution_request_factory = rescue_execution_request_factory
         self._consecutive_restart_counts: dict[str, int] = {}
+        self._restart_backoff_remaining: dict[str, int] = {}
         self._recent_restarts: dict[str, tuple[int, float]] = {}
+        self._quarantine_counts: dict[str, int] = {}
+        self._progress_stall_restarts: dict[str, int] = {}
+        self._stopped_pending_resumes: dict[str, str] = {}
+        self._attempt_backoff_resumes: dict[str, int] = {}
+        self.progress_quiet_seconds = 900.0
         self._generation = 0
         self._running = True
         self._master_unstall_committed = False
+
+    def _classify_lane_progress(
+        self,
+        lane: Mapping[str, Any],
+        *,
+        process_alive: bool,
+        heartbeat_stale: bool,
+        heartbeat_check: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        log_raw = str(lane.get("log_path") or "")
+        log_age = None
+        if log_raw:
+            log_path = Path(log_raw)
+            if not log_path.is_absolute():
+                log_path = self.repo_root / log_path
+            log_age = _mtime_age_seconds(log_path)
+        progress = classify_progress_stall(
+            process_alive=process_alive,
+            heartbeat_stale=heartbeat_stale,
+            active_task_id=str(heartbeat_check.get("active_task_id") or ""),
+            log_age_seconds=log_age,
+            task_transition_age_seconds=_millis_age_seconds(
+                heartbeat_check.get("last_task_transition_at_ms")
+            ),
+            quiet_seconds=self.progress_quiet_seconds,
+        )
+        try:
+            retry_remaining_ms = float(heartbeat_check.get("next_retry_at_ms") or 0) - time.time() * 1000
+        except (TypeError, ValueError):
+            retry_remaining_ms = 0
+        if (
+            process_alive
+            and not heartbeat_stale
+            and heartbeat_check.get("phase") == "gate_retry_wait"
+            and heartbeat_check.get("gate_recovery_needed") is True
+            and heartbeat_check.get("gate_evidence_fingerprint")
+            and 0 < retry_remaining_ms <= 900_000
+        ):
+            progress.update(progress_stalled=False, reason="gate_retry_not_due",
+                            next_retry_at_ms=heartbeat_check["next_retry_at_ms"])
+        return progress
+
+    def _bound_todo_text(
+        self,
+        manifest: Mapping[str, Any],
+        lane: Mapping[str, Any],
+    ) -> tuple[str, str]:
+        prefix = str(
+            lane.get("task_header_prefix") or manifest.get("task_header_prefix") or ""
+        )
+        raw = str(lane.get("todo_path") or manifest.get("todo_path") or "")
+        if not prefix or not raw:
+            return prefix, ""
+        path = Path(raw)
+        if not path.is_absolute():
+            path = self.repo_root / path
+        try:
+            return prefix, path.read_text(encoding="utf-8")
+        except OSError:
+            return prefix, ""
+
+    def _selectable_pending_task_ids(
+        self,
+        manifest: Mapping[str, Any],
+        lane: Mapping[str, Any],
+    ) -> list[str]:
+        prefix, text = self._bound_todo_text(manifest, lane)
+        return selectable_pending_task_ids(text, task_header_prefix=prefix)
+
+    def _finish_stopped_pending(
+        self,
+        *,
+        manifest: Mapping[str, Any],
+        lane: Mapping[str, Any],
+        lane_started: Mapping[str, Any],
+        bundle_key: str,
+        state_dir: Path,
+        pid_check: Mapping[str, Any],
+        heartbeat_check: dict[str, Any],
+        process_alive: bool,
+        master_alive: bool,
+        report: dict[str, Any],
+    ) -> dict[str, Any]:
+        """One fenced resume, then a body-free packet.
+
+        With no lifecycle callback, resume_stopped_lane starts the deterministic
+        lane process. It does not start a provider campaign. A second observation
+        of the same signature writes a body-free packet and does not spawn again.
+        A resume_duration_elapsed signature includes the exited pid, so the next
+        full budget can be resumed once.
+        """
+
+        heartbeat_check["state_inconsistent"] = True
+        heartbeat_check["state_reason"] = "stopped_with_pending_work"
+        pending = (heartbeat_check.get("stopped_pending_stall") or {}).get(
+            "selectable_pending_task_ids"
+        ) or []
+        reasons = heartbeat_check.get("backpressure_reasons") or []
+        signature = _stopped_pending_resume_signature(
+            heartbeat_check,
+            pending,
+            reasons,
+        )
+        used = self._stopped_pending_resumes.get(bundle_key, "")
+        phase = str(heartbeat_check.get("phase") or "")
+        backoff_key = bundle_key + "\n" + signature
+        # The first resume can still be the process that exited before the
+        # in-process wait was loaded. One more resume of this same signature
+        # loads that wait. A third observation packets, and any other stall
+        # class still packets on the second observation.
+        extra_backoff_resume = bool(
+            used == signature
+            and _attempt_backoff_backpressure(reasons)
+            and phase in _ATTEMPT_BACKOFF_PHASES
+            and not process_alive
+            and not master_alive
+            and self._attempt_backoff_resumes.get(backoff_key, 0) < 1
+        )
+        if extra_backoff_resume:
+            self._attempt_backoff_resumes[backoff_key] = 1
+        elif used == signature:
+            packet = self._write_repair_packet(
+                manifest,
+                state_dir,
+                incident_cid=f"stopped-pending:{bundle_key}",
+                reason="stopped_pending_resume_already_used",
+                missing_handler="resume_stopped_lane",
+            )
+            report["action"] = "repeated_stopped_pending_repair"
+            report["reason"] = "stopped_pending_resume_already_used"
+            report["repair_packet"] = packet
+            report["status"] = lifecycle_status_projection(
+                pid_check=pid_check,
+                heartbeat_check=heartbeat_check,
+                state="blocked",
+                target_id=bundle_key,
+            )
+            report["status"]["work_complete"] = False
+            report["status"]["completion_authority"] = False
+            logger.warning(
+                "Lane %s stopped with pending work; resume already used, wrote %s",
+                bundle_key,
+                packet,
+            )
+            return report
+        if process_alive or master_alive:
+            report["action"] = "fenced_stop_required"
+            report["reason"] = "stopped_pending_live_owner"
+            report["status"] = lifecycle_status_projection(
+                pid_check=pid_check,
+                heartbeat_check=heartbeat_check,
+                state="blocked",
+                target_id=bundle_key,
+            )
+            report["status"]["work_complete"] = False
+            report["status"]["completion_authority"] = False
+            return report
+
+        self._stopped_pending_resumes[bundle_key] = signature
+        restart_info = dict(lane_started or lane)
+        restart_info.setdefault("pid_path", str(pid_check.get("pid_path") or ""))
+        restart_info["unstall_class"] = "stopped_with_pending_work"
+        restart_info["exact_source_worktree"] = True
+        restart_info.setdefault("state_dir", str(state_dir))
+        restart_info.setdefault("state_prefix", str(lane.get("state_prefix") or ""))
+        restart_info.setdefault("bundle_key", bundle_key)
+        restart_info.setdefault(
+            "todo_path",
+            str(lane.get("todo_path") or manifest.get("todo_path") or ""),
+        )
+        restart_info.setdefault(
+            "task_header_prefix",
+            str(lane.get("task_header_prefix") or manifest.get("task_header_prefix") or ""),
+        )
+        restart_info.setdefault(
+            "log_path",
+            str(lane.get("log_path") or ""),
+        )
+        restart_info.setdefault(
+            "master_pid_path",
+            str(manifest.get("master_pid_path") or ""),
+        )
+        if self.lifecycle_restart is None:
+            restart_result = resume_stopped_lane(
+                restart_info,
+                repo_root=self.repo_root,
+                manifest=manifest,
+            )
+        else:
+            restart_result = restart_lane(
+                restart_info,
+                repo_root=self.repo_root,
+                lifecycle_transition=self.lifecycle_restart,
+            )
+        restarted = bool(restart_result.get("restarted"))
+        report["action"] = "restarted" if restarted else "restart_failed"
+        report["reason"] = str(
+            restart_result.get("reason") or "stopped_with_pending_work"
+        )
+        report["restart_result"] = restart_result
+        if restarted:
+            new_pid = restart_result.get("new_pid")
+            if isinstance(new_pid, int):
+                self._recent_restarts[bundle_key] = (new_pid, time.monotonic())
+                self._generation += 1
+        report["status"] = lifecycle_status_projection(
+            pid_check=pid_check,
+            heartbeat_check=heartbeat_check,
+            state="starting" if restarted else "blocked",
+            target_id=bundle_key,
+        )
+        report["status"]["work_complete"] = False
+        report["status"]["completion_authority"] = False
+        logger.warning(
+            "Lane %s stopped with pending work; fenced resume %s (%s)",
+            bundle_key,
+            report["action"],
+            report["reason"],
+        )
+        return report
+
+    def _repair_dir(self, manifest: Mapping[str, Any], state_dir: Path) -> Path:
+        raw = str(manifest.get("unstall_repair_dir") or "")
+        if not raw:
+            return state_dir / "unstall-repair"
+        path = Path(raw)
+        if not path.is_absolute():
+            path = self.repo_root / path
+        return path
+
+    def _write_repair_packet(
+        self,
+        manifest: Mapping[str, Any],
+        state_dir: Path,
+        *,
+        incident_cid: str,
+        reason: str,
+        missing_handler: str,
+    ) -> str:
+        """Write a body-free repair packet. It does not complete any task."""
+
+        directory = self._repair_dir(manifest, state_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in incident_cid)[:120]
+        path = directory / f"{safe or 'incident'}.json"
+        packet = {
+            "schema": "ipfs_accelerate_py.agent_supervisor.unstall-repair.v1",
+            "incident_cid": incident_cid,
+            "reason": reason,
+            "missing_handler": missing_handler,
+            "body_free": True,
+            "implementable": False,
+            "completion_authority": False,
+            "work_complete": False,
+        }
+        path.write_text(json.dumps(packet, indent=2) + "\n", encoding="utf-8")
+        return str(path)
+
+    def _note_quarantine(
+        self,
+        manifest: Mapping[str, Any],
+        state_dir: Path,
+        report: dict[str, Any],
+        unstall_result: Mapping[str, Any],
+    ) -> None:
+        incident = str(unstall_result.get("incident_cid") or "")
+        if not incident:
+            return
+        count = self._quarantine_counts.get(incident, 0) + 1
+        self._quarantine_counts[incident] = count
+        report["quarantine_count"] = count
+        if count < 2:
+            return
+        report["action"] = "repeated_quarantine_repair"
+        report["repair_packet"] = self._write_repair_packet(
+            manifest,
+            state_dir,
+            incident_cid=incident,
+            reason=str(unstall_result.get("reason") or "repeated_quarantine"),
+            missing_handler=str(
+                unstall_result.get("missing_handler") or "progress_stall_rearm"
+            ),
+        )
+        report["reason"] = "repeated_quarantine"
 
     @staticmethod
     def _manifest_unstall_policy(
@@ -1820,16 +2406,25 @@ class SupervisorWatchdog:
                 state_prefix,
                 timeout_seconds=self.lane_timeout,
             )
+            current_progress = self._classify_lane_progress(
+                lane,
+                process_alive=bool(current_pid.get("alive")),
+                heartbeat_stale=bool(current_heartbeat.get("stale")),
+                heartbeat_check=current_heartbeat,
+            )
             healthy = bool(
                 current_pid.get("alive")
                 and not current_heartbeat.get("stale")
                 and not current_heartbeat.get("state_inconsistent")
+                and not current_progress["progress_stalled"]
+                and not current_heartbeat.get("gate_recovery_needed")
             )
             return {
                 "healthy": healthy,
                 "state": "healthy" if healthy else "degraded",
                 "pid_alive": bool(current_pid.get("alive")),
                 "heartbeat_stale": bool(current_heartbeat.get("stale")),
+                "progress_stall": current_progress,
                 "work_complete": False,
             }
 
@@ -2127,6 +2722,71 @@ class SupervisorWatchdog:
             alive = bool(pid_check["alive"])
             heartbeat_stale = bool(heartbeat_check.get("stale", False))
             inconsistent = bool(heartbeat_check.get("state_inconsistent"))
+            progress = self._classify_lane_progress(
+                lane,
+                process_alive=alive,
+                heartbeat_stale=heartbeat_stale,
+                heartbeat_check=heartbeat_check,
+            )
+            heartbeat_check["progress_stall"] = progress
+            if progress["progress_stalled"]:
+                inconsistent = True
+                heartbeat_check["state_inconsistent"] = True
+                heartbeat_check["state_reason"] = "progress_stall_heartbeat_fresh"
+                if self._progress_stall_restarts.get(str(bundle_key), 0) >= 1:
+                    packet = self._write_repair_packet(
+                        manifest,
+                        state_dir,
+                        incident_cid=f"progress-stall:{bundle_key}",
+                        reason="progress_stall_restart_already_used",
+                        missing_handler="progress_stall_rearm",
+                    )
+                    report["action"] = "repeated_progress_stall_repair"
+                    report["reason"] = "progress_stall_restart_already_used"
+                    report["repair_packet"] = packet
+                    report["status"] = lifecycle_status_projection(
+                        pid_check=pid_check,
+                        heartbeat_check=heartbeat_check,
+                        state="blocked",
+                        target_id=str(bundle_key),
+                    )
+                    report["status"]["work_complete"] = False
+                    report["status"]["completion_authority"] = False
+                    reports.append(report)
+                    continue
+            master_alive = _manifest_master_alive(manifest, repo_root=self.repo_root)
+            stopped_pending = classify_stopped_pending_stall(
+                process_alive=alive,
+                master_alive=master_alive,
+                heartbeat_stale=heartbeat_stale,
+                observed_state=observed_state if canonical_status else "",
+                selectable_pending_task_ids=self._selectable_pending_task_ids(
+                    manifest,
+                    lane,
+                ),
+                blocked_phase=str(heartbeat_check.get("phase") or "") if canonical_status else "",
+                terminal_reason=str(heartbeat_check.get("terminal_reason") or "")
+                if canonical_status
+                else "",
+            )
+            heartbeat_check["stopped_pending_stall"] = stopped_pending
+            if stopped_pending["stopped_pending_stalled"]:
+                report = self._finish_stopped_pending(
+                    manifest=manifest,
+                    lane=lane,
+                    lane_started=lane_started,
+                    bundle_key=str(bundle_key),
+                    state_dir=state_dir,
+                    pid_check=pid_check,
+                    heartbeat_check=heartbeat_check,
+                    process_alive=alive,
+                    master_alive=master_alive,
+                    report=report,
+                )
+                if report.get("action") == "restarted":
+                    restarts += 1
+                reports.append(report)
+                continue
             recent = self._recent_restarts.get(bundle_key)
             in_startup_grace = bool(
                 recent
@@ -2258,12 +2918,15 @@ class SupervisorWatchdog:
                     if unstall_result.get("quarantined"):
                         report["action"] = "autonomous_unstall_quarantined"
                         report["reason"] = str(unstall_result.get("reason") or "")
+                        self._note_quarantine(manifest, state_dir, report, unstall_result)
                         report["status"] = lifecycle_status_projection(
                             pid_check=pid_check,
                             heartbeat_check=heartbeat_check,
                             state="blocked",
                             target_id=str(bundle_key),
                         )
+                        report["status"]["work_complete"] = False
+                        report["status"]["completion_authority"] = False
                         reports.append(report)
                         continue
                 if dynamic_authority:
@@ -2298,13 +2961,13 @@ class SupervisorWatchdog:
                 count = self._consecutive_restart_counts.get(bundle_key, 0)
                 if report["action"] == "fenced_stop_required":
                     pass
-                elif count >= self.max_consecutive_restarts:
-                    # Exponential backoff: skip this cycle
-                    backoff_cycles = 2 ** min(count - self.max_consecutive_restarts, 5)
+                elif self._restart_backoff_remaining.get(bundle_key, 0) > 0:
+                    # Consume a finite wait; only actual attempts increase the
+                    # failure count, otherwise a lane can never leave backoff.
+                    backoff_cycles = self._restart_backoff_remaining[bundle_key]
                     report["action"] = "backoff"
                     report["backoff_cycles"] = backoff_cycles
-                    # Decrement so we'll try again eventually
-                    self._consecutive_restart_counts[bundle_key] = count + 1
+                    self._restart_backoff_remaining[bundle_key] = backoff_cycles - 1
                 else:
                     restart_info = dict(lane_started or lane)
                     restart_info.setdefault("pid_path", str(pid_check["pid_path"]))
@@ -2322,9 +2985,17 @@ class SupervisorWatchdog:
                         "restarted" if restart_result.get("restarted") else "restart_failed"
                     )
                     report["restart_result"] = restart_result
+                    self._consecutive_restart_counts[bundle_key] = count + 1
+                    if count + 1 >= self.max_consecutive_restarts:
+                        self._restart_backoff_remaining[bundle_key] = 2 ** min(
+                            count + 1 - self.max_consecutive_restarts, 5
+                        )
                     if restart_result.get("restarted"):
                         restarts += 1
-                        self._consecutive_restart_counts[bundle_key] = count + 1
+                        if heartbeat_check.get("progress_stall", {}).get("progress_stalled"):
+                            self._progress_stall_restarts[str(bundle_key)] = (
+                                self._progress_stall_restarts.get(str(bundle_key), 0) + 1
+                            )
                         new_pid = int(restart_result["new_pid"])
                         self._recent_restarts[bundle_key] = (
                             new_pid,
@@ -2345,11 +3016,11 @@ class SupervisorWatchdog:
                         }
                         pid_check.pop("reason", None)
                     else:
-                        self._consecutive_restart_counts[bundle_key] = count + 1
                         observed_state = "failed"
             else:
                 # Healthy - reset consecutive restart counter
                 self._consecutive_restart_counts[bundle_key] = 0
+                self._restart_backoff_remaining.pop(bundle_key, None)
                 if suppressed_state:
                     if not alive and observed_state in {"paused", "draining", "stopping"}:
                         interrupted_state = observed_state
@@ -2459,7 +3130,7 @@ class SupervisorWatchdog:
             "updated_at_ms": timestamp_ms,
             "updated_at": status_timestamp,
         }
-        return {
+        cycle_report = {
             "timestamp": timestamp,
             "lane_count": len(lanes),
             "restarts": restarts,
@@ -2481,7 +3152,24 @@ class SupervisorWatchdog:
             },
             "scheduler_snapshot": operator_snapshot,
             "scheduler_snapshot_id": str(operator_snapshot.get("snapshot_id") or ""),
+            "work_complete": False,
+            "completion_authority": False,
         }
+        report_raw = str(manifest.get("report_path") or "")
+        if report_raw:
+            report_path = Path(report_raw)
+            if not report_path.is_absolute():
+                report_path = self.repo_root / report_path
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = report_path.with_name(
+                f".{report_path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
+            )
+            temporary.write_text(
+                json.dumps(cycle_report, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temporary, report_path)
+        return cycle_report
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -2520,17 +3208,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    watchdog = SupervisorWatchdog(
-        manifest_path=args.manifest_path.resolve(),
-        repo_root=args.repo_root.resolve(),
-        check_interval=args.check_interval,
-        lane_timeout=args.lane_timeout,
-        max_consecutive_restarts=args.max_consecutive_restarts,
-        log_aggregation_dir=args.log_aggregation_dir,
-    )
+    from .watchdog_guardian import acquire_lock, discover_watchdogs
 
-    result = watchdog.run()
-    logger.info("Watchdog exited: %s", json.dumps(result))
+    manifest_path, repo_root = args.manifest_path.resolve(), args.repo_root.resolve()
+    owner_lock = acquire_lock(manifest_path.parent / "watchdog-owner.lock")
+    if owner_lock is None:
+        logger.warning("Watchdog owner already holds the startup lock: %s", manifest_path)
+        return 0
+    with owner_lock:
+        owners, errors = discover_watchdogs(manifest_path, repo_root)
+        others = [owner for owner in owners if owner["pid"] != os.getpid()]
+        if others or errors:
+            logger.warning("Watchdog startup withheld: owners=%s discovery_errors=%s", others, errors)
+            return 0
+        watchdog = SupervisorWatchdog(
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+            check_interval=args.check_interval,
+            lane_timeout=args.lane_timeout,
+            max_consecutive_restarts=args.max_consecutive_restarts,
+            log_aggregation_dir=args.log_aggregation_dir,
+        )
+        result = watchdog.run()
+        logger.info("Watchdog exited: %s", json.dumps(result))
     return 0
 
 
