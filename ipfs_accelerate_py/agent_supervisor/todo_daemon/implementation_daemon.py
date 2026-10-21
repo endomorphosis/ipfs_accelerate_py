@@ -14883,7 +14883,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             },
         )
 
-    def _record_empty_backlog_state(self, *, reason: str, error: str = "") -> dict[str, Any]:
+    @staticmethod
+    def _runtime_projection_source_changed(
+        before: Mapping[str, Any],
+        after: Mapping[str, Any],
+    ) -> bool:
+        """Do not consume a peer's new task revision using an older projection.
+
+        Own event, index and lease writes are expected during a pass. Task
+        board and configured task-source revisions require a fresh projection.
+        """
+
+        return any(
+            before.get(kind) != after.get(kind)
+            for kind in ("task_board", "task_source_identity")
+        )
+
+    def _record_empty_backlog_state(
+        self,
+        *,
+        reason: str,
+        error: str = "",
+        projection_sources: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         live_inflight_implementation = self._find_live_inflight_implementation()
@@ -14970,7 +14992,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if task_source_identity is not None:
             result["task_source_identity"] = task_source_identity
         final_source_digest, final_sources = self._runtime_source_head()
-        if state_written:
+        projection_source_changed = (
+            projection_sources is not None
+            and self._runtime_projection_source_changed(projection_sources, final_sources)
+        )
+        if projection_source_changed:
+            result["source_changed_during_projection"] = True
+        if state_written and not projection_source_changed:
             checkpoint_result = self._save_runtime_checkpoint(
                 source_digest=final_source_digest,
                 sources=final_sources,
@@ -14979,7 +15007,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             result["delta_checkpoint"] = checkpoint_result
             result["write_count"] += int(checkpoint_result["write_count"])
-        self._runtime_last_source_digest = final_source_digest
+        self._runtime_last_source_digest = (
+            "" if projection_source_changed else final_source_digest
+        )
         self._runtime_last_result = self._runtime_result_projection(result)
         self._acknowledge_runtime_events()
         return result
@@ -17234,7 +17264,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 }
         wake_kinds = self._consume_runtime_wake_kinds()
         self._current_runtime_wake_kinds = set(wake_kinds)
-        source_digest, _source_metadata = self._runtime_source_head()
+        source_digest, projection_sources = self._runtime_source_head()
         forced_wake_kinds = wake_kinds.difference({"observation_window"})
         safety_reconciliation_due = (
             time.monotonic() - self._last_safety_reconciliation_monotonic
@@ -17396,9 +17426,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     if self.task_source is not None
                     else "todo_read_failed"
                 )
-                return self._record_empty_backlog_state(reason=reason, error=str(exc))
+                return self._record_empty_backlog_state(
+                    reason=reason, error=str(exc), projection_sources=projection_sources
+                )
         if not tasks:
-            return self._record_empty_backlog_state(reason="no_tasks_found")
+            return self._record_empty_backlog_state(
+                reason="no_tasks_found", projection_sources=projection_sources
+            )
         aliases_by_cid = self._register_task_identities(tasks)
         merge_train_progress: dict[str, Any] | None = None
         if not self.manual_completion_authority_revalidation_only:
@@ -18651,11 +18685,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if task_source_identity is not None:
             result["task_source_identity"] = task_source_identity
         final_source_digest, final_sources = self._runtime_source_head()
+        projection_source_changed = self._runtime_projection_source_changed(
+            projection_sources, final_sources
+        )
+        if projection_source_changed:
+            result["source_changed_during_projection"] = True
         # An implementation may mutate attempt, lease, validation, and active
         # execution state after the board projection above was selected. Do
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
-        if (state_written or completion_receipt_writes) and (
+        # A sibling can also complete or publish a task during this pass.
+        # Preserve the older checkpoint and require the next ordinary pass
+        # to reload that revision rather than caching stale waiting counts.
+        if not projection_source_changed and (state_written or completion_receipt_writes) and (
             implementation_result is None or stable_admission_deferral_result
         ):
             checkpoint_result = self._save_runtime_checkpoint(
@@ -18668,7 +18710,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["write_count"] += int(checkpoint_result["write_count"])
         self._runtime_last_source_digest = (
             final_source_digest
-            if implementation_result is None or stable_admission_deferral_result
+            if not projection_source_changed
+            and (implementation_result is None or stable_admission_deferral_result)
             else ""
         )
         self._runtime_last_result = self._runtime_result_projection(result)

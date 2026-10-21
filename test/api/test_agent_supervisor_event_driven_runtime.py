@@ -105,6 +105,39 @@ def _file_identity(path: Path) -> tuple[int, int, int, bytes]:
     )
 
 
+def _runtime_durable_identity(daemon: PortalImplementationDaemon) -> dict[str, Any]:
+    """Snapshot the genuine state authority and optional runtime side files."""
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import (
+        read_task_state_payload,
+        task_state_authority_file,
+    )
+
+    payload = read_task_state_payload(daemon.state_path)
+    authority = task_state_authority_file(daemon.state_path)
+    assert isinstance(payload, dict) and payload
+    assert payload["completion_authority"] is False
+    assert authority is not None and authority.is_file()
+    assert authority != daemon.state_path and authority.suffix == ".duckdb"
+    assert not daemon.state_path.exists()
+    assert daemon.runtime_checkpoint_path.is_file()
+    side_paths = (
+        daemon.state_path,
+        daemon.events_path,
+        daemon.events_path.with_name(daemon.events_path.name + ".manifest.json"),
+        daemon.runtime_checkpoint_path,
+        Path(str(authority) + ".wal"),
+    )
+    return {
+        "state_payload": payload,
+        "state_authority": (str(authority), _file_identity(authority)),
+        "optional_side_files": {
+            str(path): _file_identity(path) if path.exists() else None
+            for path in side_paths
+        },
+    }
+
+
 def _drained_daemon(tmp_path: Path) -> PortalImplementationDaemon:
     board = tmp_path / "tasks.todo.md"
     board.write_text("# Drained task board\n", encoding="utf-8")
@@ -588,12 +621,7 @@ def test_drained_board_ten_minute_logical_fixture_uses_under_two_percent_cpu_and
         metadata_depth_limit=1,
     )
     daemon._runtime_wake_coordinator = coordinator
-    durable_paths = (
-        daemon.state_path,
-        daemon.events_path,
-        daemon.runtime_checkpoint_path,
-    )
-    before = {path: _file_identity(path) for path in durable_paths}
+    before = _runtime_durable_identity(daemon)
     cpu_started = time.process_time()
     results: list[dict[str, Any]] = []
     try:
@@ -612,7 +640,7 @@ def test_drained_board_ten_minute_logical_fixture_uses_under_two_percent_cpu_and
     assert all(result["write_count"] == 0 for result in results)
     assert all(result["projection_delta"] == {} for result in results)
     assert all(result["wake_kinds"] == ["observation_window"] for result in results)
-    assert {path: _file_identity(path) for path in durable_paths} == before
+    assert _runtime_durable_identity(daemon) == before
 
 
 def test_idle_populated_board_does_not_rewrite_typed_task_identities(
@@ -649,12 +677,7 @@ def test_idle_populated_board_does_not_rewrite_typed_task_identities(
     )
 
     first = daemon.run_once()
-    durable_paths = (
-        daemon.state_path,
-        daemon.events_path,
-        daemon.runtime_checkpoint_path,
-    )
-    before = {path: _file_identity(path) for path in durable_paths}
+    before = _runtime_durable_identity(daemon)
     second = daemon.run_once()
 
     assert first["completed_count"] == 1
@@ -662,7 +685,7 @@ def test_idle_populated_board_does_not_rewrite_typed_task_identities(
     assert second["unchanged"] is True
     assert second["write_count"] == 0
     assert second["projection_delta"] == {}
-    assert {path: _file_identity(path) for path in durable_paths} == before
+    assert _runtime_durable_identity(daemon) == before
 
 
 def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
@@ -702,3 +725,114 @@ def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     assert event.kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
     assert event.safety_timer is True
     assert clock() == pytest.approx(30.0)
+
+
+@pytest.mark.parametrize(
+    "before,after,changed",
+    [
+        ({"task_board": [{"inode": 1}]}, {"task_board": [{"inode": 2}]}, True),
+        ({"task_source_identity": [{"revision": "a"}]},
+         {"task_source_identity": [{"revision": "b"}]}, True),
+        ({"task_board": [{"inode": 1}], "event_log": ["before"]},
+         {"task_board": [{"inode": 1}], "event_log": ["after"]}, False),
+        ({"task_board": [{"inode": 1}], "repository": ["before"], "lease": ["before"]},
+         {"task_board": [{"inode": 1}], "repository": ["after"], "lease": ["after"]}, False),
+    ],
+    ids=["peer-board", "configured-source-revision", "own-events", "own-index-and-lease"],
+)
+def test_projection_source_guard_distinguishes_task_revisions_from_own_writes(
+    before: dict[str, Any], after: dict[str, Any], changed: bool,
+) -> None:
+    assert PortalImplementationDaemon._runtime_projection_source_changed(before, after) is changed
+
+
+def test_peer_board_revision_during_populated_projection_is_reconciled_on_next_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    before = """# Peer completion race
+
+## PORTAL-001 Peer-owned task
+
+- Status: blocked
+- Outputs: src/peer.py
+- Acceptance: Preserve the existing peer-owned task.
+"""
+    after = before.replace("- Status: blocked", "- Status: completed")
+    daemon.todo_path.write_text(before, encoding="utf-8")
+    original_load = daemon._load_tasks
+    raced = False
+
+    def peer_completes_after_read() -> list[Any]:
+        nonlocal raced
+        tasks = original_load()
+        if not raced:
+            raced = True
+            daemon.todo_path.write_text(after, encoding="utf-8")
+        return tasks
+
+    monkeypatch.setattr(daemon, "_load_tasks", peer_completes_after_read)
+    try:
+        first = daemon.run_once()
+        assert first["blocked_count"] == 1
+        assert first["source_changed_during_projection"] is True
+        assert "delta_checkpoint" not in first
+        assert daemon._runtime_last_source_digest == ""
+        second = daemon.run_once()
+        assert second["completed_count"] == second["task_count"] == 1
+        assert second["blocked_count"] == second["waiting_count"] == second["ready_count"] == 0
+        assert second.get("source_changed_during_projection", False) is False
+        assert daemon._runtime_last_source_digest
+        before_idle = _runtime_durable_identity(daemon)
+        assert before_idle["state_payload"]["completed_count"] == 1
+        assert before_idle["state_payload"]["task_count"] == 1
+        third = daemon.run_once()
+        assert third["unchanged"] is True and third["write_count"] == 0
+        assert _runtime_durable_identity(daemon) == before_idle
+    finally:
+        daemon.close_event_runtime()
+
+
+def test_peer_adds_task_during_empty_projection_is_reconciled_on_next_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    original_load = daemon._load_tasks
+    raced = False
+
+    def peer_adds_after_read() -> list[Any]:
+        nonlocal raced
+        tasks = original_load()
+        if not raced:
+            raced = True
+            daemon.todo_path.write_text("""# Peer addition race
+
+## PORTAL-001 Completed peer task
+
+- Status: completed
+- Outputs: src/peer.py
+- Acceptance: A peer added this completed task during the empty pass.
+""", encoding="utf-8")
+        return tasks
+
+    monkeypatch.setattr(daemon, "_load_tasks", peer_adds_after_read)
+    try:
+        first = daemon.run_once()
+        assert first["reason"] == "no_tasks_found"
+        assert first["source_changed_during_projection"] is True
+        assert "delta_checkpoint" not in first
+        assert daemon._runtime_last_source_digest == ""
+        second = daemon.run_once()
+        assert second["completed_count"] == second["task_count"] == 1
+        assert second["waiting_count"] == second["ready_count"] == 0
+        assert second.get("source_changed_during_projection", False) is False
+        before_idle = _runtime_durable_identity(daemon)
+        assert before_idle["state_payload"]["completed_count"] == 1
+        assert before_idle["state_payload"]["task_count"] == 1
+        third = daemon.run_once()
+        assert third["unchanged"] is True and third["write_count"] == 0
+        assert _runtime_durable_identity(daemon) == before_idle
+    finally:
+        daemon.close_event_runtime()
