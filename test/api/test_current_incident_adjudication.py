@@ -373,3 +373,63 @@ def test_unrelated_dead_terminal_owner_is_not_stopped_launch_proof(incident):
     result=daemon.adjudicate_quiesced_ordinary_incident(request=request)
     assert result['blocked'] and result['reason']=='owner_not_in_stopped_launch',result
     assert claim_path.read_bytes()==claim
+
+
+@pytest.fixture
+def settled_next_attempt(incident):
+    daemon, supervisor, task, old_workspace, claim_path, _, request = incident
+    first=daemon.adjudicate_quiesced_ordinary_incident(request=request)
+    assert first['reconciled'], first.get('reason')
+    old_lifecycle=Path(request['pins']['lifecycle']['path'])
+    original=old_lifecycle.read_bytes(),supervisor._autonomous_unstall_state_path().read_bytes()
+    birth_code='import json; from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import current_process_birth; print(json.dumps(current_process_birth().to_dict()))'
+    birth=native.ProcessBirthIdentity.from_dict(json.loads(subprocess.run(
+        [sys.executable,'-c',birth_code],capture_output=True,text=True,check=True,timeout=20).stdout))
+    assert native.owner_liveness(birth) is native.OwnerLiveness.DEAD
+    workspace=daemon.worktree_root/'native-second-attempt'
+    life=daemon.worktree_lifecycle.begin_preparing(task_id=task.task_id,canonical_task_cid=request['task_cid'],
+        attempt=2,lane_id='synthetic-second-attempt',workspace_path=workspace,branch='lane-second',
+        merge_target=daemon.resolved_merge_target_branch,state_dir=str(daemon.state_path.parent),owner=birth)
+    subprocess.run(['git','worktree','add','-b','lane-second',str(workspace),'HEAD'],
+        cwd=daemon.repo_root,capture_output=True,check=True,timeout=20)
+    daemon.worktree_lifecycle.mark_active(workspace,lease_id=life.lease_id,expected_fence=life.fence)
+    state=native.PortalTaskState.load(daemon.state_path)
+    state.implementation_attempts[task.task_id]=2;state.implementation_attempts_by_cid[request['task_cid']]=2
+    state.active_task_id=task.task_id;state.active_task_key=request['task_key'];state.active_task_cid=request['task_cid']
+    state.active_task_started_at=native.utc_now();state.active_attempt=2;state.implementation_in_progress=True
+    state.active_worktree_path=str(workspace);state.active_branch='lane-second';state.active_phase='implementing'
+    state.save(daemon.state_path)
+    claim=daemon._build_implementation_task_claim_metadata(task,2,state.active_task_started_at)
+    claim.update(pid=birth.pid,owner_process_birth=birth.to_dict())
+    claim['dispatch_authority_cid']=daemon._implementation_dispatch_authority_cid(claim)
+    write(claim_path,claim)
+    assert (old_lifecycle.read_bytes(),supervisor._autonomous_unstall_state_path().read_bytes())==original
+    return daemon,supervisor,task,claim_path,request,first,state
+
+
+def test_settled_old_quarantine_does_not_block_new_native_stale_recovery_snapshot(settled_next_attempt):
+    daemon,supervisor,_,claim_path,_,first,state=settled_next_attempt
+    before=asdict(native.PortalTaskState.load(daemon.state_path)),claim_path.read_bytes(),daemon.strategy_path.read_bytes(),Path(first['receipt_path']).read_bytes()
+    snapshot,reason=supervisor._stale_recovery_snapshot(state)
+    assert snapshot is not None,reason
+    assert snapshot['claim']['attempt']==2
+    assert (asdict(native.PortalTaskState.load(daemon.state_path)),claim_path.read_bytes(),daemon.strategy_path.read_bytes(),Path(first['receipt_path']).read_bytes())==before
+
+
+@pytest.mark.parametrize('hold',['manual_strategy','new_quarantine','missing_receipt','corrupt_receipt','native_block','source_update'])
+def test_settled_old_quarantine_never_suppresses_new_or_independent_stale_recovery_hold(settled_next_attempt,monkeypatch,hold):
+    daemon,supervisor,task,claim_path,_,first,state=settled_next_attempt
+    if hold in {'manual_strategy','new_quarantine'}:
+        value=json.loads(daemon.strategy_path.read_text())
+        if hold=='manual_strategy':value['blocked_tasks'].append(task.task_id)
+        else:value['autonomous_unstall_quarantines'].append({**value['autonomous_unstall_quarantines'][0],'incident_cid':'new-unsettled-incident'})
+        write(daemon.strategy_path,value)
+    elif hold=='missing_receipt':Path(first['receipt_path']).unlink()
+    elif hold=='corrupt_receipt':Path(first['receipt_path']).write_text('{incomplete')
+    elif hold=='native_block':
+        state.blocked_task_ids=[task.task_id];state.task_statuses[task.task_id]='blocked';state.save(daemon.state_path)
+    elif hold=='source_update':monkeypatch.setattr(adjudication,'runtime_revision',lambda:'sha256:'+'0'*64)
+    before=asdict(native.PortalTaskState.load(daemon.state_path)),claim_path.read_bytes(),daemon.strategy_path.read_bytes()
+    snapshot,reason=supervisor._stale_recovery_snapshot(state)
+    assert snapshot is None and reason in {'strategy_hold_preserved','task_hold_preserved'},(hold,reason)
+    assert (asdict(native.PortalTaskState.load(daemon.state_path)),claim_path.read_bytes(),daemon.strategy_path.read_bytes())==before

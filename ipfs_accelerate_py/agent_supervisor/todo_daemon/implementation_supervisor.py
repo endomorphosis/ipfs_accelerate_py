@@ -21362,8 +21362,12 @@ class PortalImplementationSupervisor:
             if strategy is None and self.config.strategy_path.exists():
                 return None, "strategy_hold_observation_unavailable"
             strategy = strategy or {}
+            from .current_incident_adjudication import settlement_valid
             if (refs.intersection(str(item) for item in strategy.get("blocked_tasks", ()))
                     or any(isinstance(item, Mapping) and item.get("task_id") in refs
+                           and not settlement_valid(repo_root=self.config.repo_root,
+                               state_path=self.config.state_path,
+                               incident_cid=str(item.get("incident_cid") or ""), quarantine=item)
                            for item in strategy.get("autonomous_unstall_quarantines", ()))):
                 return None, "strategy_hold_preserved"
             identity = load_supervised_child_identity(self._managed_daemon_identity_path())
