@@ -412,12 +412,14 @@ def _failed_validation_contract_gap_paths(
     validation_result: Mapping[str, Any],
     *,
     expected_outputs: Sequence[str],
+    changed_paths: Sequence[str],
     validation_commands: Sequence[str],
 ) -> tuple[str, ...]:
-    """Return actual failed validation paths outside task edit authority.
+    """Return changed failed test paths outside the caller's edit authority.
 
     A declared command may intentionally read broad or pre-existing tests, so
-    command targets alone are never a contract gap.  Require runner-reported
+    command targets and unchanged failed tests are never a contract gap.
+    Require complete candidate-edit evidence as well as runner-reported
     failed paths and bind each one back to the command's persisted impact
     paths.  When a command runs below a child repository (``cd child``), also
     consider the repository-rooted spelling.  The matched canonical spelling
@@ -425,13 +427,14 @@ def _failed_validation_contract_gap_paths(
     """
 
     expected = _normalized_paths(expected_outputs)
+    changed = set(_normalized_paths(changed_paths))
     failed_paths = _normalized_paths(
         validation_result.get("failed_test_paths") or ()
     )
     impact_paths = _normalized_paths(
         validation_result.get("validation_impact_paths") or ()
     )
-    if not expected or not failed_paths or not impact_paths:
+    if not expected or not changed or not failed_paths or not impact_paths:
         return ()
 
     repository_roots = tuple(
@@ -476,7 +479,7 @@ def _failed_validation_contract_gap_paths(
             ),
             matched[0],
         )
-        if not _path_owned_by_expected(canonical, expected):
+        if canonical in changed and not _path_owned_by_expected(canonical, expected):
             gaps.add(canonical)
     return tuple(sorted(gaps))
 
@@ -999,7 +1002,16 @@ def review_implementation_failure(
             ),
             *_failed_validation_contract_gap_paths(
                 validation,
-                expected_outputs=expected,
+                # The caller's live admission result already vetted changed
+                # companions. Diagnostic test locations cannot revoke that
+                # admission or grant new edit permission. Raw validation JSON
+                # cannot nominate ownership for a rejected candidate.
+                expected_outputs=(*expected, *declared_scope),
+                changed_paths=(
+                    changed
+                    if path_evidence_complete and proposal_accepted is not True
+                    else ()
+                ),
                 validation_commands=validation_commands,
             ),
         )
@@ -1247,10 +1259,10 @@ def review_implementation_failure(
     for raw_hint in validation.get("descriptor_relocation_hints") or ():
         if not isinstance(raw_hint, Mapping):
             continue
-        missing = str(raw_hint.get("missing") or "").strip()
+        missing_path = str(raw_hint.get("missing") or "").strip()
         candidate = str(raw_hint.get("candidate") or "").strip()
-        if missing and candidate:
-            relocation_bits.append(f"{missing}→{candidate}")
+        if missing_path and candidate:
+            relocation_bits.append(f"{missing_path}→{candidate}")
     if relocation_bits:
         addendum_lines.append(
             "Descriptor relocations: "

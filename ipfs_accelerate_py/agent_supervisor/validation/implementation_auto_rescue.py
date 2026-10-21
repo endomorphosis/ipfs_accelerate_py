@@ -81,6 +81,7 @@ HARD_DENY_REASON_CODES = frozenset(
         "hard_deny_findings",
         "scope_expansion_denied",
         "task_scope_contract_revision_required",
+        "diagnostic_path_evidence_incomplete",
     }
 )
 
@@ -929,6 +930,18 @@ def plan_automatic_implementation_rescue(
         for path in denied_paths
         if is_undeclared_helper_path(path, expected)
     )
+    # A bounded persistence projection can omit candidate paths. Never use
+    # that unknown tail to authorize even an earlier repair-only route.
+    if "diagnostic_path_evidence_incomplete" in reason_codes:
+        return AutoRescuePlan(
+            action=AutoRescueAction.NONE,
+            reason="hard_deny_reason_codes",
+            finding_codes=finding_codes,
+            reason_codes=reason_codes,
+            failed_commands=failed_commands,
+            expected_outputs=expected,
+            missing_expected_outputs=missing,
+        )
     scoped_secret_evidence = _scoped_test_secret_remediation_evidence(
         result,
         decision=decision,

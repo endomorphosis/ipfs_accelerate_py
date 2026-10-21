@@ -47524,12 +47524,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ]
         except (OSError, TypeError, ValueError):
             pass
+        # The validation workflow retains this exact typed object in process
+        # for candidate stabilization. Project it before the diagnostic
+        # consumer, which must keep rejecting unknown/malformed objects.
+        from ..validation.proposal_validation import ProposalValidationResult
+
+        review_validation = dict(result)
+        live_proposal = result.get("proposal_validation")
+        if (
+            type(live_proposal) is ProposalValidationResult
+            and live_proposal is proposal_validation
+        ):
+            review_validation["proposal_validation"] = (
+                self._compact_proposal_validation(live_proposal)
+            )
         review = review_implementation_failure(
             task_id=task.task_id,
             attempt=int(attempt),
             expected_outputs=expected_outputs,
+            task_owned_paths=self._proposal_scope_paths(task),
             validation_commands=tuple(task.validation),
-            validation_result=result,
+            validation_result=review_validation,
             workspace_path=workspace_path,
             log_excerpt=log_excerpt,
             proposal_accepted=proposal_accepted,
