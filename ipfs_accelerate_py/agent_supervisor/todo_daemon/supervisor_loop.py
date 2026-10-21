@@ -23,6 +23,9 @@ from .supervisor_runtime import (
     adopt_or_launch_supervised_child,
     child_exit_should_restart,
     clear_child_pid_file,
+    load_supervised_child_identity,
+    _supervised_child_identity_matches_handle,
+    _supervised_child_identity_session_quiesced,
     supervised_log_path,
     supervisor_run_id,
     terminate_supervised_child,
@@ -50,6 +53,11 @@ class SupervisorLoopDecision:
     @classmethod
     def stop(cls, reason: str = "", *, status: str = "stopped") -> "SupervisorLoopDecision":
         return cls(action="stop", reason=reason, status=status)
+
+    @classmethod
+    def block(cls, reason: str) -> "SupervisorLoopDecision":
+        """Stop observation while retaining unproven execution custody."""
+        return cls(action="block", reason=reason, status="termination_blocked")
 
 
 def clear_dead_child_pass_heartbeat(
@@ -589,6 +597,20 @@ class SupervisorLoop:
         )
         return status
 
+    def _terminate_child(self, child: SupervisedChild) -> bool:
+        # A watchdog may already have fenced the child before undertaking
+        # recovery.  Repeating termination must verify its retained sealed
+        # identity and entire kernel session, never signal a reused PID.
+        if child.identity_path is not None:
+            identity = load_supervised_child_identity(child.identity_path)
+            if (_supervised_child_identity_matches_handle(child, identity)
+                    and _supervised_child_identity_session_quiesced(identity)):
+                return True
+        return terminate_supervised_child(
+            child, grace_seconds=self.config.stop_grace_seconds,
+            clear_pid_file=False,
+        )
+
     def watchdog_decision(self, child: SupervisedChild) -> SupervisorLoopDecision:
         current_status = read_json(self.config.spec.resolve(self.config.spec.status_path))
         decision = self.default_watchdog(child, current_status)
@@ -673,14 +695,18 @@ class SupervisorLoop:
                 self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
                     decision = self.watchdog_decision(child)
+                    if decision.action == "block":
+                        # Do not kill a container's parent before its effect
+                        # custody is known. Preserve the exact owner markers
+                        # for an authorized, evidence-bound shutdown/recovery.
+                        final_status = "termination_blocked"
+                        self.last_recycle_reason = decision.reason
+                        stop_requested = True
+                        break
                     if decision.action == "stop":
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
-                        stopped = terminate_supervised_child(
-                            child,
-                            grace_seconds=self.config.stop_grace_seconds,
-                            clear_pid_file=False,
-                        )
+                        stopped = self._terminate_child(child)
                         if not stopped:
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (
@@ -700,11 +726,7 @@ class SupervisorLoop:
                             log_path=log_path,
                             extra={"watchdog_decision": decision.detail},
                         )
-                        stopped = terminate_supervised_child(
-                            child,
-                            grace_seconds=self.config.stop_grace_seconds,
-                            clear_pid_file=False,
-                        )
+                        stopped = self._terminate_child(child)
                         if not stopped:
                             final_status = "termination_blocked"
                             self.last_recycle_reason = (

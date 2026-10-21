@@ -632,6 +632,113 @@ def save_portal_task_state(
     }
 
 
+def read_portal_task_state_snapshot(state_path: Path | str) -> dict[str, Any] | None:
+    """Read an existing authoritative body and revision without initializing it."""
+
+    path = Path(state_path)
+    target, _source = resolve_control_plane(path)
+    if target is None:
+        return None
+    connection = _connect(target, initialize=False)
+    try:
+        if _is_board_control_database(target):
+            row = connection.execute(
+                """SELECT payload_json, updated_at_ms FROM artefact_generic
+                    WHERE board_namespace = ? AND kind = ? AND artefact_id = ?""",
+                [_BOARD_NAMESPACE, _BOARD_KIND, path.stem],
+            ).fetchone()
+        else:
+            row = connection.execute(
+                f"SELECT body_json, revision FROM {TABLE} WHERE lane_key = ?", [path.stem],
+            ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        return None
+    body = json.loads(str(row[0]))
+    if not isinstance(body, dict):
+        raise PortalTaskStateControlPlaneError("stored task state is not an object")
+    return {"body": body, "revision": int(row[1])}
+
+
+def compare_and_save_portal_task_state(
+    lane_key: str,
+    body: Mapping[str, Any],
+    *,
+    expected: Mapping[str, Any],
+    expected_revision: int,
+    state_path: Path | str,
+) -> dict[str, Any]:
+    """Replace an existing lane only while its entire observed body matches.
+
+    Stale recovery must never upsert over a newer dispatch or hold.  The
+    comparison belongs in the authoritative UPDATE, including for the board
+    store; a Python read followed by ``save_portal_task_state`` is not a CAS.
+    Missing rows and missing authority are refusals, never insert authority.
+    """
+
+    if (not isinstance(body, Mapping) or not isinstance(expected, Mapping) or not expected
+            or type(expected_revision) is not int or expected_revision < 1):
+        raise PortalTaskStateControlPlaneError("task-state CAS requires a nonempty expected object")
+    target, source = resolve_control_plane(state_path)
+    if target is None:
+        raise PortalTaskStateControlPlaneError("task-state CAS requires existing authority")
+    payload, observed = dict(body), dict(expected)
+    if payload.get("completion_authority") is True or observed.get("completion_authority") is True:
+        raise PortalTaskStateControlPlaneError("task-state CAS cannot grant completion authority")
+    payload["completion_authority"] = observed["completion_authority"] = False
+    body_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    expected_json = json.dumps(observed, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    key = str(lane_key or "").strip() or "default"
+    updated_at = datetime.now(UTC).isoformat()
+    board = _is_board_control_database(target)
+    connection = _connect(target, initialize=False)
+    try:
+        if board:
+            row = connection.execute(
+                """UPDATE artefact_generic SET payload_json = ?,
+                    updated_at_ms = greatest(updated_at_ms + 1, ?)
+                    WHERE board_namespace = ? AND kind = ? AND artefact_id = ?
+                    AND payload_json = ? AND updated_at_ms = ?
+                    RETURNING payload_json, updated_at_ms""",
+                [body_json, int(datetime.now(UTC).timestamp() * 1000),
+                 _BOARD_NAMESPACE, _BOARD_KIND, key, expected_json, expected_revision],
+            ).fetchone()
+            current = row or connection.execute(
+                """SELECT payload_json, updated_at_ms FROM artefact_generic
+                    WHERE board_namespace = ? AND kind = ? AND artefact_id = ?""",
+                [_BOARD_NAMESPACE, _BOARD_KIND, key],
+            ).fetchone()
+        else:
+            row = connection.execute(
+                f"""UPDATE {TABLE} SET body_json = ?, revision = revision + 1,
+                    completion_authority = FALSE, updated_at = ?
+                    WHERE lane_key = ? AND body_json = ? AND revision = ?
+                    RETURNING body_json, revision""",
+                [body_json, updated_at, key, expected_json, expected_revision],
+            ).fetchone()
+            current = row or connection.execute(
+                f"SELECT body_json, revision FROM {TABLE} WHERE lane_key = ?", [key],
+            ).fetchone()
+    finally:
+        connection.close()
+    result = {
+        "matched": row is not None,
+        "changed": row is not None and body_json != expected_json,
+        "lane_key": key,
+        "revision": int(current[1]) if current else None,
+        "current": json.loads(str(current[0])) if current else None,
+        "completion_authority": False,
+        "json_authority": False,
+        "source": source,
+    }
+    if row is not None:
+        result["ducklake"] = _project_ducklake(
+            key, body_json, int(row[1]), updated_at, target=target,
+        )
+    return result
+
+
 def load_portal_task_state(
     lane_key: str,
     *,
