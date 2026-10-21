@@ -18012,6 +18012,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "error": str(exc)[-4000:],
                     },
                 )
+        if merge_train_progress and merge_train_progress.get("completion_only_pending") is True:
+            # The integrated target is still awaiting authoritative completion.
+            # A new implementation or merge must not advance that binding.
+            return {"blocked": True, "reason": str(merge_train_progress.get("reason") or "completion_continuation_pending"),
+                "implementation_result": None, "merge_train_progress": merge_train_progress,
+                "provider_dispatched": False, "completion_authoritative": False,
+                "selection_idle_reason": "integrated_completion_pending"}
         shared_active_merge_cids = self._shared_merge_queue_task_cids(
             "active_canonical_task_ids"
         )
@@ -29157,6 +29164,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
+        from . import completion_git_lock
+        if completion_git_lock.present(self, request):
+            # A retained integration cannot authorize a second merge, even
+            # when its continuation has become unreadable or held.
+            return completion_git_lock.resume(self, request)
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
         candidate_schema = str(metadata.get("schema") or "").strip()
         if (
@@ -30239,6 +30251,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     candidate_schema
                     == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
                 ):
+                    try:
+                        deferred_completion = completion_git_lock.begin(
+                            completion_daemon, request, result, todo_update_result,
+                            completion_intent=completion_intent,
+                        )
+                    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                        completion_daemon._record_event("merge_completion_git_lock_refused", {
+                            "task_id": task.task_id, "request_id": request.request_id,
+                            "error_type": type(exc).__name__, "accepted": False,
+                            "provider_dispatched": False})
+                        # Unknown evidence retains the existing integrated
+                        # failure/quarantine policy; it is never a retry grant.
+                        deferred_completion = None
+                    if deferred_completion is not None:
+                        return deferred_completion
                     raw_completion_receipts = todo_update_result.get(
                         "completion_receipts"
                     )
@@ -30465,9 +30492,63 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return str(request_id or "")
 
     def _consume_one_merge_candidate(self) -> dict[str, Any] | None:
+        """Fail closed when retained completion custody cannot be observed."""
+
+        directory = self.state_path.parent / "completion-git-locks"
+        observation_error = None
+        try:
+            directory.lstat()
+            retained = True
+        except FileNotFoundError:
+            retained = False
+        except OSError as exc:
+            retained = True
+            observation_error = exc
+        try:
+            if observation_error is not None:
+                raise observation_error
+            progress = self._consume_one_merge_candidate_unchecked()
+            try:
+                directory.lstat()
+                retained = True
+            except FileNotFoundError:
+                if retained:
+                    raise RuntimeError("completion continuation directory disappeared")
+            except OSError:
+                retained = True
+                raise
+            if retained:
+                from . import completion_git_lock
+                pending = completion_git_lock.pending_observation(self)
+                if pending is not None and not (progress and progress.get("completion_only_pending") is True):
+                    return pending
+            return progress
+        except Exception as exc:
+            if not retained:
+                try:
+                    directory.lstat()
+                    retained = True
+                except FileNotFoundError:
+                    raise exc
+                except OSError:
+                    retained = True
+            result = {"status": "deferred", "completion_only_pending": True,
+                "accepted": False, "acceptance_pending": True,
+                "completion_authoritative": False, "provider_dispatched": False,
+                "reason": "completion_continuation_observation_unavailable",
+                "error_type": type(exc).__name__}
+            try:
+                self._record_event("merge_completion_git_lock_blocked", result)
+            except Exception:
+                # Unavailable event custody cannot authorize new work either.
+                pass
+            return result
+
+    def _consume_one_merge_candidate_unchecked(self) -> dict[str, Any] | None:
         """Opportunistically advance one item while respecting the train lease."""
 
         from ..merge.merge_train import MergeTrain
+        from . import completion_git_lock
 
         target_branch = self.resolved_merge_target_branch or self._main_branch_name()
         queue_branch = str(getattr(self.merge_queue, "target_branch", "") or "").strip()
@@ -30478,18 +30559,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 f"{target_branch!r}; multi-lane shards must share one "
                 "--merge-target-branch"
             )
-        train = MergeTrain(
+        train_kwargs = dict(
             repo_root=self.repo_root,
             queue=self.merge_queue,
             target_branch=target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
-            merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
             proof_cache_dir=self.proof_cache_dir,
             decision_runtime=self.decision_runtime,
             decision_runtime_cancellation=self.implementation_cancelled,
         )
+        if os.path.lexists(self.state_path.parent / "completion-git-locks"):
+            held = completion_git_lock.pending_observation(self, include_active=False)
+            if held is not None:
+                return held
+            # An exact filtered consumer cannot revive quarantines or claim
+            # unrelated requests. It precedes merge work and task selection.
+            continuation = MergeTrain(**train_kwargs,
+                merge_callback=lambda request: completion_git_lock.resume(self, request))
+            progress = continuation.run_once(
+                request_filter=lambda request: completion_git_lock.present(self, request))
+            if progress is not None:
+                return progress
+            pending = completion_git_lock.pending_observation(self)
+            if pending is not None:
+                self._record_event("merge_completion_git_lock_pending", pending)
+                return pending
+        train = MergeTrain(**train_kwargs, merge_callback=self._merge_train_callback)
         return train.run_once()
 
     @staticmethod
@@ -31616,7 +31713,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         body["authority_sha256"] = hashlib.sha256(encoded).hexdigest()
         return body
 
-    def _grok_turn_limit_task_unheld(self, task: PortalTask, state: PortalTaskState) -> bool:
+    def _ordinary_task_unheld(self, task: PortalTask, state: PortalTaskState,
+                            *, completion_queue_owned: bool = False) -> bool:
         from .portal_task_state_control_plane import read_task_state_payload
         durable = read_task_state_payload(self.state_path)
         if not isinstance(durable, dict) or self._retained_provider_capacity_deferral() is not None:
@@ -31637,9 +31735,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if isinstance(durable_statuses, dict) and normalize_status(durable_statuses.get(task.task_id, "todo")) not in {"todo", "in_progress"}:
             state.task_statuses[task.task_id] = durable_statuses[task.task_id]
         for payload in (asdict(state), durable):
+            statuses = payload.get("task_statuses", {})
+            own_queue_wait = bool(completion_queue_owned and isinstance(statuses, dict)
+                and normalize_status(statuses.get(task.task_id, "todo")) == "merge_queued")
             for field in ("blocked_task_ids", "external_reserved_task_ids", "waiting_task_ids", "completed_task_ids"):
                 values = payload.get(field, [])
-                if not isinstance(values, list) or not all(isinstance(value, str) for value in values) or refs.intersection(values):
+                if (not isinstance(values, list) or not all(isinstance(value, str) for value in values)
+                        or refs.intersection(values) and not (field == "waiting_task_ids" and own_queue_wait)):
                     return False
             protected = payload.get("protected_implementation_attempts", {})
             if not isinstance(protected, dict) or any(
@@ -31647,8 +31749,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     or value.get("task_id") in refs or value.get("task_revision_cid") in refs
                     for key, value in protected.items()):
                 return False
-            statuses = payload.get("task_statuses", {})
-            if not isinstance(statuses, dict) or normalize_status(statuses.get(task.task_id, "todo")) not in {"todo", "in_progress"}:
+            if (not isinstance(statuses, dict) or
+                    normalize_status(statuses.get(task.task_id, "todo")) not in {"todo", "in_progress"} and not own_queue_wait):
                 return False
         if os.path.lexists(self.strategy_path):
             strategy = self._load_exact_json_object(self.strategy_path)
@@ -31688,14 +31790,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             terminal = observe_terminal(log_path, command=command,
                 workspace=workspace_path, task_id=task.task_id, title=task.title,
                 started_at=started_at, branch=branch_name, baseline_ref=baseline_ref)
-            if (not self._grok_turn_limit_task_unheld(task, state)
+            if (not self._ordinary_task_unheld(task, state)
                     or os.path.lexists(self._implementation_protected_active_snapshot_path())
                     or os.path.lexists(self._implementation_protected_incident_path())
                     or self.worktree_lifecycle.load_quarantine(workspace_path) is not None):
                 raise ValueError("turn_limit_task_held_or_fenced")
             quiescence = observe_quiescence(process, command=command,
                 birth=process_birth, workspace=workspace_path)
-            if not self._grok_turn_limit_task_unheld(task, state):
+            if not self._ordinary_task_unheld(task, state):
                 raise ValueError("turn_limit_task_held_during_quiescence")
             from ..proof.code_proof_obligations import collect_git_candidate_diff
             raw_entries = collect_git_candidate_diff(workspace_path,
@@ -32876,7 +32978,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             phase="pre_commit",
                         )
                     )
-                    if grok_turn_limit.get("eligible") and not self._grok_turn_limit_task_unheld(task, state):
+                    if grok_turn_limit.get("eligible") and not self._ordinary_task_unheld(task, state):
                         pre_commit_handoff = {**pre_commit_handoff, "allowed": False,
                             "reasons": [*pre_commit_handoff.get("reasons", []), "turn_limit_task_held"]}
                     validation_result = {
@@ -32938,7 +33040,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     ),
                                 )
                             )
-                            if grok_turn_limit.get("eligible") and not self._grok_turn_limit_task_unheld(task, state):
+                            if grok_turn_limit.get("eligible") and not self._ordinary_task_unheld(task, state):
                                 post_commit_handoff = {**post_commit_handoff, "allowed": False,
                                     "reasons": [*post_commit_handoff.get("reasons", []), "turn_limit_task_held"]}
                             commit_result["candidate_handoff_guard"] = (
