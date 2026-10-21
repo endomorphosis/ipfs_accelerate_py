@@ -3722,6 +3722,56 @@ def _provider_capacity_family(label: Any) -> str:
     return PROVIDER_CAPACITY_FAMILY_ALIASES.get(normalized, normalized)
 
 
+def _grok_capacity_diagnostic_text(text: str) -> str:
+    """Separate provider diagnostics from model, tool, and opaque usage data.
+
+    This is capacity telemetry only. It never proves no dispatch, settles a
+    callback, refunds an attempt, or authorizes fallback/cleanup. Callers must
+    supply complete LF-framed lines so a truncated JSON payload cannot become
+    an apparent plaintext provider diagnostic.
+    """
+    from ..runtime.grok_cli_runner import (
+        GROK_QUOTA_RECEIPT_SCHEMA,
+        grok_terminal_quota_code,
+    )
+
+    diagnostics: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            event = json.loads(stripped)
+        except (ValueError, TypeError):
+            # Malformed JSON frames and reserved receipt envelopes are not
+            # downgraded into plaintext evidence. Receipt verification remains
+            # the existing separate nonce/binding-aware admission below.
+            if stripped.startswith(("{", "[", '"', "IPFS_ACCELERATE_")):
+                continue
+            if stripped.startswith(("Command:", "Task:", "Prompt:")):
+                continue
+            diagnostics.append(line)
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "error":
+            records = [event]
+            if isinstance(event.get("error"), dict):
+                records.append(event["error"])
+            diagnostics.extend(record["message"] for record in records
+                               if isinstance(record.get("message"), str))
+            if grok_terminal_quota_code(event):
+                diagnostics.append("Grok Build usage balance exhausted")
+        elif (
+            event.get("schema") == GROK_QUOTA_RECEIPT_SCHEMA
+            and event.get("provider") == "grok_cli"
+            and event.get("failure_kind") == "quota_or_balance_exhausted"
+            and isinstance(event.get("message"), str)
+        ):
+            diagnostics.append(event["message"])
+    return "\n".join(diagnostics)
+
+
 def classify_provider_capacity_failure(
     text: str,
     *,
@@ -19355,11 +19405,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return audit
         # Capacity telemetry does not prove that the task prompt was refused.
         # Protected routes retain their existing typed CAS audit above.
+        provider_labels = _provider_labels_from_implementation_command(command)
+        # Grok streaming JSON includes arbitrary tool/source contents and
+        # encoded usage payloads. None is a provider failure diagnostic. Use
+        # the LF-aligned tail to exclude an initial partial payload as well.
+        capacity_text = (
+            _grok_capacity_diagnostic_text(receipt_text)
+            if "grok" in provider_labels else text
+        )
         classified = classify_provider_capacity_failure(
-            text,
-            provider_labels=_provider_labels_from_implementation_command(
-                command
-            ),
+            capacity_text, provider_labels=provider_labels,
         )
         observation = provider_capacity_custody.execution_observation(text)
         receipts = extract_grok_failure_receipts(receipt_text)
@@ -19424,7 +19479,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return classified
         evidence = [
             line.strip()
-            for line in text.splitlines()
+            for line in capacity_text.splitlines()
             if (
                 any(
                     pattern.search(line)
