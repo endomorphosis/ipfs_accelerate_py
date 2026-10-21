@@ -8745,6 +8745,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     try:
                         if stream_progress:
                             from .cli_runtime.grok_stream_capture import capture_grok_stream
+                            from .cli_runtime.grok_invocation_observation import begin_native_grok_dispatch
+                            observation_dispatch_token = begin_native_grok_dispatch()
                             proc = capture_grok_stream(cmd, env=env, timeout=timeout,
                                 progress_callback=progress_callback)
                             stream_observation = proc.progress
@@ -8786,6 +8788,10 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         pass
 
             payload = proc.final_payload if stream_progress else _grok_cli_json_payload(proc.stdout or "")
+            if stream_progress:
+                from .cli_runtime.grok_invocation_observation import record_native_grok_result
+                record_native_grok_result(payload, model=model, returncode=proc.returncode,
+                                          progress=stream_observation, dispatch_token=observation_dispatch_token)
             try:
                 from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
 
@@ -14004,6 +14010,30 @@ def generate_text(
                 kwargs=kwargs,
             )
         raise
+
+
+def generate_text_with_observation(prompt: str, *, observation_request_id: Optional[str] = None, **kwargs: object):
+    """Generate once through the existing router with current-call Grok evidence.
+
+    This additive API supports the exact Grok CLI provider only. Both fallback
+    paths are disabled and native streaming framing is required. Cache hits and
+    injected providers return text with absent native evidence; no global last
+    observation or requested identity is substituted for a process observation.
+    The result's text is product output; only its closed observation is a receipt.
+    """
+    from .cli_runtime.grok_invocation_observation import (
+        ObservedTextGeneration, capture_grok_invocation,
+    )
+    options = dict(kwargs)
+    if options.get("provider") != "grok_cli":
+        raise ValueError("observed text generation requires provider=grok_cli")
+    if options.get("grok_stream_progress", True) is not True:
+        raise ValueError("observed Grok generation requires native streaming")
+    options.update(allow_local_fallback=False, allow_cross_provider_fallback=False,
+                   grok_stream_progress=True)
+    with capture_grok_invocation(observation_request_id) as capture:
+        text = generate_text(prompt, **options)
+    return ObservedTextGeneration(text=text, observation=capture.observation)
 
 
 def _batch_worker_count(
