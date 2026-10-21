@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import ExitStack
 from copy import deepcopy
-from dataclasses import asdict
+from datetime import datetime
 import base64
 import hashlib
 import json
@@ -198,12 +198,18 @@ def _validated(daemon, request: dict, journal: dict | None) -> dict:
     _need(identity.canonical_task_key == request["task_key"]
           and identity.board_namespace == request["board_namespace"], "task_identity_changed")
     refs = {task_id, cid, identity.canonical_task_key}
-    for field in ("waiting_task_ids", "blocked_task_ids", "external_reserved_task_ids", "completed_task_ids"):
+    for field in ("waiting_task_ids", "external_reserved_task_ids", "completed_task_ids"):
         values = getattr(state, field)
         _need(type(values) is list and all(type(v) is str for v in values)
               and not refs.intersection(values), "independent_native_hold")
+    # A blocked display projection may be derived from this exact generated
+    # quarantine. It is classified only after the pinned event/strategy proof
+    # below; no native state is rewritten by administrative adjudication.
+    _need(type(state.blocked_task_ids) is list and all(type(v) is str for v in state.blocked_task_ids)
+          and not (refs - {task_id}).intersection(state.blocked_task_ids), "independent_native_hold")
     _need(type(state.task_statuses) is dict and all(
-          key not in state.task_statuses or native.normalize_status(state.task_statuses[key]) in {"todo", "in_progress", "ready"}
+          key not in state.task_statuses or native.normalize_status(state.task_statuses[key]) in
+          ({"todo", "in_progress", "ready", "blocked"} if key == task_id else {"todo", "in_progress", "ready"})
           for key in refs), "independent_task_status_hold")
     protected = state.protected_implementation_attempts
     _need(type(protected) is dict and not any(key in refs or type(v) is not dict
@@ -345,12 +351,106 @@ def _validated(daemon, request: dict, journal: dict | None) -> dict:
           "generated_strategy_block_not_exact")
     _need(not any(strategy.get(k) for k in ("manual_holds", "manual_hold_tasks", "blocked_task_reasons", "independent_blockers")),
           "independent_or_manual_blocker_present")
+    classified = _classify_generated_projection(daemon, request, task, state, values, proof[0])
     return {"claim": claim, "before_strategy": strategy,
+            "generated_quarantine_projection": classified,
             "claim_raw_base64": (journal["claim_raw_base64"] if journal is not None
                 else base64.b64encode(_read(expected_claim)).decode("ascii")),
             "strategy_raw_base64": (journal["strategy_raw_base64"] if journal is not None
                 else base64.b64encode(_read(daemon.strategy_path)).decode("ascii")), "quarantine": scope,
             "incident_record": record, "owner_birth": birth, "state": state}
+
+
+def _classify_generated_projection(daemon, request: dict, task, state, values: dict, scope_event: dict) -> dict | None:
+    """Explain one original native blocked projection without clearing it.
+
+    An exact native daemon pass and its current canonical source must agree.
+    A matching label alone, or a hand-edited blocked list, is not provenance.
+    The next normal daemon pass owns any subsequent readiness projection.
+    """
+    from . import implementation_daemon as native
+    from ..merge.merge_queue import MergeQueue
+    task_id, cid = request["task_id"], request["task_cid"]
+    blocked = task_id in state.blocked_task_ids
+    status = native.normalize_status(state.task_statuses.get(task_id, "todo"))
+    if not blocked and status in {"todo", "in_progress", "ready"}:
+        return None
+    _need(blocked and state.blocked_task_ids.count(task_id) == 1 and status == "blocked",
+          "independent_native_hold")
+    passes = [e for e in values["events"] if e.get("type") == "daemon_pass"]
+    _need(bool(passes), "generated_projection_pass_missing")
+    event = passes[-1]
+    statuses = event.get("execution_slice_task_statuses")
+    cids = event.get("execution_slice_task_cids_by_id")
+    _need(type(statuses) is dict and type(cids) is dict and statuses.get(task_id) == "blocked"
+          and cids.get(task_id) == cid and all(state.task_statuses.get(k) == v for k, v in statuses.items())
+          and {k for k,v in statuses.items() if v == "blocked"} == set(state.blocked_task_ids)
+          and event.get("blocked_count") == state.blocked_count == len(state.blocked_task_ids),
+          "generated_projection_preimage_changed")
+    identities = state.task_identities
+    _need(type(identities) is dict and type(identities.get(task_id)) is dict
+          and identities[task_id].get("canonical_task_cid") == cid
+          and identities[task_id].get("canonical_task_key") == request["task_key"]
+          and identities[task_id].get("board_namespace") == request["board_namespace"],
+          "generated_projection_identity_changed")
+    generation = values["strategy"].get("generation")
+    _need(type(generation) is int and state.strategy_generation == generation
+          and event["sequence"] > next(e["sequence"] for e in values["events"] if e.get("event_id") == request["start_event_id"]),
+          "generated_projection_generation_changed")
+    observed = datetime.fromisoformat(event["timestamp"])
+    quarantined = datetime.fromisoformat(scope_event["timestamp"])
+    _need(observed.tzinfo is not None and quarantined.tzinfo is not None and observed >= quarantined,
+          "generated_projection_predates_quarantine")
+    refs = {task_id, cid, request["task_key"]}
+    for name in ("manual_completion_authority_required_task_ids", "manual_completion_authority_task_ids",
+                 "manual_completion_authority_dependency_task_ids", "manual_completion_revalidation_task_ids",
+                 "manual_completion_revalidation_only_task_ids", "manual_completion_renewal_quarantined_task_ids",
+                 "manual_completion_authority_affected_goal_ids", "quarantined_manual_completion_status_task_ids",
+                 "shared_active_merge_task_ids", "shared_completed_task_ids", "attempt_limited_task_ids"):
+        authority = event.get(name)
+        _need(type(authority) is list and all(type(v) is str for v in authority)
+              and not refs.intersection(authority), "independent_projection_authority")
+    conflicts = event.get("protected_path_conflicts")
+    _need(type(conflicts) is dict and not any(ref in conflicts for ref in refs)
+          and event.get("manual_completion_authority_revalidation_only") is False
+          and event.get("ordinary_provider_dispatch_allowed") is True
+          and not native.task_implementation_protected_path_conflicts(task, daemon.implementation_protected_paths)
+          and not str(task.metadata.get("blocked reason") or "").strip()
+          and not daemon._has_unresolved_merge_failure(task, state), "independent_projection_blocker")
+    tasks = daemon._load_tasks()
+    completed = tuple(t.task_id for t in tasks if native.normalize_status(t.status) == "completed")
+    _need(not refs.intersection(native.pending_retry_budget_repair_sources(tasks, completed_task_ids=completed)),
+          "independent_retry_repair_blocker")
+    for name in ("_manual_completion_authority_hard_blocked_task_ids",
+                 "_manual_completion_authority_effective_required_task_ids",
+                 "_manual_completion_authority_revalidation_task_ids",
+                 "_manual_completion_authority_historical_task_ids",
+                 "_manual_completion_authority_affected_goal_ids"):
+        _need(not refs.intersection(getattr(daemon, name, ())), "independent_manual_authority")
+    _need(not daemon._manual_completion_authority_revalidation_only_task(task), "independent_manual_authority")
+    _need(not refs.intersection(daemon._unresolved_merge_failures_by_task(skip_task_ids=set()))
+          and not refs.intersection(daemon._transient_merge_deferrals_by_task(skip_task_ids=set())),
+          "independent_merge_failure")
+    recent = daemon._latest_implementation_finished_by_task()
+    _need(not refs.intersection(daemon._pending_queued_merge_task_ids(recent))
+          and not refs.intersection(daemon._quarantined_queued_merge_task_ids(recent)),
+          "independent_merge_custody")
+    satisfied = native.dependency_satisfied_references(tasks, completed_task_ids=completed,
+                                                      assumed_completed_references=())
+    _need(all(dep in satisfied for dep in task.depends_on), "independent_dependency_blocker")
+    _need(type(daemon.merge_queue) is MergeQueue, "ordinary_merge_inventory_required")
+    queues = (daemon.merge_queue.pending_requests(limit=256, include_deferred=True),
+              daemon.merge_queue.processing_requests(limit=256),
+              daemon.merge_queue.quarantined_requests(limit=256, include_cancelled=True))
+    for rows in queues:
+        _need(len(rows) < 256 and not any(r.task_id in refs or r.canonical_task_id in refs or r.canonical_task_key in refs for r in rows),
+              "independent_merge_custody")
+    body = {"schema": "ordinary-generated-quarantine-projection@1", "task_id": task_id,
+        "task_cid": cid, "state_sha256": request["state_sha256"], "daemon_pass_event_id": event["event_id"],
+        "scope_event_id": scope_event["event_id"], "strategy_generation": generation,
+        "blocked_task_ids": deepcopy(state.blocked_task_ids), "blocked_count": state.blocked_count,
+        "task_statuses": {ref: state.task_statuses[ref] for ref in refs if ref in state.task_statuses}}
+    return {**body, "preimage_id": "sha256:" + _sha(_bytes(body))}
 
 
 def _pretty(value: dict) -> bytes:
@@ -468,6 +568,7 @@ def adjudicate(daemon, *, request: Mapping[str, Any]) -> dict:
                     "strategy_raw_base64": checked["strategy_raw_base64"],
                     "before_strategy": before, "after_strategy_sha256": _sha(after_raw),
                     "quarantine": checked["quarantine"], "incident_record": checked["incident_record"],
+                    "generated_quarantine_projection": checked["generated_quarantine_projection"],
                     "phase": "prepared", "provider_outcome": "unknown", **_FALSE}
             def publish(value):
                 value = {**value, "receipt_id": "sha256:" + _sha(_bytes(value))}
