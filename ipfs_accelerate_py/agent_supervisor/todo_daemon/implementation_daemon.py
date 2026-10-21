@@ -10416,6 +10416,380 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._record_event("implementation_task_claim_released", result)
         return result
 
+    @staticmethod
+    def _write_private_task_claim_release_receipt(path: Path, value: Mapping[str, Any]) -> None:
+        """Publish private recovery proof atomically before releasing its lease."""
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(value, handle, sort_keys=True, indent=2, allow_nan=False)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+
+    def reconcile_quiesced_interrupted_task_claim(
+        self,
+        *,
+        accounting_correction_receipt_path: Path,
+        accounting_correction_sha256: str,
+        container_shutdown_receipt_path: Path,
+        container_shutdown_sha256: str,
+        expected_recovery_runtime_revision: str,
+        expected_claim_lease_id: str,
+    ) -> dict[str, Any]:
+        """Release an interrupted ordinary lease after a pinned accounting repair.
+
+        Unlike terminal-task cleanup, this explicit operator API can leave the
+        task pending. It requires owned, SHA-pinned correction and container
+        shutdown receipts, exact native rearm/start history, a terminal dead
+        lifecycle owner and an unchanged quiescent state. It never changes an
+        attempt counter, task status, callback outcome or quarantine. Receipt
+        schemas are external profiles; their names confer no authority.
+        """
+        request = {
+            "accounting_correction_receipt_path": str(accounting_correction_receipt_path),
+            "accounting_correction_sha256": accounting_correction_sha256,
+            "container_shutdown_receipt_path": str(container_shutdown_receipt_path),
+            "container_shutdown_sha256": container_shutdown_sha256,
+            "recovery_runtime_revision": expected_recovery_runtime_revision,
+            "claim_lease_id": expected_claim_lease_id,
+        }
+        failed = {
+            "reconciled": False, "blocked": True,
+            "completion_authority": False, "attempt_refunded": False,
+            "provider_callback_settled": False, "new_attempt_authority": False,
+        }
+
+        def require(condition: bool, reason: str) -> None:
+            if not condition:
+                raise ValueError(reason)
+
+        def integer(value: Any) -> bool:
+            return type(value) is int and value > 0
+
+        def owned_bytes(path: Path, maximum: int = 2_000_000, *, legacy_group_write: bool = False) -> bytes:
+            require(path.is_absolute() and path.resolve() == path,
+                    "interrupted_claim_evidence_path_invalid")
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                before = os.fstat(descriptor)
+                require(stat_module.S_ISREG(before.st_mode) and before.st_uid == os.getuid()
+                        and before.st_nlink == 1 and not before.st_mode & (0o002 if legacy_group_write else 0o077)
+                        and before.st_size <= maximum, "interrupted_claim_evidence_ownership_invalid")
+                with os.fdopen(os.dup(descriptor), "rb") as handle:
+                    raw = handle.read(maximum + 1)
+                after = path.lstat()
+                require(len(raw) <= maximum and all(getattr(before, field) == getattr(after, field)
+                    for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")),
+                    "interrupted_claim_evidence_changed")
+                return raw
+            finally:
+                os.close(descriptor)
+
+        def object_bytes(raw: bytes) -> dict[str, Any]:
+            def unique(pairs):
+                value = {}
+                for key, item in pairs:
+                    require(key not in value, "interrupted_claim_duplicate_json_key")
+                    value[key] = item
+                return value
+            value = json.loads(raw, object_pairs_hook=unique)
+            require(isinstance(value, dict), "interrupted_claim_evidence_not_object")
+            return value
+
+        def pinned(path: Path, digest: str) -> dict[str, Any]:
+            require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
+                    "interrupted_claim_evidence_digest_invalid")
+            raw = owned_bytes(path)
+            require(hashlib.sha256(raw).hexdigest() == digest,
+                    "interrupted_claim_evidence_digest_mismatch")
+            return object_bytes(raw)
+
+        def write_receipt(path: Path, value: dict[str, Any]) -> None:
+            self._write_private_task_claim_release_receipt(path, value)
+
+        try:
+            require(not automatic_retry_rearm_enabled(), "interrupted_claim_requires_strict_attempt_policy")
+            state_dir = self.state_path.parent.resolve()
+            mode = state_dir.stat()
+            require(mode.st_uid == os.getuid() and not mode.st_mode & 0o077,
+                    "interrupted_claim_state_directory_not_private")
+            correction_path = Path(accounting_correction_receipt_path)
+            shutdown_path = Path(container_shutdown_receipt_path)
+            require(correction_path.parent == state_dir and shutdown_path.parent == state_dir,
+                    "interrupted_claim_evidence_wrong_epoch")
+            correction = pinned(correction_path, accounting_correction_sha256)
+            cid, task_id = correction.get("canonical_task_cid"), correction.get("task_id")
+            require(isinstance(cid, str) and cid and isinstance(task_id, str) and task_id,
+                    "interrupted_claim_task_identity_missing")
+            claim_path = self._implementation_task_claim_path(task_id, canonical_task_cid=cid)
+
+            def validate(claim: Mapping[str, Any]) -> dict[str, Any]:
+                require(not automatic_retry_rearm_enabled(), "interrupted_claim_requires_strict_attempt_policy")
+                require(retry_budget_repair_runtime_revision() == expected_recovery_runtime_revision,
+                        "interrupted_claim_runtime_revision_changed")
+                correction = pinned(correction_path, accounting_correction_sha256)
+                shutdown = pinned(shutdown_path, container_shutdown_sha256)
+                state = PortalTaskState.load(self.state_path)
+                require(not any((state.implementation_in_progress, state.active_task_id,
+                    state.active_task_cid, state.active_attempt, state.active_worktree_path,
+                    state.active_branch, getattr(state, "active_provider_runner", {}))), "interrupted_claim_lane_not_quiescent")
+                sources = event_log_sources((self.events_path,), include_rotated=True)
+                require(len(sources) <= 64 and sum(path.lstat().st_size for path in sources) <= 16_000_000,
+                        "interrupted_claim_history_exceeds_bound")
+                for source in sources:
+                    require(source.resolve().parent == state_dir and not source.is_symlink(),
+                            "interrupted_claim_history_path_invalid")
+                    owned_bytes(source, 16_000_000, legacy_group_write=True)
+                # Strict replay never repairs/truncates forensic history.
+                events = self._iter_merge_lifecycle_events()
+                raw_events = owned_bytes(self.events_path, 16_000_000, legacy_group_write=True)
+                inflight = {}
+                for event in events:
+                    key = (event.get("canonical_task_cid"), event.get("attempt"))
+                    if event.get("type") == "implementation_started":
+                        inflight[key] = event
+                    elif event.get("type") in {"implementation_finished", "implementation_terminated", "implementation_timeout"}:
+                        inflight.pop(key, None)
+                require(not any(self._implementation_process_active(event) for event in inflight.values()),
+                        "interrupted_claim_worker_still_active")
+                require(state.last_implementation_task_id == task_id and state.last_implementation_task_cid == cid,
+                        "interrupted_claim_state_task_mismatch")
+                local, prior, total = (correction.get(name) for name in (
+                    "original_post_rearm_local_ordinal", "prior_consumed_attempts", "lifetime_consumed_attempts_after"))
+                require(all(integer(value) for value in (local, prior, total)) and total == prior + local
+                    and correction.get("native_current_consumed_attempts_before") == local
+                    and state.implementation_attempts.get(task_id) == total
+                    and state.implementation_attempts_by_cid.get(cid) == total,
+                    "interrupted_claim_lifetime_accounting_mismatch")
+                require(set(correction.get("changed_fields", ())) == {
+                    "implementation_attempts", "implementation_attempts_by_cid"}
+                    and correction.get("rearm_history_preserved") is True
+                    and correction.get("local_ordinal_relabelled") is False
+                    and all(correction.get(field) is False for field in (
+                        "attempt_refunded", "completion_authority", "candidate_adoption_authority",
+                        "evidence_reuse_authority", "new_attempt_authority", "old_quarantine_released")),
+                    "interrupted_claim_correction_authority_invalid")
+                require(all(item.get("repo_root") == str(self.repo_root.resolve())
+                    and item.get("state_dir") == str(state_dir) for item in (correction, shutdown))
+                    and isinstance(correction.get("plan_id"), str) and correction["plan_id"]
+                    and shutdown.get("plan_id") == correction["plan_id"],
+                    "interrupted_claim_receipt_scope_mismatch")
+                require(shutdown.get("status") == "stopped" and shutdown.get("quiesced") is True
+                    and shutdown.get("reason") == "owned_container_closure_verified"
+                    and shutdown.get("manual_holds_preserved") is True
+                    and all(shutdown.get(field) is False for field in (
+                        "attempt_refunded", "completion_authority", "provider_callback_settled")),
+                    "interrupted_claim_container_closure_missing")
+                launcher_raw = owned_bytes(state_dir / "launcher.json")
+                launcher = object_bytes(launcher_raw)
+                token = launcher.get("owner_token")
+                require(isinstance(token, str) and token
+                    and hashlib.sha256(token.encode()).hexdigest() == shutdown.get("owner_token_sha256")
+                    and launcher.get("started_at") == shutdown.get("started_at")
+                    and isinstance(launcher.get("started_at"), (float, int))
+                    and not isinstance(launcher["started_at"], bool)
+                    and math.isfinite(launcher["started_at"]) and launcher["started_at"] > 0,
+                    "interrupted_claim_launcher_changed")
+                birth = launcher.get("identity")
+                require(isinstance(birth, dict) and integer(birth.get("pid"))
+                    and integer(birth.get("start_ticks")) and isinstance(birth.get("boot_id"), str)
+                    and birth["boot_id"] and launcher.get("status") == "stopped"
+                    and launcher.get("plan_id") == correction["plan_id"]
+                    and launcher.get("repo_root") == str(self.repo_root.resolve())
+                    and launcher.get("state_dir") == str(state_dir), "interrupted_claim_launcher_binding_invalid")
+                require(owner_liveness(ProcessBirthIdentity(pid=birth["pid"],
+                    start_time_ticks=birth["start_ticks"], boot_id=birth["boot_id"]),
+                    proc_root=self.worktree_lifecycle.proc_root) is OwnerLiveness.DEAD,
+                    "interrupted_claim_launcher_still_active")
+                require(claim.get("kind") == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+                    and claim.get("task_id") == task_id and claim.get("canonical_task_cid") == cid
+                    and type(claim.get("attempt")) is int and claim["attempt"] == local
+                    and claim.get("lease_id") == expected_claim_lease_id and expected_claim_lease_id
+                    and claim.get("canonical_task_key") == state.last_implementation_task_key
+                    and claim.get("state_path") == str(self.state_path.resolve())
+                    and claim.get("state_dir") == str(state_dir)
+                    and claim.get("repository_id") == self.merge_target_repository_id
+                    and claim.get("worktree_root") == str(self.repo_root.resolve())
+                    and claim.get("lease_role") == IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE
+                    and claim.get("dispatch_authority_cid") == self._implementation_dispatch_authority_cid(claim)
+                    and claim.get("task_shard_count") == self.task_shard_count
+                    and claim.get("task_shard_index") == self.task_shard_index
+                    and claim.get("started_at") == state.last_implementation_started_at,
+                    "interrupted_claim_lease_identity_mismatch")
+                require(not implementation_task_claim_protected_fence_paths(claim)
+                    and not self._implementation_protected_active_snapshot_path().exists(),
+                    "interrupted_claim_protected_fence_present")
+                owner = ProcessBirthIdentity.from_dict(claim.get("owner_process_birth", {}))
+                require(owner.pid == claim.get("pid") and owner.start_time_ticks > 0
+                    and owner_liveness(owner, proc_root=self.worktree_lifecycle.proc_root) is OwnerLiveness.DEAD,
+                    "interrupted_claim_owner_not_dead")
+                workspace = state.last_implementation_worktree_path
+                record = self.worktree_lifecycle.load_workspace(Path(workspace)) if workspace else None
+                require(record is not None and record.state.value == "terminal"
+                    and record.task_id == task_id and record.canonical_task_cid == cid
+                    and record.attempt == self._worktree_lifecycle_attempt_for_identity(
+                        task_id=task_id, canonical_task_cid=cid, portal_attempt=local)
+                    and record.branch == state.last_implementation_branch
+                    and normalize_workspace_path(record.repo_root) == normalize_workspace_path(self.repo_root)
+                    and normalize_workspace_path(record.state_dir) == normalize_workspace_path(state_dir)
+                    and normalize_workspace_path(record.workspace_path) == normalize_workspace_path(workspace),
+                    "interrupted_claim_lifecycle_not_exact_terminal")
+                def belongs_to_launcher(candidate: ProcessBirthIdentity) -> bool:
+                    return candidate.boot_id == birth["boot_id"] and (
+                        candidate.pid == birth["pid"] and candidate.start_time_ticks == birth["start_ticks"]
+                        or candidate.parent_pid == birth["pid"] and candidate.start_time_ticks >= birth["start_ticks"]
+                    )
+                same_owner = record.owner == owner and belongs_to_launcher(owner)
+                supervised_owner = (
+                    owner.parent_pid == record.owner.pid == birth["pid"]
+                    and record.owner.start_time_ticks == birth["start_ticks"]
+                    and record.owner.boot_id == birth["boot_id"]
+                    and owner.boot_id == record.owner.boot_id
+                    and owner.start_time_ticks >= record.owner.start_time_ticks
+                )
+                require((same_owner or supervised_owner)
+                    and owner_liveness(record.owner, proc_root=self.worktree_lifecycle.proc_root)
+                    is OwnerLiveness.DEAD, "interrupted_claim_owner_topology_invalid")
+                raw_record = self._load_exact_json_object(self.worktree_lifecycle.workspace_path_for(Path(workspace)))
+                require(raw_record == record.to_dict(), "interrupted_claim_lifecycle_record_changed")
+                tasks = [task for task in self._load_tasks() if self._canonical_ref(task) == cid]
+                require(len(tasks) == 1 and tasks[0].task_id == task_id,
+                    "interrupted_claim_current_task_revision_mismatch")
+                current = self._identity_for_task(tasks[0])
+                task_status = normalize_status(tasks[0].status)
+                metadata = dict(getattr(tasks[0], "metadata", {}) or {})
+                manual_hold = any(str(value).strip().lower() in {"1", "true", "yes"}
+                    for key, value in metadata.items()
+                    if str(key).lower().replace("_", " ").strip() == "manual hold")
+                require(task_status in {"todo", "in_progress"}
+                    and not manual_hold
+                    and normalize_status(state.task_statuses.get(task_id, "todo")) in {"todo", "in_progress"}
+                    and current.canonical_task_key == claim.get("canonical_task_key")
+                    and current.board_namespace == claim.get("board_namespace"),
+                    "interrupted_claim_task_held_or_identity_changed")
+                starts = [event for event in events if event.get("event_id") == correction.get("post_rearm_dispatch_event_id")]
+                rearms = [event for event in events if event.get("event_id") == correction.get("rearm_event_id")]
+                require(len(starts) == len(rearms) == 1, "interrupted_claim_native_history_missing")
+                start, rearm = starts[0], rearms[0]
+                require(start.get("type") == "implementation_started" and start.get("task_id") == task_id
+                    and start.get("canonical_task_cid") == cid and start.get("attempt") == local
+                    and start.get("canonical_task_key") == current.canonical_task_key
+                    and start.get("board_namespace") == current.board_namespace
+                    and start.get("worktree_path") == workspace and start.get("branch") == record.branch
+                    and rearm.get("type") == "ordinary_task_validation_obsolescence_rearmed"
+                    and type(start.get("sequence")) is int and type(rearm.get("sequence")) is int
+                    and start["sequence"] > rearm["sequence"], "interrupted_claim_native_start_mismatch")
+                started, claimed = parse_timestamp(str(start.get("timestamp") or "")), parse_timestamp(str(claim.get("started_at") or ""))
+                launch_time = datetime.fromtimestamp(launcher["started_at"], timezone.utc)
+                require(started is not None and claimed is not None and launch_time <= claimed <= started,
+                    "interrupted_claim_start_timestamp_mismatch")
+                matches = [item for item in rearm.get("rearmed", ()) if isinstance(item, dict)
+                    and item.get("canonical_task_cid") == cid and item.get("task_id") == task_id]
+                require(len(matches) == 1 and matches[0].get("previous_attempt_count") == prior
+                    and matches[0].get("previous_canonical_attempt_count") == prior
+                    and matches[0].get("previous_display_attempt_counts", {}).get(task_id) == prior
+                    and matches[0].get("rearm_fingerprint") == correction.get("rearm_fingerprint")
+                    and correction["rearm_fingerprint"] in state.validation_obsolescence_rearm_receipts.get(cid, ()),
+                    "interrupted_claim_rearm_accounting_mismatch")
+                require(not any(event.get("type") == "implementation_started"
+                    and event.get("canonical_task_cid") == cid and event.get("sequence", 0) > start["sequence"]
+                    for event in events), "interrupted_claim_later_attempt_exists")
+                # Receipts pin a complete historical prefix, not the mutable
+                # whole log: native quiescence observations may append later.
+                required_hashes = {correction.get("event_log_sha256"), shutdown.get("event_log_sha256")}
+                require(all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) for value in required_hashes),
+                    "interrupted_claim_history_digest_invalid")
+                digest = hashlib.sha256()
+                matched_hashes = set()
+                for line in raw_events.splitlines(keepends=True):
+                    digest.update(line)
+                    if digest.hexdigest() in required_hashes:
+                        matched_hashes.add(digest.hexdigest())
+                require(matched_hashes == required_hashes, "interrupted_claim_history_prefix_changed")
+                return {"schema": "ipfs_accelerate_py/agent-supervisor/interrupted-task-claim-release@1",
+                    "operation": "release_quiesced_interrupted_implementation_task_claim", **request,
+                    "task_id": task_id, "canonical_task_cid": cid, "attempt": local,
+                    "lifetime_consumed_attempts": total, "task_status": task_status,
+                    "claim": dict(claim), "claim_id": content_identity(claim), "claim_path": str(claim_path),
+                    "start_event_id": start["event_id"], "rearm_event_id": rearm["event_id"],
+                    "lifecycle_record_id": record.record_id, "lifecycle_fence": record.fence,
+                    "state_projection_sha256": hashlib.sha256(json.dumps(asdict(state),
+                        sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest(),
+                    "completion_authority": False, "attempt_refunded": False,
+                    "provider_callback_settled": False, "new_attempt_authority": False}
+
+            with serialized_lock_update(claim_path):
+                claim = self._load_exact_json_object(claim_path)
+                if claim is None and not claim_path.exists() and not claim_path.is_symlink():
+                    local = correction.get("original_post_rearm_local_ordinal")
+                    require(integer(local), "interrupted_claim_local_ordinal_invalid")
+                    receipt_path = self._task_claim_release_receipt_path(
+                        canonical_task_cid=cid, attempt=local, lease_id=expected_claim_lease_id)
+                    previous = object_bytes(owned_bytes(receipt_path))
+                    saved_claim = previous.get("claim")
+                    require(isinstance(saved_claim, dict), "interrupted_claim_release_proof_missing")
+                    basis = validate(saved_claim)
+                    operation_id = content_identity(basis)
+                    require(previous.get("operation_id") == operation_id
+                        and all(previous.get(key) == value for key, value in basis.items())
+                        and previous.get("phase") in {"prepared", "released"},
+                        "interrupted_claim_release_proof_mismatch")
+                    if previous["phase"] == "released":
+                        body = {key: value for key, value in previous.items() if key != "receipt_id"}
+                        require(previous.get("receipt_id") == content_identity(body),
+                            "interrupted_claim_release_proof_digest_mismatch")
+                        return {**basis, "reconciled": True, "blocked": False,
+                            "reason": "quiesced_interrupted_task_claim_already_released",
+                            "operation_id": operation_id, "receipt_id": previous["receipt_id"],
+                            "receipt_path": str(receipt_path)}
+                    body = {**basis, "operation_id": operation_id, "phase": "released",
+                        "prepared_at": previous["prepared_at"], "released_at": utc_now(),
+                        "recovered_after_claim_unlink": True}
+                    write_receipt(receipt_path, {**body, "receipt_id": content_identity(body)})
+                    result = {**basis, "reconciled": True, "blocked": False,
+                        "reason": "quiesced_interrupted_task_claim_released",
+                        "operation_id": operation_id, "receipt_id": content_identity(body),
+                        "receipt_path": str(receipt_path)}
+                    self._record_event("implementation_interrupted_task_claim_released", result)
+                    return result
+                require(claim is not None, "interrupted_claim_exact_lease_missing")
+                basis = validate(claim)
+                operation_id = content_identity(basis)
+                receipt_path = self._task_claim_release_receipt_path(
+                    canonical_task_cid=cid, attempt=basis["attempt"], lease_id=expected_claim_lease_id)
+                previous = load_json_dict(receipt_path)
+                require(previous is None or previous.get("operation_id") == operation_id
+                    and previous.get("phase") == "prepared", "interrupted_claim_release_receipt_conflict")
+                prepared_at = previous.get("prepared_at") if previous else utc_now()
+                write_receipt(receipt_path, {**basis, "operation_id": operation_id,
+                    "phase": "prepared", "prepared_at": prepared_at})
+                fresh = self._load_exact_json_object(claim_path)
+                require(fresh == claim and validate(fresh) == basis,
+                    "interrupted_claim_compare_and_delete_lost")
+                claim_path.unlink()
+                body = {**basis, "operation_id": operation_id, "phase": "released",
+                    "prepared_at": prepared_at, "released_at": utc_now()}
+                write_receipt(receipt_path, {**body, "receipt_id": content_identity(body)})
+            result = {**basis, "reconciled": True, "blocked": False,
+                "reason": "quiesced_interrupted_task_claim_released", "receipt_path": str(receipt_path),
+                "operation_id": operation_id, "receipt_id": content_identity(body)}
+            self._record_event("implementation_interrupted_task_claim_released", result)
+            return result
+        except (OSError, TypeError, ValueError, KeyError, CursorReplayError) as error:
+            return {**failed, "reason": str(error) if isinstance(error, ValueError)
+                    else f"interrupted_claim_evidence_unavailable:{type(error).__name__}"}
+
     def reconcile_quiesced_implementation_task_claim(self) -> dict[str, Any]:
         """Reconcile only the repo-wide claim for already-clean lane state."""
 
