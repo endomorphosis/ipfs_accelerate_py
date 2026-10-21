@@ -113,9 +113,10 @@ def test_direct_tools_and_kernel_policy_receive_the_same_private_paths(tmp_path)
         assert {str(path) for path in expected} <= kernel_denied
         rules = G._grok_filesystem_deny_rules(denied, include_list=True)
         for path in expected:
-            for operation in ("Read", "Grep", "Edit", "Write", "List"):
+            for operation in ("Read", "Grep", "Edit", "Write"):
                 assert f"{operation}({path})" in rules
                 assert f"{operation}({path}/**)" in rules
+        assert not any(rule.startswith("List(") for rule in rules)
         assert not any(str(root / "applications") in rule for rule in rules)
         (root / "public-alias").symlink_to(root / "data", target_is_directory=True)
         assert root / "public-alias" in G._workspace_symlinks_reach_denied_paths(
@@ -123,6 +124,15 @@ def test_direct_tools_and_kernel_policy_receive_the_same_private_paths(tmp_path)
         )
     finally:
         temporary.cleanup()
+
+
+def test_private_rules_use_supported_prefixes_even_with_legacy_list_keyword(tmp_path):
+    path = tmp_path / "private"
+    ordinary = G._grok_filesystem_deny_rules((path,))
+    private = G._grok_filesystem_deny_rules((path,), include_list=True)
+    assert private == ordinary
+    assert {rule.split("(", 1)[0] for rule in private} == {"Read", "Grep", "Edit", "Write"}
+    assert len(private) == 8
 
 
 def test_docker_mask_mounts_hide_private_bytes_and_leave_source_mount(tmp_path, monkeypatch):

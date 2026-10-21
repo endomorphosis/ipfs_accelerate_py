@@ -1,0 +1,14 @@
+{
+  "image_id": "sha256:d361dafa5fd1c89981325f789ce45f918848bfa912ce35dbea486db95e0479cf",
+  "os": "linux",
+  "architecture": "amd64",
+  "logical_bytes": 165751786,
+  "labels": {
+    "org.ipfs-accelerate.ordinary-worker": "2026-10-21-ordinary-amd64-v1",
+    "org.ipfs-accelerate.worker-profile": "ordinary-task-toolchain-amd64-v1",
+    "org.opencontainers.image.base.digest": "sha256:6277ab668b2ad3c3ab851d370faa1690d324b30db29d342527f61fed28f20f36",
+    "org.opencontainers.image.description": "CPU-only host-toolchain-bound ordinary worker; no protected-route authority",
+    "org.opencontainers.image.title": "Ordinary AMD64 task toolchain",
+    "org.opencontainers.image.version": "24.04"
+  }
+}

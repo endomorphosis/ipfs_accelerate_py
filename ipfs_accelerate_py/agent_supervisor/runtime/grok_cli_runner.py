@@ -367,6 +367,8 @@ _CODEX_TASK_TOOLCHAIN_IMAGE_LABEL = AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL
 _ORDINARY_TASK_TOOLCHAIN_IMAGE_ID = "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e"
 _ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL = "2026-10-16-ordinary-v1"
 _ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL_KEY = "org.ipfs-accelerate.ordinary-worker"
+_ORDINARY_TASK_TOOLCHAIN_AMD64_IMAGE_ID = "sha256:d361dafa5fd1c89981325f789ce45f918848bfa912ce35dbea486db95e0479cf"
+_ORDINARY_TASK_TOOLCHAIN_AMD64_IMAGE_LABEL = "2026-10-21-ordinary-amd64-v1"
 _CODEX_TASK_TOOLCHAIN_SITE_PACKAGES = Path(
     "/opt/ipfs-validation-site-packages"
 )
@@ -1559,15 +1561,21 @@ def _grok_executable_extension_paths(workspace: Path) -> tuple[Path, ...]:
 def _grok_filesystem_deny_rules(
     paths: Sequence[Path], *, include_list: bool = False,
 ) -> tuple[str, ...]:
-    """Build direct-tool path fences for the sealed capability route."""
+    """Build supported direct-tool fences, supplemented by kernel masks.
+
+    Grok rejects a ``List(...)`` permission prefix. Keep the keyword for older
+    private-route callers, but protect directory reads with the mandatory
+    Docker masks rather than emitting an unsupported permission rule.
+    """
+
+    del include_list
 
     rules: list[str] = []
     for path in paths:
         value = str(path)
         if any(character in value for character in "*?[]()"):
             raise ValueError("Grok denied path cannot be represented safely")
-        operations = ("Read", "Grep", "Edit", "Write", "List") if include_list else ("Read", "Grep", "Edit", "Write")
-        for operation in operations:
+        for operation in ("Read", "Grep", "Edit", "Write"):
             rules.append(f"{operation}({value})")
             rules.append(f"{operation}({value}/**)")
     return tuple(rules)
@@ -1948,10 +1956,32 @@ def _docker_codex_task_toolchain_image_id(
     )
 
 
+def _ordinary_task_toolchain_host_architecture() -> str:
+    machine = os.uname().machine.casefold()
+    if machine in {"x86_64", "amd64"}:
+        return "amd64"
+    if machine in {"aarch64", "arm64"}:
+        return "arm64"
+    raise ValueError("ordinary task-toolchain host architecture is not qualified")
+
+
+def _ordinary_task_toolchain_image_profile() -> tuple[str, str, str]:
+    """Select a source-qualified platform profile, never an environment image."""
+
+    architecture = _ordinary_task_toolchain_host_architecture()
+    if architecture == "amd64":
+        return (
+            _ORDINARY_TASK_TOOLCHAIN_AMD64_IMAGE_ID,
+            architecture,
+            _ORDINARY_TASK_TOOLCHAIN_AMD64_IMAGE_LABEL,
+        )
+    return _ORDINARY_TASK_TOOLCHAIN_IMAGE_ID, architecture, _ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL
+
+
 def _ordinary_task_toolchain_image_pin() -> str:
     """Return only the qualified source pin, never a caller-selected image."""
 
-    image = _ORDINARY_TASK_TOOLCHAIN_IMAGE_ID
+    image, _architecture, _label = _ordinary_task_toolchain_image_profile()
     if re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
         raise ValueError("ordinary task-toolchain image source pin is not qualified")
     return image
@@ -1993,9 +2023,8 @@ def _docker_ordinary_task_toolchain_image_id(
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""
-    expected = (
-        f"{image}|linux|arm64|{_ORDINARY_TASK_TOOLCHAIN_IMAGE_LABEL}"
-    )
+    _profile_image, architecture, label = _ordinary_task_toolchain_image_profile()
+    expected = f"{image}|linux|{architecture}|{label}"
     return (
         image
         if completed.returncode == 0 and completed.stdout.strip() == expected

@@ -1,0 +1,15 @@
+{
+  "package": "ripgrep",
+  "version": "14.1.0-1",
+  "architecture": "amd64",
+  "origin": "Ubuntu noble/universe APT package index",
+  "url": "https://archive.ubuntu.com/ubuntu/pool/universe/r/rust-ripgrep/ripgrep_14.1.0-1_amd64.deb",
+  "package_sha256": "c5ae63c7bee915b1cfc9f0bd07c55b4ce7f2bcd1133cba4da56719aac26101a4",
+  "package_bytes": 1551362,
+  "binary_path": "/opt/ipfs-task-tools/bin/rg",
+  "binary_sha256": "be2fbcdd985161603bfa268c7647eec670b9e94374f0e972da708d7de670a8fb",
+  "license_path": "/opt/ipfs-task-tools/share/licenses/ripgrep/copyright",
+  "license_sha256": "b8badd31db4a52167bf97284ce2ad9ae6fe3effe1df087db0c8687a02c898f9c",
+  "package_scripts_executed": false,
+  "host_usr_modified": false
+}
