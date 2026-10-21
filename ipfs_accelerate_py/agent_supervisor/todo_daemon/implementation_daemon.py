@@ -39179,6 +39179,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         baseline_ref: str = "",
     ) -> dict[str, Any]:
         submodule_results = self._commit_worktree_submodule_changes(worktree_path, task, attempt)
+        if any(result.get("reason") == "submodule_scope_refused" for result in submodule_results):
+            return {
+                "committed": False,
+                "reason": "submodule_scope_refused",
+                "retain_worktree": True,
+                "submodule_results": submodule_results,
+            }
         self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
         self._restore_uncommitted_submodule_pointers(worktree_path, submodule_results)
         self._run_git(["add", "-A"], cwd=worktree_path)
@@ -39431,31 +39438,169 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "reason": "existing_commit",
         }
 
+    @staticmethod
+    def _uninitialized_gitlink_is_empty(target: Path) -> bool:
+        """Git status hides arbitrary files inside an uninitialized gitlink."""
+
+        try:
+            if target.is_symlink():
+                return False
+            if not target.exists():
+                return True
+            return target.is_dir() and not any(target.iterdir())
+        except OSError:
+            return False
+
+    def _submodule_target_is_unaliased(self, parent: Path, relative: str) -> bool:
+        """Fence every child path component before inspecting or mutating Git."""
+
+        if not self._repo_relative_path_safe(relative):
+            return False
+        try:
+            lexical = parent.resolve(strict=True) / relative
+            return lexical.resolve(strict=False) == lexical
+        except (OSError, RuntimeError):
+            return False
+
+    def _submodule_preservation_scope_paths(
+        self, task: PortalTask, full_relative: str,
+    ) -> tuple[str, ...]:
+        """Return explicit child write paths; dependency setup grants no scope."""
+
+        prefix = full_relative.strip("/")
+        return tuple(dict.fromkeys(
+            "." if path == prefix else path[len(prefix) + 1:]
+            for path in self._proposal_scope_paths(task)
+            if path == prefix or path.startswith(f"{prefix}/")
+        ))
+
+    def _submodule_preservation_stage_paths(
+        self, target: Path, owned_paths: Sequence[str],
+    ) -> tuple[str, ...]:
+        """Stage admitted child files or their already-audited nested gitlinks."""
+
+        nested = self._declared_submodule_paths(target)
+        paths: list[str] = []
+        for path in owned_paths:
+            staged_path = next((child for child in nested
+                                if self._path_matches_prefix(path, child)), path)
+            if (staged_path == "." or (target / staged_path).exists()
+                    or self._path_tracked_in_repo(target, staged_path)
+                    or self._path_tracked_in_head(target, staged_path)):
+                paths.append(staged_path)
+        return tuple(dict.fromkeys(paths))
+
+    def _preflight_submodule_preservation(
+        self, worktree_path: Path, task: PortalTask, *, parent_relative: str = "",
+    ) -> list[dict[str, Any]]:
+        """Inspect the entire recursive forest before any staging or commits.
+
+        Retain unowned checkout/index/source evidence rather than manufacturing
+        a dependency commit during failure preservation. Do not rely on local
+        submodule ignore settings, which can hide a changed nested checkout.
+        """
+
+        refusals: list[dict[str, Any]] = []
+        scope_paths = self._proposal_scope_paths(task)
+
+        def refuse(path: str, detail: str) -> None:
+            refusals.append({"path": path, "committed": False,
+                             "reason": "submodule_scope_refused", "detail": detail})
+
+        def inspect(parent: Path, relative: str, prefix: str, depth: int) -> None:
+            full = f"{prefix}/{relative}" if prefix else relative
+            if depth > MAX_NESTED_SUBMODULE_DEPTH or not self._repo_relative_path_safe(relative):
+                refuse(full, "unsafe_recursive_boundary")
+                return
+            if not self._submodule_target_is_unaliased(parent, relative):
+                refuse(full, "aliased_child_boundary")
+                return
+            target = parent / relative
+            try:
+                recorded = self._submodule_gitlink_ref(parent, relative)
+                index = self._proposal_index_gitlink_ref(parent, relative)
+                if not recorded:
+                    raise RuntimeError("missing recorded gitlink")
+                if not self._is_git_worktree(target):
+                    dirty = self._strict_dirty_worktree_paths(parent, include_submodule_dirt=True)
+                    if (not self._uninitialized_gitlink_is_empty(target)
+                            or index != recorded or relative in dirty):
+                        refuse(full, "uninitialized_child_changed")
+                    return
+                head = self._resolved_commit_ref(target, "HEAD")
+                dirty = self._strict_dirty_worktree_paths(target, include_submodule_dirt=True)
+                owned = self._submodule_preservation_scope_paths(task, full)
+                if not owned:
+                    if head != recorded or index != recorded or dirty:
+                        refuse(full, "dependency_is_not_task_owned")
+                elif not head or index not in {recorded, head} or not self._git_ref_is_ancestor_in_repo(target, recorded, head):
+                    refuse(full, "child_revision_or_index_disagrees")
+                else:
+                    changed = subprocess.run(
+                        ["git", "--no-optional-locks", "diff", "--no-renames", "--name-only", "-z",
+                         "--ignore-submodules=none", recorded, "--"],
+                        cwd=target, capture_output=True, check=False,
+                    )
+                    if changed.returncode != 0:
+                        raise RuntimeError("unable to inspect child changes")
+                    paths = dirty | {
+                        path.decode("utf-8", errors="surrogateescape")
+                        for path in changed.stdout.split(b"\0") if path
+                    }
+                    nested_paths = set(self._declared_submodule_paths(target))
+                    for path in paths:
+                        complete = f"{full}/{path}"
+                        if not self._repo_relative_path_safe(path):
+                            refuse(full, "unsafe_child_path")
+                        elif (self._path_is_generated_worktree_artifact(path)
+                              and not self._overlaps_implementation_protected_path(complete)):
+                            continue
+                        elif not any(self._path_matches_prefix(complete, scope) for scope in scope_paths):
+                            # Only known gitlink ancestors may stand in for
+                            # explicit deeper paths; their children are audited below.
+                            if path not in nested_paths or not self._submodule_preservation_scope_paths(task, complete):
+                                refuse(complete, "child_path_outside_write_scope")
+                for nested in self._declared_submodule_paths(target):
+                    inspect(target, nested, full, depth + 1)
+            except (OSError, RuntimeError, ValueError):
+                refuse(full, "child_inspection_unavailable")
+
+        relatives = (self._declared_submodule_paths(worktree_path) if parent_relative
+                     else self._effective_worktree_submodule_paths(task))
+        for relative in relatives:
+            inspect(worktree_path, relative, parent_relative, 1)
+        return refusals
+
     def _commit_worktree_submodule_changes(
         self,
         worktree_path: Path,
         task: PortalTask,
         attempt: int,
     ) -> list[dict[str, Any]]:
+        refusals = self._preflight_submodule_preservation(worktree_path, task)
+        if refusals:
+            return refusals
         results: list[dict[str, Any]] = []
-        # Honor task ``Submodules:`` declarations (CIG boards) in addition to
-        # daemon-global worktree_submodule_paths so intentional child edits are
-        # committed instead of left as opaque parent gitlink dirt.
+        # Dependencies are initialized for reading, not automatically owned.
         for relative in self._effective_worktree_submodule_paths(task):
             target = worktree_path / relative
-            if not self._is_git_worktree(target):
+            owned_paths = self._submodule_preservation_scope_paths(task, relative)
+            if not owned_paths or not self._is_git_worktree(target):
                 continue
             nested_results = self._commit_nested_submodule_changes(
                 target,
                 task,
                 attempt,
                 parent_relative=relative,
+                _scope_checked=True,
             )
             self._restore_ephemeral_worktree_paths_for_commit(
                 target,
                 protected_path_prefix=relative,
             )
-            self._run_git(["add", "-A"], cwd=target)
+            stage_paths = self._submodule_preservation_stage_paths(target, owned_paths)
+            if stage_paths:
+                self._run_git(["add", "-A", "--", *stage_paths], cwd=target)
             self._remove_generated_paths_from_index(
                 target,
                 protected_path_prefix=relative,
@@ -39518,24 +39663,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int,
         *,
         parent_relative: str,
+        _scope_checked: bool = False,
     ) -> list[dict[str, Any]]:
+        if not _scope_checked:
+            refusals = self._preflight_submodule_preservation(
+                worktree_path, task, parent_relative=parent_relative,
+            )
+            if refusals:
+                return refusals
         results: list[dict[str, Any]] = []
         for relative in self._declared_submodule_paths(worktree_path):
             full_relative = f"{parent_relative.rstrip('/')}/{relative}"
             target = worktree_path / relative
-            if not self._is_git_worktree(target):
+            owned_paths = self._submodule_preservation_scope_paths(task, full_relative)
+            if not owned_paths or not self._is_git_worktree(target):
                 continue
             nested_results = self._commit_nested_submodule_changes(
                 target,
                 task,
                 attempt,
                 parent_relative=full_relative,
+                _scope_checked=True,
             )
             self._restore_ephemeral_worktree_paths_for_commit(
                 target,
                 protected_path_prefix=full_relative,
             )
-            self._run_git(["add", "-A"], cwd=target)
+            stage_paths = self._submodule_preservation_stage_paths(target, owned_paths)
+            if stage_paths:
+                self._run_git(["add", "-A", "--", *stage_paths], cwd=target)
             self._remove_generated_paths_from_index(
                 target,
                 protected_path_prefix=full_relative,
@@ -39937,16 +40093,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         retain_on_failure: bool = False,
     ) -> dict[str, Any]:
         started_at = utc_now()
-        pruned_seeded_context = self._drop_unchanged_seeded_worktree_context(
-            worktree_path,
-            task=task,
-        )
-        commit_result = self._commit_worktree_changes(
-            worktree_path,
-            task,
-            attempt,
-            baseline_ref=baseline_ref,
-        )
+        refusals = self._preflight_submodule_preservation(worktree_path, task)
+        pruned_seeded_context: list[Any] = []
+        if refusals:
+            commit_result = {"committed": False, "reason": "submodule_scope_refused",
+                             "retain_worktree": True, "submodule_results": refusals}
+        else:
+            pruned_seeded_context = self._drop_unchanged_seeded_worktree_context(
+                worktree_path,
+                task=task,
+            )
+            commit_result = self._commit_worktree_changes(
+                worktree_path,
+                task,
+                attempt,
+                baseline_ref=baseline_ref,
+            )
         rescue_branch = ""
         implementation_commit = str(commit_result.get("commit", ""))
         preserved_commit = (
@@ -39965,7 +40127,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if retain_on_failure and preserved_commit:
             if self._resolved_commit_ref(self.repo_root, rescue_branch) != preserved_commit:
                 raise RuntimeError("failed provider rescue reference differs")
+        retain_refused = commit_result.get("retain_worktree") is True
         cleanup_result = (
+            {"cleaned": False, "reason": "submodule_scope_refused", "retained": worktree_path.exists()}
+            if retain_refused else
             {"cleaned": False, "reason": ("provider_failure_checkpoint_retained"
                 if preserved_commit else "provider_failure_checkpoint_unavailable"),
              "retained": worktree_path.exists()}
@@ -39988,14 +40153,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "pruned_seeded_context": pruned_seeded_context,
             evidence_field: dict(evidence),
         }
-        if retain_on_failure:
+        if retain_on_failure or retain_refused:
             result["retained"] = worktree_path.exists()
             if not preserved_commit:
-                result["reason"] = "provider_failure_checkpoint_unavailable"
+                result["reason"] = ("submodule_scope_refused" if retain_refused
+                                    else "provider_failure_checkpoint_unavailable")
         # For failed providers, persist the rescue identity before cleanup;
         # failure to record it must leave the original checkout intact.
         self._record_event(event_type, result)
-        if retain_on_failure and preserved_commit:
+        if retain_on_failure and preserved_commit and not retain_refused:
             try:
                 result["cleanup_result"] = self._cleanup_merged_worktree(worktree_path, branch_name)
             except Exception as exc:
@@ -45064,6 +45230,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         normalized = str(relative or "").strip().replace("\\", "/").strip("/")
         if not normalized or not self._repo_relative_path_safe(normalized):
             return False
+        if not self._submodule_target_is_unaliased(workspace_path, normalized):
+            return False
         baseline = str(baseline_ref or "HEAD").strip() or "HEAD"
         head_result = subprocess.run(
             ["git", "rev-parse", f"{baseline}:{normalized}"],
@@ -45076,6 +45244,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return False
         expected = head_result.stdout.strip()
         if not expected:
+            return False
+        target = workspace_path / normalized
+        if (not self._is_git_worktree(target)
+                and not self._uninitialized_gitlink_is_empty(target)):
             return False
         # Parent index/worktree gitlink pointer first.
         parent = subprocess.run(
@@ -45104,10 +45276,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         if parent.returncode != 0:
             return False
-        target = workspace_path / normalized
         if not self._is_git_worktree(target):
-            # Parent pointer restored; child not initialized — treat as clean.
-            return True
+            try:
+                return (
+                    self._uninitialized_gitlink_is_empty(target)
+                    and self._proposal_index_gitlink_ref(workspace_path, normalized) == expected
+                    and normalized not in self._strict_dirty_worktree_paths(
+                        workspace_path, include_submodule_dirt=True,
+                    )
+                )
+            except (OSError, RuntimeError, ValueError):
+                return False
         checkout = subprocess.run(
             ["git", "checkout", "-f", expected],
             cwd=target,
@@ -45115,25 +45294,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             capture_output=True,
             check=False,
         )
-        if checkout.returncode == 0:
-            return True
-        # Fall back to submodule update for this path only (local objects).
-        fallback = subprocess.run(
-            [
-                "git",
-                "submodule",
-                "update",
-                "--force",
-                "--checkout",
-                "--",
-                normalized,
-            ],
-            cwd=workspace_path,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        return fallback.returncode == 0
+        if checkout.returncode != 0:
+            # This is a local restore, never a dependency fetch/initialization.
+            return False
+        try:
+            return (
+                self._proposal_index_gitlink_ref(workspace_path, normalized) == expected
+                and self._resolved_commit_ref(target, "HEAD") == expected
+                and not self._strict_dirty_worktree_paths(target, include_submodule_dirt=True)
+            )
+        except (OSError, RuntimeError, ValueError):
+            return False
 
     def _restore_out_of_scope_workspace_paths(
         self,
@@ -56249,7 +56420,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 paths.add(path_text)
         return paths
 
-    def _strict_dirty_worktree_paths(self, cwd: Path) -> set[str]:
+    def _strict_dirty_worktree_paths(
+        self, cwd: Path, *, include_submodule_dirt: bool = False,
+    ) -> set[str]:
         """Return exact dirty paths or raise when Git cannot certify status.
 
         The validation-artifact cleanup path is security-sensitive: treating
@@ -56265,6 +56438,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "--porcelain=v1",
                 "-z",
                 "--untracked-files=all",
+                *(["--ignore-submodules=none"] if include_submodule_dirt else []),
             ],
             cwd=cwd,
             capture_output=True,
