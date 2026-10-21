@@ -7449,6 +7449,19 @@ class PortalImplementationSupervisor:
 
         incidents.sort(key=updated_at_ms, reverse=True)
         latest = dict(incidents[0]) if incidents else {}
+        # Preserve the original incident record on disk. A separately bound
+        # administrative receipt only changes this exact historical view.
+        from .current_incident_adjudication import settlement_valid
+        current_strategy = load_json_dict(self.config.strategy_path) or {}
+        for quarantine in current_strategy.get("autonomous_unstall_quarantines", ()):
+            if (isinstance(quarantine, Mapping)
+                    and quarantine.get("incident_cid") == latest.get("incident_cid")
+                    and settlement_valid(repo_root=self.config.repo_root, state_path=self.config.state_path,
+                        incident_cid=str(latest.get("incident_cid", "")), quarantine=quarantine)):
+                latest.update({"original_phase": latest.get("phase"),
+                    "phase": "administratively_abandoned", "provider_outcome": "unknown",
+                    "completion_authority": False, "attempt_refunded": False})
+                break
         result = {
             "schema": AUTONOMOUS_UNSTALL_STATE_SCHEMA,
             "state_path": str(path),
@@ -10088,6 +10101,14 @@ class PortalImplementationSupervisor:
             ),
             None,
         )
+        from .current_incident_adjudication import settlement_valid
+        if (existing_quarantine is not None and settlement_valid(
+                repo_root=self.config.repo_root, state_path=self.config.state_path,
+                incident_cid=incident_cid, quarantine=existing_quarantine)):
+            return {"scope": "task", "task_id": existing_quarantine.get("task_id", ""),
+                "incident_cid": incident_cid, "deduplicated": True,
+                "reason": "exact_old_incident_administratively_abandoned",
+                "completion_authority": False, "attempt_refunded": False}
         explicit_task_targets = {
             item.removeprefix("task:")
             for item in normalized_targets
@@ -10216,6 +10237,15 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         target = state.active_task_id or "lane:implementation"
         common = {"task_id": target, "lane_id": "lane:implementation"}
+        if state.active_task_id:
+            # Same-task faults in later attempts are distinct incidents. The
+            # epoch run root alone does not identify a provider invocation.
+            common["attempt_binding_cid"] = prompt_workflow_cid({
+                "canonical_task_cid": state.active_task_cid,
+                "ordinal": state.active_attempt,
+                "owned_start": state.active_task_started_at,
+                "workspace": state.active_worktree_path,
+            })
         lowered = reason.lower()
         if "merge" in lowered:
             return {
@@ -21525,7 +21555,8 @@ class PortalImplementationSupervisor:
             if isinstance(merged.get("deprioritized_tasks"), list)
             else []
         )
-        return merged
+        from .current_incident_adjudication import effective_strategy
+        return effective_strategy(repo_root=self.config.repo_root, state_path=self.config.state_path, strategy=merged)
 
     def _refresh_native_dispatch_child(self, child: Any) -> None:
         try:

@@ -10790,6 +10790,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return {**failed, "reason": str(error) if isinstance(error, ValueError)
                     else f"interrupted_claim_evidence_unavailable:{type(error).__name__}"}
 
+    def review_quiesced_ordinary_incident(self, *, task_id: str, incident_cid: str) -> dict[str, Any]:
+        """Return an exact review preimage without releasing custody."""
+        from .current_incident_adjudication import review
+        return review(self, task_id=task_id, incident_cid=incident_cid)
+
+    def adjudicate_quiesced_ordinary_incident(self, *, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Explicit administrative abandonment, requiring caller launcher guards.
+
+        No task completion, provider outcome, callback settlement or attempt
+        refund follows from releasing one proven-dead ordinary claim.
+        """
+        from .current_incident_adjudication import adjudicate
+        return adjudicate(self, request=request)
+
     def reconcile_quiesced_implementation_task_claim(self) -> dict[str, Any]:
         """Reconcile only the repo-wide claim for already-clean lane state."""
 
@@ -14925,7 +14939,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         merged["focus_tracks"] = normalize_focus_tracks(merged.get("focus_tracks", DEFAULT_TRACKS))
         merged["blocked_tasks"] = [str(item) for item in merged.get("blocked_tasks", [])]
         merged["deprioritized_tasks"] = [str(item) for item in merged.get("deprioritized_tasks", [])]
-        return merged
+        from .current_incident_adjudication import effective_strategy
+        return effective_strategy(repo_root=self.repo_root, state_path=self.state_path, strategy=merged)
 
     @staticmethod
     def _runtime_path_metadata(path: Path) -> dict[str, Any]:
