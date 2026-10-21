@@ -1152,6 +1152,8 @@ def run_process_group_stream(
     ``absolute_deadline`` is an optional monotonic deadline shared with earlier
     provider work. Launch and birth-callback time consume that lease; an expired
     lease cannot start a child or become a fresh relative timeout after birth.
+    Elapsed telemetry includes launch and callbacks, and is captured before
+    timeout cleanup; cleanup grace does not become provider execution time.
     """
 
     if absolute_deadline is not None and (
@@ -1160,22 +1162,38 @@ def run_process_group_stream(
     ):
         raise ValueError("absolute_deadline must be a finite monotonic timestamp")
 
+    invocation_started = time.monotonic()
+    progress_events = 0
+    idle_timeout: float | None = None
+    hard_timeout: float | None = None
+
+    def annotate_timeout(exc: subprocess.TimeoutExpired, observed_at: float) -> None:
+        # All expiry paths share these observations, including expiry before
+        # monitoring starts and subprocess.communicate's own TimeoutExpired.
+        setattr(exc, "elapsed_seconds", max(0.0, observed_at - invocation_started))
+        setattr(exc, "progress_events", progress_events)
+        setattr(exc, "progress_timeout_seconds", idle_timeout)
+        setattr(exc, "max_timeout_seconds", (
+            hard_timeout if hard_timeout is not None
+            else max(0.0, float(timeout_seconds))
+        ))
+
     def remaining_absolute_budget() -> float | None:
         if absolute_deadline is None:
             return None
-        remaining = absolute_deadline - time.monotonic()
+        observed_at = time.monotonic()
+        remaining = absolute_deadline - observed_at
         if remaining <= 0:
             exc = subprocess.TimeoutExpired(cmd=list(command), timeout=0.0)
             setattr(exc, "timeout_reason", "absolute_deadline")
             setattr(exc, "absolute_deadline", absolute_deadline)
+            annotate_timeout(exc, observed_at)
             raise exc
         return remaining
 
     input_value: Any = input_text
     if input_text is not None and not text:
         input_value = input_text.encode("utf-8")
-    idle_timeout: float | None = None
-    hard_timeout: float | None = None
     poll_seconds: float | None = None
     monitor_progress = (
         progress_timeout_seconds is not None
@@ -1310,8 +1328,6 @@ def run_process_group_stream(
                 stderr=stderr,
                 progress_paths=progress_paths,
             )
-            progress_events = 0
-
             input_thread: threading.Thread | None = None
             if process.stdin is not None:
                 stdin_stream = process.stdin
@@ -1372,10 +1388,7 @@ def run_process_group_stream(
                         timeout=timeout_value,
                     )
                     setattr(exc, "timeout_reason", timeout_reason)
-                    setattr(exc, "elapsed_seconds", max(0.0, now - started))
-                    setattr(exc, "progress_events", progress_events)
-                    setattr(exc, "progress_timeout_seconds", idle_timeout)
-                    setattr(exc, "max_timeout_seconds", hard_timeout)
+                    annotate_timeout(exc, now)
                     if timeout_reason == "absolute_deadline":
                         setattr(exc, "absolute_deadline", absolute_deadline)
                     raise exc
@@ -1409,7 +1422,7 @@ def run_process_group_stream(
                             on_progress(
                                 {
                                     "elapsed_seconds": max(
-                                        0.0, observed_at - started
+                                        0.0, observed_at - invocation_started
                                     ),
                                     "progress_events": progress_events,
                                     "progress_timeout_seconds": idle_timeout,
@@ -1443,9 +1456,11 @@ def run_process_group_stream(
         process.wait()
         raise
     except subprocess.TimeoutExpired as exc:
-        if absolute_deadline is not None and time.monotonic() >= absolute_deadline:
+        timeout_observed_at = time.monotonic()
+        if absolute_deadline is not None and timeout_observed_at >= absolute_deadline:
             setattr(exc, "timeout_reason", "absolute_deadline")
             setattr(exc, "absolute_deadline", absolute_deadline)
+        annotate_timeout(exc, timeout_observed_at)
         timeout_exc = subprocess.TimeoutExpired(
             cmd=list(command),
             timeout=float(getattr(exc, "timeout", timeout_seconds)),
