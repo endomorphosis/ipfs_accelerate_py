@@ -348,6 +348,10 @@ CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG = (
 GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
+GROK_PRIVATE_PATHS_ENV = "IPFS_ACCELERATE_AGENT_GROK_PRIVATE_PATHS_JSON"
+GROK_PRIVATE_PATHS_VERSION = 1
+_GROK_PRIVATE_PATH_MAX_PATTERNS = 64
+_GROK_PRIVATE_PATH_MAX_MATCHES = 1024
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
@@ -1163,6 +1167,89 @@ def _dbus_socket_path(raw_value: str) -> Path | None:
     return path if path.is_absolute() else None
 
 
+def validate_grok_private_path_patterns(raw: str) -> tuple[str, ...]:
+    """Validate trusted relative directory names or bounded basename globs.
+
+    A trailing ``/**`` denotes the directory itself, not an unbounded recursive
+    scan. Other wildcard directory components are refused. No caller-provided
+    absolute path can acquire mount or filesystem-deny authority.
+    """
+
+    if not isinstance(raw, str) or len(raw) > 65_536:
+        raise ValueError("invalid Grok private-path policy")
+    try:
+        values = json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("invalid Grok private-path policy JSON") from exc
+    if not isinstance(values, list) or not 1 <= len(values) <= _GROK_PRIVATE_PATH_MAX_PATTERNS:
+        raise ValueError("Grok private-path policy requires a bounded nonempty list")
+    patterns: set[str] = set()
+    for value in values:
+        if not isinstance(value, str) or not value or len(value) > 1024:
+            raise ValueError("invalid Grok private-path pattern")
+        if re.fullmatch(r"[A-Za-z0-9._/*?-]+", value) is None:
+            raise ValueError("Grok private paths must be safe repository-relative patterns")
+        value = value.removesuffix("/**")
+        parts = value.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("Grok private paths cannot be absolute or traverse directories")
+        if "**" in value or any("*" in part or "?" in part for part in parts[:-1]):
+            raise ValueError("Grok private paths permit only bounded basename globs")
+        if value == ".git" or value.startswith(".git/"):
+            raise ValueError("Git control paths are not private-data policy inputs")
+        patterns.add(value)
+    return tuple(sorted(patterns))
+
+
+def _grok_private_workspace_paths(
+    *, base_env: Mapping[str, str], workspace: Path | None,
+) -> tuple[Path, ...]:
+    """Resolve existing private paths without following a workspace escape.
+
+    The same exact paths feed Docker mask mounts, sandbox declarations and
+    direct-tool fences. Absence of the policy preserves the legacy contract.
+    """
+
+    if GROK_PRIVATE_PATHS_ENV not in base_env:
+        return ()
+    patterns = validate_grok_private_path_patterns(base_env[GROK_PRIVATE_PATHS_ENV])
+    if workspace is None:
+        raise ValueError("Grok private-path policy requires an explicit workspace")
+    try:
+        root = workspace.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("Grok private workspace cannot be resolved") from exc
+    if not root.is_dir():
+        raise ValueError("Grok private workspace must be a directory")
+    paths: set[Path] = set()
+    match_count = 0
+    for pattern in patterns:
+        # Resolve a literal prefix before globbing, so an escaped directory
+        # symlink cannot make the glob enumerate another user's directory.
+        prefix = root / str(Path(pattern).parent)
+        try:
+            if not prefix.resolve(strict=False).is_relative_to(root):
+                raise ValueError("Grok private-path directory escapes its workspace")
+            matches = root.glob(pattern) if any(c in pattern for c in "*?") else iter((root / pattern,))
+            for candidate in matches:
+                if not candidate.exists() and not candidate.is_symlink():
+                    continue
+                match_count += 1
+                if match_count > _GROK_PRIVATE_PATH_MAX_MATCHES:
+                    raise ValueError("Grok private-path expansion exceeds its bound")
+                resolved = candidate.resolve(strict=True)
+                if not resolved.is_relative_to(root):
+                    raise ValueError("Grok private path escapes its workspace")
+                if any(character in str(candidate) + str(resolved) for character in "*?[]()\n\r\x00"):
+                    raise ValueError("Grok private path cannot be represented safely")
+                if not resolved.is_file() and not resolved.is_dir():
+                    raise ValueError("Grok private paths must identify files or directories")
+                paths.update((candidate.absolute(), resolved))
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("Grok private path cannot be resolved safely") from exc
+    return tuple(sorted(paths, key=str))
+
+
 def _grok_isolation_deny_paths(
     *,
     base_env: dict[str, str],
@@ -1179,6 +1266,7 @@ def _grok_isolation_deny_paths(
         Path("/proc"),
         Path("/dev"),
     }
+    candidates.update(_grok_private_workspace_paths(base_env=base_env, workspace=workspace))
     if workspace is not None:
         candidates.add(workspace / ".git")
     for executable in _GROK_DENIED_EXECUTABLES:
@@ -1468,7 +1556,9 @@ def _grok_executable_extension_paths(workspace: Path) -> tuple[Path, ...]:
     return tuple(sorted(found, key=lambda item: str(item)))
 
 
-def _grok_filesystem_deny_rules(paths: Sequence[Path]) -> tuple[str, ...]:
+def _grok_filesystem_deny_rules(
+    paths: Sequence[Path], *, include_list: bool = False,
+) -> tuple[str, ...]:
     """Build direct-tool path fences for the sealed capability route."""
 
     rules: list[str] = []
@@ -1476,7 +1566,8 @@ def _grok_filesystem_deny_rules(paths: Sequence[Path]) -> tuple[str, ...]:
         value = str(path)
         if any(character in value for character in "*?[]()"):
             raise ValueError("Grok denied path cannot be represented safely")
-        for operation in ("Read", "Grep", "Edit", "Write"):
+        operations = ("Read", "Grep", "Edit", "Write", "List") if include_list else ("Read", "Grep", "Edit", "Write")
+        for operation in operations:
             rules.append(f"{operation}({value})")
             rules.append(f"{operation}({value}/**)")
     return tuple(rules)
@@ -1513,13 +1604,16 @@ def _workspace_symlinks_reach_denied_paths(
     return tuple(sorted(violations, key=lambda item: str(item)))
 
 
-def _workspace_regular_file_hardlinks(workspace: Path) -> tuple[Path, ...]:
-    """Find workspace files whose extra hardlinks live outside the worktree.
+def _workspace_regular_file_hardlinks(
+    workspace: Path, *, private_paths: Sequence[Path] = (),
+) -> tuple[Path, ...]:
+    """Find external hardlinks or aliases crossing private subtree masks.
 
     Git worktrees and copy-on-write checkouts often share inodes among files
     *inside* the workspace (nlink>1). Those do not alias provider/control
     authority. A violation is an inode whose link count exceeds the number of
-    names found under ``workspace``.
+    names found under ``workspace``. With private paths, an internal alias
+    outside its masked subtree is also a violation.
     """
 
     by_inode: dict[tuple[int, int], list[Path]] = {}
@@ -1548,7 +1642,11 @@ def _workspace_regular_file_hardlinks(workspace: Path) -> tuple[Path, ...]:
     violations: list[Path] = []
     for paths in by_inode.values():
         nlink = paths[0].lstat().st_nlink
-        if nlink > len(paths):
+        private_members = [
+            any(path == private or path.is_relative_to(private) for private in private_paths)
+            for path in paths
+        ]
+        if nlink > len(paths) or (any(private_members) and not all(private_members)):
             violations.extend(paths)
     return tuple(sorted(violations, key=lambda item: str(item)))
 
@@ -2734,8 +2832,9 @@ def _docker_grok_command_for_pinned_image(
     """Wrap Grok in the peer-provider capability boundary.
 
     Grok necessarily retains its own read-only auth and writable ephemeral
-    session state.  This boundary withholds peer providers; it is not a
-    confidentiality boundary against Grok's own in-process file tools.
+    session state. The ordinary boundary withholds peer providers. An explicit
+    private-path policy additionally masks data paths and Git metadata from
+    Grok's in-process file tools and terminal children.
     """
 
     docker = str(docker_bin or _docker_isolation_binary())
@@ -2851,12 +2950,17 @@ def _docker_grok_command_for_pinned_image(
                 command.extend(_docker_mount(Path(tex_toolchain[name]), read_only=True))
     if research_toolchain:
         command.extend(_docker_mount(Path(research_toolchain["root"]), read_only=True))
-    git_metadata_roots = _git_metadata_roots(workspace)
+    private_policy = GROK_PRIVATE_PATHS_ENV in base_env
+    private_paths = _grok_private_workspace_paths(base_env=base_env, workspace=workspace)
+    # Git objects can reconstruct tracked private files despite path masks.
+    # The parent owns commit/merge operations; private workers receive source
+    # files without the host's Git object stores or worktree control file.
+    git_metadata_roots = () if private_policy else _git_metadata_roots(workspace)
     for git_root in git_metadata_roots:
         command.extend(_docker_mount(git_root, read_only=True))
     command.extend(_docker_mount(workspace, read_only=False))
     git_control_path = _existing_path(workspace / ".git")
-    if git_control_path is not None and git_control_path not in git_metadata_roots:
+    if not private_policy and git_control_path is not None and git_control_path not in git_metadata_roots:
         command.extend(_docker_mount(git_control_path, read_only=True))
     command.extend(_docker_mount(prompt_path, read_only=True))
     command.extend(_docker_mount(grok_home, read_only=False))
@@ -2879,7 +2983,10 @@ def _docker_grok_command_for_pinned_image(
 
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
-    for index, denied in enumerate(denied_paths):
+    effective_denied = set(denied_paths) | set(private_paths)
+    if private_policy and git_control_path is not None:
+        effective_denied.add(git_control_path)
+    for index, denied in enumerate(sorted(effective_denied, key=str)):
         if (
             denied in {
                 sentinel,
@@ -2887,9 +2994,9 @@ def _docker_grok_command_for_pinned_image(
                 Path("/proc"),
                 Path("/dev"),
                 container_grok,
-                git_control_path,
                 source_auth,
             }
+            or (not private_policy and denied == git_control_path)
             or denied.is_relative_to(grok_home)
         ):
             continue
@@ -5591,6 +5698,15 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     if not workspace.is_dir():
         print(f"workspace is not a directory: {workspace}", file=sys.stderr)
         return 2
+    try:
+        private_policy = GROK_PRIVATE_PATHS_ENV in os.environ
+        if private_policy:
+            _grok_private_workspace_paths(base_env=os.environ, workspace=workspace)
+            if codex_fallback_command:
+                raise ValueError("Grok private-path policy requires a Grok-only route")
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     recovery_locator_raw = str(
         args.agent_implementation_recovery_json or ""
     ).strip()
@@ -6815,6 +6931,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
             supervised = (
                 not codex_fallback_command
+                and not private_policy
                 and receipt_fd >= 3
                 and bool(supervised_binding)
             )
@@ -6867,7 +6984,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     return 1
                 return inner_returncode
 
-            if args.receipt_fd_declared and not codex_fallback_command:
+            if args.receipt_fd_declared and not codex_fallback_command and not private_policy:
                 # An invalid/read-only ambient descriptor does not establish
                 # supervision. Preserve the direct runner contract without
                 # minting a receipt or reserving the child's exit status.
@@ -6897,7 +7014,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
 
             base_env = os.environ.copy()
             isolation_backend = _select_grok_isolation_backend(
-                require_container_boundary=bool(codex_fallback_command),
+                require_container_boundary=bool(codex_fallback_command) or private_policy,
             )
             cmd = build_grok_cli_command(
                 mode=str(args.mode),
@@ -6955,9 +7072,9 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 command_environment.formal_toolchain_contract_sha256
             )
             env.pop(GROK_TERMINAL_RECEIPT_FD_ENV, None)
-            for rule in _grok_filesystem_deny_rules(_denied_paths):
+            for rule in _grok_filesystem_deny_rules(_denied_paths, include_list=private_policy):
                 cmd.extend(["--deny", rule])
-            if codex_fallback_command:
+            if codex_fallback_command or private_policy:
                 symlink_violations = _workspace_symlinks_reach_denied_paths(
                     workspace=workspace,
                     denied_paths=_denied_paths,
@@ -6968,7 +7085,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                         "provider/control paths: "
                         + ", ".join(str(path) for path in symlink_violations)
                     )
-                hardlink_violations = _workspace_regular_file_hardlinks(workspace)
+                hardlink_violations = (
+                    _workspace_regular_file_hardlinks(workspace, private_paths=_denied_paths)
+                    if private_policy else _workspace_regular_file_hardlinks(workspace)
+                )
                 if hardlink_violations:
                     raise ValueError(
                         "Default Grok route refuses multiply linked regular "
