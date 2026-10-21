@@ -31616,6 +31616,111 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         body["authority_sha256"] = hashlib.sha256(encoded).hexdigest()
         return body
 
+    def _grok_turn_limit_task_unheld(self, task: PortalTask, state: PortalTaskState) -> bool:
+        from .portal_task_state_control_plane import read_task_state_payload
+        durable = read_task_state_payload(self.state_path)
+        if not isinstance(durable, dict) or self._retained_provider_capacity_deferral() is not None:
+            return False
+        identity = self._identity_for_task(task)
+        refs = {task.task_id, self._canonical_ref(task), identity.canonical_task_key}
+        # The outer attempt persists its in-memory state on exit. Retain any
+        # newly observed deny projection so refusing salvage cannot erase an
+        # operator hold written while the provider/validation was running.
+        for field in ("blocked_task_ids", "external_reserved_task_ids", "waiting_task_ids"):
+            values = durable.get(field, [])
+            if isinstance(values, list) and all(isinstance(value, str) for value in values):
+                setattr(state, field, list(dict.fromkeys([*getattr(state, field), *values])))
+        protected = durable.get("protected_implementation_attempts", {})
+        if isinstance(protected, dict):
+            state.protected_implementation_attempts.update(protected)
+        durable_statuses = durable.get("task_statuses", {})
+        if isinstance(durable_statuses, dict) and normalize_status(durable_statuses.get(task.task_id, "todo")) not in {"todo", "in_progress"}:
+            state.task_statuses[task.task_id] = durable_statuses[task.task_id]
+        for payload in (asdict(state), durable):
+            for field in ("blocked_task_ids", "external_reserved_task_ids", "waiting_task_ids", "completed_task_ids"):
+                values = payload.get(field, [])
+                if not isinstance(values, list) or not all(isinstance(value, str) for value in values) or refs.intersection(values):
+                    return False
+            protected = payload.get("protected_implementation_attempts", {})
+            if not isinstance(protected, dict) or any(
+                    not isinstance(value, dict) or key in refs
+                    or value.get("task_id") in refs or value.get("task_revision_cid") in refs
+                    for key, value in protected.items()):
+                return False
+            statuses = payload.get("task_statuses", {})
+            if not isinstance(statuses, dict) or normalize_status(statuses.get(task.task_id, "todo")) not in {"todo", "in_progress"}:
+                return False
+        if os.path.lexists(self.strategy_path):
+            strategy = self._load_exact_json_object(self.strategy_path)
+            if (strategy is None or not isinstance(strategy.get("blocked_tasks", []), list)
+                    or refs.intersection(strategy.get("blocked_tasks", []))):
+                return False
+        current = [item for item in self._load_tasks()
+                   if item.task_id == task.task_id and self._canonical_ref(item) == self._canonical_ref(task)]
+        return bool(len(current) == 1
+            and self._identity_for_task(current[0]).canonical_task_key == identity.canonical_task_key
+            and self._identity_for_task(current[0]).board_namespace == identity.board_namespace
+            and current[0].validation == task.validation
+            and normalize_status(current[0].status) in {"todo", "in_progress"}
+            and not any(str(value).strip().lower() in {"1", "true", "yes"}
+                for key, value in current[0].metadata.items()
+                if str(key).lower().replace("_", " ").strip() == "manual hold"))
+
+    def _grok_turn_limit_candidate_admission(
+        self, *, task: PortalTask, state: PortalTaskState, attempt: int,
+        command: Sequence[str], process: subprocess.Popen[Any] | None,
+        process_birth: tuple[int, int, int, int] | None,
+        workspace_path: Path, log_path: Path, started_at: str,
+        branch_name: str, baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Admit only validation of one quiescent ordinary turn-limit candidate."""
+        from ..validation.grok_turn_limit import observe_quiescence, observe_terminal
+        observation = {"eligible": False, "provider_returncode": 1,
+            "completion_authority": False, "attempt_refunded": False,
+            "new_provider_authority": False}
+        try:
+            if (self.production_provider_policy is not None
+                    or self.production_owner_handoff_factory is not None
+                    or self._database_attempt_authority is not None
+                    or self._implementation_cancel_requested()
+                    or not task.validation):
+                raise ValueError("turn_limit_route_or_cancellation_ineligible")
+            terminal = observe_terminal(log_path, command=command,
+                workspace=workspace_path, task_id=task.task_id, title=task.title,
+                started_at=started_at, branch=branch_name, baseline_ref=baseline_ref)
+            if (not self._grok_turn_limit_task_unheld(task, state)
+                    or os.path.lexists(self._implementation_protected_active_snapshot_path())
+                    or os.path.lexists(self._implementation_protected_incident_path())
+                    or self.worktree_lifecycle.load_quarantine(workspace_path) is not None):
+                raise ValueError("turn_limit_task_held_or_fenced")
+            quiescence = observe_quiescence(process, command=command,
+                birth=process_birth, workspace=workspace_path)
+            if not self._grok_turn_limit_task_unheld(task, state):
+                raise ValueError("turn_limit_task_held_during_quiescence")
+            from ..proof.code_proof_obligations import collect_git_candidate_diff
+            raw_entries = collect_git_candidate_diff(workspace_path,
+                base_revision=baseline_ref, include_untracked=True)
+            scope = self._proposal_scope_paths(task)
+            paths = {str(path) for entry in raw_entries
+                     for path in (entry.old_path, entry.new_path) if path}
+            if not paths or not all(any(self._path_matches_scope(path, allowed)
+                    or allowed.startswith(path.rstrip("/") + "/") for allowed in scope) for path in paths):
+                raise ValueError("turn_limit_candidate_empty_or_outside_scope")
+            entries, _ = self._collect_proposal_candidate_diff(workspace_path,
+                baseline_ref=baseline_ref, scope_paths=scope, task=task)
+            if not entries or not any(getattr(entry, "before_source", None)
+                    != getattr(entry, "after_source", None) for entry in entries):
+                raise ValueError("turn_limit_candidate_has_no_source_change")
+            return {**observation, **terminal, **quiescence, "eligible": True,
+                "reason": "verified_grok_turn_limit_candidate", "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task), "attempt": attempt,
+                "baseline_ref": baseline_ref, "branch": branch_name,
+                "candidate_fingerprint": self._proposal_candidate_fingerprint(entries),
+                "changed_paths": sorted(paths)}
+        except (OSError, RuntimeError, TypeError, ValueError, subprocess.SubprocessError) as error:
+            return {**observation, "reason": str(error) if isinstance(error, ValueError)
+                    else f"turn_limit_observation_unavailable:{type(error).__name__}"}
+
     @_workspace_mutation_boundary(pool=True)
     def _run_implementation_in_ephemeral_worktree(
         self,
@@ -31632,6 +31737,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._database_provider_exit = None
         self._database_provider_custody_observation = None
         provider_process = None
+        provider_process_birth = None
         provider_process_returned = False
         provider_child_custody = None
         provider_deadline: float | None = None
@@ -31676,6 +31782,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         todo_update_result: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
+        grok_turn_limit: dict[str, Any] = {}
         timeout_result: dict[str, Any] = {}
         pre_dispatch_no_change_result: dict[str, Any] | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
@@ -32134,9 +32241,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 def provider_started(
                                     process: subprocess.Popen[Any],
                                 ) -> None:
-                                    nonlocal provider_dispatched, provider_process
+                                    nonlocal provider_dispatched, provider_process, provider_process_birth
                                     provider_dispatched = True
                                     provider_process = process
+                                    try:
+                                        provider_process_birth = self._provider_process_identity(process.pid)
+                                    except RuntimeError:
+                                        provider_process_birth = None
                                     if birth_callback is not None:
                                         birth_callback(process)
                                     if provider_handoff is not None:
@@ -32478,7 +32589,39 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     cleanup_result = dict(
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
-            if returncode == 0 and not protected_path_violation:
+            if (returncode == 1 and not protected_path_violation
+                    and provider_dispatched and provider_process_returned
+                    and command[:3] == [sys.executable, "-m", "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner"]
+                    and not provider_failure.get("exhausted", False)):
+                grok_turn_limit = self._grok_turn_limit_candidate_admission(
+                    task=task, state=state, attempt=attempt, command=command,
+                    process=provider_process, process_birth=provider_process_birth,
+                    workspace_path=worktree_path, log_path=log_path,
+                    started_at=started_at, branch_name=branch_name, baseline_ref=baseline_ref)
+                self._record_event("implementation_grok_turn_limit_observed", {
+                    "task_id": task.task_id, "attempt": attempt, **grok_turn_limit})
+                if grok_turn_limit.get("eligible") is True:
+                    if self.implementation_protected_paths:
+                        # Retain the original baseline through observation;
+                        # taking a fresh snapshot could adopt an intervening
+                        # protected mutation as if it were authorized.
+                        self._persist_implementation_protected_snapshot(
+                            task=task, attempt=attempt, workspace_path=worktree_path,
+                            snapshot=protected_path_snapshot)
+                protected_path_violation = self._implementation_protected_path_violation(
+                    task=task, attempt=attempt, workspace_path=worktree_path,
+                    before=protected_path_snapshot)
+                if protected_path_violation:
+                    validation_result = {"attempted": False, "passed": False,
+                        "returncode": 1, "results": [], "reason": "implementation_protected_path_mutated",
+                        "protected_path_violation": protected_path_violation}
+                    failed_preservation_result = self._preserve_protected_path_interrupted_worktree(
+                        worktree_path, branch_name, task, attempt,
+                        protected_path_violation, baseline_ref=baseline_ref)
+                    commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
+                    implementation_commit = str(commit_result.get("commit", ""))
+                    cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
+            if (returncode == 0 or grok_turn_limit.get("eligible") is True) and not protected_path_violation:
                 self._mark_worktree_lifecycle_settling(worktree_path)
                 self._mark_active_phase(
                     state,
@@ -32587,7 +32730,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                         state=state,
                                     )
                                 )
-                                if not validation_result.get(
+                                if not grok_turn_limit.get("eligible") and not validation_result.get(
                                     "passed",
                                     False,
                                 ):
@@ -32733,6 +32876,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             phase="pre_commit",
                         )
                     )
+                    if grok_turn_limit.get("eligible") and not self._grok_turn_limit_task_unheld(task, state):
+                        pre_commit_handoff = {**pre_commit_handoff, "allowed": False,
+                            "reasons": [*pre_commit_handoff.get("reasons", []), "turn_limit_task_held"]}
                     validation_result = {
                         **validation_result,
                         "candidate_handoff": {
@@ -32792,6 +32938,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     ),
                                 )
                             )
+                            if grok_turn_limit.get("eligible") and not self._grok_turn_limit_task_unheld(task, state):
+                                post_commit_handoff = {**post_commit_handoff, "allowed": False,
+                                    "reasons": [*post_commit_handoff.get("reasons", []), "turn_limit_task_held"]}
                             commit_result["candidate_handoff_guard"] = (
                                 post_commit_handoff
                             )
@@ -32954,6 +33103,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
                         cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
+                if (grok_turn_limit.get("eligible") is True
+                        and validation_result.get("attempted") is True
+                        and validation_result.get("passed") is True
+                        and implementation_commit
+                        and (merge_result.get("queued") is True or merge_result.get("merged") is True)):
+                    # This is the validated candidate/train outcome. The raw
+                    # provider exit remains 1 in the immutable observation.
+                    returncode = 0
+                    grok_turn_limit = {**grok_turn_limit, "validation_passed": True,
+                        "normal_merge_handoff": True, "implementation_commit": implementation_commit}
             elif (
                 not protected_path_violation
                 and provider_failure.get("exhausted", False)
@@ -34209,6 +34368,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "attempt_consumed": attempt_consumed,
             "provider_dispatched": provider_dispatched,
         }
+        if grok_turn_limit:
+            result["provider_returncode"] = 1
+            result["grok_turn_limit"] = grok_turn_limit
         if task_execution_receipt_path is not None:
             result["task_execution_receipt_path"] = str(
                 task_execution_receipt_path
