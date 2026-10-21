@@ -350,6 +350,8 @@ GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
 GROK_PRIVATE_PATHS_ENV = "IPFS_ACCELERATE_AGENT_GROK_PRIVATE_PATHS_JSON"
 GROK_PRIVATE_PATHS_VERSION = 1
+GROK_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_GROK_REASONING_EFFORT"
+GROK_REASONING_EFFORTS = frozenset({"low", "medium", "high"})
 _GROK_PRIVATE_PATH_MAX_PATTERNS = 64
 _GROK_PRIVATE_PATH_MAX_MATCHES = 1024
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
@@ -5694,6 +5696,38 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         verify_agent_implementation_sealed_control_plane,
     )
 
+    # This source-controlled preference belongs only to ordinary Grok task
+    # execution. Signed/ordered routes retain their exact command contracts.
+    # Validate before provider discovery, route recovery, or preflight effects.
+    grok_reasoning_effort = str(
+        os.environ.get(GROK_REASONING_EFFORT_ENV, "")
+    ).strip()
+    if grok_reasoning_effort:
+        if grok_reasoning_effort not in GROK_REASONING_EFFORTS:
+            print(
+                f"{GROK_REASONING_EFFORT_ENV} must be low, medium, or high",
+                file=sys.stderr,
+            )
+            return 2
+        if (
+            str(args.mode) != "agent"
+            or str(args.codex_fallback_command_json or "").strip()
+            or str(args.agent_implementation_route_json or "").strip()
+            or str(args.agent_implementation_recovery_json or "").strip()
+            or str(args.grok_failure_receipt_nonce or "").strip()
+            or bool(args.canonical_legacy_preflight_route)
+            or str(args.invocation_id or "").strip()
+            or str(args.invocation_binding_sha256 or "").strip()
+            or (args.receipt_fd_declared and GROK_PRIVATE_PATHS_ENV not in os.environ)
+        ):
+            print(
+                f"{GROK_REASONING_EFFORT_ENV} requires an ordinary Grok-only "
+                "agent route; protected, command-bound, and ordered fallback "
+                "routes cannot be overridden",
+                file=sys.stderr,
+            )
+            return 2
+
     try:
         codex_fallback_command = _parse_codex_fallback_command(
             str(args.codex_fallback_command_json),
@@ -7061,6 +7095,10 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 ),
                 deny_rules=GROK_ISOLATION_DENY_RULES,
             )
+            if grok_reasoning_effort:
+                if "--reasoning-effort" in cmd or "--effort" in cmd:
+                    raise ValueError("ordinary Grok reasoning effort is already bound")
+                cmd.extend(["--reasoning-effort", grok_reasoning_effort])
             primary_session_id = str(uuid.uuid4())
             cmd.extend(
                 [
