@@ -409,3 +409,131 @@ def test_dead_starting_process_recovers_interrupted_transition_once(
     assert report["status"]["schema"] == LIFECYCLE_STATUS_SCHEMA
     assert report["status"]["state"] == "starting"
     assert LifecycleStatus.from_dict(report["status"]).to_dict() == report["status"]
+
+
+def test_failed_restarts_resume_after_finite_exponential_backoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, _pid_path = _watchdog_fixture(
+        tmp_path,
+        _status("starting", pid=111),
+        pid_file_value=111,
+    )
+    supervisor.max_consecutive_restarts = 2
+    monkeypatch.setattr(watchdog_module, "pid_alive", lambda _pid: False)
+    attempts: list[dict[str, Any]] = []
+
+    def transition(lane_info: dict[str, Any]) -> dict[str, Any]:
+        attempts.append(lane_info)
+        return {"restarted": False, "reason": "temporarily_unavailable"}
+
+    supervisor.lifecycle_restart = transition
+    for _ in range(2):
+        assert supervisor._check_cycle()["reports"][0]["action"] == "restart_failed"
+    assert len(attempts) == 2
+
+    # A persistent failure increases the cooldown, but every cooldown ends.
+    # The longest pause is bounded at 32 health-check cycles.
+    for expected_wait in (1, 2, 4, 8, 16, 32, 32):
+        before = len(attempts)
+        for remaining in range(expected_wait, 0, -1):
+            lane = supervisor._check_cycle()["reports"][0]
+            assert lane["action"] == "backoff"
+            assert lane["backoff_cycles"] == remaining
+            assert len(attempts) == before
+        assert supervisor._check_cycle()["reports"][0]["action"] == "restart_failed"
+        assert len(attempts) == before + 1
+
+
+def test_lane_recovery_after_backoff_uses_the_fenced_transition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, _pid_path = _watchdog_fixture(
+        tmp_path,
+        _status("starting", pid=111),
+        pid_file_value=111,
+    )
+    supervisor.max_consecutive_restarts = 1
+    monkeypatch.setattr(watchdog_module, "pid_alive", lambda _pid: False)
+    attempts: list[dict[str, Any]] = []
+
+    def transition(lane_info: dict[str, Any]) -> dict[str, Any]:
+        attempts.append(lane_info)
+        if len(attempts) == 1:
+            return {"restarted": False, "reason": "temporarily_unavailable"}
+        return {"restarted": True, "new_pid": 333, "pid_persisted": True}
+
+    supervisor.lifecycle_restart = transition
+
+    assert supervisor._check_cycle()["reports"][0]["action"] == "restart_failed"
+    assert supervisor._check_cycle()["reports"][0]["action"] == "backoff"
+    recovered = supervisor._check_cycle()
+
+    assert recovered["restarts"] == 1
+    assert recovered["reports"][0]["action"] == "restarted"
+    assert recovered["reports"][0]["status"]["state"] == "starting"
+    assert len(attempts) == 2
+
+
+def test_healthy_lane_clears_restart_backoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, _pid_path = _watchdog_fixture(
+        tmp_path,
+        _status("healthy", pid=111),
+        pid_file_value=111,
+    )
+    supervisor.max_consecutive_restarts = 1
+    alive = False
+    monkeypatch.setattr(watchdog_module, "pid_alive", lambda _pid: alive)
+    supervisor.lifecycle_restart = lambda _info: {
+        "restarted": False,
+        "reason": "temporarily_unavailable",
+    }
+
+    assert supervisor._check_cycle()["reports"][0]["action"] == "restart_failed"
+    alive = True
+    assert supervisor._check_cycle()["reports"][0]["action"] == "none"
+    alive = False
+    assert supervisor._check_cycle()["reports"][0]["action"] == "restart_failed"
+
+
+@pytest.mark.parametrize("state", ("blocked", "stopped", "failed", "healthy"))
+def test_backoff_expiry_still_respects_canonical_holds_and_live_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+) -> None:
+    supervisor, pid_path = _watchdog_fixture(
+        tmp_path,
+        _status("starting", pid=111),
+        pid_file_value=111,
+    )
+    supervisor.max_consecutive_restarts = 1
+    alive = False
+    monkeypatch.setattr(watchdog_module, "pid_alive", lambda _pid: alive)
+    attempts: list[dict[str, Any]] = []
+
+    def transition(lane_info: dict[str, Any]) -> dict[str, Any]:
+        attempts.append(lane_info)
+        return {"restarted": False, "reason": "temporarily_unavailable"}
+
+    supervisor.lifecycle_restart = transition
+    assert supervisor._check_cycle()["reports"][0]["action"] == "restart_failed"
+    assert supervisor._check_cycle()["reports"][0]["action"] == "backoff"
+
+    if state == "healthy":
+        alive = True
+        status = _status(state, pid=111, heartbeat_at_ms=int((time.time() - 300) * 1000))
+    else:
+        status = _status(state, pid=111)
+    pid_path.with_name("agent_lane_status.json").write_text(
+        json.dumps(status), encoding="utf-8"
+    )
+
+    lane = supervisor._check_cycle()["reports"][0]
+    assert lane["action"] == ("fenced_stop_required" if alive else "state_preserved")
+    assert len(attempts) == 1

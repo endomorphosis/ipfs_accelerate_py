@@ -1748,6 +1748,7 @@ class SupervisorWatchdog:
         self.rescue_orchestrator = rescue_orchestrator
         self.rescue_execution_request_factory = rescue_execution_request_factory
         self._consecutive_restart_counts: dict[str, int] = {}
+        self._restart_backoff_remaining: dict[str, int] = {}
         self._recent_restarts: dict[str, tuple[int, float]] = {}
         self._generation = 0
         self._running = True
@@ -2298,13 +2299,14 @@ class SupervisorWatchdog:
                 count = self._consecutive_restart_counts.get(bundle_key, 0)
                 if report["action"] == "fenced_stop_required":
                     pass
-                elif count >= self.max_consecutive_restarts:
-                    # Exponential backoff: skip this cycle
-                    backoff_cycles = 2 ** min(count - self.max_consecutive_restarts, 5)
+                elif self._restart_backoff_remaining.get(bundle_key, 0) > 0:
+                    # Count down health-check cycles, not restart attempts.
+                    # Increasing the attempt count here would make this branch
+                    # permanent and prevent every subsequent recovery attempt.
+                    backoff_cycles = self._restart_backoff_remaining[bundle_key]
                     report["action"] = "backoff"
                     report["backoff_cycles"] = backoff_cycles
-                    # Decrement so we'll try again eventually
-                    self._consecutive_restart_counts[bundle_key] = count + 1
+                    self._restart_backoff_remaining[bundle_key] = backoff_cycles - 1
                 else:
                     restart_info = dict(lane_started or lane)
                     restart_info.setdefault("pid_path", str(pid_check["pid_path"]))
@@ -2347,9 +2349,14 @@ class SupervisorWatchdog:
                     else:
                         self._consecutive_restart_counts[bundle_key] = count + 1
                         observed_state = "failed"
+                    if count + 1 >= self.max_consecutive_restarts:
+                        self._restart_backoff_remaining[bundle_key] = 2 ** min(
+                            count + 1 - self.max_consecutive_restarts, 5
+                        )
             else:
                 # Healthy - reset consecutive restart counter
                 self._consecutive_restart_counts[bundle_key] = 0
+                self._restart_backoff_remaining.pop(bundle_key, None)
                 if suppressed_state:
                     if not alive and observed_state in {"paused", "draining", "stopping"}:
                         interrupted_state = observed_state

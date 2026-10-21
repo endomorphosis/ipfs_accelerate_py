@@ -33,7 +33,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 from typing import TextIO
@@ -130,6 +130,7 @@ ensure_provider_command_bindings(
 )
 
 DEFAULT_GROK_MODEL = "grok-4.7"
+GROK_RUNNER_MODULE = "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
 GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
@@ -664,7 +665,7 @@ def build_grok_quota_routed_agent_command(
     runner_argv = (
         ["-I", runner]
         if runner
-        else ["-m", "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"]
+        else ["-m", GROK_RUNNER_MODULE]
     )
     if runner and (not Path(runner).is_absolute() or not Path(runner).is_file()):
         raise ValueError("accepted Grok runner must be an absolute file")
@@ -4576,16 +4577,39 @@ def _isolated_codex_quota_fallback_home(
         raise
 
 
+def _live_provider_text_chunks(source: TextIO) -> Iterator[str]:
+    """Read fresh provider pipes without waiting for a full text buffer.
+
+    TextIOWrapper.read(size) can wait for ``size`` characters even after the
+    provider flushes a short progress message. Read at most one binary chunk
+    instead, retaining incomplete Unicode sequences until their next bytes.
+    In-memory text readers retain their ordinary read contract.
+    """
+
+    read1 = getattr(getattr(source, "buffer", None), "read1", None)
+    if not callable(read1):
+        while chunk := source.read(16 * 1024):
+            yield chunk
+        return
+    decoder = codecs.getincrementaldecoder(source.encoding or "utf-8")(
+        errors=source.errors or "replace"
+    )
+    while chunk := read1(16 * 1024):
+        rendered = decoder.decode(chunk, final=False)
+        if rendered:
+            yield rendered
+    rendered = decoder.decode(b"", final=True)
+    if rendered:
+        yield rendered
+
+
 def _stream_pipe(
     source: TextIO,
     destination: TextIO,
 ) -> None:
     """Tee a child stream for operator visibility only."""
 
-    while True:
-        chunk = source.read(16 * 1024)
-        if not chunk:
-            break
+    for chunk in _live_provider_text_chunks(source):
         destination.write(chunk)
         destination.flush()
 
@@ -4642,13 +4666,7 @@ def _stream_provider_pipe_without_reserved_records(
         prefix_buffer = ""
         at_line_start = False
 
-    while True:
-        chunk = source.read(16 * 1024)
-        if not chunk:
-            if prefix_buffer:
-                flush_prefix(line_complete=True)
-            destination.flush()
-            return
+    for chunk in _live_provider_text_chunks(source):
         parts = sanitized(chunk).split("\n")
         for index, piece in enumerate(parts):
             line_complete = index < len(parts) - 1
@@ -4663,6 +4681,9 @@ def _stream_provider_pipe_without_reserved_records(
                 destination.write("\n")
                 at_line_start = True
         destination.flush()
+    if prefix_buffer:
+        flush_prefix(line_complete=True)
+    destination.flush()
 
 
 def _run_grok_with_typed_failure_capture(
