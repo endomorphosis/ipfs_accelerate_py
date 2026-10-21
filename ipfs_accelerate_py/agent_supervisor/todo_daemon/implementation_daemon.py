@@ -3020,6 +3020,30 @@ def normalize_task_header_prefix(value: str) -> str:
     return f"## {stripped}"
 
 
+AUTOMATIC_RETRY_REARM_ENV = "IPFS_ACCELERATE_AGENT_AUTOMATIC_RETRY_REARM"
+
+
+def automatic_retry_rearm_enabled(
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """Read the trusted campaign policy without changing retry authority.
+
+    An absent setting preserves legacy recovery. Exact ``0`` retains spent
+    ordinary-task attempts across automatic recovery; exact ``1`` enables
+    legacy recovery. Invalid explicit settings fail closed before mutation.
+    Confirmed non-consuming deferrals and genuinely new canonical tasks keep
+    their existing, separate accounting contracts.
+    """
+
+    environment = os.environ if environ is None else environ
+    value = environment.get(AUTOMATIC_RETRY_REARM_ENV)
+    if value is None:
+        return True
+    if value not in ("0", "1"):
+        raise ValueError(f"{AUTOMATIC_RETRY_REARM_ENV} must be exactly 0 or 1")
+    return value == "1"
+
+
 RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
     r"^Resolve\s+(?P<kind>validation|implementation|merge)\s+retry-budget\s+failure\s+for\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\b",
     re.IGNORECASE,
@@ -5189,6 +5213,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
+        automatic_retry_rearm_enabled()
         configured_task_source = task_source
         if configured_task_source is None and task_source_kind:
             configured_task_source = todo_path
@@ -10985,6 +11010,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Consume completed repair receipts once in each durable lane."""
 
+        if not automatic_retry_rearm_enabled():
+            return [], []
         latest_repairs: dict[str, tuple[PortalTask, str]] = {}
         tasks_by_id = {task.task_id: task for task in tasks}
         excluded = {str(task_id) for task_id in excluded_task_ids}
@@ -11213,6 +11240,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         board completion receipt.
         """
 
+        if not automatic_retry_rearm_enabled():
+            return []
         revision = str(recovery_revision or "").strip()
         if self.max_task_attempts <= 0 or not revision:
             return []
@@ -11594,6 +11623,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         it from scratch.
         """
 
+        if not automatic_retry_rearm_enabled():
+            return []
         revision = str(recovery_revision or "").strip()
         if (
             self.max_task_attempts <= 0
@@ -11870,6 +11901,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         canonical task at most once.
         """
 
+        if not automatic_retry_rearm_enabled():
+            return []
         revision = str(recovery_revision or "").strip()
         if self.max_task_attempts <= 0 or not revision:
             return []
@@ -12248,6 +12281,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         validation. Prefer re-dispatching the unfinished attempt number.
         """
 
+        rearm_enabled = automatic_retry_rearm_enabled()
         task_id = str(task_id or "").strip()
         attempt_number = max(0, int(attempt or 0))
         if not task_id or attempt_number <= 0:
@@ -12282,6 +12316,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "protected_scoped_attempt": True,
                 "attempt": attempt_number,
                 "task_id": task_id,
+            }
+        if not rearm_enabled:
+            return {
+                "consumed": True,
+                "released": False,
+                "reason": "automatic_retry_rearm_disabled",
+                "attempt": attempt_number,
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
             }
         released_to = max(0, attempt_number - 1)
         previous_display = int(
@@ -15248,6 +15291,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def run_once(self) -> dict[str, Any]:
         """Run one pass and establish its durable file-cursor boundary."""
 
+        automatic_retry_rearm_enabled()
         retained = self._retained_provider_capacity_deferral()
         if retained is not None:
             return {"implementation_result": retained}
@@ -17276,6 +17320,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
 
     def _run_once(self) -> dict[str, Any]:
+        automatic_retry_rearm_enabled()
         authority_guard: dict[str, Any] = {}
         if self.manual_completion_authority_task_ids:
             authority_guard = self._refresh_manual_completion_authority_guard()
