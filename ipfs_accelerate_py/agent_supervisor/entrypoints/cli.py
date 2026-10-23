@@ -270,9 +270,17 @@ def run_supervisor_cli(
                 _emit(env, output_json=output_json, stream=stdout)
                 return EXIT_SUCCESS
 
+            from .facade import prompt_repository_root
+
+            explicit_repository = getattr(args, "repository", None)
+            # An explicit prompt target does not have to contain the
+            # self-host scheduler file. Open still checks that file when
+            # it is present. Other commands stay activation-gated.
+            require_activation = not (command == "run" and explicit_repository)
             supervisor = Supervisor.open(
-                repository=getattr(args, "repository", None),
+                repository=prompt_repository_root(explicit_repository),
                 state_root=getattr(args, "state_root", None),
+                require_activation=require_activation,
             )
 
         composition_cid = getattr(supervisor, "composition_cid", None)
@@ -281,13 +289,23 @@ def run_supervisor_cli(
             prompt = _resolve_prompt(args, stdin=stdin)
             run = supervisor.run(prompt)
             identities = dict(getattr(run, "identities", {}) or {})
+            worker_count = int(identities.get("active_worker_count") or 0)
+            supervisor_pid = int(identities.get("supervisor_pid") or 0)
+            if run.state == "running" and worker_count > 0 and supervisor_pid > 1:
+                summary = (
+                    f"supervisor {supervisor_pid} running, started "
+                    f"{worker_count} workers run_id={run.run_id}"
+                )
+            else:
+                summary = f"run admitted run_id={run.run_id}"
             payload = {
                 "run_id": run.run_id,
                 "state": run.state,
                 "health": run.health,
                 "event_cursor": run.event_cursor,
                 "effect_receipt_cids": list(run.effect_receipt_cids),
-                "summary": f"run admitted run_id={run.run_id}",
+                "summary": summary,
+                "active_worker_count": worker_count,
                 "objective_cid": identities.get("objective_cid"),
                 "workflow_request_cid": identities.get("workflow_request_cid"),
                 "plan_create_request_cid": identities.get(

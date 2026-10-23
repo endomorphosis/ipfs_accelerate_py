@@ -388,3 +388,79 @@ def test_isolated_grok_home_worktree_skips_custom_deny_profile(
         assert env["GROK_HOME"] == temporary_home.name
     finally:
         temporary_home.cleanup()
+
+
+def test_bwrap_deny_mounts_skip_symlink_entrypoints(tmp_path: Path) -> None:
+    real = tmp_path / "downloads" / "grok-real"
+    real.parent.mkdir()
+    real.write_text("#!/bin/sh\n", encoding="utf-8")
+    real.chmod(0o755)
+    link_dir = tmp_path / ".local" / "bin"
+    link_dir.mkdir(parents=True)
+    link = link_dir / "grok"
+    link.symlink_to(real)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+    state = tmp_path / "state"
+    state.mkdir()
+    sentinel = state / "sentinel"
+    sentinel.write_text("sentinel\n", encoding="utf-8")
+    denied = grok_cli_runner._grok_isolation_deny_paths(
+        base_env={"PATH": str(link_dir), "HOME": str(tmp_path)},
+        codex_fallback_command=(),
+        grok_home=state,
+        sentinel_path=sentinel,
+        workspace=workspace,
+    )
+    mounted = tuple(
+        path for path in denied if grok_cli_runner._bwrap_exact_mount_path(path)
+    )
+    assert link.resolve(strict=True) == real.resolve(strict=True)
+    assert real.resolve(strict=True) in mounted
+    assert link not in mounted
+    assert Path("/opt/ipfs-accelerate/grok") in denied
+    assert not grok_cli_runner._bwrap_exact_mount_path(
+        Path("/opt/ipfs-accelerate/grok")
+    )
+    assert not grok_cli_runner._bwrap_exact_mount_path(link)
+
+
+def test_sandbox_profile_mounts_sentinel_not_private_home(tmp_path: Path) -> None:
+    real = tmp_path / "downloads" / "grok-real"
+    real.parent.mkdir()
+    real.write_text("#!/bin/sh\n", encoding="utf-8")
+    real.chmod(0o755)
+    link_dir = tmp_path / ".local" / "bin"
+    link_dir.mkdir(parents=True)
+    link = link_dir / "grok"
+    link.symlink_to(real)
+    user = tmp_path / "user"
+    auth = user / ".grok" / "auth.json"
+    auth.parent.mkdir(parents=True)
+    auth.write_text("{}\n", encoding="utf-8")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+    temporary_home, _env, policy_path, denied = grok_cli_runner._isolated_grok_home(
+        base_env={"PATH": str(link_dir), "HOME": str(user)},
+        child_env={"PATH": str(link_dir)},
+        codex_fallback_command=(),
+        workspace=workspace,
+    )
+    try:
+        grok_home = Path(temporary_home.name)
+        sentinel = grok_home / "alternate-provider-deny-sentinel"
+        text = Path(policy_path).read_text(encoding="utf-8")
+        assert json.dumps(str(grok_home)) not in text
+        assert json.dumps(str(sentinel)) in text
+        assert json.dumps(str(real.resolve(strict=True))) not in text
+        assert json.dumps("/proc") not in text
+        assert json.dumps("/dev") not in text
+        assert json.dumps(str(auth.resolve(strict=True))) not in text
+        assert grok_home in denied
+        assert sentinel in denied
+        assert real.resolve(strict=True) in denied
+        assert auth.resolve(strict=True) in denied
+    finally:
+        temporary_home.cleanup()
