@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
     build_prompt_goal_provider_request,
     deterministic_prompt_goal_graph,
     generate_prompt_goal_graph,
+    plan_with_intent_autoencoder,
     parse_prompt_goal_graph,
 )
 from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
@@ -684,3 +685,115 @@ def test_explicit_unavailable_capability_skips_provider() -> None:
     assert result.used_fallback
     assert result.receipt.provider.status == "unavailable"
     assert result.receipt.provider.reason_code == "capability_unavailable"
+
+
+def test_deterministic_multi_file_acceptance_stays_on_its_task() -> None:
+    request = _request(allow_model=False)
+    scan = _scan(
+        request,
+        evidence=(
+            _evidence(
+                "scan:alpha",
+                summary="alpha retry planner",
+                paths=("pkg/alpha.py",),
+            ),
+            _evidence(
+                "scan:alpha-symbol",
+                summary="alpha helper symbol",
+                paths=("pkg/alpha.py",),
+            ),
+            _evidence("scan:beta", paths=("pkg/beta.py",)),
+        ),
+        counts={"files": 2, "scan_bytes": 2_048, "symbols": 4},
+    )
+
+    graph = deterministic_prompt_goal_graph(request, scan)
+
+    assert len(graph.tasks) == 2
+    assert len({task.outputs[0].path for task in graph.tasks}) == 2
+    assert len(graph.root_goal.acceptance) == 2
+    task_keys = {
+        task.task_key: {item.validation_key for item in task.validations}
+        for task in graph.tasks
+    }
+    covered = set()
+    for task in graph.tasks:
+        assert len(task.acceptance) == 1
+        criterion = task.acceptance[0]
+        assert set(criterion.validation_keys) <= task_keys[task.task_key]
+        assert set(criterion.evidence_cids) <= set(task.evidence_cids)
+        covered.add(criterion.criterion_key)
+    assert {item.criterion_key for item in graph.root_goal.acceptance} == covered
+
+
+def test_prompt_focus_tasks_only_the_named_file() -> None:
+    request = _request(allow_model=False)
+    scan = _scan(
+        request,
+        evidence=(
+            _evidence("scan:alpha", paths=("pkg/alpha.py",)),
+            _evidence("scan:beta", paths=("pkg/beta.py",)),
+        ),
+        counts={"files": 2, "scan_bytes": 2_048, "symbols": 4},
+    )
+
+    graph = deterministic_prompt_goal_graph(
+        request, scan, focus_text="Change pkg/alpha.py and leave beta alone."
+    )
+
+    assert [task.outputs[0].path for task in graph.tasks] == ["pkg/alpha.py"]
+
+
+def test_prompt_without_a_named_file_tasks_one_path() -> None:
+    request = _request(allow_model=False)
+    scan = _scan(
+        request,
+        evidence=(
+            _evidence("scan:alpha", paths=("pkg/alpha.py",)),
+            _evidence("scan:beta", paths=("pkg/beta.py",)),
+        ),
+        counts={"files": 2, "scan_bytes": 2_048, "symbols": 4},
+    )
+
+    graph = deterministic_prompt_goal_graph(
+        request, scan, focus_text="Improve validation gates"
+    )
+
+    assert len(graph.tasks) == 1
+
+
+def test_intent_autoencoder_plans_one_subgoal_per_projection() -> None:
+    request = _request(allow_model=False)
+    scan = _scan(
+        request,
+        evidence=(
+            _evidence("scan:alpha", paths=("pkg/alpha.py",)),
+            _evidence("scan:beta", paths=("pkg/beta.py",)),
+        ),
+        counts={"files": 2, "scan_bytes": 2_048, "symbols": 4},
+    )
+
+    graph, summary = plan_with_intent_autoencoder(
+        request, scan, focus_text="Improve validation gates"
+    )
+
+    assert summary["status"] == "fail_open_no_checkpoint"
+    assert summary["learned_status"] == "not_configured"
+    assert summary["projection_ids"] == [
+        "intent-route/facts/v1",
+        "intent-route/workflow-temporal/v1",
+        "intent-route/action-hoare/v1",
+    ]
+    assert summary["subgoal_count"] == 3
+    assert len(graph.tasks) == 1
+    assert len(graph.goals) == 4
+    assert graph.root_goal.parent_goal_cid == ""
+    assert graph.root_goal.provenance["planner"] == "intent-autoencoder"
+    assert graph.root_goal.provenance["execution_authority"] is False
+    assert graph.root_goal.provenance["completion_authority"] is False
+    owner = next(goal for goal in graph.goals if goal.goal_cid == graph.tasks[0].goal_cid)
+    assert owner.goal_key == "subgoal:3"
+    assert owner.provenance["logic_family"] == "program"
+    assert owner.provenance["projection_id"] == "intent-route/action-hoare/v1"
+    assert owner.parent_goal_cid
+    assert owner.parent_goal_cid != graph.root_goal.goal_cid

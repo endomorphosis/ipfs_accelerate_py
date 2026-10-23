@@ -13,7 +13,7 @@ import hashlib
 import json
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
@@ -1917,7 +1917,14 @@ def _fallback_output_paths(
             for path in item.repository_paths
             if _within_scope(path, scope) and path not in protected
         )
-    candidates = tuple(path for _score, path in sorted(set(ranked)))
+    seen: set[str] = set()
+    unique: list[str] = []
+    for _score, path in sorted(set(ranked)):
+        if path in seen:
+            continue
+        seen.add(path)
+        unique.append(path)
+    candidates = tuple(unique)
     if not candidates:
         raise PromptWorkflowContractError(
             "deterministic planning requires an in-scope, non-protected "
@@ -1926,24 +1933,82 @@ def _fallback_output_paths(
     return candidates[: request.budget.max_tasks]
 
 
+def _prompt_names_path(path: str, lowered_prompt: str) -> bool:
+    name = PurePosixPath(path).name.casefold()
+    if not name:
+        return False
+    if "/" in path and path.casefold() in lowered_prompt:
+        return True
+    return (
+        re.search(
+            rf"(?<![a-z0-9_.-]){re.escape(name)}(?![a-z0-9_.-])",
+            lowered_prompt,
+        )
+        is not None
+    )
+
+
+def _paths_for_prompt(
+    output_paths: tuple[str, ...], focus_text: str
+) -> tuple[str, ...]:
+    """Keep paths the prompt names, or one path when it names none.
+
+    An empty focus preserves the ranked evidence list. A prompt that names
+    repository paths tasks only those paths. Any other prompt tasks one path
+    so a run does not start a worker per unscored file.
+    """
+
+    text = str(focus_text or "").replace("\0", "").strip()
+    if not text:
+        return output_paths
+    lowered = text.casefold()
+    named = tuple(path for path in output_paths if _prompt_names_path(path, lowered))
+    if named:
+        return named
+    return output_paths[:1]
+
+
 def deterministic_prompt_goal_graph(
     request: PromptWorkflowRequest,
     scan: DirectoryScanReceipt,
     *,
     config: PromptGoalPlannerConfig | None = None,
     reason_code: str = "deterministic_requested",
+    focus_text: str = "",
 ) -> PromptGoalGraph:
     """Create a stable schema-equivalent graph without provider inference."""
 
     resolved = config or PromptGoalPlannerConfig()
     _validate_request_scan_pair(request, scan)
     evidence = _select_evidence(request, scan, resolved)
+    scope = _scan_scope(request)
+    output_paths = _paths_for_prompt(
+        _fallback_output_paths(
+            request, evidence, frozenset(resolved.protected_paths)
+        ),
+        focus_text,
+    )
+    # Evidence handles repeat every admitted path. The plan budget is smaller
+    # than the scan manifest, so a repository-sized path list keeps only the
+    # paths this deterministic plan will actually task.
+    path_bytes = sum(
+        len(path.encode("utf-8"))
+        for item in evidence
+        for path in item.repository_paths
+    )
+    if path_bytes > request.budget.max_serialized_bytes // 4:
+        tasked = set(output_paths)
+        evidence = tuple(
+            replace(
+                item,
+                repository_paths=tuple(
+                    path for path in item.repository_paths if path in tasked
+                ),
+            )
+            for item in evidence
+        )
     prompt_item = next(
         item for item in evidence if item.evidence_key == "prompt:request"
-    )
-    scope = _scan_scope(request)
-    output_paths = _fallback_output_paths(
-        request, evidence, frozenset(resolved.protected_paths)
     )
     scope_path = scope or str(PurePosixPath(output_paths[0]).parent)
     test_paths = tuple(
@@ -1965,11 +2030,20 @@ def deterministic_prompt_goal_graph(
         validation_for(path, index)
         for index, path in enumerate(output_paths, start=1)
     )
-    acceptance = PromptAcceptanceRecord(
-        criterion_key="criterion:bounded-plan",
-        criterion="The proposed scoped change passes the declared deterministic validation.",
-        evidence_cids=(prompt_item.evidence_cid,),
-        validation_keys=tuple(item.validation_key for item in validations),
+    # Each criterion names only its own validation. A task acceptance cannot
+    # cite another task's validation key, and goal coverage requires the same
+    # criterion key on the task that owns that validation.
+    acceptances = tuple(
+        PromptAcceptanceRecord(
+            criterion_key=f"criterion:bounded-plan:{index}",
+            criterion=(
+                "The proposed scoped change passes the declared "
+                "deterministic validation."
+            ),
+            evidence_cids=(prompt_item.evidence_cid,),
+            validation_keys=(validation.validation_key,),
+        )
+        for index, validation in enumerate(validations, start=1)
     )
     objective = prompt_item.summary
     if _INSTRUCTION_RE.search(objective):
@@ -1982,7 +2056,7 @@ def deterministic_prompt_goal_graph(
         objective=objective,
         rationale="A deterministic plan preserves progress without provider authority.",
         scope_paths=(scope_path,) if scope_path != "." else output_paths,
-        acceptance=(acceptance,),
+        acceptance=acceptances,
         evidence_cids=(prompt_item.evidence_cid,),
         risks=("Repository semantics may require later admission-time refinement.",),
         assumptions=("Pinned request and scan identities remain current.",),
@@ -2008,10 +2082,17 @@ def deterministic_prompt_goal_graph(
         zip(output_paths, validations), start=1
     ):
         supporting = tuple(
-            item.evidence_cid
-            for item in evidence
-            if output_path in item.repository_paths
-        ) or (prompt_item.evidence_cid,)
+            dict.fromkeys(
+                (
+                    *(
+                        item.evidence_cid
+                        for item in evidence
+                        if output_path in item.repository_paths
+                    ),
+                    prompt_item.evidence_cid,
+                )
+            )
+        )
         tasks.append(
             PromptTaskRecord(
                 task_key=f"task:codebase-evidence:{index}",
@@ -2040,7 +2121,7 @@ def deterministic_prompt_goal_graph(
                     ),
                 ),
                 validations=(validation,),
-                acceptance=(acceptance,),
+                acceptance=(acceptances[index - 1],),
                 evidence_cids=supporting,
                 policy_roots=policy_roots,
                 priority="P1",
@@ -2084,6 +2165,287 @@ def deterministic_prompt_goal_graph(
             "deterministic graph exceeds max_serialized_bytes"
         )
     return graph
+
+
+_SEMANTIC_INTENT_REPORTS = frozenset(
+    {
+        "intent-instruction-roundtrip/v1",
+        "intent-instruction-copy-roundtrip/v1",
+        "intent-instruction-extended-roundtrip/v1",
+        "intent-instruction-extended-roundtrip/v2",
+    }
+)
+
+
+def _intent_autoencoder_advice(focus_text: str) -> dict[str, Any]:
+    """Ask the datasets intent autoencoder once. A missing model does not raise."""
+
+    text = str(focus_text or "").replace("\0", "").strip()
+    if not text:
+        return {"status": "unavailable", "report": None}
+    try:
+        import os
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.intent_autoencoder_advisor import (
+            prepare_intent_advice,
+        )
+
+        kwargs: dict[str, Any] = {"instruction": text, "enabled": True}
+        raw_path = os.environ.get(
+            "IPFS_ACCELERATE_INTENT_CHECKPOINT_DESCRIPTOR", ""
+        ).strip()
+        if raw_path:
+            path = Path(raw_path)
+            if path.is_file() and not path.is_symlink():
+                kwargs["checkpoint_descriptor_path"] = path
+        advice = prepare_intent_advice(**kwargs)
+    except Exception:
+        return {"status": "fail_open_optional_error", "report": None}
+    if not isinstance(advice, dict):
+        return {"status": "fail_open_optional_error", "report": None}
+    return advice
+
+
+def _intent_projection_rows(
+    advice: Mapping[str, Any],
+) -> tuple[tuple[str, str], ...]:
+    report = advice.get("report")
+    if not isinstance(report, dict):
+        return ()
+    if report.get("schema") in _SEMANTIC_INTENT_REPORTS:
+        targets = report.get("projections")
+    else:
+        deterministic = report.get("deterministic")
+        if (
+            not isinstance(deterministic, dict)
+            or deterministic.get("status") != "deterministic_declarations"
+        ):
+            return ()
+        targets = deterministic.get("targets")
+    if not isinstance(targets, dict):
+        return ()
+    rows = targets.get("projections")
+    if not isinstance(rows, list):
+        return ()
+    selected: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        projection_id = str(row.get("projection_id") or "").strip()
+        family = str(row.get("logic_family") or "").strip()
+        if (
+            not projection_id
+            or not family
+            or projection_id in seen
+            or len(projection_id) > 160
+            or len(family) > 80
+            or any(char in "\n\r\0" for char in projection_id + family)
+        ):
+            continue
+        seen.add(projection_id)
+        selected.append((projection_id, family))
+        if len(selected) == 8:
+            break
+    programs = [
+        item
+        for item in selected
+        if item[1] == "program" or "action-hoare" in item[0]
+    ]
+    others = [item for item in selected if item not in programs]
+    return tuple(others + programs)
+
+
+def _learned_autoencoder_status(advice: Mapping[str, Any]) -> str:
+    report = advice.get("report")
+    if not isinstance(report, dict):
+        return ""
+    learned = report.get("learned")
+    if isinstance(learned, dict) and isinstance(learned.get("status"), str):
+        return learned["status"]
+    return ""
+
+
+def _retarget_tasks(
+    tasks: tuple[PromptTaskRecord, ...],
+    leaf: PromptGoalRecord,
+    extra_acceptance: tuple[PromptAcceptanceRecord, ...],
+) -> tuple[PromptTaskRecord, ...]:
+    anchor_key = min(task.task_key for task in tasks)
+    pending = list(tasks)
+    created: dict[str, PromptTaskRecord] = {}
+    while pending:
+        rest: list[PromptTaskRecord] = []
+        progressed = False
+        for task in pending:
+            if any(dep not in created for dep in task.dependency_task_cids):
+                rest.append(task)
+                continue
+            acceptance = task.acceptance
+            if task.task_key == anchor_key and extra_acceptance:
+                acceptance = tuple(task.acceptance) + extra_acceptance
+            provenance = {
+                **dict(task.provenance),
+                "planner": "intent-autoencoder",
+                "subgoal_key": leaf.goal_key,
+                "execution_authority": False,
+                "completion_authority": False,
+            }
+            created[task.task_cid] = replace(
+                task,
+                goal_cid=leaf.goal_cid,
+                dependency_task_cids=tuple(
+                    created[dep].task_cid for dep in task.dependency_task_cids
+                ),
+                acceptance=acceptance,
+                provenance=provenance,
+            )
+            progressed = True
+        if not progressed:
+            raise PromptGraphError(
+                "task dependencies are not a tree the autoencoder can retarget"
+            )
+        pending = rest
+    return tuple(created[task.task_cid] for task in tasks)
+
+
+def _graph_with_autoencoder_subgoals(
+    base: PromptGoalGraph,
+    advice: Mapping[str, Any],
+    rows: tuple[tuple[str, str], ...],
+    status: str,
+) -> PromptGoalGraph:
+    report = advice.get("report") if isinstance(advice.get("report"), dict) else {}
+    learned = _learned_autoencoder_status(advice)
+    report_sha = str(report.get("report_sha256") or "")
+    projection_ids = [projection_id for projection_id, _family in rows]
+    root = replace(
+        base.root_goal,
+        provenance={
+            **dict(base.root_goal.provenance),
+            "planner": "intent-autoencoder",
+            "autoencoder_status": status,
+            "learned_status": learned,
+            "report_sha256": report_sha,
+            "projection_ids": projection_ids,
+            "execution_authority": False,
+            "completion_authority": False,
+            "proof_authority": False,
+        },
+    )
+    anchor = min(base.tasks, key=lambda task: task.task_key)
+    template = anchor.acceptance[0]
+    parent = root
+    subgoals: list[PromptGoalRecord] = []
+    subgoal_acceptance: list[PromptAcceptanceRecord] = []
+    for index, (projection_id, family) in enumerate(rows, start=1):
+        # A repeated criterion id is a conflicting evidence requirement once
+        # more than one subgoal carries it. Each projection gets its own id,
+        # and the anchor task repeats that id so admission can see coverage.
+        acceptance = PromptAcceptanceRecord(
+            criterion_key=f"criterion:autoencoder:{index}",
+            criterion=(
+                f"The {family} projection remains covered by the admitted validation."
+            ),
+            evidence_cids=template.evidence_cids,
+            validation_keys=template.validation_keys,
+        )
+        subgoal_acceptance.append(acceptance)
+        subgoal = PromptGoalRecord(
+            goal_key=f"subgoal:{index}",
+            parent_goal_cid=parent.goal_cid,
+            dependency_goal_cids=(),
+            title=f"Subgoal {family}",
+            objective=(
+                f"Hold the {family} projection {projection_id} "
+                "over the admitted repository tasks."
+            ),
+            rationale=(
+                "The intent autoencoder projection names this planning layer. "
+                "It does not grant execution or completion authority."
+            ),
+            scope_paths=root.scope_paths,
+            acceptance=(acceptance,),
+            evidence_cids=root.evidence_cids,
+            risks=("Projection advice is unverified candidate context.",),
+            assumptions=(
+                "Admission still checks scope, policy, and proof obligations.",
+            ),
+            provenance={
+                "planner": "intent-autoencoder",
+                "projection_id": projection_id,
+                "logic_family": family,
+                "autoencoder_status": status,
+                "learned_status": learned,
+                "report_sha256": report_sha,
+                "execution_authority": False,
+                "completion_authority": False,
+                "proof_authority": False,
+            },
+        )
+        subgoals.append(subgoal)
+        parent = subgoal
+    return PromptGoalGraph(
+        request_cid=base.request_cid,
+        scan_cid=base.scan_cid,
+        program_root=base.program_root,
+        policy_roots=base.policy_roots,
+        goals=(root, *subgoals),
+        tasks=_retarget_tasks(base.tasks, subgoals[-1], tuple(subgoal_acceptance)),
+        evidence=base.evidence,
+        unresolved_questions=base.unresolved_questions,
+        uncertainty_debt=tuple(base.uncertainty_debt)
+        + (
+            "Intent autoencoder projections are unverified and grant no execution authority.",
+        ),
+    )
+
+
+def plan_with_intent_autoencoder(
+    request: PromptWorkflowRequest,
+    scan: DirectoryScanReceipt,
+    *,
+    config: PromptGoalPlannerConfig | None = None,
+    reason_code: str = "intent_autoencoder",
+    focus_text: str = "",
+) -> tuple[PromptGoalGraph, dict[str, Any]]:
+    """Plan one root, one subgoal per intent projection, and the focused tasks.
+
+    The numerical checkpoint is optional. Without one, the datasets intent
+    frontend still supplies the projection families. Neither path grants
+    execution or completion authority, and repository tasks stay on the
+    focused scan paths.
+    """
+
+    base = deterministic_prompt_goal_graph(
+        request,
+        scan,
+        config=config,
+        reason_code=reason_code,
+        focus_text=focus_text,
+    )
+    advice = _intent_autoencoder_advice(focus_text)
+    status = str(advice.get("status") or "unavailable")
+    rows = _intent_projection_rows(advice)
+    summary = {
+        "status": status,
+        "projection_ids": [projection_id for projection_id, _family in rows],
+        "subgoal_count": len(rows),
+        "learned_status": _learned_autoencoder_status(advice),
+    }
+    if not rows:
+        return base, summary
+    try:
+        graph = _graph_with_autoencoder_subgoals(base, advice, rows, status)
+    except (PromptGraphError, PromptWorkflowBoundsError, PromptWorkflowContractError):
+        summary["subgoal_count"] = 0
+        summary["projection_ids"] = []
+        return base, summary
+    if len(graph.canonical_bytes()) > request.budget.max_serialized_bytes:
+        summary["subgoal_count"] = 0
+        summary["projection_ids"] = []
+        return base, summary
+    return graph, summary
 
 
 def _default_router(
@@ -3223,4 +3585,5 @@ __all__ = [
     "parse_goal_planning_response",
     "parse_prompt_goal_graph",
     "plan_prompt_goal_graph",
+    "plan_with_intent_autoencoder",
 ]

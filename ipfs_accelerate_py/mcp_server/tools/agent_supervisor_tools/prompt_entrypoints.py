@@ -98,15 +98,23 @@ def _authorize_repository(repository: str | None) -> Path | None:
     raise PathInjectionDenied(f"repository path not allowlisted: {candidate}")
 
 
-def _open_supervisor(*, repository: str | None = None) -> Any:
+def _open_supervisor(
+    *, repository: str | None = None, require_activation: bool = True
+) -> Any:
     # Always enforce allowlist policy before any facade use (including tests).
     root = _authorize_repository(repository)
     with _lock:
         if _injected_supervisor is not None:
             return _injected_supervisor
-    from ipfs_accelerate_py.agent_supervisor.entrypoints.facade import Supervisor
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.facade import (
+        Supervisor,
+        prompt_repository_root,
+    )
 
-    return Supervisor.open(repository=root)
+    if root is None:
+        root = prompt_repository_root(None)
+        require_activation = True
+    return Supervisor.open(repository=root, require_activation=require_activation)
 
 
 def _prompt_schema(*, require_prompt: bool = True) -> dict[str, Any]:
@@ -158,7 +166,10 @@ async def agent_supervisor_run(
     try:
         if not isinstance(prompt, str) or not prompt.strip():
             return _result_err("prompt must be a non-empty string", code="invalid")
-        supervisor = _open_supervisor(repository=repository)
+        supervisor = _open_supervisor(
+            repository=repository,
+            require_activation=not repository,
+        )
         run = supervisor.run(prompt)
         identities = dict(getattr(run, "identities", {}) or {})
         return _result_ok(

@@ -32,6 +32,16 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.runtime_factory import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def _reap_prompt_workers():
+    yield
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        stop_tracked_prompt_workers,
+    )
+
+    stop_tracked_prompt_workers()
+
+
 def test_composition_manifest_is_body_free_and_stable() -> None:
     m1 = sf.build_production_composition_manifest(
         generation=1,
@@ -201,7 +211,11 @@ def test_run_without_complete_launch_plan_uses_observed_bindings(
     assert run.identities["plan_create_request_cid"]
     assert run.identities["preview_receipt_cid"]
     assert run.identities["plan_root_cid"]
-    assert run.state == "admitted"
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["active_worker_count"] >= 1
+    assert run.identities["worker_repository_edits"] is False
+    assert run.identities["authorizes_execution"] is False
     assert run.state.lower() not in {"completed", "complete"}
     assert run.identities["completion_authority"] is False
     assert run.identities["model_assertion_cannot_complete"] is True
@@ -211,11 +225,739 @@ def test_run_without_complete_launch_plan_uses_observed_bindings(
     assert prompt not in blob
 
 
+def test_run_continues_when_plan_create_lacks_only_ir_materials(
+    tmp_path: Path,
+) -> None:
+    supervisor, prompt = _production_supervisor(
+        tmp_path,
+        create_service=_ReviewOnlyCreateService(),
+    )
+    run = supervisor.run(prompt)
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["plan_create_status"] == "review_only"
+    assert run.identities["completion_authority"] is False
+    assert run.identities["authorizes_execution"] is False
+    assert run.state.lower() not in {"completed", "complete"}
+
+
+def test_run_continues_when_create_plan_join_is_only_unbacked(
+    tmp_path: Path,
+) -> None:
+    supervisor, prompt = _production_supervisor(
+        tmp_path,
+        create_service=_ReviewOnlyCreateService(
+            (
+                "execution_plan_not_admitted",
+                "ir_admission_materials_absent",
+                "parallel_plan_rejected",
+                "parallel:resource_infeasible",
+                "parallel:stale_capacity",
+            )
+        ),
+    )
+    run = supervisor.run(prompt)
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["active_worker_count"] >= 1
+    assert run.identities["plan_create_status"] == "review_only"
+    assert run.identities["authorizes_execution"] is False
+    assert run.identities["completion_authority"] is False
+
+
+def test_run_blocks_when_plan_create_has_another_rejection(
+    tmp_path: Path,
+) -> None:
+    supervisor, prompt = _production_supervisor(
+        tmp_path,
+        create_service=_ReviewOnlyCreateService(
+            ("ir_admission_materials_absent", "structural_admission_failed")
+        ),
+    )
+    with pytest.raises(facade_mod.SupervisorUnavailableError, match="plan create"):
+        supervisor.run(prompt)
+
+
 def test_start_without_bound_runtime_is_typed_unavailable(tmp_path: Path) -> None:
     supervisor, prompt = _production_supervisor(tmp_path)
     run = supervisor.run(prompt)
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
     with pytest.raises(facade_mod.SupervisorUnavailableError, match="START"):
         supervisor.start(run.run_id)
+
+
+def test_prompt_run_starts_live_workers_outside_the_repository(
+    tmp_path: Path,
+) -> None:
+    import os
+
+    supervisor, prompt = _production_supervisor(tmp_path)
+    run = supervisor.run(prompt)
+    again = supervisor.run(prompt)
+    pids = list(run.identities["worker_pids"])
+    assert pids
+    assert again.identities["worker_pids"] == pids
+    assert again.identities["supervisor_pid"] == run.identities["supervisor_pid"]
+    os.kill(int(run.identities["supervisor_pid"]), 0)
+    assert run.identities["authorizes_execution"] is False
+    assert run.identities["completion_authority"] is False
+    assert run.identities["worker_repository_edits"] is False
+    run_dir = Path(run.identities["worker_run_dir"])
+    repository = tmp_path / "repo"
+    assert run_dir.is_relative_to(tmp_path / "state")
+    assert not run_dir.is_relative_to(repository)
+    for pid, task_cid in zip(pids, run.identities["worker_task_cids"], strict=True):
+        receipt = json.loads(
+            (run_dir / "workers" / f"{task_cid}.json").read_text(encoding="utf-8")
+        )
+        assert receipt["phase"] == "running"
+        assert receipt["pid"] == pid
+        os.kill(int(pid), 0)
+        assert receipt["cwd"] == str(run_dir)
+        assert receipt["work"]["validation_executed"] is False
+        assert receipt["work"]["disposition"] == "prepared"
+        argv = receipt["argv"]
+        assert "ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers" in argv
+        assert task_cid in argv
+        assert "git" not in argv
+        assert "pytest" not in argv
+        assert receipt["work"]["repository_edits"] is False
+        assert receipt["authorizes_execution"] is False
+        assert receipt["completion_authority"] is False
+    assert prompt not in json.dumps(run.identities)
+
+
+def test_prompt_worker_observes_scope_and_leaves_validation_unexecuted(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+    import json
+    import os
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        launch_prompt_workers,
+    )
+
+    repository = tmp_path / "repo"
+    state = tmp_path / "state"
+    repository.mkdir()
+    state.mkdir()
+    (repository / "pkg").mkdir()
+    body = b"VALUE = 1\n"
+    (repository / "pkg" / "task.py").write_bytes(body)
+    task = SimpleNamespace(
+        task_cid="taskcid",
+        task_key="task:one",
+        dependency_task_cids=(),
+        objective="Observe pkg/task.py",
+        scope_paths=("pkg/task.py", "../outside.py", "pkg/.env"),
+        validations=(SimpleNamespace(argv=("python", "-m", "pytest", "-q")),),
+    )
+    launch = launch_prompt_workers(
+        tasks=(task,),
+        admitted_task_cids=("taskcid",),
+        run_id="run-observe",
+        state_root=state,
+        repository_root=repository,
+        width=1,
+    )
+    receipt = json.loads(
+        (Path(launch.run_dir) / "workers" / "taskcid.json").read_text(encoding="utf-8")
+    )
+    work = receipt["work"]
+    assert receipt["phase"] == "running"
+    os.kill(int(receipt["pid"]), 0)
+    os.kill(int(launch.supervisor_pid), 0)
+    assert work["validation_executed"] is False
+    assert work["validation_skip_reason"] == "execution_not_authorized"
+    assert work["disposition"] == "prepared"
+    workspace = Path(launch.run_dir) / "workspaces" / "taskcid" / "pkg" / "task.py"
+    assert workspace.read_bytes() == body
+    assert not workspace.is_relative_to(repository)
+    assert work["repository_edits"] is False
+    assert work["authorizes_execution"] is False
+    assert work["completion_authority"] is False
+    observed = {item["path"]: item for item in work["scope"]}
+    assert observed["pkg/task.py"]["status"] == "observed"
+    assert observed["pkg/task.py"]["sha256"] == hashlib.sha256(body).hexdigest()
+    assert observed["../outside.py"]["status"] == "rejected"
+    assert observed["pkg/.env"]["status"] == "credential"
+    assert "pytest" not in receipt["argv"]
+    assert "git" not in receipt["argv"]
+    assert "ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers" in receipt["argv"]
+    assert (repository / "pkg" / "task.py").read_bytes() == body
+
+
+def test_prompt_without_ir_request_starts_workers_and_stays_unauthorized(
+    tmp_path: Path,
+) -> None:
+    supervisor, prompt = _production_supervisor(tmp_path, use_real_admission=True)
+    run = supervisor.run(prompt)
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["active_worker_count"] >= 1
+    assert run.identities["hard_domain_admitted"] is False
+    assert run.identities["authorizes_execution"] is False
+    assert run.identities["completion_authority"] is False
+    assert "unknown_mandatory_state" not in (
+        run.identities.get("plan_create_status") or ""
+    )
+
+
+def test_real_scanner_prompt_binds_identities_and_starts_workers(
+    tmp_path: Path,
+) -> None:
+    """A prompt with no injected scanner starts workers outside the repository."""
+
+    import os
+    import subprocess
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.plan_supervisor_service import (
+        PlanSupervisorService,
+    )
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_directory_scanner import (
+        repository_allowlist_cid,
+    )
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
+        deterministic_prompt_goal_graph,
+    )
+
+    repo = tmp_path / "repo"
+    state = tmp_path / "state"
+    repo.mkdir()
+    state.mkdir()
+    subprocess.run(("git", "init", "-q", str(repo)), check=True)
+    subprocess.run(
+        ("git", "-C", str(repo), "config", "user.email", "scanner@example.invalid"),
+        check=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repo), "config", "user.name", "Scanner Test"),
+        check=True,
+    )
+    (repo / "src").mkdir()
+    body = b"VALUE = 1\n"
+    (repo / "src" / "service.py").write_bytes(body)
+    subprocess.run(("git", "-C", str(repo), "add", "--", "src/service.py"), check=True)
+    subprocess.run(("git", "-C", str(repo), "commit", "-qm", "fixture"), check=True)
+
+    class _Planner:
+        def plan(self, request, scan, **_kwargs):  # type: ignore[no-untyped-def]
+            graph = deterministic_prompt_goal_graph(request, scan)
+            receipt = SimpleNamespace(
+                to_dict=lambda: {
+                    "request_cid": request.request_cid,
+                    "scan_cid": scan.scan_cid,
+                    "plan_root_cid": graph.plan_root_cid,
+                },
+                fallback=SimpleNamespace(used=True),
+            )
+            return SimpleNamespace(graph=graph, receipt=receipt, used_fallback=True)
+
+    composition = sf.resolve_production_composition(
+        repository_root=repo,
+        state_root=state,
+        require_activation=False,
+    )
+    composition.extras["planner"] = _Planner()
+    composition.extras["plan_supervisor_service"] = PlanSupervisorService(
+        create_service=_ReviewOnlyCreateService(),
+        revision_store_root=state / "plan_revision_store",
+    )
+    supervisor = facade_mod.Supervisor.open(services=composition)
+    prompt = "Observe src/service.py and keep the run outside the repository."
+    run = supervisor.run(prompt)
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["active_worker_count"] >= 1
+    assert run.identities["hard_domain_admitted"] is False
+    assert run.identities["authorizes_execution"] is False
+    assert run.identities["completion_authority"] is False
+    assert run.identities["worker_repository_edits"] is False
+    observed = run.identities["observation"]
+    assert observed["allowlist_cid"] != repository_allowlist_cid((repo.resolve(),))
+    run_dir = Path(run.identities["worker_run_dir"])
+    assert run_dir.is_relative_to(state.resolve())
+    assert not run_dir.is_relative_to(repo.resolve())
+    pid = run.identities["worker_pids"][0]
+    task_cid = run.identities["worker_task_cids"][0]
+    receipt = json.loads(
+        (run_dir / "workers" / f"{task_cid}.json").read_text(encoding="utf-8")
+    )
+    assert receipt["phase"] == "running"
+    assert receipt["pid"] == pid
+    os.kill(int(pid), 0)
+    os.kill(int(run.identities["supervisor_pid"]), 0)
+    assert receipt["cwd"] == str(run_dir.resolve())
+    assert "ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers" in receipt["argv"]
+    assert "git" not in receipt["argv"]
+    assert "pytest" not in receipt["argv"]
+    assert receipt["work"]["validation_executed"] is False
+    assert receipt["work"]["repository_edits"] is False
+    assert receipt["authorizes_execution"] is False
+    assert (repo / "src" / "service.py").read_bytes() == body
+
+
+def test_real_plan_create_prompt_starts_workers(tmp_path: Path) -> None:
+    """The production create service, not a review-only stub, starts workers."""
+
+    import os
+    import subprocess
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
+        deterministic_prompt_goal_graph,
+    )
+
+    repo = tmp_path / "repo"
+    state = tmp_path / "state"
+    repo.mkdir()
+    state.mkdir()
+    subprocess.run(("git", "init", "-q", str(repo)), check=True)
+    subprocess.run(
+        ("git", "-C", str(repo), "config", "user.email", "scanner@example.invalid"),
+        check=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repo), "config", "user.name", "Scanner Test"),
+        check=True,
+    )
+    (repo / "src").mkdir()
+    body = b"VALUE = 1\n"
+    (repo / "src" / "service.py").write_bytes(body)
+    subprocess.run(("git", "-C", str(repo), "add", "--", "src/service.py"), check=True)
+    subprocess.run(("git", "-C", str(repo), "commit", "-qm", "fixture"), check=True)
+
+    class _Planner:
+        def plan(self, request, scan, **_kwargs):  # type: ignore[no-untyped-def]
+            graph = deterministic_prompt_goal_graph(request, scan)
+            receipt = SimpleNamespace(
+                to_dict=lambda: {
+                    "request_cid": request.request_cid,
+                    "scan_cid": scan.scan_cid,
+                    "plan_root_cid": graph.plan_root_cid,
+                },
+                fallback=SimpleNamespace(used=True),
+            )
+            return SimpleNamespace(graph=graph, receipt=receipt, used_fallback=True)
+
+    composition = sf.resolve_production_composition(
+        repository_root=repo,
+        state_root=state,
+        require_activation=False,
+    )
+    composition.extras["planner"] = _Planner()
+    supervisor = facade_mod.Supervisor.open(services=composition)
+    prompt = "Observe src/service.py and keep the run outside the repository."
+    run = supervisor.run(prompt)
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["active_worker_count"] >= 1
+    assert run.identities["hard_domain_admitted"] is False
+    assert run.identities["authorizes_execution"] is False
+    assert run.identities["completion_authority"] is False
+    assert run.identities["worker_repository_edits"] is False
+    assert run.identities["plan_create_status"] == "review_only"
+    run_dir = Path(run.identities["worker_run_dir"])
+    assert run_dir.is_relative_to(state.resolve())
+    assert not run_dir.is_relative_to(repo.resolve())
+    pid = run.identities["worker_pids"][0]
+    task_cid = run.identities["worker_task_cids"][0]
+    receipt = json.loads(
+        (run_dir / "workers" / f"{task_cid}.json").read_text(encoding="utf-8")
+    )
+    assert receipt["phase"] == "running"
+    assert receipt["pid"] == pid
+    os.kill(int(pid), 0)
+    os.kill(int(run.identities["supervisor_pid"]), 0)
+    assert receipt["cwd"] == str(run_dir.resolve())
+    assert "ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers" in receipt["argv"]
+    assert "git" not in receipt["argv"]
+    assert "pytest" not in receipt["argv"]
+    assert receipt["work"]["validation_executed"] is False
+    assert (repo / "src" / "service.py").read_bytes() == body
+
+
+def test_preview_does_not_start_workers(tmp_path: Path) -> None:
+    supervisor, prompt = _production_supervisor(tmp_path)
+    observed = supervisor.preview(prompt)
+    assert observed.values.get("effect_applied") is False
+    assert list((tmp_path / "state").rglob("*.json")) == []
+
+
+def test_agent_command_disables_plan_mode_and_drops_parent_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        _agent_env,
+        _build_workspace_agent_command,
+    )
+
+    monkeypatch.setenv("GROK_AGENT", "1")
+    monkeypatch.setenv("GROK_SESSION_ID", "parent-plan-session")
+    env = _agent_env()
+    assert "GROK_AGENT" not in env
+    assert "GROK_SESSION_ID" not in env
+    repository = tmp_path / "repo"
+    prompt_file = tmp_path / "state" / "prompts" / "taskcid" / "prompt.txt"
+    command = _build_workspace_agent_command(
+        "/usr/bin/python3", repository, prompt_file
+    )
+    assert command[command.index("--cwd") + 1] == str(repository)
+    assert "--no-plan" in command
+    assert "--always-approve" in command
+    assert "--permission-mode" in command
+    assert command[command.index("--permission-mode") + 1] == "bypassPermissions"
+    assert f"Edit({repository}/**)" not in command
+    assert f"Write({repository}/**)" not in command
+    assert f"Edit({repository / '.git'}/**)" in command
+    assert f"Write({repository / '.git'}/**)" in command
+    assert "Bash(git)" in command
+    assert "Bash(pytest)" in command
+    assert "git" not in command
+    assert "pytest" not in command
+
+
+def test_prompt_worker_runs_an_agent_in_the_repository(tmp_path: Path) -> None:
+    import os
+    import stat
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        launch_prompt_workers,
+    )
+
+    repository = tmp_path / "repo"
+    state = tmp_path / "state"
+    repository.mkdir()
+    state.mkdir()
+    (repository / "pkg").mkdir()
+    body = b"VALUE = 1\n"
+    (repository / "pkg" / "task.py").write_bytes(body)
+    agent = tmp_path / "workspace-agent"
+    agent.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv\n"
+        "cwd = Path(args[args.index('--cwd') + 1])\n"
+        "prompt = Path(args[args.index('--prompt-file') + 1])\n"
+        "(prompt.parent / 'agent-argv.json').write_text(json.dumps(args), encoding='utf-8')\n"
+        "target = cwd / 'pkg' / 'task.py'\n"
+        "target.write_bytes(target.read_bytes() + b'# checked\\n')\n",
+        encoding="utf-8",
+    )
+    agent.chmod(agent.stat().st_mode | stat.S_IEXEC)
+    task = SimpleNamespace(
+        task_cid="taskcid",
+        task_key="task:one",
+        dependency_task_cids=(),
+        objective="In pkg/task.py, add one comment line that says checked.",
+        scope_paths=("pkg/task.py",),
+        validations=(SimpleNamespace(argv=("python", "-m", "pytest", "-q")),),
+    )
+    launch = launch_prompt_workers(
+        tasks=(task,),
+        admitted_task_cids=("taskcid",),
+        run_id="run-agent",
+        state_root=state,
+        repository_root=repository,
+        width=1,
+        local_only=False,
+        agent_executable=str(agent),
+    )
+    receipt_path = Path(launch.run_dir) / "workers" / "taskcid.json"
+    execution_path = (
+        Path(launch.run_dir) / "workspaces" / "taskcid" / "execution.json"
+    )
+    deadline = time_monotonic() + 10
+    execution = {}
+    while time_monotonic() < deadline:
+        if execution_path.is_file():
+            execution = json.loads(execution_path.read_text(encoding="utf-8"))
+            if execution.get("disposition") == "agent_finished":
+                break
+        time_sleep(0.05)
+    assert execution.get("disposition") == "agent_finished"
+    assert execution.get("agent_returncode") == 0
+    assert execution["validation_executed"] is False
+    assert execution["authorizes_execution"] is False
+    assert execution["completion_authority"] is False
+    assert execution["repository_edits"] is True
+    assert (repository / "pkg" / "task.py").read_bytes() == body + b"# checked\n"
+    prompt_file = Path(launch.run_dir) / "prompts" / "taskcid" / "prompt.txt"
+    assert prompt_file.is_file()
+    assert not prompt_file.is_relative_to(repository)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["phase"] == "running"
+    os.kill(int(receipt["pid"]), 0)
+    os.kill(int(launch.supervisor_pid), 0)
+    assert "pytest" not in receipt["argv"]
+    assert "git" not in receipt["argv"]
+    argv = json.loads(
+        (prompt_file.parent / "agent-argv.json").read_text(encoding="utf-8")
+    )
+    assert "--no-plan" in argv
+    assert "--always-approve" in argv
+    assert argv[argv.index("--cwd") + 1] == str(repository.resolve())
+    assert f"Edit({repository.resolve()}/**)" not in argv
+
+
+def test_prompt_worker_stop_kills_the_agent_process_group(tmp_path: Path) -> None:
+    import os
+    import stat
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        launch_prompt_workers,
+        stop_prompt_workers,
+    )
+
+    repository = tmp_path / "repo"
+    state = tmp_path / "state"
+    repository.mkdir()
+    state.mkdir()
+    (repository / "pkg").mkdir()
+    (repository / "pkg" / "task.py").write_bytes(b"VALUE = 1\n")
+    agent = tmp_path / "sleeper-agent"
+    agent.write_text(
+        "#!/usr/bin/env python3\n"
+        "import time\n"
+        "from pathlib import Path\n"
+        "import sys\n"
+        "prompt = Path(sys.argv[sys.argv.index('--prompt-file') + 1])\n"
+        "(prompt.parent / 'sleeper-started').write_text('started', encoding='utf-8')\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    agent.chmod(agent.stat().st_mode | stat.S_IEXEC)
+    task = SimpleNamespace(
+        task_cid="taskcid",
+        task_key="task:one",
+        dependency_task_cids=(),
+        objective="Stay running until stopped.",
+        scope_paths=("pkg/task.py",),
+    )
+    launch = launch_prompt_workers(
+        tasks=(task,),
+        admitted_task_cids=("taskcid",),
+        run_id="run-stop",
+        state_root=state,
+        repository_root=repository,
+        width=1,
+        local_only=False,
+        agent_executable=str(agent),
+    )
+    agent_receipt = Path(launch.run_dir) / "agents" / "taskcid.json"
+    started = Path(launch.run_dir) / "prompts" / "taskcid" / "sleeper-started"
+    deadline = time_monotonic() + 10
+    payload = {}
+    while time_monotonic() < deadline:
+        if agent_receipt.is_file() and started.is_file():
+            payload = json.loads(agent_receipt.read_text(encoding="utf-8"))
+            break
+        time_sleep(0.05)
+    pid = int(payload.get("pid") or 0)
+    assert pid > 1
+    os.kill(pid, 0)
+    stop_prompt_workers(launch.run_dir, (launch.supervisor_pid, *launch.pids))
+    deadline = time_monotonic() + 3
+    while time_monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            break
+        time_sleep(0.05)
+    with pytest.raises(OSError):
+        os.kill(pid, 0)
+    assert (repository / "pkg" / "task.py").read_bytes() == b"VALUE = 1\n"
+
+
+def time_monotonic() -> float:
+    import time
+
+    return time.monotonic()
+
+
+def time_sleep(seconds: float) -> None:
+    import time
+
+    time.sleep(seconds)
+
+
+def test_default_worker_command_is_the_isolated_runner() -> None:
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        _agent_prompt,
+        _build_isolated_runner_command,
+    )
+
+    repository = Path("/tmp/example-repo")
+    command = _build_isolated_runner_command(repository)
+    assert command[1:3] == [
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
+    ]
+    assert command[command.index("--workspace") + 1] == str(repository)
+    assert "--permission-mode" not in command
+    assert "bypassPermissions" not in command
+    assert "--cwd" not in command
+    assert "pytest" not in command
+    prompt = _agent_prompt(
+        {
+            "objective": "Implement the change.",
+            "prompt_text": "Set VALUE = 2.",
+            "scope_paths": ["sample.py"],
+        },
+        repository,
+    )
+    assert "Set VALUE = 2." in prompt
+    assert "Do not run pytest." in prompt
+
+
+def test_product_packet_names_the_recognized_runner(tmp_path: Path) -> None:
+    """Outside pytest, the supervisor's worker command is the package runner."""
+
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        _RUNNER_MODULE,
+        _write_queue_packet,
+    )
+
+    repository = tmp_path / "repo"
+    run_dir = tmp_path / "run"
+    repository.mkdir()
+    (run_dir / "queue").mkdir(parents=True)
+    _write_queue_packet(
+        SimpleNamespace(
+            task_cid="taskcid",
+            task_key="task:one",
+            objective="Implement the change.",
+            scope_paths=("sample.py",),
+            validations=(),
+        ),
+        run_dir,
+        repository,
+        local_only=False,
+        agent_executable="",
+        prompt_text="Set VALUE = 2.",
+    )
+    packet = json.loads((run_dir / "queue" / "taskcid.json").read_text(encoding="utf-8"))
+    argv = packet["launched_argv"]
+    assert argv[1:3] == ["-m", _RUNNER_MODULE]
+    assert argv[argv.index("--workspace") + 1] == str(repository)
+    assert "prompt_workers" not in " ".join(argv)
+    assert "--permission-mode" not in argv
+    assert "bypassPermissions" not in argv
+    assert packet["prompt_text"] == "Set VALUE = 2."
+    assert packet["authorizes_execution"] is False
+    assert packet["completion_authority"] is False
+
+
+def test_prompt_run_starts_workers_without_scheduler_config(tmp_path: Path) -> None:
+    """A prompt against an ordinary git repository starts worker processes."""
+
+    import io
+    import os
+    import subprocess
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.entrypoints import cli as supervisor_cli
+
+    repo = tmp_path / "repo"
+    state = tmp_path / "state"
+    repo.mkdir()
+    state.mkdir()
+    (repo / "sample.py").write_text("VALUE = 1\n", encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "probe",
+            "GIT_AUTHOR_EMAIL": "probe@example.com",
+            "GIT_COMMITTER_NAME": "probe",
+            "GIT_COMMITTER_EMAIL": "probe@example.com",
+        }
+    )
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True, env=env)
+    subprocess.run(("git", "add", "sample.py"), cwd=repo, check=True, env=env)
+    subprocess.run(("git", "commit", "-qm", "init"), cwd=repo, check=True, env=env)
+    assert not (
+        repo / "config" / "agent_supervisor_prompt_only_self_improvement_v3_scheduler.json"
+    ).is_file()
+    args = SimpleNamespace(
+        supervisor_command="run",
+        prompt="Start workers for the admitted task in sample.py.",
+        prompt_file=None,
+        prompt_stdin=False,
+        output_json=True,
+        repository=str(repo),
+        state_root=str(state),
+    )
+    out = io.StringIO()
+    code = supervisor_cli.run_supervisor_cli(args, stdout=out, stderr=out)
+    payload = json.loads(out.getvalue())
+    assert code == supervisor_cli.EXIT_SUCCESS, payload
+    assert payload["ok"] is True
+    result = payload["result"]
+    assert result["state"] == "running"
+    assert result["active_worker_count"] >= 1
+    identities = result["identities"]
+    assert identities["workers_started"] is True
+    assert identities["authorizes_execution"] is False
+    assert identities["completion_authority"] is False
+    assert identities["intent_autoencoder_status"] == "fail_open_no_checkpoint"
+    assert identities["intent_subgoal_count"] == 3
+    assert identities["intent_projection_ids"][-1] == "intent-route/action-hoare/v1"
+    assert identities["admitted_task_count"] == 1
+    supervisor_pid = int(identities["supervisor_pid"])
+    worker_pid = int(identities["worker_pids"][0])
+    os.kill(supervisor_pid, 0)
+    os.kill(worker_pid, 0)
+    command = Path(f"/proc/{worker_pid}/cmdline").read_bytes().replace(b"\0", b" ").decode()
+    assert "prompt_workers" in command
+    assert "--worker" in command
+    assert "grok" not in command
+    assert (repo / "sample.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    second = facade_mod.Supervisor.open(
+        repository=repo,
+        state_root=state,
+        require_activation=False,
+    )
+    observed = second.status()
+    assert observed.state == "running"
+    assert observed.values["identities"]["supervisor_pid"] == supervisor_pid
+    assert worker_pid in observed.values["identities"]["worker_pids"]
+    assert observed.values["identities"]["authorizes_execution"] is False
+    assert observed.values["identities"]["completion_authority"] is False
+
+
+def test_prompt_workers_refuse_a_repository_directory(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+        PromptWorkerError,
+        launch_prompt_workers,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    task = SimpleNamespace(
+        task_cid="taskcid",
+        task_key="task:one",
+        dependency_task_cids=(),
+    )
+    with pytest.raises(PromptWorkerError, match="repository"):
+        launch_prompt_workers(
+            tasks=(task,),
+            admitted_task_cids=("taskcid",),
+            run_id="run1",
+            state_root=repo,
+            repository_root=repo,
+            width=1,
+        )
 
 
 def _cid(label: str) -> str:
@@ -526,6 +1268,37 @@ def _observation(repo: Path, state: Path) -> sf.ProductionBindingObservation:
     )
 
 
+class _ReviewOnlyCreateService:
+    def __init__(
+        self, reasons: tuple[str, ...] = ("ir_admission_materials_absent",)
+    ) -> None:
+        self.reasons = reasons
+
+    def preview_create(self, request: object, **_kwargs: object) -> object:
+        from ipfs_accelerate_py.agent_supervisor.prompt.plan_create_service import (
+            PlanCreateMode,
+            PlanCreatePreviewReceipt,
+            PlanCreateVerdict,
+        )
+
+        roots = getattr(request, "roots")
+        request_cid = str(getattr(request, "request_cid"))
+        return PlanCreatePreviewReceipt(
+            request_cid=request_cid,
+            input_snapshot_cid=request_cid,
+            mode=PlanCreateMode.DETERMINISTIC,
+            verdict=PlanCreateVerdict.REVIEW_ONLY,
+            roots=roots,
+            stage_results=(),
+            scan_cid=request_cid,
+            admission_receipt_cid=request_cid,
+            plan_root_cid=str(roots.program_root),
+            rejection_reasons=self.reasons,
+            read_only=True,
+            wrote_effects=(),
+        )
+
+
 class _AdmittedCreateService:
     def preview_create(self, request: object, **_kwargs: object) -> object:
         from ipfs_accelerate_py.agent_supervisor.prompt.plan_create_service import (
@@ -635,6 +1408,8 @@ def _production_supervisor(
     mutation: Mapping[str, object] | None = None,
     intent_factory: object | None = None,
     stale: bool = False,
+    create_service: object | None = None,
+    use_real_admission: bool = False,
 ):
     from ipfs_accelerate_py.agent_supervisor.prompt.plan_supervisor_service import (
         PlanSupervisorService,
@@ -738,9 +1513,10 @@ def _production_supervisor(
     composition.extras["observation"] = observation
     composition.extras["scanner"] = scanner
     composition.extras["planner"] = planner
-    composition.extras["admission"] = _MatchingAdmission()
+    if not use_real_admission:
+        composition.extras["admission"] = _MatchingAdmission()
     composition.extras["plan_supervisor_service"] = PlanSupervisorService(
-        create_service=_AdmittedCreateService(),
+        create_service=create_service or _AdmittedCreateService(),
         revision_store_root=state / "plan_revision_store",
     )
     if mutation is not None:
@@ -802,7 +1578,9 @@ def test_admitted_preview_includes_complete_materialization_inputs(
     assert inputs["apply_requires"]
     assert "lease" in inputs["apply_requires"]
     assert inputs["completion_authority"] is False
-    assert run.state == "admitted"
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["authorizes_execution"] is False
 
 
 def test_authorized_apply_publishes_projection_identities(tmp_path: Path) -> None:
@@ -817,7 +1595,9 @@ def test_authorized_apply_publishes_projection_identities(tmp_path: Path) -> Non
         },
     )
     run = supervisor.run(prompt)
-    assert run.state == "materialized"
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["authorizes_execution"] is False
     assert run.identities["task_source_cid"]
     assert run.identities["task_source_revision_cid"]
     assert run.identities["plan_revision_cid"]
@@ -886,7 +1666,10 @@ def test_start_is_separate_authorized_control(tmp_path: Path) -> None:
         intent_factory=factory,
     )
     run = supervisor.run(prompt)
-    assert run.state == "materialized"
+    assert run.state == "running"
+    assert run.identities["workers_started"] is True
+    assert run.identities["authorizes_execution"] is False
+    assert run.identities["completion_authority"] is False
     started = supervisor.start(run.run_id)
     assert started.values.get("effect_applied") is True
     assert run.identities.get("start_receipt_cid")
@@ -979,6 +1762,109 @@ def test_scheduler_handoff_disables_complete_launch_plan_injection() -> None:
     assert handoff["initial_task_ceiling"] == 80
     assert handoff["model_assertion_cannot_complete"] is True
     assert handoff["empty_queue_cannot_complete"] is True
+
+
+def test_repository_root_prompt_scope_skips_the_root_marker_and_gitlinks(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.prompt.plan_create_service import (
+        plan_create_request_from_workflow,
+    )
+
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    subprocess.run(("git", "-C", str(repository), "init", "-q"), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "config", "user.name", "Scope Test"),
+        check=True,
+    )
+    subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repository),
+            "config",
+            "user.email",
+            "scope@example.invalid",
+        ),
+        check=True,
+    )
+    (repository / "src").mkdir()
+    (repository / "src" / "service.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (repository / "README.md").write_text("Fixture.\n", encoding="utf-8")
+    subprocess.run(("git", "-C", str(repository), "add", "."), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "commit", "-qm", "fixture"),
+        check=True,
+    )
+    child = tmp_path / "child"
+    child.mkdir()
+    subprocess.run(("git", "-C", str(child), "init", "-q"), check=True)
+    subprocess.run(
+        ("git", "-C", str(child), "config", "user.name", "Scope Test"),
+        check=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(child), "config", "user.email", "scope@example.invalid"),
+        check=True,
+    )
+    (child / "nested.py").write_text("NESTED = 1\n", encoding="utf-8")
+    subprocess.run(("git", "-C", str(child), "add", "nested.py"), check=True)
+    subprocess.run(
+        ("git", "-C", str(child), "commit", "-qm", "child"),
+        check=True,
+    )
+    oid = subprocess.run(
+        ("git", "-C", str(child), "rev-parse", "HEAD"),
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repository),
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{oid},vendor",
+        ),
+        check=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repository), "commit", "-qm", "gitlink"),
+        check=True,
+    )
+    (repository / "vendor").mkdir()
+    workflow = SimpleNamespace(
+        repository_root=str(repository),
+        directory=str(repository),
+        prompt_source=SimpleNamespace(content_id=_cid("prompt")),
+        repository_root_cid=_cid("root"),
+        policy_root=_cid("policy"),
+        program_root=_cid("program"),
+        intent_ir_root=_cid("intent"),
+        legal_ir_root=_cid("legal"),
+        security_ir_root=_cid("security"),
+        allowlist_cid=_cid("allow"),
+        request_cid=_cid("request"),
+        output_policy=SimpleNamespace(mode="markdown"),
+        budget=None,
+        supervisor_profile="",
+        state_root=str(tmp_path / "state"),
+    )
+    projected = plan_create_request_from_workflow(
+        workflow,
+        repository_id="repository:scope-test",
+    )
+    assert "." not in projected.scope_paths
+    assert "src" in projected.scope_paths
+    assert "README.md" in projected.scope_paths
+    assert "vendor" not in projected.scope_paths
 
 
 def test_scan_directory_falls_back_to_repository_root_when_pkg_is_absent(

@@ -1316,6 +1316,35 @@ def _grok_isolation_deny_paths(
     return tuple(sorted(nonoverlapping, key=lambda item: str(item)))
 
 
+def _same_existing_file(path: Path, other: Path | None) -> bool:
+    """Return whether both paths name one existing inode."""
+
+    if other is None:
+        return False
+    try:
+        return path.samefile(other)
+    except OSError:
+        return False
+
+
+def _bwrap_exact_mount_path(path: Path) -> bool:
+    """Return whether bubblewrap can mask this exact host path.
+
+    ``--ro-bind`` on a symlink entrypoint fails with
+    ``Can't create file at <symlink>: No such file or directory``.
+    A missing path fails because its parents cannot be created on a
+    read-only root. Tool deny rules may still name those paths. The
+    kernel mount uses the resolved inode path only.
+    """
+
+    try:
+        if not path.exists() or path.is_symlink():
+            return False
+        return path.resolve(strict=True) == path
+    except OSError:
+        return False
+
+
 def _isolated_grok_home(
     *,
     base_env: dict[str, str],
@@ -1346,7 +1375,56 @@ def _isolated_grok_home(
             sentinel_path=sentinel_path,
             workspace=workspace,
         )
-        if grok_home not in denied_paths:
+        # Directory collapse drops the sentinel because it lives under the
+        # private home. Tool rules still name that home. Bubblewrap must not
+        # mount the home itself: Grok creates sandbox-bwrap-sentinel there
+        # while installing binds, and a directory mount makes that mkdir
+        # fail with EROFS. The sentinel file is the mount that forces bwrap.
+        if sentinel_path not in denied_paths:
+            denied_paths = tuple(
+                sorted(
+                    (*denied_paths, sentinel_path),
+                    key=lambda item: str(item),
+                )
+            )
+        # Grok re-execs its own binary inside bubblewrap. A bind over that
+        # inode fails with execvp EACCES. Tool rules still name it.
+        grok_binary = _which_in_environment("grok", base_env)
+        try:
+            grok_binary_resolved = (
+                grok_binary.resolve(strict=True) if grok_binary is not None else None
+            )
+        except OSError:
+            grok_binary_resolved = None
+        # The private home symlinks auth.json at this inode. A bind over it
+        # makes Grok start unsigned. Tool rules still name the file.
+        source_home_raw = str(base_env.get("GROK_HOME") or "").strip()
+        source_home = (
+            Path(source_home_raw).expanduser()
+            if source_home_raw
+            else user_home_from_env(base_env) / ".grok"
+        )
+        source_auth = source_home / "auth.json"
+        try:
+            auth_resolved = (
+                source_auth.resolve(strict=True) if source_auth.is_file() else None
+            )
+        except OSError:
+            auth_resolved = None
+        # Grok's bubblewrap command mounts a fresh /proc and /dev after
+        # deny binds. Leaving those directories in the profile fails closed:
+        # "read-deny path /dev is not a no-access placeholder".
+        bwrap_self_mounted = {Path("/proc"), Path("/dev")}
+        mount_paths = tuple(
+            path
+            for path in denied_paths
+            if path != grok_home
+            and path not in bwrap_self_mounted
+            and not _same_existing_file(path, grok_binary_resolved)
+            and not _same_existing_file(path, auth_resolved)
+            and _bwrap_exact_mount_path(path)
+        )
+        if sentinel_path not in mount_paths:
             raise ValueError("Grok sandbox state-directory deny was not resolved")
 
         policy_lines = [
@@ -1355,7 +1433,7 @@ def _isolated_grok_home(
             "restrict_network = true",
             "deny = [",
         ]
-        policy_lines.extend(f"  {json.dumps(str(path))}," for path in denied_paths)
+        policy_lines.extend(f"  {json.dumps(str(path))}," for path in mount_paths)
         policy_lines.append("]")
         policy_path = grok_home / "sandbox.toml"
         policy_path.write_text("\n".join(policy_lines) + "\n", encoding="utf-8")

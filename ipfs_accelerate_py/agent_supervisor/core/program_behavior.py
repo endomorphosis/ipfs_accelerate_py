@@ -241,12 +241,27 @@ def _path_in_scope(path: str, scopes: Sequence[str]) -> bool:
 
 
 def _path_excluded(path: str, exclusions: Sequence[str]) -> bool:
-    candidate = PurePosixPath(path)
-    return any(
-        candidate == PurePosixPath(item)
-        or PurePosixPath(item) in candidate.parents
-        for item in exclusions
-    )
+    """Return whether ``path`` or one of its parents is excluded.
+
+    The exclusion tuple is reused for every file in a snapshot. Membership is
+    hashed once per tuple so a repository-sized exclusion list stays linear
+    in the walk, not in the product of files and exclusions.
+    """
+
+    cached = getattr(_path_excluded, "_cache", None)
+    if cached is None or cached[0] is not exclusions:
+        cached = (exclusions, set(exclusions))
+        setattr(_path_excluded, "_cache", cached)
+    excluded: set[str] = cached[1]
+    if path in excluded:
+        return True
+    slash = path.rfind("/")
+    while slash > 0:
+        path = path[:slash]
+        if path in excluded:
+            return True
+        slash = path.rfind("/")
+    return False
 
 
 def _run_git(
@@ -569,13 +584,14 @@ class _WorktreeFile:
     data: bytes
 
 
-def _parse_head_entries(root: Path) -> dict[str, _GitEntry]:
+def _parse_head_entries(root: Path) -> tuple[dict[str, _GitEntry], tuple[str, ...]]:
     output = _run_git(
         root,
         ("ls-tree", "-rz", "--full-tree", "HEAD"),
         allow_failure=True,
     )
     result: dict[str, _GitEntry] = {}
+    gitlinks: list[str] = []
     for record in output.split(b"\0"):
         if not record:
             continue
@@ -585,19 +601,24 @@ def _parse_head_entries(root: Path) -> dict[str, _GitEntry]:
             path = raw_path.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
             raise RepositoryStateError("HEAD contains an undecodable entry") from exc
+        # A gitlink is external submodule state. Exclude the path from the
+        # byte snapshot instead of failing the superproject or hashing the
+        # nested checkout.
+        if kind == "commit" or mode == "160000":
+            gitlinks.append(_repo_path(path))
+            continue
         if kind != "blob":
-            # Submodules are executable external state and cannot be safely
-            # represented as in-repository bytes by this contract.
             raise RepositoryStateError(
                 f"unsupported HEAD entry kind {kind!r} at {path!r}"
             )
         result[_repo_path(path)] = _GitEntry(mode, object_id)
-    return result
+    return result, tuple(gitlinks)
 
 
-def _parse_index_entries(root: Path) -> dict[str, _GitEntry]:
+def _parse_index_entries(root: Path) -> tuple[dict[str, _GitEntry], tuple[str, ...]]:
     output = _run_git(root, ("ls-files", "--stage", "-z"))
     result: dict[str, _GitEntry] = {}
+    gitlinks: list[str] = []
     for record in output.split(b"\0"):
         if not record:
             continue
@@ -611,8 +632,11 @@ def _parse_index_entries(root: Path) -> dict[str, _GitEntry]:
             raise RepositoryStateError(
                 f"unmerged index entry is unsupported at {path!r}"
             )
+        if mode == "160000":
+            gitlinks.append(_repo_path(path))
+            continue
         result[_repo_path(path)] = _GitEntry(mode, object_id)
-    return result
+    return result, tuple(gitlinks)
 
 
 def _safe_scope_path(root: Path, relative: str) -> Path:
@@ -1002,8 +1026,11 @@ def build_repository_snapshot(
     # the index or worktree, and fails for an unmerged index.
     index_tree = _run_git(root, ("write-tree",)).decode("ascii", "strict").strip()
 
-    head_all = _parse_head_entries(root)
-    index_all = _parse_index_entries(root)
+    head_all, head_gitlinks = _parse_head_entries(root)
+    index_all, index_gitlinks = _parse_index_entries(root)
+    normalized_exclusions = tuple(
+        sorted(set(normalized_exclusions).union(head_gitlinks, index_gitlinks))
+    )
     in_scope = lambda path: (
         _path_in_scope(path, normalized_scopes)
         and not _path_excluded(path, normalized_exclusions)

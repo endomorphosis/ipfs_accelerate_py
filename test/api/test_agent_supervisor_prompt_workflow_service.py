@@ -351,6 +351,95 @@ def test_preview_is_body_free_root_bound_rejected_or_exactly_replayed() -> None:
     assert rejected.rejection_reasons == ("security.denied",)
 
 
+def test_missing_ir_request_admits_workflow_without_hard_admission() -> None:
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
+        generate_prompt_goal_graph,
+    )
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_plan_admission import (
+        PromptPlanAdmissionCode,
+    )
+
+    class _DeterministicPlanner:
+        def plan(self, request, scan, **_kwargs):
+            return generate_prompt_goal_graph(request, scan)
+
+    request = _request(allow_model=False)
+    service = PromptSupervisorService(
+        scanner=_Scanner(),
+        planner=_DeterministicPlanner(),
+        clock_ms=lambda: 100,
+    )
+    receipt = service.preview(request)
+    state = service._preview_state(receipt)
+
+    assert receipt.status is RecordStatus.ADMITTED
+    assert receipt.admitted_goal_cids
+    assert receipt.admitted_task_cids
+    assert receipt.rejection_reasons == ()
+    assert state.admission.admitted is False
+    assert state.admission.admitted_graph is None
+    assert state.admission.reason_codes == (
+        PromptPlanAdmissionCode.UNKNOWN_MANDATORY_STATE.value,
+    )
+    assert state.admission.receipt.authorizes_execution is False
+
+
+def test_other_unknown_mandatory_state_paths_still_reject_preview() -> None:
+    request = _request(allow_model=False)
+
+    def _service_for(findings):
+        class _Gate:
+            def admit(self, _request, _scan, _graph, _planning):
+                receipt = SimpleNamespace(
+                    findings=tuple(findings),
+                    authorizes_execution=False,
+                    to_dict=lambda: {"verdict": "rejected"},
+                )
+                return SimpleNamespace(
+                    admitted=False,
+                    admitted_graph=None,
+                    receipt=receipt,
+                )
+
+        return PromptSupervisorService(
+            scanner=_Scanner(),
+            planner=_Planner(),
+            admission=_Gate(),
+            clock_ms=lambda: 100,
+        )
+
+    unresolved = SimpleNamespace(
+        finding_id=_cid("unresolved"),
+        code="unknown_mandatory_state",
+        path="$.unresolved_questions",
+        to_dict=lambda: {"code": "unknown_mandatory_state"},
+    )
+    closure = SimpleNamespace(
+        finding_id=_cid("closure"),
+        code="unknown_mandatory_state",
+        path="$.ir_request.mandatory_closure",
+        to_dict=lambda: {"code": "unknown_mandatory_state"},
+    )
+    absent = SimpleNamespace(
+        finding_id=_cid("absent"),
+        code="unknown_mandatory_state",
+        path="$.ir_request",
+        to_dict=lambda: {"code": "unknown_mandatory_state"},
+    )
+    quality = SimpleNamespace(
+        finding_id=_cid("quality"),
+        code="acceptance_uncovered",
+        path="$.goals",
+        to_dict=lambda: {"code": "acceptance_uncovered"},
+    )
+
+    for findings in ((unresolved,), (closure,), (absent, quality)):
+        receipt = _service_for(findings).preview(request)
+        assert receipt.status is RecordStatus.REJECTED
+        assert not receipt.admitted_task_cids
+        assert "unknown_mandatory_state" in receipt.rejection_reasons
+
+
 def test_materialize_requires_separate_authority_and_exact_replay_writes_once() -> None:
     (
         request,

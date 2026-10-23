@@ -4025,6 +4025,31 @@ def _reference_cid(value: Any, namespace: str) -> str:
     return prompt_workflow_cid({"namespace": namespace, "identity": text})
 
 
+def _ir_request_absence_only(admission: Any) -> bool:
+    """True when hard admission failed only for a missing IR request.
+
+    ``unknown_mandatory_state`` on ``$.ir_request`` means no independent
+    ``PlanAdmissionRequest`` was supplied. The same code on any other path,
+    including unresolved questions or an unknown closure, still rejects.
+    """
+
+    if bool(getattr(admission, "admitted", False)):
+        return False
+    receipt = getattr(admission, "receipt", None)
+    findings = tuple(getattr(receipt, "findings", ()) or ())
+    if not findings:
+        return False
+    from .prompt_plan_admission import PromptPlanAdmissionCode
+
+    code = PromptPlanAdmissionCode.UNKNOWN_MANDATORY_STATE.value
+    for finding in findings:
+        if str(getattr(finding, "code", "") or "") != code:
+            return False
+        if str(getattr(finding, "path", "") or "") != "$.ir_request":
+            return False
+    return True
+
+
 def _component_call(
     component: Any,
     method: str,
@@ -4454,8 +4479,17 @@ class PromptSupervisorService:
                 raise PromptWorkflowReceiptError(
                     "admitted result does not carry the exact admitted graph"
                 )
+            # Factory absence stays on the hard receipt. It does not stall
+            # preview, materialize, or Supervisor.run. authorizes_execution
+            # remains false because the hard receipt is not rewritten.
+            factory_absence = _ir_request_absence_only(admission)
+            workflow_admitted = admitted or factory_absence
             admission_ref = self._admission_receipt_ref(admission)
-            rejected_refs, rejection_reasons = self._rejections(admission)
+            if factory_absence:
+                rejected_refs = ()
+                rejection_reasons = ()
+            else:
+                rejected_refs, rejection_reasons = self._rejections(admission)
             selected_graph = admitted_graph if admitted else graph
             plan_root = (
                 str(getattr(admission, "plan_root_cid", "") or "")
@@ -4491,12 +4525,12 @@ class PromptSupervisorService:
                 policy_roots=selected_graph.policy_roots,
                 admitted_goal_cids=(
                     tuple(goal.goal_cid for goal in selected_graph.goals)
-                    if admitted
+                    if workflow_admitted
                     else ()
                 ),
                 admitted_task_cids=(
                     tuple(task.task_cid for task in selected_graph.tasks)
-                    if admitted
+                    if workflow_admitted
                     else ()
                 ),
                 rejected_branch_cids=rejected_refs,
@@ -4516,7 +4550,9 @@ class PromptSupervisorService:
                 admission_receipt_cid=admission_ref,
                 artifact_refs=artifact_refs,
                 status=(
-                    RecordStatus.ADMITTED if admitted else RecordStatus.REJECTED
+                    RecordStatus.ADMITTED
+                    if workflow_admitted
+                    else RecordStatus.REJECTED
                 ),
                 created_at_ms=now,
                 updated_at_ms=now,
