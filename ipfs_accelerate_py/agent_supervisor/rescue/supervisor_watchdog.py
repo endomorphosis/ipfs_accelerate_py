@@ -24,6 +24,7 @@ import fcntl
 import json
 import logging
 import os
+import re
 import signal
 import tempfile
 import threading
@@ -48,6 +49,7 @@ from .rescue_planner import (
     RescuePlanningRequest,
 )
 from .lane_resume import resume_stopped_lane
+from .storage_pressure import MINIMUM_FREE_BYTES, check_storage_capacity, is_storage_pressure, publish_emergency_status, read_emergency_status
 from .supervisor_recovery import (
     ProgrammaticRecoveryController,
     ProgrammaticRecoveryPolicy,
@@ -1520,6 +1522,33 @@ def _mirror_lane_heartbeat(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _lane_storage_identity(pid: int, repo_root: Path, status_path: Path) -> bool:
+    """Emergency telemetry cannot nominate a different live process as owner."""
+    from .watchdog_guardian import _option, _python_entrypoint
+
+    try:
+        directory = Path(f"/proc/{pid}")
+        argv = (directory / "cmdline").read_bytes().decode().rstrip("\0").split("\0")
+        executable = (directory / "exe").resolve(strict=True)
+        python_name = r"(?:python|pypy)(?:\d+(?:\.\d+)*)?"
+        if not argv or not re.fullmatch(python_name, Path(argv[0]).name) or not re.fullmatch(python_name, executable.name):
+            return False
+        mode, entrypoint, index = _python_entrypoint(argv)
+        if (mode != "module" or entrypoint != "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume"
+                or argv[index] != "-m"
+                or any(flag not in {"-u", "-B", "-E", "-s", "-S", "-I", "-O", "-OO"} for flag in argv[1:index])):
+            return False
+        application_args = argv[index + 2:]
+        repo = _option(application_args, "--repo-root")
+        status = _option(application_args, "--status-path")
+        if not repo or not status:
+            return False
+        cwd = (directory / "cwd").resolve(strict=True)
+        return (cwd / repo).resolve() == repo_root.resolve() and (cwd / status).resolve() == status_path.resolve()
+    except (OSError, UnicodeError, ValueError, IndexError):
+        return False
+
+
 def check_lane_heartbeat(
     state_dir: Path, state_prefix: str, *, timeout_seconds: float
 ) -> dict[str, Any]:
@@ -2666,6 +2695,33 @@ class SupervisorWatchdog:
             heartbeat_check = check_lane_heartbeat(
                 state_dir, state_prefix, timeout_seconds=self.lane_timeout
             )
+            status_path = state_dir / f"{state_prefix}_status.json"
+            emergency = read_emergency_status(
+                status_path, expected_pid=pid_check.get("pid", 0),
+                identity_check=lambda pid: _lane_storage_identity(pid, self.repo_root, status_path),
+            )
+            if emergency:
+                payload = emergency["payload"]
+                heartbeat_check.update({key: value for key, value in payload.items() if key not in {"pid"}})
+                heartbeat_check.update(status_pid=emergency["pid"], stale=False, storage_pressure=True,
+                    emergency_identity_verified=True,
+                    age_seconds=max(0.0, (time.time() * 1000 - emergency["observed_at_ms"]) / 1000))
+            declared_storage = lane.get("storage_paths", manifest.get("storage_paths", []))
+            if not isinstance(declared_storage, list) or any(not isinstance(path, str) or not path for path in declared_storage):
+                raise ValueError("Invalid declared storage paths")
+            storage_roots = [self.repo_root, self.manifest_path, state_dir,
+                *(Path(path) if Path(path).is_absolute() else self.repo_root / path for path in declared_storage)]
+            capacity = check_storage_capacity(storage_roots,
+                minimum_free_bytes=int(lane.get("minimum_free_bytes") or manifest.get("storage_minimum_free_bytes") or MINIMUM_FREE_BYTES))
+            if emergency or not capacity["ok"]:
+                reason = "storage_pressure" if emergency else capacity["reason"]
+                heartbeat_check.update(storage_pressure=True, backpressure=True,
+                                       backpressure_reasons=("storage_pressure:" + reason,))
+                reports.append({"bundle_key": bundle_key, "pid_check": pid_check, "heartbeat_check": heartbeat_check,
+                    "action": "storage_wait", "storage_pressure": True, "storage_reason": reason,
+                    "status": lifecycle_status_projection(pid_check=pid_check, heartbeat_check=heartbeat_check,
+                        state="degraded", target_id=str(bundle_key), phase="storage_pressure")})
+                continue
             canonical_status = heartbeat_check.get("schema") == LIFECYCLE_STATUS_SCHEMA
             observed_state = _lifecycle_state(heartbeat_check.get("state"))
             recovery: dict[str, Any] = {}
@@ -3160,15 +3216,29 @@ class SupervisorWatchdog:
             report_path = Path(report_raw)
             if not report_path.is_absolute():
                 report_path = self.repo_root / report_path
-            report_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = report_path.with_name(
                 f".{report_path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
             )
-            temporary.write_text(
-                json.dumps(cycle_report, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            os.replace(temporary, report_path)
+            try:
+                report_path.parent.mkdir(parents=True, exist_ok=True)
+                with temporary.open("w", encoding="utf-8") as handle:
+                    handle.write(json.dumps(cycle_report, indent=2) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, report_path)
+            except OSError as error:
+                if not is_storage_pressure(error):
+                    raise
+                cycle_report["status"] = {**cycle_report["status"], "state": "degraded", "phase": "storage_pressure",
+                                          "backpressure": True}
+                cycle_report["storage_pressure"] = True
+                publish_emergency_status(report_path, cycle_report, error=error)
+            finally:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError as error:
+                    if not is_storage_pressure(error):
+                        raise
         return cycle_report
 
 

@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.rescue import lane_resume
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import parse_todo_task_fields
 
 
 pytestmark = pytest.mark.proof_reuse_disabled(reason="Exercise real producer and validator invocations")
@@ -203,6 +204,121 @@ def test_producer_mtime_change_does_not_rearm_retry(tmp_path: Path) -> None:
 
     _assert_waiting(tmp_path, _cycle(tmp_path))
     assert (tmp_path / "producer-count").read_text() == "1"
+
+
+@pytest.mark.parametrize("source", ["src/native-handler.js", "src/tools-manifest.json"])
+def test_repaired_declared_import_rearms_once_without_trace_churn_reset(tmp_path: Path, source: str) -> None:
+    _counting_failure(tmp_path)
+    board = tmp_path / "board.md"
+    board.write_text(board.read_text() + f"- Predicted files: {source}, test-results/report.json\n")
+    dependency = tmp_path / source
+    dependency.parent.mkdir(parents=True)
+    dependency.write_text('"broken implementation"')
+    report = tmp_path / 'test-results/report.json'
+    report.parent.mkdir()
+    report.write_text('{"trace":"first"}')
+    assert _cycle(tmp_path)["phase"] == "deterministic_command_failed"
+    report.write_text('{"trace":"new run, unchanged defect"}')
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+    dependency.write_text('"repaired implementation"')
+    assert _cycle(tmp_path)["phase"] == "deterministic_command_failed"
+    assert (tmp_path / 'producer-count').read_text() == '2'
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+
+
+def test_self_generated_source_cannot_rearm_failure_but_external_fix_can(tmp_path: Path) -> None:
+    _task(tmp_path, producer=(
+        "counter=Path('producer-count')\n"
+        "count=int(counter.read_text())+1 if counter.exists() else 1\n"
+        "counter.write_text(str(count))\n"
+        "Path('src/generated.js').write_text('// generated run '+str(count))\n"
+        "raise SystemExit(1)\n"
+    ), declared="- Outputs: src/generated.js\n", validation="")
+    (tmp_path / "src").mkdir()
+    assert _cycle(tmp_path)["phase"] == "deterministic_command_failed"
+    record = json.loads((tmp_path / "attempts.json").read_text())["_command_evidence"]["TEST-001"]
+    assert record["contract"] != record["retry_contract"], "invocation-start provenance was overwritten"
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+    assert (tmp_path / "producer-count").read_text() == "1"
+    (tmp_path / "src/generated.js").write_text("// repaired externally\n")
+    assert _cycle(tmp_path)["phase"] == "deterministic_command_failed"
+    assert (tmp_path / "producer-count").read_text() == "2"
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+    assert (tmp_path / "lane.log").read_text().count("retry rearmed TEST-001:") == 1
+
+
+def test_validator_generated_source_is_not_an_external_retry_repair(tmp_path: Path) -> None:
+    _task(tmp_path, producer="Path('report.json').write_text('{\"decision\":\"no_go\"}')\n",
+          declared="- Outputs: report.json\n- Predicted files: src/generated.js\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "validate.py").write_text(
+        "from pathlib import Path\n"
+        "p=Path('validator-count')\n"
+        "count=int(p.read_text())+1 if p.exists() else 1\n"
+        "p.write_text(str(count))\n"
+        "Path('src/generated.js').write_text('// validation run '+str(count))\n"
+        "raise SystemExit(1)\n"
+    )
+    assert _cycle(tmp_path)["phase"] == "validation_failed"
+    record = json.loads((tmp_path / "attempts.json").read_text())["_command_evidence"]["TEST-001"]
+    assert record["contract"] != record["retry_contract"]
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+    assert (tmp_path / "validator-count").read_text() == "1"
+    (tmp_path / "src/generated.js").write_text("// repaired externally\n")
+    assert _cycle(tmp_path)["phase"] == "validation_failed"
+    assert (tmp_path / "validator-count").read_text() == "2"
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+
+
+def test_retry_contract_cannot_authorize_evidence_from_prior_code(tmp_path: Path) -> None:
+    _task(tmp_path, producer="Path('report.json').write_text('{\"decision\":\"GO\"}')\n",
+          declared="- Outputs: report.json\n- Predicted files: src/handler.js\n")
+    source = tmp_path / "src/handler.js"
+    source.parent.mkdir()
+    source.write_text("// invocation-start implementation\n")
+    fields = dict(parse_todo_task_fields(
+        (tmp_path / "board.md").read_text(), task_header_prefix="## TEST-"))["TEST-001"]
+    command, validation = ["python3", "produce.py"], ["python3", "validate.py"]
+    before = lane_resume._declared_evidence(fields, repo_root=tmp_path, excluded=[])
+    contract = lane_resume._command_contract(fields, command, validation, repo_root=tmp_path)
+    (tmp_path / "report.json").write_text('{"decision":"GO"}')
+    source.write_text("// changed during invocation\n")
+    record = {"contract": contract, "before": before,
+              "after": lane_resume._declared_evidence(fields, repo_root=tmp_path, excluded=[]),
+              "retry_contract": lane_resume._command_contract(fields, command, validation, repo_root=tmp_path),
+              "exit_code": 1}
+    assert record["contract"] != record["retry_contract"]
+    assert not lane_resume._produced_evidence_matches(
+        record, fields, command, validation, repo_root=tmp_path, excluded=[])
+
+
+@pytest.mark.parametrize("retry_contract", [None, {}, "invalid", ""])
+def test_malformed_retry_contract_never_grants_a_new_budget(tmp_path: Path, retry_contract: Any) -> None:
+    _counting_failure(tmp_path)
+    assert _cycle(tmp_path)["phase"] == "deterministic_command_failed"
+    ledger = tmp_path / "attempts.json"
+    saved = json.loads(ledger.read_text())
+    saved["_command_evidence"]["TEST-001"]["retry_contract"] = retry_contract
+    ledger.write_text(json.dumps(saved))
+    producer = tmp_path / "produce.py"
+    producer.write_text(producer.read_text() + "# external source change\n")
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+    assert (tmp_path / "producer-count").read_text() == "1"
+
+
+def test_legacy_receipt_without_retry_contract_still_rearms_after_external_fix(tmp_path: Path) -> None:
+    _counting_failure(tmp_path)
+    assert _cycle(tmp_path)["phase"] == "deterministic_command_failed"
+    ledger = tmp_path / "attempts.json"
+    saved = json.loads(ledger.read_text())
+    saved["_command_evidence"]["TEST-001"].pop("retry_contract")
+    ledger.write_text(json.dumps(saved))
+    producer = tmp_path / "produce.py"
+    producer.write_text(producer.read_text() + "# external source change\n")
+    assert _cycle(tmp_path)["phase"] == "deterministic_command_failed"
+    _assert_waiting(tmp_path, _cycle(tmp_path))
+    assert (tmp_path / "producer-count").read_text() == "2"
 
 
 def test_repaired_producer_can_complete_without_waiting_for_old_cooldown(tmp_path: Path) -> None:

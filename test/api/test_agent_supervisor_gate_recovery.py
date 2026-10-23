@@ -92,7 +92,7 @@ def test_withheld_fingerprint_survives_restarts_and_ignores_clock_and_log_churn(
 def test_semantic_changes_bypass_gate_cooldown(lane: SimpleNamespace, change: str) -> None:
     for _ in range(3):
         previous = lane.cycle()
-    count = len(lane.calls)
+    count = sum(argv[-1] == "gate.py" for argv in lane.calls)
     if change == "source":
         (lane.root / "source.py").write_text("# real implementation change\n")
     else:
@@ -100,9 +100,9 @@ def test_semantic_changes_bypass_gate_cooldown(lane: SimpleNamespace, change: st
         report["decision" if change == "decision" else "reasons"] = "GO" if change == "decision" else ["new gap"]
         lane.report.write_text(json.dumps(report))
     changed = lane.cycle()
-    assert len(lane.calls) == count + 1
-    assert changed["phase"] == "gate_withheld"
-    assert changed["gate_recovery_needed"] is False
+    assert sum(argv[-1] == "gate.py" for argv in lane.calls) == count + 1
+    assert changed["phase"] == ("gate_withheld" if change == "source" else "gate_recovery_needed")
+    assert changed["gate_recovery_needed"] is (change != "source")
     assert changed["gate_evidence_fingerprint"] != previous["gate_evidence_fingerprint"]
 
 
@@ -126,11 +126,11 @@ def test_unchanged_retries_back_off_and_revalidate_dependencies_only_once(lane: 
         previous = lane.cycle()
     for expected_delay in (120_000, 240_000, 480_000, 900_000, 900_000):
         lane.now[0] = previous["next_retry_at_ms"] / 1000 + 1
-        calls = len(lane.calls)
+        calls = sum(argv[-1] in {"source.py", "coverage.json"} for argv in lane.calls)
         previous = lane.cycle()
         assert previous["phase"] == "gate_recovery_needed"
         assert previous["next_retry_at_ms"] - int(lane.now[0] * 1000) == expected_delay
-        assert len(lane.calls) == calls + 1, "upstream validators ran again without changed evidence"
+        assert sum(argv[-1] in {"source.py", "coverage.json"} for argv in lane.calls) == calls, "upstream validators ran again without changed source"
 
 
 @pytest.mark.parametrize("during_cooldown", [False, True])
@@ -377,10 +377,35 @@ def test_admission_cannot_assign_a_browser_bound_to_cpu_small(lane: SimpleNamesp
         _admit(lane, implementation_timeout_seconds=7200)
 
 
+@pytest.mark.parametrize("timeout", [25200, 28800, 46800, 50400])
+def test_admission_preserves_explicit_bounded_full_browser_workload(lane: SimpleNamespace, timeout: int) -> None:
+    result = _admit(lane, resource_class="cpu-browser", implementation_timeout_seconds=timeout)
+    repair = dict(parse_todo_task_fields(result["todo_text"], task_header_prefix="## TEST-"))[result["derived_task_id"]]
+    assert repair["implementation_timeout_seconds"] == str(timeout)
+    assert repair["resource_class"] == "cpu-browser"
+    assert repair["status"] == "pending"
+    assert result["work_complete"] is result["completion_authority"] is False
+
+
+@pytest.mark.parametrize(("resource", "timeout"), [("cpu-browser", 50401), ("cpu-browser", 100000), ("cpu-small", 1801)])
+def test_admission_rejects_workload_beyond_its_resource_ceiling(lane: SimpleNamespace, resource: str, timeout: int) -> None:
+    before = lane.board.read_text()
+    with pytest.raises(ValueError, match="resource bound"):
+        _admit(lane, resource_class=resource, implementation_timeout_seconds=timeout)
+    assert lane.board.read_text() == before
+
+
+@pytest.mark.parametrize("resource", ["cpu-browser", "cpu-small"])
+def test_admission_keeps_eighteen_hundred_second_default(lane: SimpleNamespace, resource: str) -> None:
+    result = _admit(lane, resource_class=resource)
+    repair = dict(parse_todo_task_fields(result["todo_text"], task_header_prefix="## TEST-"))[result["derived_task_id"]]
+    assert repair["implementation_timeout_seconds"] == "1800"
+
+
 def test_an_admitted_repair_can_receive_a_sibling_repair_dependency(lane: SimpleNamespace) -> None:
     first = _admit(lane)
     lane.board.write_text(first["todo_text"])
-    result = _admit(lane, task_id=first["derived_task_id"], repair_task_id="TEST-041-R01")
+    result = _admit(lane, task_id=first["derived_task_id"], repair_task_id="TEST-041-R01", command="python3 source.py")
     rows = dict(parse_todo_task_fields(result["todo_text"], task_header_prefix="## TEST-"))
     assert "TEST-041-R01" in rows[first["derived_task_id"]]["depends_on"]
     assert rows["TEST-041-R01"]["depends_on"] == "TEST-040"

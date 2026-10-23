@@ -1632,6 +1632,19 @@ def test_resume_stopped_lane_refuses_live_pid_and_spawns_one_fenced_worker(
         "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume.subprocess.Popen",
         popen,
     )
+    ready_pids = []
+
+    def ready(process, _ready_fd, *, pid_path, **_kwargs):
+        # Model the child's publication, not an unverified parent-side pid
+        # write. Real inherited-fence/pipe behavior has lifecycle coverage.
+        pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
+        ready_pids.append(process.pid)
+        return ""
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume._await_resume_ready",
+        ready,
+    )
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume._pid_alive",
         lambda _pid: False,
@@ -1651,6 +1664,8 @@ def test_resume_stopped_lane_refuses_live_pid_and_spawns_one_fenced_worker(
     )
     assert started["restarted"] is True
     assert started["new_pid"] == 7171
+    assert started["readiness_verified"] is True
+    assert ready_pids == [7171]
     assert started["work_complete"] is False
     assert spawned[0][1:3] == [
         "-m",
@@ -1683,6 +1698,8 @@ def test_resume_stopped_lane_refuses_live_pid_and_spawns_one_fenced_worker(
         },
     )
     assert flagged["restarted"] is True
+    assert flagged["readiness_verified"] is True
+    assert ready_pids == [7171, 7171]
     assert "--allow-bounded-implement" in spawned[-1]
     assert "implementation_supervisor" not in " ".join(spawned[-1])
     assert not any(part in {"grok", "codex"} for part in spawned[-1])

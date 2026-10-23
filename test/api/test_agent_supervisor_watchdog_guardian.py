@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import errno
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -339,3 +341,178 @@ def test_malformed_manifest_and_partial_report_fail_closed(setup_guardian):
     assert result["action"] == "configuration_error" and not calls
     saved = json.loads(guardian.status_path.read_text())
     assert saved["work_complete"] is saved["completion_authority"] is False
+
+
+@pytest.mark.parametrize("number", [errno.ENOSPC, errno.EDQUOT])
+def test_storage_admission_does_not_launch_or_consume_budget_and_recovers(setup_guardian, monkeypatch, number):
+    guardian, _proc, calls = setup_guardian
+    emergency, cleared = [], []
+    monkeypatch.setattr(guardian_module, "publish_emergency_status", lambda *args, **kwargs: emergency.append(args[1]))
+    monkeypatch.setattr(guardian_module, "clear_emergency_status", cleared.append)
+    original = guardian_module.check_storage_capacity
+    monkeypatch.setattr(guardian_module, "check_storage_capacity", lambda *_, **_kwargs: {
+        "ok": False, "storage_pressure": True, "reason": errno.errorcode[number], "errno": number})
+    for now in [1000, 1030, 1060]:
+        result = guardian.inspect(now=now)
+        assert result["action"] == "storage_blocked"
+        assert result["work_complete"] is result["completion_authority"] is False
+        assert guardian.launch_attempts == 0 and guardian.next_launch_after == 0
+    assert not calls and emergency and not cleared
+    monkeypatch.setattr(guardian_module, "check_storage_capacity", original)
+    assert guardian.inspect(now=1090)["action"] == "launched"
+    assert len(calls) == 1 and guardian.launch_attempts == 1
+    assert cleared == [guardian.status_path]
+
+
+@pytest.mark.parametrize("number", [errno.ENOSPC, errno.EDQUOT])
+def test_prelaunch_persistence_failure_keeps_guardian_budget_and_does_not_spawn(setup_guardian, monkeypatch, number):
+    guardian, _proc, calls = setup_guardian
+    original = guardian_module.atomic_json
+    emergency = []
+    monkeypatch.setattr(guardian_module, "publish_emergency_status", lambda *args, **kwargs: emergency.append(args[1]))
+
+    def full(*_args):
+        raise OSError(number, "injected capacity failure")
+
+    monkeypatch.setattr(guardian_module, "atomic_json", full)
+    assert guardian.inspect(now=1000)["action"] == "storage_blocked"
+    assert guardian.inspect(now=1030)["action"] == "storage_blocked"
+    assert guardian.launch_attempts == 0 and guardian.next_launch_after == 0
+    assert not calls and emergency
+    monkeypatch.setattr(guardian_module, "atomic_json", original)
+    assert guardian.inspect(now=1060)["action"] == "launched"
+    assert len(calls) == 1
+
+
+def test_telemetry_failure_retains_the_real_guardian_lock_and_existing_owner(setup_guardian, monkeypatch):
+    guardian, proc, calls = setup_guardian
+    owner(proc, guardian)
+    fresh_report(guardian)
+    emergency = []
+    monkeypatch.setattr(guardian_module, "publish_emergency_status", lambda *args, **kwargs: emergency.append(args[1]))
+    original = guardian_module.atomic_json
+
+    def full(*_args):
+        raise OSError(errno.ENOSPC, "injected full filesystem")
+
+    lock = guardian_module.acquire_lock(guardian.lock_path)
+    try:
+        monkeypatch.setattr(guardian_module, "atomic_json", full)
+        for now in [1000, 1030]:
+            result = guardian.inspect(now=now)
+            assert result["action"] == "storage_blocked" and result["owner_pid"] == 123
+            assert guardian_module.acquire_lock(guardian.lock_path) is None
+        assert not calls and emergency
+        monkeypatch.setattr(guardian_module, "atomic_json", original)
+        assert guardian.inspect(now=1060)["action"] == "owner_present"
+        assert guardian_module.acquire_lock(guardian.lock_path) is None
+    finally:
+        lock.close()
+
+
+def test_guardian_does_not_hide_an_unrelated_telemetry_io_error(setup_guardian, monkeypatch):
+    guardian, proc, calls = setup_guardian
+    owner(proc, guardian)
+    fresh_report(guardian)
+
+    def fail(*_args):
+        raise OSError(errno.EIO, "unrelated disk error")
+
+    monkeypatch.setattr(guardian_module, "atomic_json", fail)
+    with pytest.raises(OSError) as error:
+        guardian.inspect(now=1000)
+    assert error.value.errno == errno.EIO and not calls
+
+
+def test_guardian_main_keeps_polling_and_owns_lock_through_telemetry_pressure(setup_guardian, monkeypatch):
+    guardian, proc, calls = setup_guardian
+    owner(proc, guardian)
+    fresh_report(guardian, now=time.time())
+    guardian.poll_seconds = 1
+    actual_inspect, actual_atomic = guardian.inspect, guardian_module.atomic_json
+    actions, polls = [], []
+    monkeypatch.setattr(guardian_module, "WatchdogGuardian", lambda *_args, **_kwargs: guardian)
+    monkeypatch.setattr(guardian_module, "publish_emergency_status", lambda *_args, **_kwargs: None)
+
+    def full(*_args):
+        raise OSError(errno.ENOSPC, "injected persistent telemetry failure")
+
+    def inspect(**kwargs):
+        result = actual_inspect(**kwargs)
+        actions.append(result["action"])
+        return result
+
+    def poll(seconds):
+        polls.append(seconds)
+        assert guardian_module.acquire_lock(guardian.lock_path) is None
+        if len(polls) == 1:
+            monkeypatch.setattr(guardian_module, "atomic_json", actual_atomic)
+        else:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(guardian_module, "atomic_json", full)
+    monkeypatch.setattr(guardian, "inspect", inspect)
+    monkeypatch.setattr(guardian_module.time, "sleep", poll)
+    with pytest.raises(KeyboardInterrupt):
+        guardian_module.main(["--manifest-path", str(guardian.manifest), "--repo-root", str(guardian.repo), "--apply"])
+    assert actions == ["storage_blocked", "owner_present"]
+    assert polls == [1, 1] and not calls
+    lock = guardian_module.acquire_lock(guardian.lock_path)
+    assert lock is not None
+    lock.close()
+
+
+def test_guardian_probes_declared_output_filesystems_even_when_metadata_is_writable(setup_guardian, monkeypatch):
+    guardian, _proc, calls = setup_guardian
+    data = json.loads(guardian.manifest.read_text())
+    data["storage_paths"] = ["artifacts"]
+    data["lanes"][0]["storage_paths"] = ["captures"]
+    guardian.manifest.write_text(json.dumps(data))
+    observed = []
+
+    def capacity(paths, **kwargs):
+        observed.extend(paths)
+        return {"ok": False, "storage_pressure": True, "reason": "output_full"}
+
+    monkeypatch.setattr(guardian_module, "check_storage_capacity", capacity)
+    monkeypatch.setattr(guardian_module, "publish_emergency_status", lambda *_args, **_kwargs: None)
+    assert guardian.inspect(now=1000)["action"] == "storage_blocked"
+    assert guardian.repo / "artifacts" in observed and guardian.repo / "captures" in observed
+    assert not calls and guardian.launch_attempts == 0
+
+
+def test_guardian_reports_fresh_owner_storage_wait_without_claiming_healthy(setup_guardian, monkeypatch):
+    guardian, proc, calls = setup_guardian
+    owner(proc, guardian)
+    fresh_report(guardian)
+    path = guardian.manifest.parent / "report.json"
+    path.write_text(json.dumps({"status": {"pid": 123, "state": "degraded", "phase": "storage_pressure"},
+                                "reports": [{"bundle_key": "test", "action": "storage_wait"}]}))
+    os.utime(path, (1000, 1000))
+    monkeypatch.setattr(guardian_module, "publish_emergency_status", lambda *_args, **_kwargs: None)
+    result = guardian.inspect(now=1000)
+    assert result["action"] == "storage_blocked" and result["report_health"] == "storage_pressure"
+    assert result["reported_state"] == "degraded" and not calls
+    os.utime(path, (0, 0))
+    assert guardian.inspect(now=1000)["action"] == "owner_unresponsive"
+
+
+def test_guardian_uses_only_expected_verified_watchdog_emergency_record(setup_guardian, monkeypatch):
+    guardian, proc, calls = setup_guardian
+    owner(proc, guardian)
+    fresh_report(guardian, now=1)
+    report_path = guardian.manifest.parent / "report.json"
+
+    def emergency(path, *, expected_pid, identity_check, **_kwargs):
+        if path != report_path:
+            return None
+        assert expected_pid == 123 and identity_check(123) and not identity_check(999)
+        return {"pid": 123, "observed_at_ms": 1000000,
+                "payload": {"status": {"pid": 123, "state": "degraded"}, "storage_pressure": True}}
+
+    monkeypatch.setattr(guardian_module, "read_emergency_status", emergency)
+    monkeypatch.setattr(guardian_module, "publish_emergency_status", lambda *_args, **_kwargs: None)
+    result = guardian.inspect(now=1000)
+    assert result["action"] == "storage_blocked" and result["report_health"] == "storage_pressure"
+    assert result["report_age_seconds"] == 0 and result["reported_state"] == "degraded"
+    assert not calls

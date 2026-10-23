@@ -20,6 +20,16 @@ GATE_REPEAT_LIMIT = 3
 GATE_RETRY_BASE_MS = 60_000
 GATE_RETRY_MAX_MS = 900_000
 _SOURCE_SUFFIXES = {".py", ".js", ".cjs", ".mjs", ".ts", ".tsx", ".jsx"}
+
+
+def _is_source_path(path: Path) -> bool:
+    if path.suffix.casefold() in _SOURCE_SUFFIXES:
+        return True
+    # Reviewed descriptor/schema JSON is executable configuration. Generated
+    # reports and runtime receipts must never reset a source refusal budget.
+    return (path.suffix.casefold() == ".json"
+            and not {"test-results", "data", "evidence"}.intersection(path.parts)
+            and bool({"src", "config", "configs", "schemas"}.intersection(path.parts)))
 _VOLATILE_KEYS = {
     "generated_at", "generated_at_ms", "generated_at_utc", "updated_at",
     "updated_at_ms", "created_at", "created_at_ms", "timestamp", "timestamp_ms",
@@ -34,6 +44,38 @@ _FIELDS = (
     "status", "depends_on", "deterministic_command", "deterministic_repair",
     "validation", "outputs", "predicted_files", "acceptance", "conflict_policy",
 )
+_TRACE_KEYS = {
+    "correlationid", "traceid", "requestid", "responseid", "runid", "receiptid",
+    "receiptcid", "eventdagcid", "eventcid", "evidencesources", "inputfingerprint",
+    "reportpath", "capturedat", "completedat", "capturestartedat", "capturefinishedat",
+}
+
+
+def _diagnostic(value: Any) -> Any:
+    """Compare structured failure outcomes, never use this as proof validation.
+
+    A report with coded gaps has already evaluated its receipt identities.
+    New run/CID/correlation links do not resolve an unchanged coded obligation.
+    Unknown JSON keeps its full non-clock meaning so arbitrary input evidence
+    is not silently weakened.
+    """
+
+    stable = _stable(value)
+    if not (isinstance(stable, dict) and isinstance(stable.get("schema"), str)
+            and isinstance(stable.get("decision"), str) and isinstance(stable.get("gaps"), list)
+            and all(isinstance(gap, dict) and isinstance(gap.get("code"), str) for gap in stable["gaps"])):
+        return stable
+
+    def project(item: Any, field: str = "") -> Any:
+        if isinstance(item, dict):
+            return {key: project(child, key) for key, child in item.items()
+                    if re.sub(r"[^a-z0-9]", "", str(key).casefold()) not in _TRACE_KEYS}
+        if isinstance(item, list):
+            result = [project(child) for child in item]
+            return sorted(result, key=_json) if field in {"gaps", "reasons"} else result
+        return item
+
+    return project(stable)
 
 
 def _stable(value: Any) -> Any:
@@ -57,7 +99,7 @@ def evidence_file_fingerprint(path: Path) -> str:
         return "absent"
     if path.suffix.casefold() == ".json":
         try:
-            body = _json(_stable(json.loads(body))).encode("utf-8")
+            body = _json(_diagnostic(json.loads(body))).encode("utf-8")
         except (ValueError, UnicodeError):
             pass
     return hashlib.sha256(body).hexdigest()
@@ -172,7 +214,7 @@ def gate_evidence(
             if path in excluded or path.suffix.casefold() == ".log":
                 continue
             relative = path.relative_to(root).as_posix()
-            if key != task_id and path.suffix.casefold() in _SOURCE_SUFFIXES:
+            if key != task_id and _is_source_path(Path(relative)):
                 scope.add(relative)
             if relative in artifacts:
                 continue
@@ -183,14 +225,47 @@ def gate_evidence(
                 continue
             if path.suffix.casefold() == ".json":
                 try:
-                    artifacts[relative] = _stable(json.loads(body))
+                    artifacts[relative] = _diagnostic(json.loads(body))
                     continue
                 except (ValueError, UnicodeError):
                     pass
             artifacts[relative] = {"sha256": hashlib.sha256(body).hexdigest()}
+    dependents = [{"task_id": name, "status": fields.get("status"),
+                   "deterministic_command": fields.get("deterministic_command"), "validation": fields.get("validation")}
+                  for name, fields in blocks.items() if task_id in dependency_ids(fields)
+                  and str(fields.get("status") or "").casefold() in {"pending", "ready", "in_progress", "in progress"}]
     evidence = {"task_id": task_id, "tasks": tasks, "artifacts": artifacts,
-                "dependencies": dependencies, "allowed_source_paths": sorted(scope)}
+                "dependencies": dependencies, "pending_dependents": dependents, "allowed_source_paths": sorted(scope)}
     return hashlib.sha256(_json(evidence).encode("utf-8")).hexdigest(), evidence
+
+
+def gate_source_contract(evidence: Mapping[str, Any], command_contract: str) -> str:
+    """Bind refusal limits to declared code and dependency contracts, not runs."""
+
+    sources = {path: value for path, value in (evidence.get("artifacts") or {}).items()
+               if _is_source_path(Path(path))}
+    payload = {"tasks": evidence.get("tasks"), "sources": sources, "command_contract": command_contract}
+    return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
+
+
+def _contract_warnings(task_id: str, evidence: Mapping[str, Any]) -> list[dict[str, Any]]:
+    fields = (evidence.get("tasks") or {}).get(task_id) or {}
+    try:
+        command = shlex.split(str(fields.get("deterministic_command") or ""))
+        validation = shlex.split(str(fields.get("validation") or ""))
+    except ValueError:
+        return []
+    warnings: list[dict[str, Any]] = []
+    if any(arg in {"--fresh", "--no-cache", "--force-refresh"} or arg == "--fresh=true" for arg in command):
+        warnings.append({"code": "forced_fresh_producer", "action": "Repair source or dependencies before requesting another unchanged capture."})
+    transports = {"http", "https", "libp2p", "stdio", "websocket", "grpc"}
+    produced = sorted(set(command) & transports)
+    checked = sorted(set(validation) & transports)
+    if len(produced) == 1 and not checked:
+        warnings.append({"code": "single_transport_producer_validation_scope_unspecified",
+                         "producer_transports": produced, "validation_transports": checked,
+                         "action": "Check whether validation requires other transports. Separate capture completion from full acceptance and wire independent producers before the acceptance gate."})
+    return warnings
 
 
 def _write(path: Path, payload: Mapping[str, Any]) -> None:
@@ -223,13 +298,26 @@ class GateRecovery:
         if self.records.pop(task_id, None) is not None:
             _write(self.path, self.records)
 
-    def observe(self, task_id: str, fingerprint: str, *, now_ms: int) -> dict[str, Any]:
+    def observe(self, task_id: str, fingerprint: str, *, now_ms: int, source_contract: str = "") -> dict[str, Any]:
+        previous = self.records.get(task_id) or {}
         record = self.current(task_id, fingerprint)
+        same_source = bool(source_contract and isinstance(previous, dict) and previous.get("source_contract") == source_contract)
+        if source_contract and not same_source:
+            record = {}
+        if same_source:
+            for name in ("dependencies_revalidated", "dependency_validations", "repair_attempted", "deterministic_repair"):
+                if name in previous:
+                    record[name] = previous[name]
         count = max(0, int(record.get("unchanged_probes") or 0)) + 1
         record.update(fingerprint=fingerprint, unchanged_probes=count,
                       first_seen_ms=int(record.get("first_seen_ms") or now_ms), last_seen_ms=now_ms)
-        delay = 0 if count < GATE_REPEAT_LIMIT else min(
-            GATE_RETRY_MAX_MS, GATE_RETRY_BASE_MS * 2 ** min(count - GATE_REPEAT_LIMIT, 8))
+        if source_contract:
+            refusals = int(previous.get("source_refusals") or 0) + 1 if same_source else 1
+            record.update(source_contract=source_contract, source_refusals=refusals,
+                          source_first_seen_ms=int(previous.get("source_first_seen_ms") or now_ms) if same_source else now_ms)
+        limit_count = max(count, int(record.get("source_refusals") or 0))
+        delay = 0 if limit_count < GATE_REPEAT_LIMIT else min(
+            GATE_RETRY_MAX_MS, GATE_RETRY_BASE_MS * 2 ** min(limit_count - GATE_REPEAT_LIMIT, 8))
         record["next_retry_at_ms"] = now_ms + delay
         self.store(task_id, record)
         return record
@@ -245,16 +333,20 @@ class GateRecovery:
             "reason": "unchanged_gate_withheld", "task_id": task_id,
             "gate_evidence_fingerprint": record.get("fingerprint"),
             "unchanged_probes": record.get("unchanged_probes"),
+            "source_contract": record.get("source_contract"), "source_refusals": record.get("source_refusals"),
+            "last_probe": record.get("last_probe", "producer"),
             "next_retry_at_ms": record.get("next_retry_at_ms"),
             **{key: value for key, value in evidence.items() if key != "artifacts"},
             "artifacts": {path: _artifact_summary(value) for path, value in (evidence.get("artifacts") or {}).items()},
             "body_free": True, "withheld_stage": record.get("withheld_stage", "command"),
+            "contract_warnings": _contract_warnings(task_id, evidence),
             "dependency_validations": validations,
             "deterministic_repair": record.get("deterministic_repair"),
             "required_actions": [
                 "Inspect failed or presence-only upstream validation and implement missing behavior.",
                 "Use the upstream source scope; preserve the gate and operator holds.",
                 "Regenerate evidence and run the original gate before completing any task.",
+                "A new trace, correlation, receipt, or run identifier alone is not progress. Repair the source/dependency contract instead of admitting another identical producer.",
             ],
             "work_complete": False, "completion_authority": False,
         }
@@ -301,7 +393,7 @@ def admit_gate_repair_task(
         raise ValueError("repair source scope and acceptance are required")
     if resource_class not in {"cpu-small", "cpu-browser"}:
         raise ValueError("repair resource class must be cpu-small or cpu-browser")
-    timeout_limit = 7200 if resource_class == "cpu-browser" else 1800
+    timeout_limit = 50400 if resource_class == "cpu-browser" else 1800
     if not 1 <= implementation_timeout_seconds <= timeout_limit:
         raise ValueError("repair timeout exceeds its resource bound")
     for relative in predicted_files:
@@ -317,6 +409,16 @@ def admit_gate_repair_task(
            for dependency in dependencies):
         raise ValueError("repair dependencies must exist and must not depend on the gate")
     existing = blocks.get(repair_task_id)
+    if not existing and str(blocks[task_id].get("status") or "").casefold() in {"pending", "ready", "in_progress", "in progress"}:
+        target = blocks[task_id]
+        producer = parse_deterministic_command(target.get("deterministic_command") or "", repo_root=repo_root)
+        target_validation = parse_deterministic_command(target.get("validation") or "", repo_root=repo_root)
+        def without_bypass(arguments: list[str] | None) -> list[str]:
+            return [arg for arg in (arguments or []) if arg not in {"--fresh", "--fresh=true", "--no-cache", "--force-refresh"}]
+        prior_scope = {part.strip() for part in str(target.get("predicted_files") or "").split(",") if part.strip()}
+        if (producer and without_bypass(producer) == without_bypass(argv) and target_validation == validator
+                and set(dependencies).issubset(dependency_ids(target)) and set(predicted_files).issubset(prior_scope)):
+            raise ValueError("recapture-only repair repeats a pending producer and validator; repair its source or dependency contract first")
     if existing and (
         existing.get("deterministic_command") != command or existing.get("validation") != validation
         or existing.get("acceptance") != acceptance

@@ -41,10 +41,6 @@ from ipfs_accelerate_py.agent_supervisor.rescue.<module> import ...
 
 Relative imports stay package-local (`from .<module> import ...`).
 
-Validation-gap admission rules ship with the rescue package. An installed or
-relocated supervisor can admit the bounded census and matrix repair tasks
-without requiring a sibling datasets checkout or unpublished workspace files.
-
 ## Persistent repair dispatch
 
 `repair_dispatcher` observes one existing watchdog manifest and starts an
@@ -87,6 +83,14 @@ upstream dependencies and validation gaps; subsequent probes use a bounded
 cooldown. A changed source or decision permits an immediate new probe. Other
 ready tasks can advance while a gate waits. The dispatcher consumes the
 lane's `gate_recovery_needed` packet directly.
+
+After a soft refusal, an unchanged task uses its validator as a cheap probe;
+it does not repeatedly rerun a browser producer. Refusal budgets bind to the
+source contract, while structured diagnostic summaries ignore changing trace,
+receipt and run identities. A source repair rearms the original producer,
+which must still pass its final validator before the task can complete.
+Transport acquisition and full-family acceptance should be separate tasks so
+one transport never waits on an acceptance gate requiring another transport.
 
 Exhausted command or validation attempts also escalate after their bounded
 wait. The dispatcher checks persisted invocation evidence and the current

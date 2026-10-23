@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 from dataclasses import dataclass, field
 import fcntl
 import hashlib
@@ -25,7 +26,11 @@ import uuid
 
 from .command_processes import CommandProcessTree
 from .gate_recovery import evidence_file_fingerprint
-from .watchdog_guardian import discover_watchdogs
+from .watchdog_guardian import (discover_watchdogs, _declared_storage_paths, _minimum_storage_bytes,
+                                _storage_status, _lane_storage_identity,
+                                lane_storage_emergency, watchdog_storage_emergency)
+from .storage_pressure import (check_storage_capacity, clear_emergency_status,
+                               is_storage_pressure, publish_emergency_status)
 
 
 SCHEMA = "ipfs_accelerate_py.agent_supervisor.repair-dispatcher@1"
@@ -54,6 +59,8 @@ class Config:
     cooldown_seconds: float = 300.0
     max_cooldown_seconds: float = 3600.0
     max_attempts: int = 3
+    _storage_retry_payload: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _storage_retry_path: Path | None = field(default=None, init=False, repr=False)
 
 
 def _path(root: Path, value: str | Path) -> Path:
@@ -267,9 +274,15 @@ def _exhausted_wait_proofs(
             continue
         before, after, code = receipt.get("before"), receipt.get("after"), receipt.get("exit_code")
         contract = receipt.get("contract")
+        # Producers and validators may legitimately rewrite declared source.
+        # Their invocation-start contract remains proof provenance; the durable
+        # post-invocation contract identifies which code spent this retry budget.
+        # A present malformed retry contract must never downgrade to old proof.
+        retry_contract = receipt.get("retry_contract") if "retry_contract" in receipt else contract
         if (not isinstance(before, dict) or not isinstance(after, dict) or not after
                 or not isinstance(code, int) or isinstance(code, bool) or code == 75
-                or not isinstance(contract, str) or not re.fullmatch(r"[0-9a-f]{64}", contract)):
+                or not isinstance(contract, str) or not re.fullmatch(r"[0-9a-f]{64}", contract)
+                or not isinstance(retry_contract, str) or not re.fullmatch(r"[0-9a-f]{64}", retry_contract)):
             continue
         failures = fixed.get("failures") if isinstance(fixed, dict) else None
         if code == 0 and (not isinstance(failures, int) or isinstance(failures, bool) or failures < 3
@@ -284,7 +297,7 @@ def _exhausted_wait_proofs(
         validation = parse_deterministic_command(fields.get("validation") or "", repo_root=config.repo_root)
         if not command or (fields.get("validation") and not validation):
             continue
-        if contract != _command_contract(fields, command, validation, repo_root=config.repo_root):
+        if retry_contract != _command_contract(fields, command, validation, repo_root=config.repo_root):
             continue
         current = {}
         valid = True
@@ -310,6 +323,7 @@ def _exhausted_wait_proofs(
                            "failure_stage": "validation" if code == 0 else "command",
                            "command_exit_code": code, "retry_deadline": float(retry) / 1000,
                            "attempt_path": str(ledger_path), "contract": contract,
+                           "retry_contract": retry_contract,
                            "semantic_evidence": _digest(current)})
     return proofs
 
@@ -337,6 +351,20 @@ def observe(
     report_lanes = {r.get("bundle_key"): r for r in report.get("reports", []) if isinstance(r, dict)}
     owner_path = config.owner_pid_path or config.manifest_path.parent / "watchdog.pid"
     owner, owner_candidates, owner_errors = _find_owner(config, owner_path, report, probe, now)
+    owner_emergency = watchdog_storage_emergency(report_path, owner, config.manifest_path.resolve(),
+                                                  config.repo_root.resolve()) if owner["alive"] else None
+    if owner_emergency:
+        report = owner_emergency["payload"]
+        report_error = ""
+        report_age = max(0, now - owner_emergency["observed_at_ms"] / 1000)
+        report_lanes = {r.get("bundle_key"): r for r in report.get("reports", []) if isinstance(r, dict)}
+    report_status = report.get("status") if isinstance(report.get("status"), dict) else {}
+    owner_pressure = bool(owner_emergency) or bool(owner["alive"] and report_status.get("pid") == owner["pid"]
+        and report_age is not None and report_age <= config.report_seconds
+        and (_storage_status(report) or _storage_status(report_status)
+             or any(item.get("action") == "storage_wait" for item in report_lanes.values())))
+    declared_storage = _declared_storage_paths(manifest, config.repo_root)
+    minimum_free_bytes = _minimum_storage_bytes(manifest)
     owner_uncertain = bool(owner_errors)
     holds = [str(p) for p in _configured_holds(config, manifest) if p.exists()]
     tasks: dict[str, dict[str, Any]] = {}
@@ -369,8 +397,16 @@ def observe(
         if not pid_path.exists():
             pid_path = directory / f"{prefix}_supervisor.pid"
         process = probe(_pid(pid_path) or int(status.get("pid") or 0))
+        emergency = lane_storage_emergency(status_path, process["pid"], config.repo_root.resolve())
+        if emergency:
+            status = {**status, **emergency["payload"], "pid": process["pid"]}
+            status_error = ""
         heartbeat = status.get("heartbeat_at_ms") or status.get("updated_at_ms")
         heartbeat_age = max(0.0, now - float(heartbeat) / 1000) if heartbeat else None
+        storage_pressure = bool(emergency) or bool(_storage_status(status) and process["alive"]
+            and status.get("pid") == process["pid"] and heartbeat_age is not None
+            and heartbeat_age <= config.heartbeat_seconds
+            and _lane_storage_identity(process["pid"], config.repo_root.resolve(), status_path))
         transition = status.get("last_task_transition_at_ms")
         transition_age = max(0.0, now - float(transition) / 1000) if transition else None
         log_path = _path(config.repo_root, lane.get("log_path") or directory / "supervisor.log")
@@ -387,6 +423,7 @@ def observe(
                           "last_task_transition_at_ms": transition,
                           "gate_recovery_needed": status.get("gate_recovery_needed") is True,
                           "heartbeat_age_seconds": heartbeat_age, "transition_age_seconds": transition_age,
+                          "storage_pressure": storage_pressure, "emergency_identity_verified": bool(emergency),
                           "log_age_seconds": _age(log_path, now), "status_error": status_error,
                           "held": bool(intentional or lane_holds), "hold_paths": lane_holds})
 
@@ -413,6 +450,8 @@ def observe(
             incident("lane_dead_pending", key, task, pending_task_ids=lane_ready,
                      terminal_reason=lane["terminal_reason"], pid=lane["process"]["pid"])
         elif alive:
+            if lane["storage_pressure"]:
+                continue
             heartbeat_age = lane["heartbeat_age_seconds"]
             if heartbeat_age is not None and heartbeat_age > config.heartbeat_seconds:
                 incident("lane_heartbeat_stale", key, task, age_seconds=heartbeat_age)
@@ -423,7 +462,7 @@ def observe(
             if not holds:
                 for proof in _exhausted_wait_proofs(config, lane, ready):
                     wait_key = f"{key}:{proof['task_id']}"
-                    signature = _digest([board_digest, source_digest, proof["contract"],
+                    signature = _digest([board_digest, source_digest, proof["retry_contract"],
                                          proof["semantic_evidence"], proof["failure_stage"],
                                          lane["last_task_transition_at_ms"]])
                     previous = exhausted_waits.get(wait_key, {})
@@ -489,6 +528,8 @@ def observe(
             "owner": _public_process(owner), "owner_pid_path": str(owner_path), "owner_startup_grace": startup,
             "owner_candidates": owner_candidates, "owner_discovery_errors": owner_errors,
             "owner_discovery_uncertain": owner_uncertain,
+            "storage_pressure": owner_pressure or any(lane["storage_pressure"] for lane in snapshots),
+            "storage_paths": [str(path) for path in declared_storage], "storage_minimum_free_bytes": minimum_free_bytes,
             "report_path": str(report_path), "report_age_seconds": report_age,
             "pending_task_ids": pending, "selectable_task_ids": ready,
             "lanes": snapshots, "incidents": incidents, "signature": signature,
@@ -508,10 +549,14 @@ def singleton_lock(path: Path) -> Iterator[None]:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise AlreadyRunning(str(path)) from exc
-        handle.seek(0)
-        handle.truncate()
-        handle.write(str(os.getpid()) + "\n")
-        handle.flush()
+        try:
+            # The descriptor/flock owns the dispatcher, not its optional PID
+            # text. Raw writes avoid retrying a failed buffered flush at close.
+            os.ftruncate(handle.fileno(), 0)
+            os.write(handle.fileno(), (str(os.getpid()) + "\n").encode())
+        except OSError as exc:
+            if not is_storage_pressure(exc):
+                raise
         try:
             yield
         finally:
@@ -620,6 +665,7 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
         return {"outcome": "configuration_error", "error": "worker argv and prompt path are required"}
     process = None
     tree = None
+    storage_result = None
     try:
         with config.prompt_path.open("rb") as prompt, log_path.open("ab") as output:
             environment = dict(os.environ, REPAIR_DISPATCHER_STATUS_PATH=str(config.state_dir / "status.json"))
@@ -639,7 +685,12 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
                         _stop_owned_worker(process)
                         return {"outcome": "timed_out", "exit_code": process.returncode}
     except (OSError, ValueError) as exc:
-        return {"outcome": "failed", "error": str(exc)}
+        if is_storage_pressure(exc):
+            storage_result = {"outcome": "storage_blocked", "error": str(exc),
+                              "error_errno": exc.errno, "spawned": process is not None,
+                              "spawned_pid": process.pid if process is not None else None}
+            return storage_result
+        return {"outcome": "failed", "error": str(exc), "error_errno": getattr(exc, "errno", None)}
     finally:
         if process is not None and process.poll() is None:
             _stop_owned_worker(process)
@@ -649,14 +700,77 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
             time.sleep(0.1)
             tree.send_signal(signal.SIGKILL)
             tree.close()
+        if storage_result is not None:
+            storage_result["owned_child_stopped"] = process is None or process.poll() is not None
 
 
-def _save(config: Config, state: dict[str, Any], telemetry: dict[str, Any]) -> None:
-    _atomic_json(config.state_dir / "state.json", state)
-    _atomic_json(config.state_dir / "status.json", telemetry)
-    with (config.state_dir / "events.jsonl").open("a") as events:
-        events.write(json.dumps(telemetry, sort_keys=True) + "\n")
-        events.flush()
+def _storage_blocked(config: Config, telemetry: dict[str, Any], *, error: OSError | None = None,
+                     capacity: dict[str, Any] | None = None) -> dict[str, Any]:
+    telemetry.update(action="storage_blocked", storage_pressure=True, degraded=True,
+                     retry_after_seconds=config.interval, **FLAGS)
+    if error is not None:
+        telemetry["storage_error_errno"] = error.errno
+    if capacity is not None:
+        telemetry["storage_capacity"] = capacity
+    publish_emergency_status(config.state_dir / "status.json", telemetry, error=error)
+    return telemetry
+
+
+def _remember_storage_payload(config: Config, payload: dict[str, Any]) -> None:
+    previous = config._storage_retry_payload
+    if previous is None or len(json.dumps(payload)) > len(json.dumps(previous)):
+        config._storage_retry_payload = copy.deepcopy(payload)
+
+
+def _retry_storage_payload(config: Config) -> OSError | None:
+    """A small free-space probe cannot prove a previously rejected JSON fits.
+
+    Retry its full allocation in an explicitly non-authoritative, private
+    temporary file. Never replay a reaped worker identity into state.json.
+    """
+    if config._storage_retry_payload is None:
+        return None
+    if config._storage_retry_path is None:
+        config._storage_retry_path = config.state_dir / f".storage-admission-{os.getpid()}-{uuid.uuid4().hex}.json"
+    path = config._storage_retry_path
+    error = None
+    try:
+        _atomic_json(path, {"schema": SCHEMA + "/storage-admission-probe", "storage_probe_only": True,
+                            "rejected_payload": config._storage_retry_payload, **FLAGS})
+    except OSError as exc:
+        if not is_storage_pressure(exc):
+            raise
+        error = exc
+    finally:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            if not is_storage_pressure(exc):
+                raise
+            error = exc
+    if error is None:
+        config._storage_retry_payload = None
+    return error
+
+
+def _save(config: Config, state: dict[str, Any], telemetry: dict[str, Any]) -> bool:
+    pending = state
+    try:
+        _atomic_json(config.state_dir / "state.json", state)
+        pending = telemetry
+        _atomic_json(config.state_dir / "status.json", telemetry)
+        with (config.state_dir / "events.jsonl").open("a") as events:
+            events.write(json.dumps(telemetry, sort_keys=True) + "\n")
+            events.flush()
+        if telemetry.get("action") != "storage_blocked":
+            clear_emergency_status(config.state_dir / "status.json")
+        return True
+    except OSError as exc:
+        if not is_storage_pressure(exc):
+            raise
+        _remember_storage_payload(config, pending)
+        _storage_blocked(config, telemetry, error=exc)
+        return False
 
 
 def tick(
@@ -704,6 +818,23 @@ def tick(
         telemetry.update({"action": "attention_required", "reason": "spawn_uncertain_after_dispatcher_interruption"})
         _save(config, state, telemetry)
         return telemetry
+    if observation.get("storage_pressure"):
+        _storage_blocked(config, telemetry)
+        _save(config, state, telemetry)
+        return telemetry
+    capacity = check_storage_capacity([config.state_dir, config.manifest_path.parent, config.repo_root,
+                                       *([config.repair_lock_path.parent] if config.repair_lock_path else []),
+                                       *(Path(path) for path in observation["storage_paths"])],
+                                      minimum_free_bytes=observation["storage_minimum_free_bytes"])
+    if not capacity["ok"]:
+        _storage_blocked(config, telemetry, capacity=capacity)
+        _save(config, state, telemetry)
+        return telemetry
+    storage_error = _retry_storage_payload(config)
+    if storage_error is not None:
+        _storage_blocked(config, telemetry, error=storage_error)
+        _save(config, state, telemetry)
+        return telemetry
     signature = observation["signature"]
     if observation["held"]:
         telemetry["action"] = "owner_uncertain" if observation["owner_discovery_uncertain"] else "held"
@@ -728,6 +859,8 @@ def tick(
         elif now < telemetry["next_dispatch_at"]:
             telemetry["action"] = "cooldown"
         else:
+            before_dispatch = copy.deepcopy(state)
+            worker_started = False
             try:
                 with repair_lock(config.repair_lock_path):
                     record["count"] += 1
@@ -736,26 +869,68 @@ def tick(
                     state["next_dispatch_at"] = now + delay
                     telemetry.update({"action": "dispatching", "attempt_count": record["count"], "next_dispatch_at": now + delay})
                     state["spawn_intent"] = {"signature": signature, "started_at": now, "argv_digest": _digest(config.worker_argv)}
-                    _save(config, state, telemetry)
+                    if not _save(config, state, telemetry):
+                        state.clear()
+                        state.update(before_dispatch)
+                        telemetry.update(attempt_count=state.get("attempts", {}).get(signature, {}).get("count", 0),
+                                         next_dispatch_at=state.get("next_dispatch_at", 0))
+                        _storage_blocked(config, telemetry)
+                        return telemetry
 
                     def started(identity: dict[str, Any]) -> None:
                         state["active_worker"] = {**_public_process(identity), "owned_session": True,
                                                   "started_at": now, "deadline": now + config.worker_timeout}
                         state.pop("spawn_intent", None)
-                        _atomic_json(config.state_dir / "state.json", state)
+                        try:
+                            _atomic_json(config.state_dir / "state.json", state)
+                        except OSError as exc:
+                            if is_storage_pressure(exc):
+                                _remember_storage_payload(config, state)
+                            raise
 
                     log_path = config.state_dir / f"worker-{signature[:16]}-{record['count']}.log"
+                    worker_started = True
                     result = worker(config, log_path, started)
-                    state.pop("spawn_intent", None)
-                    state.pop("active_worker", None)
-                    finished = time.time() if use_wall_clock else now
-                    record["next_dispatch_at"] = finished + delay
-                    state["next_dispatch_at"] = finished + delay
-                    state["last_worker"] = {**result, "finished_at": finished, "signature": signature, "log_path": str(log_path), **FLAGS}
-                    telemetry.update({"action": "worker_finished", "worker": state["last_worker"], "next_dispatch_at": finished + delay})
+                    if result.get("outcome") == "storage_blocked":
+                        # run_worker has already stopped and reaped only its
+                        # owned child when storage admission/persistence fails.
+                        if result.get("spawned") is True:
+                            # Popen is a real attempt: even a quickly stopped
+                            # child may have produced side effects already.
+                            state.pop("spawn_intent", None)
+                            state.pop("active_worker", None)
+                            finished = time.time() if use_wall_clock else now
+                            record["next_dispatch_at"] = finished + delay
+                            state["next_dispatch_at"] = finished + delay
+                            state["last_worker"] = {**result, "outcome": "storage_interrupted",
+                                                    "finished_at": finished, "signature": signature,
+                                                    "log_path": str(log_path), **FLAGS}
+                        else:
+                            state.clear()
+                            state.update(before_dispatch)
+                        telemetry.update(attempt_count=state.get("attempts", {}).get(signature, {}).get("count", 0),
+                                         next_dispatch_at=state.get("next_dispatch_at", 0))
+                        _storage_blocked(config, telemetry)
+                    else:
+                        state.pop("spawn_intent", None)
+                        state.pop("active_worker", None)
+                        finished = time.time() if use_wall_clock else now
+                        record["next_dispatch_at"] = finished + delay
+                        state["next_dispatch_at"] = finished + delay
+                        state["last_worker"] = {**result, "finished_at": finished, "signature": signature, "log_path": str(log_path), **FLAGS}
+                        telemetry.update({"action": "worker_finished", "worker": state["last_worker"], "next_dispatch_at": finished + delay})
                     # No recovery is inferred from exit 0.  The next tick reads live evidence again.
             except AlreadyRunning:
                 telemetry.update({"action": "repair_already_running", "repair_lock_path": str(config.repair_lock_path)})
+            except OSError as exc:
+                if not is_storage_pressure(exc):
+                    raise
+                if not worker_started:
+                    state.clear()
+                    state.update(before_dispatch)
+                telemetry.update(attempt_count=state.get("attempts", {}).get(signature, {}).get("count", 0),
+                                 next_dispatch_at=state.get("next_dispatch_at", 0))
+                _storage_blocked(config, telemetry, error=exc)
     _save(config, state, telemetry)
     return telemetry
 
@@ -807,7 +982,19 @@ def main(argv: list[str] | None = None) -> int:
             raise KeyboardInterrupt
 
         signal.signal(signal.SIGTERM, stop)
-        with singleton_lock(config.state_dir / "dispatcher.lock"):
+        with contextlib.ExitStack() as ownership:
+            while True:
+                try:
+                    ownership.enter_context(singleton_lock(config.state_dir / "dispatcher.lock"))
+                    break
+                except OSError as exc:
+                    if not is_storage_pressure(exc):
+                        raise
+                    result = _storage_blocked(config, {"schema": SCHEMA, "observed_at": time.time(), **FLAGS}, error=exc)
+                    print(json.dumps(result), flush=True)
+                    if args.once:
+                        return 2
+                    time.sleep(config.interval)
             try:
                 state = _json(config.state_dir / "state.json")
             except FileNotFoundError:

@@ -15,9 +15,11 @@ import json
 import marshal
 import os
 import re
+import select
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -27,7 +29,10 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
 from .command_processes import CommandProcessTree
-from .gate_recovery import GATE_REPEAT_LIMIT, GateRecovery, gate_evidence
+from .storage_pressure import MINIMUM_FREE_BYTES, StorageGuard, is_storage_pressure, persist_text, publish_emergency_status, open_command_log
+import tempfile
+from .gate_recovery import GATE_REPEAT_LIMIT, GateRecovery, gate_evidence, gate_source_contract, _is_source_path
+from .vdg_pre_command_recovery import RecoveryPolicyError, recovery_commands, recovery_contract, recovery_environment
 
 _PROVIDER_BASENAMES = frozenset(
     {"grok", "codex", "claude", "muse", "gemini", "mistral"}
@@ -46,6 +51,7 @@ _COMMAND_POLL_SECONDS = 5.0
 _COMMAND_STOP_GRACE_SECONDS = 5.0
 _COMMAND_TIMEOUT_EXIT = 124
 _NODE_PRELOAD_RESOLVE_SECONDS = 5.0
+_RESUME_READY_SECONDS = 15.0
 
 
 class _LaneResumeInterrupted(Exception):
@@ -124,11 +130,26 @@ def mark_task_completed(
     return "".join(rewritten)
 
 
-def _atomic_write(path: Path, text: str) -> None:
+def _atomic_write_once(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
-    temporary.write_text(text, encoding="utf-8")
-    os.replace(temporary, path)
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    persist_text(path, text, _atomic_write_once)
 
 
 def _load_attempt_state(
@@ -309,7 +330,15 @@ def _command_contract(
                 continue
             scripts[relative] = _file_digest(path)
     payload = {"fields": {name: str(fields.get(name) or "") for name in names},
-               "command": list(command), "validation": list(validation or []), "scripts": scripts}
+               "command": list(command), "validation": list(validation or []), "scripts": scripts,
+               "declared_sources": {
+                   name: digest for name, digest in _declared_evidence(fields, repo_root=root, excluded=[]).items()
+                   if _is_source_path(Path(name))
+               }}
+    if any(Path(argument).name == "run-vdg-all-families.mjs" for argument in command):
+        recovery = recovery_contract(command, repo_root=root)
+        if recovery is not None:
+            payload["pre_command_recovery"] = recovery
     for argv in (command, validation or []):
         if not argv or Path(argv[0]).name != "node":
             continue
@@ -412,7 +441,7 @@ def _task_timeout(fields: Mapping[str, str]) -> float:
     except (TypeError, ValueError):
         timeout = 1800.0
     resource = str(fields.get("resource_class") or "")
-    cap = 7200.0 if resource == "cpu-browser" else 1800.0
+    cap = 50400.0 if resource == "cpu-browser" else 1800.0
     return max(1.0, min(timeout, cap))
 
 
@@ -563,6 +592,7 @@ def _run_argv(
     heartbeat: Callable[[], None],
     cwd: Path | None = None,
     cleanup_descendants_on_success: bool = False,
+    env: Mapping[str, str] | None = None,
 ) -> int:
     """Run a command, containing failures and optionally its successful children.
 
@@ -573,10 +603,7 @@ def _run_argv(
 
     workdir = cwd or repo_root
     command = _normalize_node_preloads(argv, repo_root=repo_root, cwd=workdir, timeout=timeout)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(f"$ {' '.join(command)}  # cwd={workdir}\n")
-        handle.flush()
+    with open_command_log(log_path, f"$ {' '.join(command)}  # cwd={workdir}\n") as handle:
         process = subprocess.Popen(
             command,
             cwd=str(workdir),
@@ -584,6 +611,7 @@ def _run_argv(
             stdout=handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            **({"env": dict(env)} if env is not None else {}),
         )
         descendants = CommandProcessTree(process.pid)
         deadline = time.monotonic() + timeout
@@ -1224,15 +1252,151 @@ def run_resume_cycle(
         save_attempts()
         before = _declared_evidence(fields, repo_root=repo_root, excluded=evidence_exclusions)
         contract = _command_contract(fields, command, validation, repo_root=repo_root)
-        code = _run_argv(command, **options)
+        timeout = float(options["timeout"])
+        code = 0
+        preflight_attempted = False
+        producer_invoked = False
+        failed_stage = "pre_command_recovery"
+        try:
+            hooks = recovery_commands(task_id, command, repo_root=repo_root)
+            hook_env = recovery_environment() if hooks else None
+        except RecoveryPolicyError as exc:
+            preflight_attempted = True
+            with open_command_log(log_path, f"pre-command recovery refused {task_id}: {exc}\n"):
+                pass
+            hooks = []
+            code = 1
+        deadline = time.monotonic() + timeout if hooks else 0.0
+        for hook, limit in hooks:
+            preflight_attempted = True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                code = _COMMAND_TIMEOUT_EXIT
+                break
+            held = hold_result()
+            if held:
+                code = 1
+                break
+            try:
+                if recovery_commands(task_id, command, repo_root=repo_root) != hooks:
+                    raise RecoveryPolicyError("VDG pre-command recovery policy changed during invocation")
+            except RecoveryPolicyError as exc:
+                with open_command_log(log_path, f"pre-command recovery refused {task_id}: {exc}\n"):
+                    pass
+                code = 1
+                break
+            hook_options = {**options, "timeout": min(limit, remaining), "env": hook_env}
+            hook_options["heartbeat"] = lambda: heartbeat(
+                active_task_id=task_id, state="healthy", phase="pre_command_recovery",
+            )
+            hook_options["heartbeat"]()
+            code = _run_argv(hook, **hook_options)
+            if code:
+                # A repair preflight refusal is not an acceptance gate. It
+                # spends a genuine ordinary attempt and remains recoverable.
+                if code == _GATE_WITHHELD_EXIT:
+                    code = 1
+                break
+        if code == 0:
+            if not hooks:
+                # Preserve the ordinary runner path when no policy applies.
+                producer_invoked = True
+                failed_stage = "command"
+                code = _run_argv(command, **options)
+            else:
+                held = hold_result()
+                if held:
+                    code = 1
+                else:
+                    try:
+                        if recovery_commands(task_id, command, repo_root=repo_root) != hooks:
+                            raise RecoveryPolicyError("VDG pre-command recovery policy changed before producer")
+                    except RecoveryPolicyError as exc:
+                        with open_command_log(log_path, f"pre-command recovery refused {task_id}: {exc}\n"):
+                            pass
+                        code = 1
+                    if code == 0:
+                        remaining = deadline - time.monotonic()
+                        if remaining > 0:
+                            producer_invoked = True
+                            failed_stage = "command"
+                            code = _run_argv(command, **{**options, "timeout": remaining})
+                        else:
+                            code = _COMMAND_TIMEOUT_EXIT
+        if code == 0 and hooks:
+            # A global test deadline can leave a full NO_GO report that the
+            # acquisition-only checker accepts. Never commit that producer as
+            # success: fail the whole contract ordinarily, so its next attempt
+            # repairs the prefix before any cached acquisition can bypass it.
+            failed_stage = "post_command_recovery_guard"
+            try:
+                if recovery_commands(task_id, command, repo_root=repo_root) != hooks:
+                    raise RecoveryPolicyError("VDG recovery policy changed after producer")
+                guards = recovery_commands(task_id, command, repo_root=repo_root, apply=False)
+            except RecoveryPolicyError as exc:
+                with open_command_log(log_path, f"post-command recovery guard refused {task_id}: {exc}\n"):
+                    pass
+                guards = []
+                code = 1
+            for guard, limit in guards:
+                held = hold_result()
+                if held:
+                    code = 1
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    code = _COMMAND_TIMEOUT_EXIT
+                    break
+                try:
+                    if recovery_commands(task_id, command, repo_root=repo_root, apply=False) != guards:
+                        raise RecoveryPolicyError("VDG recovery policy changed during post-command guard")
+                except RecoveryPolicyError as exc:
+                    with open_command_log(log_path, f"post-command recovery guard refused {task_id}: {exc}\n"):
+                        pass
+                    code = 1
+                    break
+                guard_heartbeat = lambda: heartbeat(
+                    active_task_id=task_id, state="healthy", phase="post_command_recovery_guard",
+                )
+                guard_heartbeat()
+                code = _run_argv(guard, **{**options, "timeout": min(limit, remaining),
+                    "env": hook_env, "heartbeat": guard_heartbeat})
+                if code:
+                    if code == _GATE_WITHHELD_EXIT:
+                        code = 1
+                    break
+            if code == 0:
+                failed_stage = "command"
         if code != _GATE_WITHHELD_EXIT:
             command_evidence[task_id] = {
+                # Proof remains bound to the code that started this invocation.
                 "contract": contract, "before": before,
                 "after": _declared_evidence(fields, repo_root=repo_root, excluded=evidence_exclusions),
                 "exit_code": code,
+                # Own generated source must not appear to be an external repair.
+                "retry_contract": _command_contract(fields, command, validation, repo_root=repo_root),
             }
+            if preflight_attempted:
+                command_evidence[task_id].update(
+                    producer_invoked=producer_invoked,
+                    failed_stage=failed_stage,
+                )
         save_attempts()
         return code
+
+    def record_retry_contract(
+        task_id: str, fields: Mapping[str, str], command: Sequence[str],
+        validation: Sequence[str] | None,
+    ) -> None:
+        # Validators may regenerate source too. Refresh only the retry budget;
+        # invocation-start proof provenance remains unchanged.
+        record = command_evidence.get(task_id)
+        if not isinstance(record, dict):
+            return
+        current = _command_contract(fields, command, validation, repo_root=repo_root)
+        if record.get("retry_contract") != current:
+            record["retry_contract"] = current
+            save_attempts()
 
     validation_commands = {
         task_id: parse_deterministic_command((blocks.get(task_id) or {}).get("validation") or "",
@@ -1251,6 +1415,7 @@ def run_resume_cycle(
     def gate_result(
         task_id: str, fields: Mapping[str, str], command: Sequence[str],
         validation_command: Sequence[str] | None = None,
+        *, probe_only: bool = False, validation_exit_code: int = _GATE_WITHHELD_EXIT,
     ) -> dict[str, Any]:
         held = hold_result()
         if held:
@@ -1263,10 +1428,16 @@ def run_resume_cycle(
         fingerprint, evidence = gate_evidence(
             task_id, blocks, repo_root=repo_root, todo_path=todo_path, log_path=log_path,
         )
-        record = gate_recovery.observe(task_id, fingerprint, now_ms=int(time.time() * 1000))
+        source_contract = gate_source_contract(
+            evidence, _command_contract(fields, command, validation_commands.get(task_id), repo_root=repo_root),
+        )
+        record = gate_recovery.observe(task_id, fingerprint, now_ms=int(time.time() * 1000), source_contract=source_contract)
         record["withheld_stage"] = "validation" if validation_command else "command"
+        record["last_probe"] = "validation_only" if probe_only else "producer"
+        if validation_command:
+            record["last_validation_exit_code"] = validation_exit_code
         gate_recovery.store(task_id, record)
-        repeated = record["unchanged_probes"] >= GATE_REPEAT_LIMIT
+        repeated = max(record["unchanged_probes"], int(record.get("source_refusals") or 0)) >= GATE_REPEAT_LIMIT
         if repeated and not record.get("dependencies_revalidated"):
             # Persist the fence before executing a validator: a restart cannot
             # convert an interrupted repair into an unlimited retry budget.
@@ -1443,11 +1614,18 @@ def run_resume_cycle(
             skipped.append(f"{task_id}:validation_fixed_point")
             continue
         fingerprint = ""
+        source_contract = ""
         if task_id in gate_recovery.records:
             fingerprint, _evidence = gate_evidence(
                 task_id, blocks, repo_root=repo_root, todo_path=todo_path, log_path=log_path,
             )
-        gate_record = gate_recovery.current(task_id, fingerprint)
+            source_contract = gate_source_contract(
+                _evidence, _command_contract(fields, command, validation, repo_root=repo_root),
+            )
+        previous_gate = gate_recovery.records.get(task_id) or {}
+        same_source = bool(source_contract and isinstance(previous_gate, dict)
+                           and previous_gate.get("source_contract") == source_contract)
+        gate_record = gate_recovery.current(task_id, fingerprint) if same_source else {}
         if int(gate_record.get("next_retry_at_ms") or 0) > now_ms:
             packet = gate_recovery.path.with_name(f"gate-recovery-{task_id}.json")
             gate_waits.append({
@@ -1460,12 +1638,42 @@ def run_resume_cycle(
                 "busy": False, "work_complete": False, "completion_authority": False,
             })
             continue
+        if same_source and validation is not None:
+            # A producer that already refused has evidence to inspect. Re-run
+            # its acceptance check cheaply before another expensive capture,
+            # even when the command explicitly bypasses its own cache. A green
+            # probe still has to pass the original producer and validation.
+            validation_code = _run_argv(
+                validation, repo_root=repo_root,
+                cleanup_descendants_on_success=fields.get("resource_class") == "cpu-browser",
+                timeout=min(_task_timeout(fields), 300.0), log_path=log_path,
+                heartbeat=lambda: heartbeat(
+                    active_task_id=task_id, state="degraded", phase="gate_evidence_revalidation",
+                    gate_evidence_fingerprint=fingerprint,
+                    gate_recovery_needed=int(previous_gate.get("source_refusals") or 0) >= GATE_REPEAT_LIMIT,
+                    repair_packet=str(gate_recovery.path.with_name(f"gate-recovery-{task_id}.json"))
+                    if int(previous_gate.get("source_refusals") or 0) >= GATE_REPEAT_LIMIT else "",
+                    next_retry_at_ms=int(previous_gate.get("next_retry_at_ms") or 0),
+                ),
+            )
+            held = hold_result()
+            if held:
+                return held
+            if validation_code != 0:
+                gate_waits.append(gate_result(
+                    task_id, fields, command, validation,
+                    probe_only=True, validation_exit_code=validation_code,
+                ))
+                continue
         exhausted = attempts.get(task_id, 0) >= _ATTEMPT_LIMIT
         if exhausted and retry_after.get(task_id, 0) > now_ms:
             prior = command_evidence.get(task_id) or {}
-            prior_contract = prior.get("contract")
+            prior_contract = prior.get("retry_contract", prior.get("contract"))
+            proof_contract = prior.get("contract")
             if (
-                isinstance(prior_contract, str)
+                isinstance(proof_contract, str)
+                and re.fullmatch(r"[0-9a-f]{64}", proof_contract)
+                and isinstance(prior_contract, str)
                 and re.fullmatch(r"[0-9a-f]{64}", prior_contract)
                 and isinstance(prior.get("before"), dict)
                 and isinstance(prior.get("after"), dict)
@@ -1479,9 +1687,8 @@ def run_resume_cycle(
                 retry_after.pop(task_id, None)
                 exhausted = False
                 save_attempts()
-                log_path.parent.mkdir(parents=True, exist_ok=True)
-                with log_path.open("a", encoding="utf-8") as handle:
-                    handle.write(f"retry rearmed {task_id}: command contract changed\n")
+                with open_command_log(log_path, f"retry rearmed {task_id}: command contract changed\n"):
+                    pass
         if (
             exhausted
             and retry_after.get(task_id, 0) > now_ms
@@ -1630,6 +1837,7 @@ def run_resume_cycle(
             held = hold_result()
             if held:
                 return held
+            record_retry_contract(task_id, fields, command, validation)
             if validation_code == _GATE_WITHHELD_EXIT:
                 gate_waits.append(gate_result(task_id, fields, command, validation))
                 continue
@@ -1960,6 +2168,10 @@ def run_resume_cycle(
                 log_path=log_path,
                 heartbeat=lambda **kwargs: heartbeat(active_task_id=task_id, **kwargs),
             )
+            held = hold_result()
+            if held:
+                return held
+            record_retry_contract(task_id, fields, command, validation)
             if validation_code != 0:
                 continue
             held = hold_result()
@@ -2012,9 +2224,8 @@ def run_resume_cycle(
                 "work_complete": False,
                 "completion_authority": False,
             }
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write("retry waiting " + ",".join(waiting_ids) + "\n")
+        with open_command_log(log_path, "retry waiting " + ",".join(waiting_ids) + "\n"):
+            pass
         return {
             "state": "healthy",
             "phase": "attempt_retry_wait",
@@ -2107,11 +2318,70 @@ def _master_alive(master_pid_path: str, repo_root: Path) -> bool:
     return pid > 0 and _pid_alive(pid)
 
 
+def _resume_lock_path(status_path: Path, bundle_key: str) -> Path:
+    return status_path.with_name(f"{bundle_key.replace('/', '_')}.resume.lock")
+
+
+def _validate_resume_lock_fd(descriptor: int, lock_path: Path) -> None:
+    """Validate and reassert the inherited open-file description's fence.
+
+    The caller must close its copy normally after handoff, never LOCK_UN: an
+    explicit unlock would also release the child's shared flock description.
+    """
+    if type(descriptor) is not int or descriptor < 3:
+        raise ValueError("invalid resume lock descriptor")
+    actual = os.fstat(descriptor)
+    expected = lock_path.stat(follow_symlinks=False)
+    flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    if (not stat.S_ISREG(actual.st_mode) or not stat.S_ISREG(expected.st_mode)
+            or (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino)
+            or (flags & os.O_ACCMODE) not in {os.O_WRONLY, os.O_RDWR}
+            or flags & getattr(os, "O_PATH", 0)):
+        raise ValueError("resume lock descriptor does not match writable lifecycle fence")
+    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _await_resume_ready(
+    process: subprocess.Popen[Any], ready_fd: int, *, status_path: Path,
+    pid_path: Path, bundle_key: str, observe: Callable[[], None] = lambda: None,
+) -> str:
+    """A spawned pid alone is not proof that the lane acquired its fence."""
+    deadline = time.monotonic() + _RESUME_READY_SECONDS
+    received = b""
+    while time.monotonic() < deadline:
+        observe()
+        readable, _, _ = select.select([ready_fd], [], [], min(0.05, max(0.0, deadline - time.monotonic())))
+        if readable:
+            chunk = os.read(ready_fd, 4096)
+            received += chunk
+            if len(received) > 4096:
+                return "resume_readiness_invalid"
+            if b"\n" in received:
+                try:
+                    ready = json.loads(received)
+                    status = json.loads(status_path.read_text(encoding="utf-8"))
+                    published_pid = int(pid_path.read_text(encoding="utf-8").strip())
+                    if (ready.get("pid") == process.pid == published_pid == status.get("pid")
+                            and ready.get("bundle_key") == bundle_key == status.get("target_id")
+                            and 0 < int(ready["heartbeat_at_ms"]) <= int(status["heartbeat_at_ms"])
+                            and status.get("state") != "stopped" and process.poll() is None):
+                        return ""
+                except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                    pass
+                return "resume_readiness_invalid"
+            if not chunk:
+                return "resume_exited_before_ready"
+        if process.poll() is not None:
+            return "resume_exited_before_ready"
+    return "resume_readiness_timeout"
+
+
 def resume_stopped_lane(
     lane_info: Mapping[str, Any],
     *,
     repo_root: Path,
     manifest: Mapping[str, Any] | None = None,
+    resume_lock_fd: int | None = None,
 ) -> dict[str, Any]:
     """Start one fenced deterministic lane process.
 
@@ -2165,6 +2435,13 @@ def resume_stopped_lane(
         }
     status_prefix = str(lane_info.get("state_prefix") or "lane")
     status_path = state_dir / f"{status_prefix}_status.json"
+    bundle_key = str(lane_info.get("bundle_key") or "lane")
+    if resume_lock_fd is not None:
+        try:
+            _validate_resume_lock_fd(resume_lock_fd, _resume_lock_path(status_path, bundle_key))
+        except (OSError, ValueError):
+            return {"restarted": False, "reason": "resume_lock_invalid", "readiness_verified": False,
+                    "work_complete": False, "completion_authority": False}
     log_raw = str(lane_info.get("log_path") or "")
     log_path = Path(log_raw) if log_raw else state_dir / "supervisor.log"
     if not log_path.is_absolute():
@@ -2188,12 +2465,23 @@ def resume_stopped_lane(
         "--log-path",
         str(log_path),
         "--bundle-key",
-        str(lane_info.get("bundle_key") or "lane"),
+        bundle_key,
         "--max-seconds",
         str(int(lane_info.get("max_resume_seconds") or manifest.get("max_resume_seconds") or 28800)),
     ]
     if manifest.get("allow_bounded_task_implement") is True:
         command.append("--allow-bounded-implement")
+    minimum_free = lane_info.get("minimum_free_bytes", manifest.get("storage_minimum_free_bytes"))
+    storage_paths = lane_info.get("storage_paths", manifest.get("storage_paths", []))
+    if (minimum_free is not None and (type(minimum_free) is not int or minimum_free < 1)
+            or not isinstance(storage_paths, list) or any(not isinstance(path, str) or not path for path in storage_paths)):
+        return {"restarted": False, "reason": "invalid_storage_policy", "readiness_verified": False,
+                "work_complete": False, "completion_authority": False}
+    if minimum_free is not None:
+        command.extend(["--minimum-free-bytes", str(minimum_free)])
+    for raw_path in storage_paths:
+        path = Path(raw_path)
+        command.extend(["--storage-path", str(path if path.is_absolute() else root / path)])
     if any(part in _PROVIDER_BASENAMES or "implementation_supervisor" in part or "multi_supervisor_runner" in part for part in command):
         return {
             "restarted": False,
@@ -2203,8 +2491,17 @@ def resume_stopped_lane(
         }
     log_path.parent.mkdir(parents=True, exist_ok=True)
     pid_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = log_path.open("a", encoding="utf-8")
+    ready_read, ready_write = os.pipe()
+    command.extend(["--ready-fd", str(ready_write)])
+    if resume_lock_fd is not None:
+        command.extend(["--resume-lock-fd", str(resume_lock_fd)])
+    inherited = (ready_write,) if resume_lock_fd is None else (ready_write, resume_lock_fd)
+    handle = None
+    process = None
+    descendants = None
+    reason = "resume_startup_interrupted"
     try:
+        handle = log_path.open("a", encoding="utf-8")
         process = subprocess.Popen(
             command,
             cwd=str(root),
@@ -2213,22 +2510,49 @@ def resume_stopped_lane(
             stdout=handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            pass_fds=inherited,
         )
+        os.close(ready_write)
+        ready_write = -1
+        descendants = CommandProcessTree(process.pid)
+        reason = _await_resume_ready(
+            process, ready_read, status_path=status_path, pid_path=pid_path,
+            bundle_key=bundle_key, observe=descendants.snapshot,
+        )
+        if reason:
+            return {"restarted": False, "reason": reason, "readiness_verified": False,
+                    "work_complete": False, "completion_authority": False}
     except OSError as exc:
         return {
             "restarted": False,
             "reason": f"resume_spawn_failed: {exc}",
+            "readiness_verified": False,
             "work_complete": False,
             "completion_authority": False,
         }
     finally:
-        handle.close()
-    _atomic_write(pid_path, f"{process.pid}\n")
+        if handle is not None:
+            handle.close()
+        os.close(ready_read)
+        if ready_write >= 0:
+            os.close(ready_write)
+        if descendants is not None:
+            try:
+                if reason:
+                    descendants.snapshot()
+                    descendants.send_signal(signal.SIGTERM)
+                    if process.poll() is None:
+                        _stop_command_group(process)
+                    descendants.send_signal(signal.SIGKILL)
+            finally:
+                descendants.close()
     return {
         "restarted": True,
         "new_pid": int(process.pid),
         "reason": "resume_stopped_lane",
         "pid_persisted": True,
+        "readiness_verified": True,
+        "lock_handoff": resume_lock_fd is not None,
         "work_complete": False,
         "completion_authority": False,
     }
@@ -2245,6 +2569,10 @@ def serve(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--bundle-key", required=True)
     parser.add_argument("--max-seconds", type=float, default=28800)
     parser.add_argument("--allow-bounded-implement", action="store_true")
+    parser.add_argument("--resume-lock-fd", type=int)
+    parser.add_argument("--ready-fd", type=int)
+    parser.add_argument("--minimum-free-bytes", type=int, default=MINIMUM_FREE_BYTES)
+    parser.add_argument("--storage-path", type=Path, action="append", default=[])
     args = parser.parse_args(list(argv) if argv is not None else None)
     repo_root = args.repo_root.resolve()
     todo_path = Path(args.todo_path)
@@ -2253,12 +2581,23 @@ def serve(argv: Sequence[str] | None = None) -> int:
     status_path = args.status_path
     pid_path = args.pid_path
     log_path = args.log_path
-    lock_path = status_path.with_name(f"{args.bundle_key.replace('/', '_')}.resume.lock")
+    lock_path = _resume_lock_path(status_path, args.bundle_key)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_handle = lock_path.open("a", encoding="utf-8")
     try:
-        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+        if args.resume_lock_fd is not None:
+            _validate_resume_lock_fd(args.resume_lock_fd, lock_path)
+            os.set_inheritable(args.resume_lock_fd, False)
+            lock_handle = os.fdopen(args.resume_lock_fd, "a", encoding="utf-8")
+        else:
+            lock_handle = lock_path.open("a", encoding="utf-8")
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if args.ready_fd is not None:
+            ready_flags = fcntl.fcntl(args.ready_fd, fcntl.F_GETFL)
+            if (args.ready_fd < 3 or not stat.S_ISFIFO(os.fstat(args.ready_fd).st_mode)
+                    or (ready_flags & os.O_ACCMODE) != os.O_WRONLY):
+                return 2
+            os.set_inheritable(args.ready_fd, False)
+    except (OSError, ValueError):
         return 0
     if pid_path.exists():
         try:
@@ -2267,7 +2606,8 @@ def serve(argv: Sequence[str] | None = None) -> int:
             existing = 0
         if existing > 0 and existing != os.getpid() and _pid_alive(existing):
             return 0
-    _atomic_write(pid_path, f"{os.getpid()}\n")
+    if args.minimum_free_bytes < 1:
+        parser.error("--minimum-free-bytes must be positive")
     running = True
 
     def stop(_signum: int, _frame: Any) -> None:
@@ -2286,6 +2626,17 @@ def serve(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError, TypeError, AttributeError):
         pass
     attempt_path = status_path.with_name("lane_resume_attempts.json")
+
+    def check_continue() -> None:
+        if not running or time.monotonic() >= deadline:
+            raise _LaneResumeInterrupted
+
+    storage_paths = [repo_root, todo_path, status_path, log_path, Path(tempfile.gettempdir()),
+                     *(path if path.is_absolute() else repo_root / path for path in args.storage_path)]
+    storage_guard = StorageGuard(status_path, storage_paths, check_continue=check_continue,
+                                 minimum_free_bytes=args.minimum_free_bytes)
+    storage_context = storage_guard.activate()
+    storage_context.__enter__()
 
     def heartbeat(
         active_task_id: str = "",
@@ -2318,7 +2669,24 @@ def serve(argv: Sequence[str] | None = None) -> int:
         )
 
     try:
+        _atomic_write(pid_path, f"{os.getpid()}\n")
+        heartbeat(state="starting", phase="lane_resume_starting")
+        if args.ready_fd is not None:
+            ready_status = json.loads(status_path.read_text(encoding="utf-8"))
+            try:
+                os.write(args.ready_fd, (json.dumps({
+                    "pid": os.getpid(), "bundle_key": args.bundle_key,
+                    "heartbeat_at_ms": ready_status["heartbeat_at_ms"],
+                }) + "\n").encode("utf-8"))
+            finally:
+                os.close(args.ready_fd)
         while running and time.monotonic() < deadline:
+            capacity = storage_guard.admission()
+            if not capacity["ok"]:
+                heartbeat(state="degraded", phase="storage_wait",
+                          backpressure_reasons=("storage_pressure:" + capacity["reason"],))
+                time.sleep(min(5.0, max(0.0, deadline - time.monotonic())))
+                continue
             started = time.monotonic()
             cycle = run_resume_cycle(
                 repo_root=repo_root,
@@ -2368,14 +2736,22 @@ def serve(argv: Sequence[str] | None = None) -> int:
                 )
     except _LaneResumeInterrupted:
         pass
-    write_lane_status(
-        status_path,
-        target_id=str(args.bundle_key),
-        state="stopped",
-        phase="lane_resume_exited",
-        terminal_reason="resume_duration_elapsed" if running else "resume_stopped",
-        transition_at_ms=transition_at_ms,
-    )
+    finally:
+        storage_context.__exit__(None, None, None)
+    try:
+        write_lane_status(
+            status_path,
+            target_id=str(args.bundle_key),
+            state="stopped",
+            phase="lane_resume_exited",
+            terminal_reason="resume_duration_elapsed" if running else "resume_stopped",
+            transition_at_ms=transition_at_ms,
+        )
+    except OSError as error:
+        if not is_storage_pressure(error):
+            raise
+        publish_emergency_status(status_path, {"pid": os.getpid(), "state": "stopped", "phase": "lane_resume_exited",
+            "terminal_reason": "resume_duration_elapsed" if running else "resume_stopped"}, error=error)
     return 0
 
 

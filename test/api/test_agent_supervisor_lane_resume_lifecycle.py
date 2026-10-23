@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import signal
 import sys
@@ -326,6 +327,257 @@ def test_long_failed_command_starts_backoff_when_failure_is_observed(
     assert len(invocations) == 1, "an hour-long failure immediately ran again"
     assert waiting["work_complete"] is waiting["completion_authority"] is False
     assert board.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize(("resource", "declared", "expected"), [
+    ("cpu-browser", "25200", 25200.0),
+    ("cpu-browser", "28800", 28800.0),
+    ("cpu-browser", "46800", 46800.0),
+    ("cpu-browser", "50400", 50400.0),
+    ("cpu-browser", "50401", 50400.0),
+    ("cpu-browser", "", 1800.0),
+    ("cpu-browser", "invalid", 1800.0),
+    ("cpu-small", "25200", 1800.0),
+    ("cpu-small", "50400", 1800.0),
+    ("cpu-small", "", 1800.0),
+    ("cpu-other", "25200", 1800.0),
+    ("cpu-other", "50400", 1800.0),
+    ("", "25200", 1800.0),
+])
+def test_declared_browser_workload_bound_reaches_producer_without_extending_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    resource: str, declared: str, expected: float,
+) -> None:
+    board = tmp_path / "board.md"
+    original = (
+        "## TEST-001 Source-bound browser acquisition\n"
+        "- Status: pending\n- Depends on:\n"
+        "- Deterministic command: python3 -c 'raise SystemExit(1)'\n"
+        f"- Resource class: {resource}\n"
+        f"- Implementation timeout seconds: {declared}\n"
+    )
+    board.write_text(original, encoding="utf-8")
+    observed = []
+    def invoke(_argv, **kwargs):
+        observed.append(kwargs["timeout"])
+        return 1
+    monkeypatch.setattr(lane_resume, "_run_argv", invoke)
+    result = lane_resume.run_resume_cycle(
+        repo_root=tmp_path, todo_path=board, task_header_prefix="## TEST-",
+        attempt_path=tmp_path / "attempts.json", log_path=tmp_path / "lane.log",
+        heartbeat=lambda **_kwargs: None,
+    )
+    assert observed == [expected]
+    assert result["phase"] == "deterministic_command_failed"
+    assert result["work_complete"] is result["completion_authority"] is False
+    assert board.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize(("lane_budget", "manifest_budget", "expected"), [
+    (50400, 28800, "50400"),
+    (None, 50400, "50400"),
+    (None, None, "28800"),
+])
+def test_fenced_resume_uses_explicit_workload_lifetime_without_extending_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    lane_budget: int | None, manifest_budget: int | None, expected: str,
+) -> None:
+    lane = {
+        "bundle_key": "test", "state_dir": str(tmp_path), "state_prefix": "test",
+        "pid_path": str(tmp_path / "lane.pid"), "todo_path": "board.md",
+        "task_header_prefix": "## TEST-",
+    }
+    manifest = {}
+    if lane_budget is not None:
+        lane["max_resume_seconds"] = lane_budget
+    if manifest_budget is not None:
+        manifest["max_resume_seconds"] = manifest_budget
+    spawned = []
+
+    def spawn(argv, **_kwargs):
+        spawned.append(argv)
+        return SimpleNamespace(pid=999999)
+
+    monkeypatch.setattr(lane_resume.subprocess, "Popen", spawn)
+    monkeypatch.setattr(lane_resume, "_await_resume_ready", lambda *_args, **_kwargs: "")
+    result = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path, manifest=manifest)
+    assert result["restarted"] is True
+    assert len(spawned) == 1
+    assert spawned[0][spawned[0].index("--max-seconds") + 1] == expected
+    assert result["work_complete"] is result["completion_authority"] is False
+    assert result["readiness_verified"] is True
+
+
+def _startup_lane(tmp_path: Path) -> dict[str, Any]:
+    (tmp_path / "board.md").write_text(
+        "## TEST-001 Real pending gate\n- Status: pending\n- Depends on:\n"
+        "- Deterministic command: python3 -c 'raise SystemExit(75)'\n",
+        encoding="utf-8",
+    )
+    return {"bundle_key": "test", "state_dir": str(tmp_path), "state_prefix": "test",
+            "pid_path": str(tmp_path / "lane.pid"), "todo_path": "board.md",
+            "task_header_prefix": "## TEST-", "max_resume_seconds": 2}
+
+
+def _reap_startup_lane(pid: int) -> None:
+    deadline = time.monotonic() + 6
+    while time.monotonic() < deadline:
+        try:
+            reaped, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if reaped == pid:
+            return
+        time.sleep(0.02)
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    os.waitpid(pid, 0)
+    pytest.fail("isolated startup lane did not terminate within its short test lifetime")
+
+
+def test_real_resume_hands_lifetime_fence_to_child_while_parent_still_holds_it(tmp_path: Path) -> None:
+    lane = _startup_lane(tmp_path)
+    lock_path = tmp_path / "test.resume.lock"
+    pid = None
+    try:
+        with lock_path.open("a") as parent_fence:
+            fcntl.flock(parent_fence, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path, resume_lock_fd=parent_fence.fileno())
+            assert result["restarted"] is result["readiness_verified"] is result["lock_handoff"] is True
+            pid = result["new_pid"]
+            assert _running(pid)
+            assert int((tmp_path / "lane.pid").read_text()) == pid
+            status = json.loads((tmp_path / "test_status.json").read_text())
+            assert status["pid"] == pid and status["target_id"] == "test"
+            assert status["state"] != "stopped" and status["heartbeat_at_ms"] > 0
+            # Reproduce the formerly fatal parent delay after spawning but
+            # before its with-statement closes the exact same lifetime fence.
+            time.sleep(0.2)
+            assert _running(pid)
+            duplicate = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path)
+            assert duplicate["restarted"] is False and duplicate["reason"] == "live_lane_pid"
+        # The child's inherited open-file description must keep the exclusive
+        # fence after the parent closes its own copy, with no unlock interval.
+        with lock_path.open("a") as contender:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert _running(pid)
+    finally:
+        if pid is not None:
+            _reap_startup_lane(pid)
+    with lock_path.open("a") as contender:
+        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_real_resume_reports_lock_contention_as_failure_without_touching_owner_state(tmp_path: Path) -> None:
+    lane = _startup_lane(tmp_path)
+    status_path = tmp_path / "test_status.json"
+    status_path.write_text('{"owner":"preserve exact bytes"}\n')
+    original = status_path.read_bytes()
+    lock_path = tmp_path / "test.resume.lock"
+    with lock_path.open("a") as owner:
+        fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Omitting the explicit handoff faithfully reproduces the old race.
+        result = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path)
+        assert result["restarted"] is result["readiness_verified"] is False
+        assert result["reason"] == "resume_exited_before_ready"
+        assert not (tmp_path / "lane.pid").exists()
+        assert status_path.read_bytes() == original
+        with lock_path.open("a") as contender:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_real_resume_without_parent_fence_still_requires_child_readiness(tmp_path: Path) -> None:
+    lane = _startup_lane(tmp_path)
+    result = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path)
+    assert result["restarted"] is result["readiness_verified"] is True
+    assert result["lock_handoff"] is False
+    pid = result["new_pid"]
+    try:
+        assert _running(pid)
+        assert json.loads((tmp_path / "test_status.json").read_text())["pid"] == pid
+    finally:
+        _reap_startup_lane(pid)
+
+
+def test_handoff_descriptor_cannot_steal_or_unlock_another_open_descriptions_fence(tmp_path: Path) -> None:
+    lane = _startup_lane(tmp_path)
+    lock_path = tmp_path / "test.resume.lock"
+    with lock_path.open("a") as owner, lock_path.open("a") as unowned:
+        fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path, resume_lock_fd=unowned.fileno())
+        assert result["restarted"] is False and result["reason"] == "resume_lock_invalid"
+        assert not (tmp_path / "lane.pid").exists()
+        with lock_path.open("a") as contender:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+@pytest.mark.parametrize("kind", ["closed", "mismatched", "readonly", "directory", "replaced"])
+def test_resume_handoff_rejects_bad_descriptors_in_parent_and_child(tmp_path: Path, kind: str) -> None:
+    lane = _startup_lane(tmp_path)
+    lock_path = tmp_path / "test.resume.lock"
+    lock_path.touch()
+    descriptor = -1
+    if kind == "mismatched":
+        descriptor = os.open(tmp_path / "different.lock", os.O_CREAT | os.O_WRONLY, 0o600)
+    elif kind == "readonly":
+        descriptor = os.open(lock_path, os.O_RDONLY)
+    elif kind == "directory":
+        descriptor = os.open(tmp_path, os.O_RDONLY)
+    elif kind == "replaced":
+        descriptor = os.open(lock_path, os.O_WRONLY)
+        lock_path.unlink()
+        lock_path.touch()
+    try:
+        result = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path, resume_lock_fd=descriptor)
+        assert result["restarted"] is result["readiness_verified"] is False
+        assert result["reason"] == "resume_lock_invalid"
+        assert lane_resume.serve([
+            "--repo-root", str(tmp_path), "--todo-path", "board.md", "--task-header-prefix", "## TEST-",
+            "--status-path", str(tmp_path / "test_status.json"), "--pid-path", str(tmp_path / "lane.pid"),
+            "--log-path", str(tmp_path / "lane.log"), "--bundle-key", "test", "--resume-lock-fd", str(descriptor),
+        ]) == 0
+        assert not (tmp_path / "lane.pid").exists()
+        assert not (tmp_path / "test_status.json").exists()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+@pytest.mark.parametrize("behavior", ["exit", "timeout", "invalid_ack"])
+def test_real_spawn_without_valid_readiness_cannot_publish_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, behavior: str,
+) -> None:
+    lane = _startup_lane(tmp_path)
+    pid_path = tmp_path / "lane.pid"
+    status_path = tmp_path / "test_status.json"
+    pid_path.write_text("0\n")
+    status_path.write_text('{"original":"unchanged"}\n')
+    real_spawn = lane_resume.subprocess.Popen
+    launched = []
+
+    def spawn(argv, **kwargs):
+        ready_fd = int(argv[argv.index("--ready-fd") + 1])
+        code = {"exit": "raise SystemExit(0)", "timeout": "import time; time.sleep(60)",
+                "invalid_ack": f"import os; os.write({ready_fd}, b'{{\"pid\":1}}\\n')"}[behavior]
+        process = real_spawn([sys.executable, "-c", code], **kwargs)
+        launched.append(process)
+        return process
+
+    monkeypatch.setattr(lane_resume.subprocess, "Popen", spawn)
+    monkeypatch.setattr(lane_resume, "_RESUME_READY_SECONDS", 0.2)
+    result = lane_resume.resume_stopped_lane(lane, repo_root=tmp_path)
+    assert result["restarted"] is result["readiness_verified"] is False
+    assert result["reason"] == {"exit": "resume_exited_before_ready", "timeout": "resume_readiness_timeout",
+                                "invalid_ack": "resume_readiness_invalid"}[behavior]
+    assert pid_path.read_text() == "0\n"
+    assert status_path.read_text() == '{"original":"unchanged"}\n'
+    assert launched[0].poll() is not None
+    assert not _running(launched[0].pid)
 
 
 def test_resume_cycle_preserves_loaded_command_evidence(tmp_path, monkeypatch):

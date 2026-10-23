@@ -19,6 +19,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .storage_pressure import (MINIMUM_FREE_BYTES, check_storage_capacity, clear_emergency_status,
+                               is_storage_pressure, publish_emergency_status, read_emergency_status)
+
 WATCHDOG_MODULE = "ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog"
 STOP_MARKERS = ("HOLD", "OPERATOR_STOP", "watchdog.disabled")
 
@@ -175,6 +178,53 @@ def discover_watchdogs(
     return sorted(owners, key=lambda item: item["pid"]), errors
 
 
+def _declared_storage_paths(manifest: dict[str, Any], repo: Path) -> list[Path]:
+    result = []
+    for item in [manifest, *manifest.get("lanes", [])]:
+        values = item.get("storage_paths", [])
+        if not isinstance(values, list) or any(not isinstance(value, str) or not value for value in values):
+            raise ValueError("invalid declared storage paths")
+        result.extend((repo / value).resolve() for value in values)
+    return list(dict.fromkeys(result))
+
+
+def _minimum_storage_bytes(manifest: dict[str, Any]) -> int:
+    values = [manifest.get("storage_minimum_free_bytes", MINIMUM_FREE_BYTES),
+              *(lane["minimum_free_bytes"] for lane in manifest.get("lanes", []) if "minimum_free_bytes" in lane)]
+    if any(type(value) is not int or value < 1 for value in values):
+        raise ValueError("invalid storage minimum free bytes")
+    return max(values)
+
+
+def _storage_status(payload: dict[str, Any]) -> bool:
+    reasons = payload.get("backpressure_reasons")
+    reasons = reasons if isinstance(reasons, list) else []
+    return (payload.get("storage_pressure") is True
+            or payload.get("phase") in {"storage_pressure", "storage_wait"}
+            or any(isinstance(value, str) and value.startswith("storage_pressure:")
+                   for value in reasons))
+
+
+def _lane_storage_identity(pid: int, repo: Path, status_path: Path) -> bool:
+    # Import only when a pressure record actually needs role verification.
+    from .supervisor_watchdog import _lane_storage_identity as verify
+    return verify(pid, repo, status_path)
+
+
+def lane_storage_emergency(status_path: Path, expected_pid: int, repo: Path) -> dict[str, Any] | None:
+    return read_emergency_status(status_path, expected_pid=expected_pid,
+                                 identity_check=lambda pid: _lane_storage_identity(pid, repo, status_path))
+
+
+def watchdog_storage_emergency(report_path: Path, owner: dict[str, Any], manifest: Path,
+                               repo: Path, *, proc_root: Path = Path("/proc")) -> dict[str, Any] | None:
+    def verify(pid: int) -> bool:
+        owners, errors = discover_watchdogs(manifest, repo, proc_root=proc_root)
+        return not errors and len(owners) == 1 and owners[0]["pid"] == pid and (
+            str(owners[0]["start_ticks"]) == str(owner.get("start_ticks")))
+    return read_emergency_status(report_path, expected_pid=owner["pid"], identity_check=verify)
+
+
 class WatchdogGuardian:
     def __init__(self, manifest: Path, repo: Path, *, python: str = sys.executable,
                  apply: bool = False, poll_seconds: float = 30,
@@ -193,6 +243,28 @@ class WatchdogGuardian:
             self.next_launch_after, self.launch_attempts = 0.0, 0
         self.children: list[subprocess.Popen] = []
 
+    def _storage_blocked(self, result: dict[str, Any], *, error: OSError | None = None,
+                         capacity: dict[str, Any] | None = None) -> dict[str, Any]:
+        result.update(action="storage_blocked", storage_pressure=True, degraded=True,
+                      retry_after_seconds=self.poll_seconds, work_complete=False,
+                      completion_authority=False)
+        if error is not None:
+            result["storage_error_errno"] = error.errno
+        if capacity is not None:
+            result["storage_capacity"] = capacity
+        publish_emergency_status(self.status_path, result, error=error)
+        return result
+
+    def _persist_status(self, result: dict[str, Any]) -> bool:
+        try:
+            atomic_json(self.status_path, result)
+            return True
+        except OSError as exc:
+            if not is_storage_pressure(exc):
+                raise
+            self._storage_blocked(result, error=exc)
+            return False
+
     def _path(self, value: str) -> Path:
         return (self.repo / value).resolve()
 
@@ -203,6 +275,20 @@ class WatchdogGuardian:
                 continue
             directory = self._path(lane.get("state_dir") or ".")
             status = read_json(directory / f"{lane.get('state_prefix', '')}_status.json")
+            status_path = directory / f"{lane.get('state_prefix', '')}_status.json"
+            try:
+                pid = int(status.get("pid") or 0)
+            except (TypeError, ValueError):
+                pid = 0
+            for suffix in ("bundle_supervisor.pid", "supervisor.pid"):
+                try:
+                    pid = int((directory / f"{lane.get('state_prefix', '')}_{suffix}").read_text().strip())
+                    break
+                except (OSError, ValueError):
+                    continue
+            emergency = lane_storage_emergency(status_path, pid, self.repo)
+            if emergency:
+                status = {**status, **emergency["payload"], "pid": pid}
             log = self._path(lane["log_path"]) if lane.get("log_path") else directory / "supervisor.log"
             item = {key: status.get(key) for key in ("pid", "state", "phase", "active_task_id", "last_task_transition_at_ms")}
             item["bundle_key"] = lane.get("bundle_key")
@@ -211,6 +297,10 @@ class WatchdogGuardian:
                 item["heartbeat_age_seconds"] = max(0, now - float(stamp) / 1000) if stamp else None
             except (ValueError, TypeError):
                 item["heartbeat_age_seconds"] = None
+            item["storage_pressure"] = bool(emergency) or bool(_storage_status(status)
+                and status.get("pid") == pid and item["heartbeat_age_seconds"] is not None
+                and item["heartbeat_age_seconds"] <= 120 and _lane_storage_identity(pid, self.repo, status_path))
+            item["emergency_identity_verified"] = bool(emergency)
             try:
                 metadata = log.stat()
                 item.update(log_age_seconds=max(0, now - metadata.st_mtime), log_size_bytes=metadata.st_size)
@@ -233,10 +323,18 @@ class WatchdogGuardian:
             for lane in manifest.get("lanes", [])) and isinstance(manifest.get("report_path", ""), str)
         if not valid_manifest:
             manifest = {}
+        try:
+            declared_storage = _declared_storage_paths(manifest, self.repo)
+            minimum_free_bytes = _minimum_storage_bytes(manifest)
+        except ValueError:
+            valid_manifest, manifest, declared_storage, minimum_free_bytes = False, {}, [], MINIMUM_FREE_BYTES
         owners, errors = discover_watchdogs(self.manifest, self.repo, proc_root=self.proc_root)
         markers = sorted(str(directory / name) for directory in {self.repo, self.manifest.parent}
                          for name in STOP_MARKERS if (directory / name).exists())
         report_path = self._path(manifest.get("report_path") or str(self.manifest.parent / "watchdog-report.json"))
+        capacity = check_storage_capacity([self.manifest.parent, report_path.parent, self.repo, *declared_storage],
+                                          minimum_free_bytes=minimum_free_bytes)
+        storage_error = None
         report = read_json(report_path)
         report_status = report.get("status") if isinstance(report.get("status"), dict) else {}
         try:
@@ -244,9 +342,24 @@ class WatchdogGuardian:
         except OSError:
             report_age = None
         owner = owners[0] if len(owners) == 1 else None
+        emergency = watchdog_storage_emergency(report_path, owner, self.manifest, self.repo,
+                                               proc_root=self.proc_root) if owner else None
+        if emergency:
+            report = emergency["payload"]
+            report_status = {**(report.get("status") if isinstance(report.get("status"), dict) else {}),
+                             "state": "degraded", "phase": "storage_pressure"}
+            report_age = max(0, now - emergency["observed_at_ms"] / 1000)
+        lane_snapshots = self._lanes(manifest, now)
+        pressure = bool(emergency) or any(lane["storage_pressure"] for lane in lane_snapshots)
+        pressure = pressure or bool(owner and report_status.get("pid") == owner["pid"]
+            and report_age is not None and report_age <= 600
+            and (_storage_status(report) or _storage_status(report_status)
+                 or any(item.get("action") == "storage_wait" for item in report.get("reports", []) if isinstance(item, dict))))
         health = "missing" if not report else "stale" if report_age is None or report_age > 600 else "fresh"
         if owner and report and report_status.get("pid") != owner["pid"]:
             health = "different_owner"
+        if pressure:
+            health = "storage_pressure"
         if owner and health == "fresh":
             self.launch_attempts = 0
         if owner and self.apply and not once and not markers:
@@ -256,7 +369,12 @@ class WatchdogGuardian:
             except OSError:
                 previous_pid = ""
             if previous_pid != str(owner["pid"]):
-                atomic_write(pid_path, f"{owner['pid']}\n")
+                try:
+                    atomic_write(pid_path, f"{owner['pid']}\n")
+                except OSError as exc:
+                    if not is_storage_pressure(exc):
+                        raise
+                    storage_error = exc
         action = "held" if markers else "duplicates_detected" if len(owners) > 1 else "owner_present" if owner else "owner_absent"
         if owner and not markers and health != "fresh":
             action = "owner_unresponsive"
@@ -264,6 +382,8 @@ class WatchdogGuardian:
             action = "configuration_error"
         elif errors and not owners and not markers:
             action = "discovery_uncertain"
+        elif not capacity["ok"] or storage_error is not None or pressure:
+            action = "storage_blocked"
         elif action == "owner_absent":
             if once or not self.apply:
                 action = "would_launch"
@@ -275,18 +395,24 @@ class WatchdogGuardian:
                 if owners or errors or any((directory / name).exists() for directory in {self.repo, self.manifest.parent} for name in STOP_MARKERS):
                     action = "launch_deferred"
                 else:
+                    previous_attempts, previous_deadline = self.launch_attempts, self.next_launch_after
                     self.launch_attempts += 1
                     self.next_launch_after = now + min(3600, self.cooldown * 2 ** min(self.launch_attempts - 1, 6))
                     # Persist the cooldown before spawning, including across guardian restarts.
-                    atomic_json(self.status_path, {"next_launch_after": self.next_launch_after,
-                                "launch_attempts_since_healthy": self.launch_attempts,
-                                "work_complete": False, "completion_authority": False})
                     try:
+                        atomic_json(self.status_path, {"next_launch_after": self.next_launch_after,
+                                    "launch_attempts_since_healthy": self.launch_attempts,
+                                    "work_complete": False, "completion_authority": False})
                         self._launch()
                         action = "launched"
                     except OSError as exc:
-                        action = "launch_failed"
-                        errors.append(f"spawn_failed:{type(exc).__name__}:{exc.errno}")
+                        if is_storage_pressure(exc):
+                            self.launch_attempts, self.next_launch_after = previous_attempts, previous_deadline
+                            storage_error = exc
+                            action = "storage_blocked"
+                        else:
+                            action = "launch_failed"
+                            errors.append(f"spawn_failed:{type(exc).__name__}:{exc.errno}")
         result = {"schema": "ipfs_accelerate_py.agent_supervisor.watchdog-guardian@1",
                   "guardian_pid": os.getpid(), "observed_at_ms": int(now * 1000),
                   "manifest_path": str(self.manifest), "repo_root": str(self.repo),
@@ -295,11 +421,14 @@ class WatchdogGuardian:
                   "owner_alive": bool(owners), "owners": owners, "errors": errors,
                   "hold_markers": markers, "report_age_seconds": report_age,
                   "report_health": health, "reported_state": report_status.get("state"),
-                  "lanes": self._lanes(manifest, now) if isinstance(manifest.get("lanes"), list) else [],
+                  "lanes": lane_snapshots,
                   "next_launch_after": self.next_launch_after,
                   "launch_attempts_since_healthy": self.launch_attempts,
                   "work_complete": False, "completion_authority": False}
-        atomic_json(self.status_path, result)
+        if action == "storage_blocked" or storage_error is not None:
+            self._storage_blocked(result, error=storage_error, capacity=capacity)
+        if self._persist_status(result) and capacity["ok"] and result["action"] != "storage_blocked":
+            clear_emergency_status(self.status_path)
         return result
 
     def _launch(self) -> None:
@@ -332,7 +461,18 @@ def main(argv: list[str] | None = None) -> int:
     guardian = WatchdogGuardian(args.manifest_path, args.repo_root, python=args.python,
                                 apply=args.apply, poll_seconds=args.poll_seconds,
                                 restart_cooldown=args.restart_cooldown)
-    lock = acquire_lock(guardian.lock_path)
+    while True:
+        try:
+            lock = acquire_lock(guardian.lock_path)
+            break
+        except OSError as exc:
+            if not is_storage_pressure(exc):
+                raise
+            result = guardian._storage_blocked({"guardian_pid": os.getpid()}, error=exc)
+            print(json.dumps(result), flush=True)
+            if args.once:
+                return 2
+            time.sleep(guardian.poll_seconds)
     if lock is None:
         print(json.dumps({"action": "guardian_already_running", "work_complete": False,
                           "completion_authority": False}))

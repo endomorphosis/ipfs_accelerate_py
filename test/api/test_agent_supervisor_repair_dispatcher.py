@@ -1,6 +1,7 @@
 """Behavioral tests for bounded repair dispatch, separate from lane tests."""
 
 import json
+import errno
 import os
 from pathlib import Path
 import sys
@@ -15,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.rescue.repair_dispatcher import (
     repair_lock,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue import repair_dispatcher
+from ipfs_accelerate_py.agent_supervisor.rescue import watchdog_guardian
 
 
 def write_json(path, value):
@@ -203,6 +205,311 @@ def test_singleton_lock_excludes_second_owner(tmp_path):
                 pytest.fail("acquired duplicate lock")
     with singleton_lock(path):
         assert path.read_text().strip() == str(os.getpid())
+
+
+@pytest.mark.parametrize("number", [errno.ENOSPC, errno.EDQUOT])
+def test_pid_header_storage_failure_does_not_release_real_singleton_flock(tmp_path, monkeypatch, number):
+    path = tmp_path / "dispatcher.lock"
+    original = repair_dispatcher.os.ftruncate
+
+    def full(*_args):
+        raise OSError(number, "injected lock text failure")
+
+    monkeypatch.setattr(repair_dispatcher.os, "ftruncate", full)
+    with singleton_lock(path):
+        with pytest.raises(AlreadyRunning):
+            with singleton_lock(path):
+                pytest.fail("a second dispatcher acquired the existing owner lock")
+    monkeypatch.setattr(repair_dispatcher.os, "ftruncate", original)
+    with singleton_lock(path):
+        assert path.read_text().strip() == str(os.getpid())
+
+
+def test_pid_header_nonstorage_failure_is_not_silenced(tmp_path, monkeypatch):
+    def failure(*_args):
+        raise OSError(errno.EIO, "unrelated I/O failure")
+
+    monkeypatch.setattr(repair_dispatcher.os, "ftruncate", failure)
+    with pytest.raises(OSError) as error:
+        with singleton_lock(tmp_path / "lock"):
+            pytest.fail("an unrelated ownership write failure was ignored")
+    assert error.value.errno == errno.EIO
+
+
+@pytest.mark.parametrize("number", [errno.ENOSPC, errno.EDQUOT])
+def test_dispatch_storage_admission_preserves_attempts_then_recovers(rig, monkeypatch, number):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    state = {"attempts": {"older": {"count": 2, "next_dispatch_at": 0}}}
+    calls, emergency, cleared = [], [], []
+    original = repair_dispatcher.check_storage_capacity
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *args, **kwargs: emergency.append(args[1]))
+    monkeypatch.setattr(repair_dispatcher, "clear_emergency_status", cleared.append)
+    monkeypatch.setattr(repair_dispatcher, "check_storage_capacity", lambda *_, **_kwargs: {
+        "ok": False, "storage_pressure": True, "reason": errno.errorcode[number], "errno": number})
+    worker = lambda *_: calls.append(True) or {"outcome": "awaiting_observation", "exit_code": 0}
+    for moment in [now, now + 30, now + 60]:
+        result = tick(config, state, apply=True, now=moment, probe=probe, worker=worker)
+        assert result["action"] == "storage_blocked"
+        assert state["attempts"] == {"older": {"count": 2, "next_dispatch_at": 0}}
+        assert result["work_complete"] is result["completion_authority"] is False
+    assert not calls and emergency and not cleared
+    monkeypatch.setattr(repair_dispatcher, "check_storage_capacity", original)
+    result = tick(config, state, apply=True, now=now + 90, probe=probe, worker=worker)
+    assert result["action"] == "worker_finished" and len(calls) == 1
+    assert state["attempts"][result["signature"]]["count"] == 1
+    assert cleared and set(cleared) == {config.state_dir / "status.json"}
+
+
+@pytest.mark.parametrize("number", [errno.ENOSPC, errno.EDQUOT])
+def test_dispatch_preserves_budget_when_pre_spawn_persistence_fails(rig, monkeypatch, number):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    original = repair_dispatcher._atomic_json
+    emergency, calls = [], []
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *args, **kwargs: emergency.append(args[1]))
+
+    def full(*_args):
+        raise OSError(number, "injected telemetry capacity failure")
+
+    monkeypatch.setattr(repair_dispatcher, "_atomic_json", full)
+    state = {}
+    for moment in [now, now + 30]:
+        result = tick(config, state, apply=True, now=moment, probe=probe, worker=lambda *_: calls.append(True))
+        assert result["action"] == "storage_blocked"
+        assert state["attempts"][result["signature"]]["count"] == 0
+        assert "spawn_intent" not in state and "active_worker" not in state
+    assert not calls and emergency
+    monkeypatch.setattr(repair_dispatcher, "_atomic_json", original)
+    result = tick(config, state, apply=True, now=now + 60, probe=probe,
+                  worker=lambda *_: {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "worker_finished"
+    assert state["attempts"][result["signature"]]["count"] == 1
+
+
+def test_dispatch_telemetry_failure_preserves_lock_and_existing_worker_identity(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[300] = True
+    state = {"active_worker": {"pid": 300, "start_ticks": 3000, "deadline": now + 100}}
+    original = repair_dispatcher._atomic_json
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+
+    def full(*_args):
+        raise OSError(errno.ENOSPC, "injected telemetry capacity failure")
+
+    with singleton_lock(config.state_dir / "dispatcher.lock"):
+        monkeypatch.setattr(repair_dispatcher, "_atomic_json", full)
+        result = tick(config, state, apply=True, now=now, probe=probe, worker=lambda *_: pytest.fail("duplicate worker"))
+        assert result["action"] == "storage_blocked" and state["active_worker"]["pid"] == 300
+        with pytest.raises(AlreadyRunning):
+            with singleton_lock(config.state_dir / "dispatcher.lock"):
+                pytest.fail("telemetry failure released dispatcher lock")
+        monkeypatch.setattr(repair_dispatcher, "_atomic_json", original)
+        assert tick(config, state, apply=True, now=now + 1, probe=probe)["action"] == "worker_already_running"
+
+
+def test_dispatch_does_not_hide_an_unrelated_telemetry_io_error(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+
+    def failure(*_args):
+        raise OSError(errno.EIO, "unrelated disk error")
+
+    monkeypatch.setattr(repair_dispatcher, "_atomic_json", failure)
+    with pytest.raises(OSError) as error:
+        tick(config, {}, now=now, probe=probe)
+    assert error.value.errno == errno.EIO
+
+
+def test_failed_worker_log_admission_is_storage_blocked_without_budget_use(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    state = {}
+    original = Path.open
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+
+    def full_log(path, *args, **kwargs):
+        if path.name.startswith("worker-"):
+            raise OSError(errno.ENOSPC, "worker log full")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", full_log)
+    config.worker_argv = [sys.executable, "-c", "raise RuntimeError('must not start')"]
+    result = tick(config, state, apply=True, now=now, probe=probe)
+    assert result["action"] == "storage_blocked"
+    assert state["attempts"][result["signature"]]["count"] == 0
+    assert "spawn_intent" not in state and "active_worker" not in state
+
+
+@pytest.mark.parametrize("number", [errno.ENOSPC, errno.EDQUOT])
+def test_postspawn_identity_write_pressure_reaps_real_child_and_retains_real_attempt(rig, monkeypatch, number):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    config.worker_argv = [sys.executable, "-c", "import time; time.sleep(60)"]
+    atomic, spawn = repair_dispatcher._atomic_json, repair_dispatcher.subprocess.Popen
+    children = []
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+
+    def fail_identity(path, value):
+        if value.get("active_worker") or value.get("rejected_payload", {}).get("active_worker"):
+            raise OSError(number, "injected post-spawn identity persistence failure")
+        return atomic(path, value)
+
+    def launch(*args, **kwargs):
+        child = spawn(*args, **kwargs)
+        children.append(child)
+        return child
+
+    monkeypatch.setattr(repair_dispatcher, "_atomic_json", fail_identity)
+    monkeypatch.setattr(repair_dispatcher.subprocess, "Popen", launch)
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=probe)
+    assert result["action"] == "storage_blocked" and len(children) == 1
+    assert children[0].poll() is not None and not probe_process(children[0].pid)["alive"]
+    assert probe_process(os.getpid())["alive"]
+    assert state["attempts"][result["signature"]]["count"] == 1
+    assert state["last_worker"]["outcome"] == "storage_interrupted"
+    assert state["last_worker"]["spawned"] is True and state["last_worker"]["owned_child_stopped"] is True
+    assert "spawn_intent" not in state and "active_worker" not in state
+    # The normal small capacity probe still succeeds. The rejected full-size
+    # identity must be writable before another child is admitted.
+    result = tick(config, state, apply=True, now=now + 30, probe=probe)
+    assert result["action"] == "storage_blocked" and len(children) == 1
+    assert state["attempts"][result["signature"]]["count"] == 1
+    assert "active_worker" not in state
+    assert not list(config.state_dir.glob('.storage-admission-*'))
+    monkeypatch.setattr(repair_dispatcher, "_atomic_json", atomic)
+    config.worker_argv = [sys.executable, "-c", "pass"]
+    result = tick(config, state, apply=True, now=now + 60, probe=probe)
+    assert result["action"] == "worker_finished"
+    assert state["attempts"][result["signature"]]["count"] == 2
+    assert state["last_worker"]["outcome"] == "awaiting_observation"
+    assert config._storage_retry_payload is None and len(children) == 2
+
+
+def test_dispatcher_main_retains_lock_and_bounded_poll_through_telemetry_pressure(rig, monkeypatch, capsys):
+    config, now, lane, live, probe = rig
+    actual_tick, atomic = repair_dispatcher.tick, repair_dispatcher._atomic_json
+    polls = []
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+
+    def full(*_args):
+        raise OSError(errno.EDQUOT, "injected telemetry quota pressure")
+
+    def poll(seconds):
+        polls.append(seconds)
+        with pytest.raises(AlreadyRunning):
+            with singleton_lock(config.state_dir / "dispatcher.lock"):
+                pytest.fail("main released its lifetime lock during storage pressure")
+        if len(polls) == 1:
+            monkeypatch.setattr(repair_dispatcher, "_atomic_json", atomic)
+        else:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(repair_dispatcher, "_atomic_json", full)
+    monkeypatch.setattr(repair_dispatcher, "tick", lambda cfg, state, **kwargs:
+                        actual_tick(cfg, state, now=now, probe=probe, **kwargs))
+    monkeypatch.setattr(repair_dispatcher.time, "sleep", poll)
+    assert main(["--manifest-path", str(config.manifest_path), "--repo-root", str(config.repo_root),
+                 "--state-dir", str(config.state_dir), "--interval", "1"]) == 0
+    actions = [json.loads(line)["action"] for line in capsys.readouterr().out.splitlines()]
+    assert actions == ["storage_blocked", "healthy"]
+    assert polls == [1, 1]
+
+
+def test_dispatcher_probes_global_and_lane_output_roots_before_admission(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    manifest = json.loads(config.manifest_path.read_text())
+    manifest["storage_paths"] = ["artifacts"]
+    manifest["lanes"][0]["storage_paths"] = ["captures"]
+    write_json(config.manifest_path, manifest)
+    checked = []
+
+    def capacity(paths, **kwargs):
+        checked.extend(paths)
+        return {"ok": False, "storage_pressure": True, "reason": "output_full"}
+
+    monkeypatch.setattr(repair_dispatcher, "check_storage_capacity", capacity)
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=probe, worker=lambda *_: pytest.fail("repair ran on full output"))
+    assert result["action"] == "storage_blocked" and not state.get("attempts")
+    assert config.repo_root / "artifacts" in checked and config.repo_root / "captures" in checked
+
+
+def test_fresh_owner_storage_wait_blocks_repair_but_old_record_does_not(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    path = config.repo_root / "runtime/report.json"
+    write_json(path, {"status": {"pid": 100, "state": "degraded", "phase": "storage_pressure"},
+                      "reports": [{"bundle_key": "vog", "action": "storage_wait"}]})
+    os.utime(path, (now, now))
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=probe, worker=lambda *_: pytest.fail("pressure repair"))
+    assert result["action"] == "storage_blocked" and not state.get("attempts")
+    os.utime(path, (now - 1000, now - 1000))
+    assert tick(config, state, now=now, probe=probe)["action"] == "would_dispatch"
+
+
+def test_authentic_fresh_lane_emergency_prevents_stale_heartbeat_repair(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    status(lane, heartbeat_at_ms=(now - 1000) * 1000)
+    status_path = lane / "vog_status.json"
+    monkeypatch.setattr(watchdog_guardian, "_lane_storage_identity", lambda pid, *_: pid == 200)
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+
+    def emergency(path, *, expected_pid, identity_check, **_kwargs):
+        if path != status_path:
+            return None
+        assert expected_pid == 200 and identity_check(200) and not identity_check(999)
+        return {"pid": 200, "observed_at_ms": int(now * 1000),
+                "payload": {"state": "degraded", "phase": "storage_pressure", "storage_pressure": True,
+                            "heartbeat_at_ms": now * 1000}}
+
+    monkeypatch.setattr(watchdog_guardian, "read_emergency_status", emergency)
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=probe, worker=lambda *_: pytest.fail("pressure repair"))
+    assert result["action"] == "storage_blocked"
+    assert result["lanes"][0]["emergency_identity_verified"] is True
+    assert result["lanes"][0]["phase"] == "storage_pressure"
+    assert "lane_heartbeat_stale" not in kinds(result) and not state.get("attempts")
+    monkeypatch.setattr(watchdog_guardian, "read_emergency_status", lambda *_args, **_kwargs: None)
+    assert tick(config, state, now=now, probe=probe)["action"] == "would_dispatch"
+
+
+def test_authentic_fresh_owner_emergency_prevents_stale_report_repair(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    path = config.repo_root / "runtime/report.json"
+    os.utime(path, (now - 1000, now - 1000))
+    monkeypatch.setattr(watchdog_guardian, "discover_watchdogs", lambda *_args, **_kwargs:
+                        ([{"pid": 100, "start_ticks": 1000}], []))
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+
+    def emergency(primary, *, expected_pid, identity_check, **_kwargs):
+        if primary != path:
+            return None
+        assert expected_pid == 100 and identity_check(100) and not identity_check(999)
+        return {"pid": 100, "observed_at_ms": int(now * 1000),
+                "payload": {"status": {"pid": 100, "state": "degraded"}, "storage_pressure": True}}
+
+    monkeypatch.setattr(watchdog_guardian, "read_emergency_status", emergency)
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=probe, worker=lambda *_: pytest.fail("pressure repair"))
+    assert result["action"] == "storage_blocked" and "owner_report_stale" not in kinds(result)
+    assert not state.get("attempts")
+
+
+def test_fresh_canonical_lane_pressure_requires_its_live_role_identity(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    status(lane, state="degraded", phase="storage_wait", storage_pressure=True)
+    monkeypatch.setattr(repair_dispatcher, "_lane_storage_identity", lambda pid, *_: pid == 200)
+    monkeypatch.setattr(repair_dispatcher, "publish_emergency_status", lambda *_args, **_kwargs: None)
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=probe, worker=lambda *_: pytest.fail("pressure repair"))
+    assert result["action"] == "storage_blocked" and not state.get("attempts")
+    monkeypatch.setattr(repair_dispatcher, "_lane_storage_identity", lambda *_: False)
+    assert observe(config, state, now=now, probe=probe)["storage_pressure"] is False
 
 
 def test_worker_uses_stdin_and_preserves_literal_argv(rig):
@@ -548,6 +855,75 @@ def test_unchanged_exhausted_hard_failure_dispatches_after_bounded_wait(rig, exi
     assert result["incidents"][0]["evidence"]["failure_stage"] == ("validation" if exit_code == 0 else "command")
     assert result["work_complete"] is result["completion_authority"] is False
     assert (config.repo_root / "todo.md").read_text() == original_board
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_self_rewriting_producer_exhausted_wait_uses_post_invocation_contract(rig, exit_code):
+    """Real self-generated source cannot hide a genuinely exhausted budget."""
+    import hashlib
+    from ipfs_accelerate_py.agent_supervisor.rescue.lane_resume import (
+        _command_contract, parse_deterministic_command,
+    )
+    from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import parse_todo_task_fields
+
+    config, now, lane, live, probe = rig
+    config.quiet_seconds = 30
+    ledger = exhausted_wait(rig, exit_code=exit_code)
+    fields = dict(parse_todo_task_fields((config.repo_root / "todo.md").read_text(),
+                                       task_header_prefix="## VOG-"))["VOG-001"]
+    command = parse_deterministic_command(fields["deterministic_command"], repo_root=config.repo_root)
+    validation = parse_deterministic_command(fields["validation"], repo_root=config.repo_root)
+    source = config.repo_root / "source.py"
+    source.write_text("from pathlib import Path\np = Path(__file__)\n"
+                      "p.write_text(p.read_text() + '# owner generated source\\n')\n"
+                      f"raise SystemExit({exit_code})\n")
+    for _ in range(3):
+        contract = _command_contract(fields, command, validation, repo_root=config.repo_root)
+        before = {name: hashlib.sha256((config.repo_root / name).read_bytes()).hexdigest()
+                  for name in ["source.py", "coverage.json"]}
+        result = subprocess.run(command, cwd=config.repo_root, capture_output=True, timeout=10)
+        assert result.returncode == exit_code
+    receipt = ledger["_command_evidence"]["VOG-001"]
+    receipt.update(contract=contract, before=before,
+                   after={name: hashlib.sha256((config.repo_root / name).read_bytes()).hexdigest()
+                          for name in before},
+                   retry_contract=_command_contract(fields, command, validation, repo_root=config.repo_root))
+    assert receipt["contract"] != receipt["retry_contract"]
+    write_json(lane / "lane_resume_attempts.json", ledger)
+    state = {}
+    assert not observe(config, state, now=now, probe=probe)["incidents"]
+    result = tick(config, state, apply=True, now=now + 31, probe=probe,
+                  worker=lambda *_: {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "worker_finished"
+    assert kinds(result) == {"exhausted_hard_failure"}
+    assert result["completion_authority"] is False
+
+
+@pytest.mark.parametrize("retry_contract", [None, "", {}, "bad", "b" * 64])
+def test_present_invalid_or_stale_retry_contract_never_falls_back_to_current_proof(rig, retry_contract):
+    config, now, lane, live, probe = rig
+    config.quiet_seconds = 1
+    ledger = exhausted_wait(rig)
+    ledger["_command_evidence"]["VOG-001"]["retry_contract"] = retry_contract
+    write_json(lane / "lane_resume_attempts.json", ledger)
+    state = {}
+    assert not observe(config, state, now=now, probe=probe)["incidents"]
+    assert not observe(config, state, now=now + 2, probe=probe)["incidents"]
+    assert not state["exhausted_wait_observations"]
+
+
+def test_retry_contract_does_not_replace_required_invocation_provenance(rig):
+    config, now, lane, live, probe = rig
+    config.quiet_seconds = 1
+    ledger = exhausted_wait(rig)
+    receipt = ledger["_command_evidence"]["VOG-001"]
+    receipt["retry_contract"] = receipt["contract"]
+    receipt["contract"] = None
+    write_json(lane / "lane_resume_attempts.json", ledger)
+    state = {}
+    assert not observe(config, state, now=now, probe=probe)["incidents"]
+    assert not observe(config, state, now=now + 2, probe=probe)["incidents"]
+    assert not state["exhausted_wait_observations"]
 
 
 @pytest.mark.parametrize("change", ["first_retry", "second_retry", "missing_receipt", "no_deadline", "gate_exit", "validator_not_exhausted", "changed_contract"])
