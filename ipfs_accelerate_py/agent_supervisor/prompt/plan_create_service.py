@@ -1182,11 +1182,12 @@ def plan_create_request_from_workflow(
         scope = "." if str(relative) in ("", ".") else str(relative).replace("\\", "/")
     except Exception:
         scope = "."
-    # The workflow scan layer denotes a root scan as "."; canonical plan
-    # contracts reject root path values (plan_revision_contracts
-    # ._relative_path), where an unnarrowed whole-repository scope is
-    # represented by the empty scope_paths tuple.
-    projected_scope_paths = () if scope in ("", ".") else (scope,)
+    # The workflow scan layer denotes a root scan as ".". Project that scan
+    # into the actual top-level scope, excluding gitlinks and private dot
+    # paths, rather than losing its observed source paths in an empty tuple.
+    projected_scope_paths = (
+        _whole_repository_scope_paths(root_path) if scope in ("", ".") else (scope,)
+    )
     prompt_source = getattr(workflow_request, "prompt_source", None)
     prompt_cid = str(
         getattr(prompt_source, "content_id", None)

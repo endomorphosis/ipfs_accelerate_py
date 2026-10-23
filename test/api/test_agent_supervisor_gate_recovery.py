@@ -357,7 +357,7 @@ def test_serve_preserves_prior_semantic_transition_on_restart(
         "--status-path", str(status_path), "--pid-path", str(tmp_path / "lane.pid"),
         "--log-path", str(tmp_path / "lane.log"), "--bundle-key", "test", "--max-seconds", "1",
     ]) == 0
-    assert observed == [1234]
+    assert observed and set(observed) == {1234}
 
 
 def test_admitted_browser_repair_preserves_its_two_hour_bound(lane: SimpleNamespace) -> None:

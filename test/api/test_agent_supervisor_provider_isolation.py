@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_isolation import (
@@ -259,24 +263,13 @@ def test_publish_kubernetes_cli_logs_uses_kubectl(tmp_path, monkeypatch) -> None
     assert "quota denied" in receipt["error_snippets"][0]
 
 
-def test_worktree_isolation_uses_builtin_workspace_sandbox(monkeypatch) -> None:
+def test_primary_grok_command_preserves_custom_sandbox_and_sealed_tools(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         grok_cli_runner,
         "_grok_custom_sandbox_available",
         lambda: True,
-    )
-    assert (
-        grok_cli_runner.grok_sandbox_cli_profile(
-            grok_cli_runner.GROK_ISOLATION_WORKTREE
-        )
-        == grok_cli_runner.GROK_WORKTREE_SANDBOX_PROFILE
-    )
-    assert grok_cli_runner.GROK_WORKTREE_SANDBOX_PROFILE == "workspace"
-    assert (
-        grok_cli_runner.grok_sandbox_cli_profile(
-            grok_cli_runner.GROK_ISOLATION_GROK_SANDBOX
-        )
-        == grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
     )
     command = grok_cli_runner.build_grok_agent_command(
         workspace=Path("/tmp/workspace"),
@@ -286,11 +279,21 @@ def test_worktree_isolation_uses_builtin_workspace_sandbox(monkeypatch) -> None:
         permission_mode="bypassPermissions",
         grok_bin="/usr/bin/grok",
     )
-    assert command[command.index("--sandbox") + 1] == "workspace"
-    assert grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE not in command
+    assert command[command.index("--sandbox") + 1] == (
+        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
+    ) == "ipfs-accelerate-provider-isolated"
+    assert command[command.index("--tools") + 1] == (
+        grok_cli_runner._SEALED_GROK_TOOLS
+    )
+    assert command[command.index("--disallowed-tools") + 1] == (
+        grok_cli_runner._SEALED_GROK_DISALLOWED_TOOLS
+    )
+    denied = [command[index + 1] for index, arg in enumerate(command) if arg == "--deny"]
+    assert denied == list(grok_cli_runner.GROK_ISOLATION_DENY_RULES)
+    assert "--no-subagents" in command
 
 
-def test_worktree_isolation_disables_sandbox_when_bwrap_uid_map_fails(
+def test_native_sandbox_unavailable_selects_pinned_docker_boundary(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
@@ -298,94 +301,106 @@ def test_worktree_isolation_disables_sandbox_when_bwrap_uid_map_fails(
         "_grok_custom_sandbox_available",
         lambda: False,
     )
-    assert (
-        grok_cli_runner.grok_sandbox_cli_profile(
-            grok_cli_runner.GROK_ISOLATION_WORKTREE
-        )
-        == grok_cli_runner.GROK_DISABLED_SANDBOX_PROFILE
+    monkeypatch.setattr(
+        grok_cli_runner, "_docker_isolation_binary", lambda: "/usr/bin/docker"
     )
-    command = grok_cli_runner.build_grok_agent_command(
-        workspace=Path("/tmp/workspace"),
-        prompt_file=Path("/tmp/prompt.txt"),
-        model="grok-4.6",
-        max_turns=10,
-        permission_mode="bypassPermissions",
-        grok_bin="/usr/bin/grok",
-    )
-    assert command[command.index("--sandbox") + 1] == "off"
+    assert grok_cli_runner._select_grok_isolation_backend() == (
+        grok_cli_runner.GROK_ISOLATION_DOCKER
+    ) == "docker"
 
 
-def test_bwrap_host_failure_retries_by_disabling_sandbox() -> None:
-    command = [
-        "grok",
-        "--sandbox",
-        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE,
-        "--prompt-file",
-        "prompt.txt",
-    ]
-    assert grok_cli_runner._should_disable_sandbox_after_bwrap_host_failure(
-        command=command,
-        returncode=1,
-        error_text="bwrap: setting up uid map: Permission denied",
-    )
-    rewritten = grok_cli_runner._rewrite_grok_sandbox_profile(
-        command,
-        grok_cli_runner.GROK_DISABLED_SANDBOX_PROFILE,
-    )
-    assert rewritten[rewritten.index("--sandbox") + 1] == "off"
-    assert not grok_cli_runner._should_disable_sandbox_after_bwrap_host_failure(
-        command=rewritten,
-        returncode=1,
-        error_text="bwrap: setting up uid map: Permission denied",
-    )
+def test_missing_native_and_docker_boundaries_refuses_execution(monkeypatch) -> None:
+    monkeypatch.setattr(grok_cli_runner, "_grok_custom_sandbox_available", lambda: False)
+    monkeypatch.setattr(grok_cli_runner, "_docker_isolation_binary", lambda: "")
+
+    def no_host_execution(*args, **kwargs):
+        raise AssertionError("An unavailable boundary must not retry a host process")
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "run", no_host_execution)
+    with pytest.raises(ValueError, match="Grok provider isolation unavailable"):
+        grok_cli_runner._select_grok_isolation_backend()
 
 
-def test_grok_stderr_detects_bwrap_host_failure() -> None:
-    assert grok_cli_runner.grok_stderr_is_sandbox_host_failure(
-        "bwrap: setting up uid map: Permission denied"
-    )
-    assert grok_cli_runner.grok_stderr_is_sandbox_host_failure(
-        "bwrap: setting up gid map: Permission denied"
-    )
-    assert not grok_cli_runner.grok_stderr_is_sandbox_host_failure(
-        "quota exhausted"
+def test_native_sandbox_probe_fails_closed_with_bounded_host_failures(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(grok_cli_runner.sys, "platform", "linux")
+    monkeypatch.setattr(grok_cli_runner.shutil, "which", lambda name: "/reviewed/bwrap")
+    calls = []
+    outcomes = (
+        SimpleNamespace(returncode=1),
+        OSError("bwrap: setting up uid map: Permission denied"),
+        subprocess.TimeoutExpired(["/reviewed/bwrap"], 5),
     )
 
+    for outcome in outcomes:
+        def probe(command, **kwargs):
+            calls.append(command)
+            assert command == ["/reviewed/bwrap", "--ro-bind", "/", "/", "--", "/bin/true"]
+            assert kwargs == {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+                "timeout": 5,
+                "check": False,
+            }
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
 
-def test_rewrite_grok_sandbox_profile_swaps_custom_to_workspace() -> None:
-    command = [
-        "grok",
-        "--sandbox",
-        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE,
-        "--prompt-file",
-        "prompt.txt",
-    ]
-    rewritten = grok_cli_runner._rewrite_grok_sandbox_profile(
-        command,
-        grok_cli_runner.GROK_WORKTREE_SANDBOX_PROFILE,
+        monkeypatch.setattr(grok_cli_runner.subprocess, "run", probe)
+        assert grok_cli_runner._grok_custom_sandbox_available() is False
+    assert len(calls) == len(outcomes)
+
+
+def test_container_required_route_never_downgrades_to_native_sandbox(
+    monkeypatch,
+) -> None:
+    def no_native_downgrade():
+        raise AssertionError("A container-required route must not consult native fallback")
+
+    monkeypatch.setattr(grok_cli_runner, "_grok_custom_sandbox_available", no_native_downgrade)
+    monkeypatch.setattr(grok_cli_runner, "_docker_isolation_binary", lambda: "")
+    with pytest.raises(ValueError, match="requires the pinned local Docker"):
+        grok_cli_runner._select_grok_isolation_backend(require_container_boundary=True)
+    monkeypatch.setattr(
+        grok_cli_runner, "_docker_isolation_binary", lambda: "/usr/bin/docker"
     )
-    assert rewritten[rewritten.index("--sandbox") + 1] == "workspace"
+    assert grok_cli_runner._select_grok_isolation_backend(
+        require_container_boundary=True
+    ) == grok_cli_runner.GROK_ISOLATION_DOCKER == "docker"
 
 
-def test_isolated_grok_home_worktree_skips_custom_deny_profile(
+def test_unauthenticated_private_grok_home_keeps_custom_deny_profile(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     (workspace / ".git").mkdir()
-    temporary_home, env, policy_path, _denied = grok_cli_runner._isolated_grok_home(
-        base_env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "sealed")},
+    source_home = tmp_path / "empty-grok-home"
+    source_home.mkdir()
+    temporary_home, env, policy_path, denied = grok_cli_runner._isolated_grok_home(
+        base_env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path / "sealed"),
+            "GROK_HOME": str(source_home),
+        },
         child_env={"PATH": "/usr/bin:/bin"},
         codex_fallback_command=(),
         workspace=workspace,
-        populate_credentials=False,
-        isolation_backend=grok_cli_runner.GROK_ISOLATION_WORKTREE,
     )
     try:
-        text = Path(policy_path).read_text(encoding="utf-8")
-        assert grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE not in text
-        assert "deny = [" not in text
+        home = Path(temporary_home.name)
+        sentinel = home / "alternate-provider-deny-sentinel"
+        policy = tomllib.loads(Path(policy_path).read_text(encoding="utf-8"))
+        profile = policy["profiles"]["ipfs-accelerate-provider-isolated"]
+        assert profile["extends"] == "workspace"
+        assert profile["restrict_network"] is True
+        assert str(sentinel) in profile["deny"]
+        assert home in denied and sentinel in denied
         assert env["GROK_HOME"] == temporary_home.name
+        assert env["HOME"] == temporary_home.name
+        assert not (home / "auth.json").exists()
     finally:
         temporary_home.cleanup()
 

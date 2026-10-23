@@ -26,7 +26,7 @@ def test_packaged_refill_runs_without_workspace_siblings(tmp_path, monkeypatch) 
     monkeypatch.setitem(sys.modules, package_name, package)
     # Loading the lane must share only its unrelated process/gate imports;
     # the admission module itself can resolve solely from the copied package.
-    for name in ("command_processes", "gate_recovery"):
+    for name in ("command_processes", "gate_recovery", "storage_pressure", "vdg_pre_command_recovery"):
         module = sys.modules[f"{lane_resume.__package__}.{name}"]
         monkeypatch.setitem(sys.modules, f"{package_name}.{name}", module)
     module_name = f"{package_name}.lane_resume"
