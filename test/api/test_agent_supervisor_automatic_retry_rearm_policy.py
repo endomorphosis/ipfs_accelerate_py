@@ -276,4 +276,3 @@ def test_new_canonical_revision_keeps_old_spent_count_and_fresh_budget(tmp_path,
     assert old_cid != new_cid
     assert daemon._task_attempt(state, revised) == 1
     assert state.implementation_attempts_by_cid[old_cid] == 3
-
