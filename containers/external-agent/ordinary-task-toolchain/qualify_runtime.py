@@ -7,6 +7,7 @@ Docker, providers, or the network, and makes no Lean qualification claim.
 
 from __future__ import annotations
 
+import argparse
 import errno
 import hashlib
 import importlib
@@ -30,6 +31,14 @@ WORKSPACE = Path("/workspace")
 PYTHON = Path("/opt/ipfs-task-tools/bin/python")
 REPORT_PATH = WORKSPACE / "runtime-report.json"
 INSTALLED_MANIFEST = Path("/opt/installed-files.json")
+EXPECTED_WORKER_UID = 1000
+WHEEL_LOCKS = {
+    "arm64": "eed4f3a61cdba4930473acd3c4f28debe24966218cb74506fcd38fd6ec5f82d8",
+    "amd64": "4691b6e4c25f6e11f57c0434bc794595912325edfdff3d5551b1ee4295316f1a",
+}
+EXPECTED_WHEEL_LOCK_SHA256 = WHEEL_LOCKS["arm64"]
+EXPECTED_ARCHITECTURE = "arm64"
+AMD64_RIPGREP_SHA256 = "be2fbcdd985161603bfa268c7647eec670b9e94374f0e972da708d7de670a8fb"
 # Taken from the adjacent, source-reviewed wheels.lock.json. Do not discover
 # expected versions from the installed packages being qualified.
 EXPECTED_VERSIONS = {
@@ -70,7 +79,10 @@ def environment() -> dict[str, str]:
     # Do not inherit provider credentials, host plugin settings, or site paths.
     # -I ignores PYTHONPATH; the child explicitly inserts this same approved root.
     return {
-        "PATH": "/usr/bin:/bin",
+        "PATH": (
+            "/opt/ipfs-task-tools/bin:/usr/bin:/bin"
+            if EXPECTED_ARCHITECTURE == "amd64" else "/usr/bin:/bin"
+        ),
         "HOME": str(WORKSPACE),
         "TMPDIR": "/tmp",
         "LANG": "C.UTF-8",
@@ -105,7 +117,7 @@ def run_command(argv: list[str], *, timeout: int) -> dict[str, object]:
 
 def check_identity_and_isolation() -> dict[str, object]:
     require(os.getuid() != 0 and os.geteuid() != 0, "root_execution_forbidden")
-    require(os.getuid() == 1000 and os.geteuid() == 1000, "unexpected_worker_uid")
+    require(os.getuid() == EXPECTED_WORKER_UID and os.geteuid() == EXPECTED_WORKER_UID, "unexpected_worker_uid")
     require(sys.version_info[:2] == (3, 12), "unexpected_python_version")
     require(bool(sys.flags.isolated), "python_isolation_required")
     require(bool(sys.flags.no_site), "python_no_site_required")
@@ -168,7 +180,7 @@ def check_installed_package_files() -> dict[str, object]:
     manifest = json.loads(raw, object_pairs_hook=unique_objects)
     require(isinstance(manifest, dict), "installed_manifest_not_object")
     require(manifest.get("schema") == "legal-ir-ordinary-worker-installed-files@1", "installed_manifest_schema_mismatch")
-    require(manifest.get("wheel_lock_sha256") == "eed4f3a61cdba4930473acd3c4f28debe24966218cb74506fcd38fd6ec5f82d8", "installed_manifest_lock_mismatch")
+    require(manifest.get("wheel_lock_sha256") == EXPECTED_WHEEL_LOCK_SHA256, "installed_manifest_lock_mismatch")
     files = manifest.get("files")
     require(isinstance(files, dict), "installed_manifest_files_missing")
     prefix = "opt/ipfs-validation-site-packages/"
@@ -298,7 +310,12 @@ def check_tools() -> dict[str, object]:
     for name, arguments in (("git", ["--version"]), ("rg", ["--version"])):
         path = shutil.which(name, path=environment()["PATH"])
         require(path is not None, "required_tool_missing")
-        require(Path(str(path)).resolve().is_relative_to(Path("/usr")), "tool_outside_readonly_usr")
+        resolved = Path(str(path)).resolve()
+        if EXPECTED_ARCHITECTURE == "amd64" and name == "rg":
+            require(resolved == Path("/opt/ipfs-task-tools/bin/rg"), "unexpected_image_ripgrep_path")
+            require(hashlib.sha256(resolved.read_bytes()).hexdigest() == AMD64_RIPGREP_SHA256, "image_ripgrep_digest_mismatch")
+        else:
+            require(resolved.is_relative_to(Path("/usr")), "tool_outside_readonly_usr")
         result = run_command([str(path), *arguments], timeout=10)
         require(result["returncode"] == 0, "required_tool_version_failed")
         results[name] = {"path": str(path), **result}
@@ -382,6 +399,15 @@ def write_report(report: dict[str, object]) -> None:
 
 
 def main() -> int:
+    global EXPECTED_WORKER_UID, EXPECTED_WHEEL_LOCK_SHA256, EXPECTED_ARCHITECTURE
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--expected-uid", type=int, default=1000)
+    parser.add_argument("--architecture", choices=tuple(WHEEL_LOCKS), default="arm64")
+    args = parser.parse_args()
+    require(args.expected_uid > 0, "root_execution_forbidden")
+    EXPECTED_WORKER_UID = args.expected_uid
+    EXPECTED_WHEEL_LOCK_SHA256 = WHEEL_LOCKS[args.architecture]
+    EXPECTED_ARCHITECTURE = args.architecture
     started = time.monotonic()
     checks: list[dict[str, object]] = []
     package_closure_ready = False

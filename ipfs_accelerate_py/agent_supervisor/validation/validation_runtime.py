@@ -164,6 +164,7 @@ VALIDATION_ENVIRONMENT_ALLOWLIST = frozenset(
     {
         "CARGO_NET_OFFLINE",
         "CI",
+        "COMMON_CRAWL_AUTO_CLONE_SOURCE",
         "HF_DATASETS_OFFLINE",
         "HF_HUB_OFFLINE",
         "IPFS_ACCEL_SKIP_CORE",
@@ -2062,6 +2063,10 @@ def build_validation_environment(
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
         if key in source and source[key] is not None
     }
+    if result.get("COMMON_CRAWL_AUTO_CLONE_SOURCE", "0") != "0":
+        raise ValidationRuntimeError(
+            "COMMON_CRAWL_AUTO_CLONE_SOURCE may only disable dependency cloning"
+        )
     result.update(
         {
             _CHILD_PYTHON_ENV: python_executable,

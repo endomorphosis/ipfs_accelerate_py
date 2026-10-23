@@ -526,13 +526,17 @@ class AutonomousUnstallCoordinator:
             raw = self.quarantine_scope(diagnosis.target_ids, diagnosis.incident_cid, reason)
             if isinstance(raw, Mapping):
                 effect = dict(raw)
+        # A scope owner can refuse an obsolete recovery after an atomic
+        # state/claim comparison. Preserve that refusal as evidence without
+        # asserting quarantine or successful isolation that never occurred.
+        refused = effect.get("quarantined") is False
         entry = self._record(
             state,
             diagnosis.incident_cid,
-            phase="quarantined",
-            reason=reason,
+            phase="deferred" if refused else "quarantined",
+            reason=str(effect.get("reason") or reason) if refused else reason,
             targets=diagnosis.target_ids,
-            quarantined=True,
+            quarantined=not refused,
             quarantine_effect=effect,
             deterministic=dict(deterministic or {}),
             rescue=dict(rescue or {}),

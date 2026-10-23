@@ -204,9 +204,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         runner_prefix = [
             sys.executable,
-            "-B",
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+            grok_cli_runner.GROK_RUNNER_MODULE,
         ]
         if command[: len(runner_prefix)] != runner_prefix:
             print(

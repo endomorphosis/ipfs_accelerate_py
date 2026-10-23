@@ -20,6 +20,7 @@ def ordinary_pin(monkeypatch):
     # Test-only source substitution; production has no image override input.
     image = "sha256:" + "c" * 64
     monkeypatch.setattr(G, "_ORDINARY_TASK_TOOLCHAIN_IMAGE_ID", image)
+    monkeypatch.setattr(G, "_ordinary_task_toolchain_host_architecture", lambda: "arm64")
     return image
 
 
@@ -84,6 +85,7 @@ def _codex_inputs(tmp_path: Path, image: str):
 
 
 def test_pending_source_pin_refuses_before_docker(monkeypatch, tmp_path):
+    monkeypatch.setattr(G, "_ordinary_task_toolchain_host_architecture", lambda: "arm64")
     monkeypatch.setattr(G, "_ORDINARY_TASK_TOOLCHAIN_IMAGE_ID", "PENDING_QUALIFIED_ORDINARY_WORKER_IMAGE_ID")
     monkeypatch.setattr(G.subprocess, "run", lambda *a, **kw: pytest.fail("unqualified image queried Docker"))
     assert G._docker_ordinary_task_toolchain_image_id("/usr/bin/docker", docker_config=tmp_path) == ""
