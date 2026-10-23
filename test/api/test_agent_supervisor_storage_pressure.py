@@ -116,9 +116,14 @@ def test_real_owned_command_keeps_progressing_across_failed_heartbeats_and_recov
         original(path, text)
     monkeypatch.setattr(lane_resume, "_atomic_write_once", write)
     script = tmp_path / "produce.py"
-    script.write_text("from pathlib import Path\nimport time\n"
+    script.write_text("from pathlib import Path\nimport json,time\n"
                       "Path('invocations').write_text('1')\n"
-                      "for i in range(15):\n Path('progress').write_text(str(i))\n time.sleep(.02)\n")
+                      "for i in range(15):\n Path('progress').write_text(str(i))\n time.sleep(.02)\n"
+                      "deadline=time.monotonic()+2\n"
+                      "while not Path('status.json').exists():\n"
+                      " if time.monotonic()>=deadline:raise RuntimeError('durable heartbeat did not recover')\n"
+                      " time.sleep(.01)\n"
+                      "assert json.loads(Path('status.json').read_text())['state']=='healthy'\n")
     with _guard(tmp_path).activate():
         code = lane_resume._run_argv([sys.executable, str(script)], repo_root=tmp_path, timeout=3,
                                     log_path=tmp_path / "log", heartbeat=lambda: _heartbeat(tmp_path))
