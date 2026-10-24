@@ -701,9 +701,13 @@ try:
     parameters = inspect.signature(llm_router.generate_text).parameters
 except (TypeError, ValueError):
     parameters = {{}}
-if "trace" in parameters:
+accepts_extra_kwargs = any(
+    parameter.kind is inspect.Parameter.VAR_KEYWORD
+    for parameter in parameters.values()
+)
+if "trace" in parameters or accepts_extra_kwargs:
     kwargs["trace"] = os.environ.get({trace_env!r}) == "1"
-if "trace_dir" in parameters:
+if "trace_dir" in parameters or accepts_extra_kwargs:
     trace_dir = os.environ.get({trace_dir_env!r}) or None
     kwargs["trace_dir"] = trace_dir
 alloc_session = os.environ.get({allocation_session_env!r}) or ""
