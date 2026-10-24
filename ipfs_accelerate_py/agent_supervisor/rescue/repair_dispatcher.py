@@ -32,6 +32,8 @@ from .watchdog_guardian import (discover_watchdogs, _declared_storage_paths, _mi
 from .storage_pressure import (check_storage_capacity, clear_emergency_status,
                                is_storage_pressure, publish_emergency_status)
 
+from .planned_work_watchdog import observe_planned_work
+
 
 SCHEMA = "ipfs_accelerate_py.agent_supervisor.repair-dispatcher@1"
 FLAGS = {"work_complete": False, "completion_authority": False}
@@ -516,6 +518,14 @@ def observe(
     for key in list(exhausted_waits):
         if key not in current_exhausted:
             exhausted_waits.pop(key)
+    planned_work = observe_planned_work(policy=manifest.get("planned_work_policy"),
+        repo_root=config.repo_root, tasks=tasks, lanes=snapshots, state=state, now=now,
+        held=bool(holds) or owner_uncertain or bool(snapshots) and not eligible
+             or owner_pressure or any(lane["storage_pressure"] for lane in snapshots))
+    for entry in planned_work["incidents"]:
+        incident(entry["kind"], **entry["evidence"])
+    if planned_work.get("enabled"):
+        source_digest = _digest([source_digest, planned_work["contract_fingerprint"]])
     # Volatile ages and PIDs are evidence, not a new incident on each poll.
     identities = [{"kind": i["kind"], "lane": i["lane"], "task": i["task"],
                    "phase": i["evidence"].get("phase", ""),
@@ -532,6 +542,7 @@ def observe(
             "storage_paths": [str(path) for path in declared_storage], "storage_minimum_free_bytes": minimum_free_bytes,
             "report_path": str(report_path), "report_age_seconds": report_age,
             "pending_task_ids": pending, "selectable_task_ids": ready,
+            "planned_work": planned_work,
             "lanes": snapshots, "incidents": incidents, "signature": signature,
             "held": bool(holds) or owner_uncertain or (bool(snapshots) and not eligible), "hold_paths": holds,
             **FLAGS}
