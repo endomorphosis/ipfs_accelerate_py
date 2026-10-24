@@ -1,7 +1,8 @@
 """Observe one existing watchdog; optionally replace a genuinely absent owner.
 
-This stdlib-only outer guardian never signals processes, repairs application
-code, changes boards, or grants completion. ``--once`` is always observational.
+This stdlib-only outer guardian can terminate only its independently verified
+unresponsive watchdog. It never repairs application code, changes boards, or
+grants completion. ``--once`` is always observational.
 The manifest directory contains its flock, atomic telemetry, and stop markers.
 """
 
@@ -12,6 +13,8 @@ import fcntl
 import json
 import os
 import re
+import select
+import signal
 import stat
 import subprocess
 import sys
@@ -229,7 +232,8 @@ def watchdog_storage_emergency(report_path: Path, owner: dict[str, Any], manifes
 class WatchdogGuardian:
     def __init__(self, manifest: Path, repo: Path, *, python: str = sys.executable,
                  apply: bool = False, poll_seconds: float = 30,
-                 restart_cooldown: float = 120, proc_root: Path = Path("/proc")):
+                 restart_cooldown: float = 120, proc_root: Path = Path("/proc"),
+                 unresponsive_grace_seconds: float = 120):
         self.repo, self.manifest = repo.resolve(), manifest.resolve()
         self.python = str(Path(python).expanduser().absolute())  # retain venv symlink
         self.apply, self.poll_seconds = apply, max(1.0, poll_seconds)
@@ -243,6 +247,97 @@ class WatchdogGuardian:
         except (ValueError, TypeError):
             self.next_launch_after, self.launch_attempts = 0.0, 0
         self.children: list[subprocess.Popen] = []
+        self.unresponsive_grace = max(1.0, float(unresponsive_grace_seconds))
+        self.unresponsive = previous.get("unresponsive_owner") or {}
+        self.termination_attempt = previous.get("unresponsive_termination_attempt") or {}
+
+    def _recovery_holds(self, manifest: dict[str, Any]) -> list[str]:
+        directories = {self.repo, self.manifest.parent}
+        directories.update(self._path(lane["state_dir"]) for lane in manifest.get("lanes", [])
+                           if isinstance(lane, dict) and isinstance(lane.get("state_dir"), str))
+        return [str(directory / name) for directory in directories
+                for name in (*STOP_MARKERS, "hold", "operator.hold", "repair-dispatcher.hold")
+                if (directory / name).exists()]
+
+    def _activity(self, owner: dict[str, Any]) -> dict[str, Any] | None:
+        try:
+            raw = (self.proc_root / str(owner["pid"]) / "stat").read_text().rsplit(")", 1)[1].split()
+            ticks = [raw[11], raw[12]]
+        except (OSError, IndexError):
+            return None  # An exit/discovery race is never signal authority.
+        log = self.manifest.parent / "guardian-watchdog.log"
+        try:
+            info = log.stat()
+            logged = [info.st_mtime_ns, info.st_size]
+        except FileNotFoundError:
+            logged = []
+        return {"cpu_ticks": ticks, "log": logged}
+
+    def _has_children(self, pid: int) -> bool:
+        for directory in self.proc_root.iterdir():
+            if not directory.name.isdigit():
+                continue
+            try:
+                raw = (directory / "stat").read_text().rsplit(")", 1)[1].split()
+                if raw[0] != "Z" and int(raw[1]) == pid:
+                    return True
+            except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError, IndexError):
+                continue
+        return False
+
+    def _stop_unresponsive(self, owner: dict[str, Any], manifest: dict[str, Any], *, now: float,
+                           storage_paths: list[Path], minimum_free_bytes: int) -> dict[str, Any]:
+        identity = {"pid": owner["pid"], "start_ticks": owner["start_ticks"]}
+        if self.termination_attempt == identity:
+            return {"stopped": False, "reason": "termination_already_attempted", **identity}
+        if self.proc_root != Path("/proc") or not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
+            return {"stopped": False, "reason": "pidfd_recovery_unavailable", **identity}
+        if self._recovery_holds(manifest) or self._has_children(owner["pid"]):
+            return {"stopped": False, "reason": "held_or_active_check_children", **identity}
+        current, errors = discover_watchdogs(self.manifest, self.repo, proc_root=self.proc_root)
+        if errors or len(current) != 1 or any(current[0].get(k) != v for k, v in identity.items()):
+            return {"stopped": False, "reason": "owner_identity_changed", **identity}
+        capacity = check_storage_capacity(storage_paths, minimum_free_bytes=minimum_free_bytes)
+        if not capacity["ok"]:
+            return {"stopped": False, "reason": "storage_pressure", **identity}
+        # Persist the exact attempted identity before a signal. A service
+        # restart must not repeatedly TERM the same unconfirmed owner.
+        self.termination_attempt = identity
+        atomic_json(self.status_path, {"unresponsive_owner": self.unresponsive,
+                    "unresponsive_termination_attempt": identity, "next_launch_after": self.next_launch_after,
+                    "launch_attempts_since_healthy": self.launch_attempts,
+                    "work_complete": False, "completion_authority": False})
+        descriptor = os.pidfd_open(owner["pid"])
+        try:
+            current, errors = discover_watchdogs(self.manifest, self.repo, proc_root=self.proc_root)
+            if (errors or len(current) != 1 or any(current[0].get(k) != v for k, v in identity.items())
+                    or self._recovery_holds(manifest) or self._has_children(owner["pid"])):
+                self.termination_attempt = {}  # This verified refusal sent no signal.
+                return {"stopped": False, "reason": "owner_or_hold_changed_before_signal", **identity}
+            report_path = self._path(manifest.get("report_path") or str(self.manifest.parent / "watchdog-report.json"))
+            report = read_json(report_path)
+            status = report.get("status") if isinstance(report.get("status"), dict) else {}
+            try:
+                fresh = status.get("pid") == owner["pid"] and now - report_path.stat().st_mtime <= 600
+            except OSError:
+                fresh = False
+            if (fresh or self._activity(owner) != self.unresponsive.get("activity")
+                    or watchdog_storage_emergency(report_path, owner, self.manifest, self.repo, proc_root=self.proc_root)
+                    or any(lane["storage_pressure"] for lane in self._lanes(manifest, now))
+                    or not check_storage_capacity(storage_paths, minimum_free_bytes=minimum_free_bytes)["ok"]):
+                self.termination_attempt = {}
+                return {"stopped": False, "reason": "fresh_activity_or_storage_wait_before_signal", **identity}
+            signal.pidfd_send_signal(descriptor, signal.SIGTERM)
+            exited = bool(select.select([descriptor], [], [], 5.0)[0])
+            if exited:
+                for child in self.children:
+                    if child.pid == owner["pid"]:
+                        child.wait(timeout=1)
+            current, errors = discover_watchdogs(self.manifest, self.repo, proc_root=self.proc_root)
+            gone = exited and not errors and not any(item["pid"] == owner["pid"] for item in current)
+            return {"stopped": gone, "reason": "pidfd_term_confirmed" if gone else "termination_not_confirmed", **identity}
+        finally:
+            os.close(descriptor)
 
     def _storage_blocked(self, result: dict[str, Any], *, error: OSError | None = None,
                          capacity: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -330,8 +425,7 @@ class WatchdogGuardian:
         except ValueError:
             valid_manifest, manifest, declared_storage, minimum_free_bytes = False, {}, [], MINIMUM_FREE_BYTES
         owners, errors = discover_watchdogs(self.manifest, self.repo, proc_root=self.proc_root)
-        markers = sorted(str(directory / name) for directory in {self.repo, self.manifest.parent}
-                         for name in STOP_MARKERS if (directory / name).exists())
+        markers = sorted(self._recovery_holds(manifest))
         report_path = self._path(manifest.get("report_path") or str(self.manifest.parent / "watchdog-report.json"))
         capacity = check_storage_capacity([self.manifest.parent, report_path.parent, self.repo, *declared_storage],
                                           minimum_free_bytes=minimum_free_bytes)
@@ -363,6 +457,7 @@ class WatchdogGuardian:
             health = "storage_pressure"
         if owner and health == "fresh":
             self.launch_attempts = 0
+            self.unresponsive, self.termination_attempt = {}, {}
         if owner and self.apply and not once and not markers:
             pid_path = self.manifest.parent / "watchdog.pid"
             try:
@@ -379,6 +474,34 @@ class WatchdogGuardian:
         action = "held" if markers else "duplicates_detected" if len(owners) > 1 else "owner_present" if owner else "owner_absent"
         if owner and not markers and health != "fresh":
             action = "owner_unresponsive"
+        recovery = None
+        if owner and health in {"missing", "stale", "different_owner"}:
+            identity = {"pid": owner["pid"], "start_ticks": owner["start_ticks"]}
+            activity = self._activity(owner)
+            previous = self.unresponsive
+            if (not isinstance(previous, dict) or any(previous.get(k) != v for k, v in identity.items())
+                    or previous.get("activity") != activity):
+                self.unresponsive = {**identity, "since": now, "activity": activity}
+            try:
+                due = activity is not None and now - float(self.unresponsive.get("since", now)) >= self.unresponsive_grace
+            except (ValueError, TypeError):
+                self.unresponsive = {**identity, "since": now, "activity": activity}
+                due = False
+            if (due and self.apply and not once and valid_manifest and not markers and not errors
+                    and len(owners) == 1 and capacity["ok"] and storage_error is None and not pressure):
+                try:
+                    recovery = self._stop_unresponsive(owner, manifest, now=now,
+                        storage_paths=[self.manifest.parent, report_path.parent, self.repo, *declared_storage],
+                        minimum_free_bytes=minimum_free_bytes)
+                except OSError as exc:
+                    recovery = {"stopped": False, "reason": f"recovery_os_error:{exc.errno}"}
+                    if is_storage_pressure(exc):
+                        storage_error = exc
+                if recovery.get("stopped"):
+                    owners, errors = discover_watchdogs(self.manifest, self.repo, proc_root=self.proc_root)
+                    owner = None
+                    action, health = "owner_absent", "missing"
+                    self.unresponsive = {}
         if not valid_manifest:
             action = "configuration_error"
         elif errors and not owners and not markers:
@@ -393,7 +516,7 @@ class WatchdogGuardian:
             else:
                 # Repeat ownership and hold checks immediately before the only mutation.
                 owners, errors = discover_watchdogs(self.manifest, self.repo, proc_root=self.proc_root)
-                if owners or errors or any((directory / name).exists() for directory in {self.repo, self.manifest.parent} for name in STOP_MARKERS):
+                if owners or errors or self._recovery_holds(manifest):
                     action = "launch_deferred"
                 else:
                     previous_attempts, previous_deadline = self.launch_attempts, self.next_launch_after
@@ -425,6 +548,9 @@ class WatchdogGuardian:
                   "lanes": lane_snapshots,
                   "next_launch_after": self.next_launch_after,
                   "launch_attempts_since_healthy": self.launch_attempts,
+                  "unresponsive_owner": self.unresponsive,
+                  "unresponsive_termination_attempt": self.termination_attempt,
+                  "owner_recovery": recovery,
                   "work_complete": False, "completion_authority": False}
         if action == "storage_blocked" or storage_error is not None:
             self._storage_blocked(result, error=storage_error, capacity=capacity)
