@@ -335,6 +335,9 @@ def _command_contract(
                    name: digest for name, digest in _declared_evidence(fields, repo_root=root, excluded=[]).items()
                    if _is_source_path(Path(name))
                }}
+    if str(fields.get("retry_on_changed_evidence") or "").strip():
+        # Preserve every existing lane's contract and attempt ledger.
+        payload["retry_on_changed_evidence"] = str(fields["retry_on_changed_evidence"])
     if any(Path(argument).name == "run-vdg-all-families.mjs" for argument in command):
         recovery = recovery_contract(command, repo_root=root)
         if recovery is not None:
@@ -1431,7 +1434,16 @@ def run_resume_cycle(
         source_contract = gate_source_contract(
             evidence, _command_contract(fields, command, validation_commands.get(task_id), repo_root=repo_root),
         )
+        previous = gate_recovery.records.get(task_id) or {}
         record = gate_recovery.observe(task_id, fingerprint, now_ms=int(time.time() * 1000), source_contract=source_contract)
+        if str(fields.get("retry_on_changed_evidence") or "").casefold() == "true":
+            # A probe can discover new evidence without executing the producer.
+            # Keep the last producer's refusal fingerprint across that probe,
+            # including restarts; only a real producer consumes the new guard.
+            producer_fingerprint = previous.get("producer_evidence_fingerprint", previous.get("fingerprint"))
+            record["producer_evidence_fingerprint"] = (producer_fingerprint
+                if probe_only and isinstance(producer_fingerprint, str)
+                and re.fullmatch(r"[0-9a-f]{64}", producer_fingerprint) else fingerprint)
         record["withheld_stage"] = "validation" if validation_command else "command"
         record["last_probe"] = "validation_only" if probe_only else "producer"
         if validation_command:
@@ -1625,8 +1637,15 @@ def run_resume_cycle(
         previous_gate = gate_recovery.records.get(task_id) or {}
         same_source = bool(source_contract and isinstance(previous_gate, dict)
                            and previous_gate.get("source_contract") == source_contract)
+        producer_fingerprint = previous_gate.get("producer_evidence_fingerprint", previous_gate.get("fingerprint"))
+        retry_changed_evidence = (
+            str(fields.get("retry_on_changed_evidence") or "").casefold() == "true"
+            and isinstance(producer_fingerprint, str)
+            and re.fullmatch(r"[0-9a-f]{64}", producer_fingerprint) is not None
+            and producer_fingerprint != fingerprint
+        )
         gate_record = gate_recovery.current(task_id, fingerprint) if same_source else {}
-        if int(gate_record.get("next_retry_at_ms") or 0) > now_ms:
+        if int(gate_record.get("next_retry_at_ms") or 0) > now_ms and not retry_changed_evidence:
             packet = gate_recovery.path.with_name(f"gate-recovery-{task_id}.json")
             gate_waits.append({
                 "state": "degraded", "phase": "gate_retry_wait", "active_task_id": task_id,
@@ -1638,7 +1657,11 @@ def run_resume_cycle(
                 "busy": False, "work_complete": False, "completion_authority": False,
             })
             continue
-        if same_source and validation is not None:
+        # Some explicitly registered tasks expose a cheap external resource
+        # guard as declared evidence. A changed guard must admit the producer
+        # again: its validator cannot manufacture the missing execution.
+        # Default lanes keep their existing validation-only retry policy.
+        if same_source and validation is not None and not retry_changed_evidence:
             # A producer that already refused has evidence to inspect. Re-run
             # its acceptance check cheaply before another expensive capture,
             # even when the command explicitly bypasses its own cache. A green
