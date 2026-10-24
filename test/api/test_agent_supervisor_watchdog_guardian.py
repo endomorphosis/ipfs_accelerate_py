@@ -103,6 +103,34 @@ def test_absent_owner_launches_detached_with_checkout_pythonpath(setup_guardian)
     assert result["next_launch_after"] == 1020
 
 
+def test_target_without_framework_uses_loaded_package_not_inherited_pythonpath(setup_guardian, monkeypatch):
+    guardian, _proc, calls = setup_guardian
+    module_relative = Path(*guardian_module.WATCHDOG_MODULE.split(".")).with_suffix(".py")
+    (guardian.repo / "external/ipfs_accelerate" / module_relative).unlink()
+    monkeypatch.setenv("PYTHONPATH", "/untrusted/arbitrary-package")
+    monkeypatch.setattr(guardian_module, "__name__", "__main__")  # actual -m entry semantics
+    result = guardian.inspect(now=1000)
+    assert result["action"] == "launched" and len(calls) == 1
+    argv, options = calls[0]
+    loaded_source = Path(guardian_module.__file__).resolve().parents[3]
+    assert options["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(loaded_source)
+    assert options["cwd"] == guardian.repo
+    assert argv[argv.index("--repo-root") + 1] == str(guardian.repo)
+    assert argv[argv.index("--manifest-path") + 1] == str(guardian.manifest)
+
+
+def test_missing_loaded_sibling_cannot_fall_back_to_arbitrary_pythonpath(setup_guardian, monkeypatch, tmp_path):
+    guardian, _proc, calls = setup_guardian
+    module_relative = Path(*guardian_module.WATCHDOG_MODULE.split(".")).with_suffix(".py")
+    (guardian.repo / "external/ipfs_accelerate" / module_relative).unlink()
+    fake = tmp_path / "other-source/ipfs_accelerate_py/agent_supervisor/rescue/watchdog_guardian.py"
+    fake.parent.mkdir(parents=True); fake.write_text("# guardian without watchdog sibling\n")
+    monkeypatch.setattr(guardian_module, "__file__", str(fake))
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "foreign-package"))
+    result = guardian.inspect(now=1000)
+    assert result["action"] == "launch_failed" and not calls
+
+
 @pytest.mark.parametrize("state", ["Z", "X"])
 def test_zombie_or_dead_owner_does_not_prevent_replacement(setup_guardian, state):
     guardian, proc, calls = setup_guardian

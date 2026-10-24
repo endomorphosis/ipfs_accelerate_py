@@ -12,6 +12,7 @@ import fcntl
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -435,8 +436,20 @@ class WatchdogGuardian:
         source = self.repo / "external" / "ipfs_accelerate"
         if not (source / "ipfs_accelerate_py").is_dir():
             source = self.repo
-        if not (source / Path(*WATCHDOG_MODULE.split("."))).with_suffix(".py").is_file():
-            raise FileNotFoundError("watchdog module is missing from the requested checkout")
+        module_relative = Path(*WATCHDOG_MODULE.split(".")).with_suffix(".py")
+        if not (source / module_relative).is_file():
+            # The supervised repository need not vendor the framework (for
+            # example JevOps). Bind to this already loaded guardian's package,
+            # rather than importing arbitrary inherited PYTHONPATH entries.
+            loaded = Path(__file__).resolve(strict=True)
+            source = loaded.parents[3]
+            expected_guardian = source / module_relative.with_name("watchdog_guardian.py")
+            module = source / module_relative
+            if loaded != expected_guardian or module.resolve(strict=True) != module.absolute():
+                raise FileNotFoundError("watchdog is not a sibling of the loaded guardian package")
+            info = module.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_uid not in {0, os.getuid()}:
+                raise FileNotFoundError("watchdog sibling is not a trusted regular source file")
         env = os.environ.copy()
         env["PYTHONPATH"] = str(source) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         with (self.manifest.parent / "guardian-watchdog.log").open("ab") as handle:
