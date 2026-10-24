@@ -142,12 +142,102 @@ def test_malformed_goal_dependency_is_actionable_instead_of_crashing_observation
     state = {}
     watch(plan, state)
     due = watch(plan, state, 1060)
-    assert due["configuration_errors"] == ["planned task dependency mismatch: T-002"]
+    assert "planned task dependency mismatch: T-002" in due["configuration_errors"]
     assert due["incidents"]
 
 
-def test_dispatcher_runs_one_real_bounded_maintenance_child_without_activating_board(plan, monkeypatch):
-    root, _tasks, _goals, policy = plan
+@pytest.mark.parametrize("phase", ["attempt_retry_wait", "gate_retry_wait", "gate_withheld", "resource_wait"])
+@pytest.mark.parametrize("flag", ["continue_during_retry_wait", "materialize_independent_frontier"])
+def test_opted_in_native_wait_allows_an_independent_planned_frontier(plan, phase, flag):
+    root, tasks, goals, policy = plan
+    policy[flag] = True
+    tasks["T-004"] = {"status": "pending", "depends": ["T-001"]}
+    goals["tasks"].append({"id": "T-004", "depends_on": ["T-001"]})
+    (root / "goals.json").write_text(json.dumps(goals))
+    lanes = [{"lane": "native", "active_task_id": "T-004", "phase": phase}]
+    state = {}
+    assert not watch(plan, state, lanes=lanes)["incidents"]
+    due = watch(plan, state, 1060, lanes=lanes)
+    assert due["materialization_task_ids"] == ["T-002"] and due["incidents"]
+    assert due["waiting_task_ids"] == ["T-004"] and not due["active_task_ids"]
+    assert due["waiting_lanes"] == [{"lane": "native", "task_id": "T-004", "phase": phase}]
+    assert tasks["T-004"]["status"] == "pending"
+
+
+def test_native_wait_is_still_blocking_by_default(plan):
+    _root, tasks, _goals, _policy = plan
+    tasks["T-004"] = {"status": "pending", "depends": []}
+    lanes = [{"active_task_id": "T-004", "phase": "attempt_retry_wait"}]
+    result = watch(plan, {}, 2000, lanes=lanes)
+    assert result["active_task_ids"] == ["T-004"] and not result["waiting_task_ids"]
+    assert not result["incidents"]
+
+
+@pytest.mark.parametrize("phase", ["deterministic_command", "validation", "gate_revalidation"])
+@pytest.mark.parametrize("other_lane", [False, True])
+def test_both_opt_ins_never_bypass_actual_execution_in_any_lane(plan, phase, other_lane):
+    _root, tasks, _goals, policy = plan
+    policy.update(continue_during_retry_wait=True, materialize_independent_frontier=True)
+    tasks["T-004"] = {"status": "pending", "depends": []}
+    lanes = [{"lane": "waiting", "active_task_id": "T-004", "phase": "resource_wait"},
+             {"lane": "executing", "active_task_id": "T-005" if other_lane else "T-004", "phase": phase}]
+    result = watch(plan, {}, 2000, lanes=lanes)
+    assert result["executing_lanes"] == ["executing"] and not result["incidents"]
+    assert ("T-005" if other_lane else "T-004") in result["active_task_ids"]
+
+
+def test_queued_frontier_alias_allows_pending_work_but_respects_holds(plan):
+    _root, tasks, _goals, policy = plan
+    policy["materialize_independent_frontier"] = True
+    tasks["T-004"] = {"status": "pending", "depends": []}
+    state = {}
+    watch(plan, state)
+    assert not watch(plan, state, 1100, held=True)["incidents"]
+    assert not watch(plan, state, 1200)["incidents"]
+    assert watch(plan, state, 1260)["incidents"]
+
+
+@pytest.mark.parametrize("flag", ["continue_during_retry_wait", "materialize_independent_frontier"])
+def test_continuation_opt_ins_require_actual_booleans(plan, flag):
+    _root, _tasks, _goals, policy = plan
+    policy[flag] = "true"
+    state = {}
+    watch(plan, state)
+    due = watch(plan, state, 1060)
+    assert due["configuration_errors"] and due["incidents"]
+
+
+@pytest.mark.parametrize("graph,defect", [("board", "unknown"), ("board", "cycle"),
+                                        ("goal", "unknown"), ("goal", "cycle"), ("board", "type")])
+def test_bad_graph_is_actionable_even_when_an_unrelated_task_has_a_future_date(plan, graph, defect):
+    root, tasks, goals, policy = plan
+    tasks["T-003"] = {"status": "planned", "depends": []}
+    goals["tasks"].append({"id": "T-003", "depends_on": []})
+    policy["deferred_tasks"] = {"T-003": {"kind": "not_before", "not_before_utc": "2026-11-01T00:00:00Z",
+        "reason": "Concrete unrelated future release", "evidence_path": "research.md"}}
+    dependencies = ["MISSING"] if defect == "unknown" else ["T-002"] if defect == "cycle" else None
+    if graph == "board":
+        tasks["T-002"]["depends"] = dependencies
+        goals["tasks"][1]["depends_on"] = dependencies
+    else:
+        goals["tasks"][1]["depends_on"] = dependencies
+        tasks["T-002"]["depends"] = ["T-003"]
+    (root / "goals.json").write_text(json.dumps(goals))
+    state = {}
+    watch(plan, state)
+    due = watch(plan, state, 1060)
+    assert not due["materialization_task_ids"]
+    assert any(error.startswith(graph + " ") for error in due["configuration_errors"])
+    assert due["incidents"] and due["state"] == "planned_work_unmaterialized"
+
+
+@pytest.mark.parametrize("retry_wait", [False, True])
+def test_dispatcher_runs_one_real_bounded_maintenance_child_without_activating_board(plan, monkeypatch, retry_wait):
+    root, _tasks, goals, policy = plan
+    if retry_wait:
+        policy["continue_during_retry_wait"] = True
+        goals["tasks"].append({"id": "T-004", "depends_on": ["T-001"]})
+        (root / "goals.json").write_text(json.dumps(goals))
     runtime = root / "runtime"
     lane = runtime / "lane"
     lane.mkdir(parents=True)
@@ -157,7 +247,8 @@ def test_dispatcher_runs_one_real_bounded_maintenance_child_without_activating_b
         "lanes": [{"bundle_key": "test", "state_dir": "runtime/lane", "state_prefix": "test"}]}))
     board = root / "todo.md"
     board.write_text("## T-001 Done\n- Status: completed\n- Depends on:\n"
-                     "## T-002 Need a real implementation\n- Status: planned\n- Depends on: T-001\n")
+                     "## T-002 Need a real implementation\n- Status: planned\n- Depends on: T-001\n" +
+                     ("## T-004 GPU lease wait\n- Status: pending\n- Depends on: T-001\n" if retry_wait else ""))
     original = board.read_bytes()
     prompt = root / "maintenance.prompt"
     prompt.write_text("Prepare a real producer and protected validation; never blindly activate a task.")
@@ -168,16 +259,27 @@ def test_dispatcher_runs_one_real_bounded_maintenance_child_without_activating_b
         worker_timeout=3, cooldown_seconds=10, max_cooldown_seconds=20, max_attempts=1)
     monkeypatch.setattr(dispatcher, "discover_watchdogs", lambda *_: ([], []))
     def probe(pid):
+        if retry_wait and pid == 200:
+            return {"pid": pid, "alive": True, "age_seconds": 5000, "start_ticks": 2000, "cwd": str(root),
+                    "argv": ["python", "-m", "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume",
+                    "--repo-root", str(root), "--todo-path", str(board), "--bundle-key", "test",
+                    "--status-path", str(lane / "test_status.json"), "--pid-path", str(lane / "test_bundle_supervisor.pid")]}
         return {"pid": pid, "alive": pid == 100, "age_seconds": 5000,
                 "start_ticks": 1000, "cwd": str(root), "argv": ["python", "-m",
                 "ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog",
                 "--manifest-path", str(manifest), "--repo-root", str(root)]}
     now = (runtime / "report.json").stat().st_mtime
+    if retry_wait:
+        (lane / "test_bundle_supervisor.pid").write_text("200")
+        (lane / "test_status.json").write_text(json.dumps({"pid": 200, "state": "healthy",
+            "phase": "resource_wait", "active_task_id": "T-004", "heartbeat_at_ms": now * 1000}))
     state = {}
     assert dispatcher.tick(config, state, apply=True, now=now, probe=probe)["action"] == "healthy"
     result = dispatcher.tick(config, state, apply=True, now=now + 60, probe=probe)
     assert result["action"] == "worker_finished"
     assert result["worker"]["exit_code"] == 0
+    if retry_wait:
+        assert result["planned_work"]["waiting_task_ids"] == ["T-004"]
     assert (root / "maintenance-observed.txt").read_text() == prompt.read_text()
     assert board.read_bytes() == original and not result["completion_authority"]
     again = dispatcher.tick(config, state, apply=True, now=now + 90, probe=probe)
