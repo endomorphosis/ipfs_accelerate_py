@@ -15,6 +15,7 @@ import fcntl
 import hashlib
 import json
 import math
+import marshal
 import os
 from pathlib import Path
 import re
@@ -22,6 +23,7 @@ import signal
 import subprocess
 import time
 from typing import Any, Callable, Iterator
+from types import CodeType
 import uuid
 
 from .command_processes import CommandProcessTree
@@ -231,8 +233,35 @@ def _find_owner(
     return owner, [_public_process(process) for process in owners], errors
 
 
+def _runtime_policy_provenance() -> dict[str, Any]:
+    """Compare loaded contract functions with current disk code, without exec."""
+    from . import lane_resume
+    def normalized(code: CodeType) -> CodeType:
+        return code.replace(co_consts=tuple(normalized(c) if isinstance(c, CodeType) else c
+                                          for c in code.co_consts),
+                            co_filename="", co_firstlineno=0, co_linetable=b"")
+    path = Path(lane_resume.__file__).resolve()
+    try:
+        raw = path.read_bytes()
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("runtime policy source exceeds bound")
+        compiled = {code.co_name: code for code in compile(raw, str(path), "exec", dont_inherit=True).co_consts
+                    if isinstance(code, CodeType)}
+        names = ("_command_contract", "_runtime_contract_code", "_run_argv", "_declared_evidence",
+                 "_execution_input_contract", "parse_deterministic_command")
+        changed = [name for name in names if name in compiled and
+                   (not hasattr(getattr(lane_resume, name, None), "__code__") or
+                    marshal.dumps(normalized(getattr(lane_resume, name).__code__)) !=
+                    marshal.dumps(normalized(compiled[name])))]
+        return {"policy_source": str(path), "disk_source_sha256": hashlib.sha256(raw).hexdigest(),
+                "loaded_policy_matches_disk": not changed, "mismatched_functions": changed}
+    except (OSError, ValueError, SyntaxError) as exc:
+        return {"policy_source": str(path), "loaded_policy_matches_disk": False,
+                "provenance_error": str(exc)}
+
+
 def _exhausted_wait_proofs(
-    config: Config, lane: dict[str, Any], ready: list[str],
+    config: Config, lane: dict[str, Any], ready: list[str], *, reviews: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Read current invocation receipts; a cooldown label alone is not failure.
 
@@ -240,7 +269,7 @@ def _exhausted_wait_proofs(
     a failing producer needs its own nonzero exit receipt. Both cases require
     three spent attempts, a declared deadline, and unchanged source contracts.
     """
-    if lane["phase"] != "attempt_retry_wait":
+    if lane["phase"] not in {"attempt_retry_wait", "semantic_failure_wait"}:
         return []
     try:
         ledger_path = Path(lane["status_path"]).with_name("lane_resume_attempts.json")
@@ -259,7 +288,8 @@ def _exhausted_wait_proofs(
         if not isinstance(reason, str):
             continue
         task_id, separator, suffix = reason.partition(":")
-        if not separator or suffix != "attempts_exhausted" or task_id not in ready:
+        semantic = suffix == "unchanged_semantic_failure_budget_exhausted"
+        if not separator or suffix not in {"attempts_exhausted", "unchanged_semantic_failure_budget_exhausted"} or task_id not in ready:
             continue
         count = ledger.get(task_id)
         retry = ledger.get("_retry_after_ms", {})
@@ -270,6 +300,14 @@ def _exhausted_wait_proofs(
         retry = retry.get(task_id)
         receipt = receipt.get(task_id)
         fixed = fixed.get(task_id, {})
+        progress = fixed.get("execution_progress", {}) if isinstance(fixed, dict) else {}
+        if semantic:
+            if (not isinstance(progress, dict) or progress.get("schema") != "agent-supervisor/execution-progress@1"
+                    or type(progress.get("semantic_failures")) is not int or progress["semantic_failures"] < 6
+                    or progress.get("state") == "validated"):
+                continue
+            if retry is None:
+                retry = progress.get("finished_at_ms")
         if (not isinstance(count, int) or isinstance(count, bool) or count < 3
                 or not isinstance(retry, (int, float)) or isinstance(retry, bool)
                 or not math.isfinite(retry) or retry <= 0 or not isinstance(receipt, dict)):
@@ -287,7 +325,10 @@ def _exhausted_wait_proofs(
                 or not isinstance(retry_contract, str) or not re.fullmatch(r"[0-9a-f]{64}", retry_contract)):
             continue
         failures = fixed.get("failures") if isinstance(fixed, dict) else None
-        if code == 0 and (not isinstance(failures, int) or isinstance(failures, bool) or failures < 3
+        semantic_validation_failure = (semantic and progress.get("state") == "failed"
+            and progress.get("last_stage") == "validation" and type(progress.get("last_exit_code")) is int
+            and progress["last_exit_code"] not in (0, 75))
+        if code == 0 and not semantic_validation_failure and (not isinstance(failures, int) or isinstance(failures, bool) or failures < 3
                           or fixed.get("admitted")
                           or not re.fullmatch(r"[0-9a-f]{64}", str(fixed.get("digest") or ""))):
             continue
@@ -299,7 +340,14 @@ def _exhausted_wait_proofs(
         validation = parse_deterministic_command(fields.get("validation") or "", repo_root=config.repo_root)
         if not command or (fields.get("validation") and not validation):
             continue
-        if retry_contract != _command_contract(fields, command, validation, repo_root=config.repo_root):
+        current_contract = _command_contract(fields, command, validation, repo_root=config.repo_root)
+        if retry_contract != current_contract:
+            if reviews is not None:
+                reviews.append({"task_id": task_id, "reason": "recorded_retry_contract_not_current",
+                    "recorded_retry_contract": retry_contract, "loaded_current_contract": current_contract,
+                    "current_proof_accepted": False, **_runtime_policy_provenance()})
+            continue
+        if semantic and progress.get("contract") != current_contract:
             continue
         current = {}
         valid = True
@@ -444,6 +492,8 @@ def observe(
     current_gates: set[str] = set()
     exhausted_waits = state.setdefault("exhausted_wait_observations", {})
     current_exhausted: set[str] = set()
+    retry_waits: list[dict[str, Any]] = []
+    provenance_reviews: list[dict[str, Any]] = []
     for lane in eligible:
         key, task, phase = lane["lane"], lane["active_task_id"], lane["phase"]
         alive = lane["process"]["alive"]
@@ -462,9 +512,10 @@ def observe(
             if lane["status_error"] and not startup and not fresh_active:
                 incident("lane_status_unreadable", key, error=lane["status_error"])
             if not holds:
-                for proof in _exhausted_wait_proofs(config, lane, ready):
+                reviews: list[dict[str, Any]] = []
+                for proof in _exhausted_wait_proofs(config, lane, ready, reviews=reviews):
                     wait_key = f"{key}:{proof['task_id']}"
-                    signature = _digest([board_digest, source_digest, proof["retry_contract"],
+                    signature = _digest([proof["retry_contract"],
                                          proof["semantic_evidence"], proof["failure_stage"],
                                          lane["last_task_transition_at_ms"]])
                     previous = exhausted_waits.get(wait_key, {})
@@ -474,6 +525,9 @@ def observe(
                     exhausted_waits[wait_key] = {"signature": signature, "first_seen": first,
                                                 "retry_deadline": deadline, "last_seen": now}
                     current_exhausted.add(wait_key)
+                    retry_waits.append({"lane": key, "task_id": proof["task_id"],
+                                        "first_seen": first, "retry_deadline": deadline,
+                                        "failure_stage": proof["failure_stage"]})
                     # Honor the first bounded wait. A recurring failure cannot
                     # postpone escalation by moving its retry deadline forever.
                     if now > first and (now - first >= config.quiet_seconds or now >= deadline):
@@ -483,7 +537,12 @@ def observe(
                                  first_seen=first, retry_deadline=deadline,
                                  attempt_path=proof["attempt_path"],
                                  failure_evidence_fingerprint=signature)
-            if task and phase not in {"gate_withheld", "gate_retry_wait", "gate_recovery_needed", "attempt_retry_wait"}:
+                provenance_reviews.extend({"lane": key, **review} for review in reviews)
+                for review in reviews:
+                    if review.get("loaded_policy_matches_disk") is False:
+                        incident("source_change_review_needed", key, review["task_id"], **{
+                            k: v for k, v in review.items() if k != "task_id"})
+            if task and phase not in {"gate_withheld", "gate_retry_wait", "gate_recovery_needed", "attempt_retry_wait", "semantic_failure_wait"}:
                 log_age, transition_age = lane["log_age_seconds"], lane["transition_age_seconds"]
                 if log_age is not None and transition_age is not None and min(log_age, transition_age) >= config.quiet_seconds:
                     incident("lane_no_progress", key, task, log_age_seconds=log_age,
@@ -517,7 +576,12 @@ def observe(
             gates.pop(key)
     for key in list(exhausted_waits):
         if key not in current_exhausted:
-            exhausted_waits.pop(key)
+            lane_key, _, task_id = key.rpartition(":")
+            running_retry = any(lane["lane"] == lane_key and not lane["held"] and
+                                lane["phase"] in {"deterministic_command", "validation", "lane_resume"}
+                                for lane in eligible)
+            if holds or task_id not in ready or not running_retry:
+                exhausted_waits.pop(key)
     planned_work = observe_planned_work(policy=manifest.get("planned_work_policy"),
         repo_root=config.repo_root, tasks=tasks, lanes=snapshots, state=state, now=now,
         held=bool(holds) or owner_uncertain or bool(snapshots) and not eligible
@@ -542,6 +606,10 @@ def observe(
             "storage_paths": [str(path) for path in declared_storage], "storage_minimum_free_bytes": minimum_free_bytes,
             "report_path": str(report_path), "report_age_seconds": report_age,
             "pending_task_ids": pending, "selectable_task_ids": ready,
+            "retry_waits": retry_waits, "source_provenance_reviews": provenance_reviews,
+            "retry_failure_observation_pending": bool(exhausted_waits),
+            "native_retry_wait_observed": bool(ready) and any(
+                lane["phase"] in {"attempt_retry_wait", "semantic_failure_wait"} for lane in eligible),
             "planned_work": planned_work,
             "lanes": snapshots, "incidents": incidents, "signature": signature,
             "held": bool(holds) or owner_uncertain or (bool(snapshots) and not eligible), "hold_paths": holds,
@@ -850,13 +918,18 @@ def tick(
     if observation["held"]:
         telemetry["action"] = "owner_uncertain" if observation["owner_discovery_uncertain"] else "held"
     elif not signature:
-        telemetry["action"] = "healthy"
-        if state.get("unresolved_signature"):
+        unresolved = (observation["retry_failure_observation_pending"] or
+                      observation["native_retry_wait_observed"] or
+                      bool(observation["source_provenance_reviews"]))
+        telemetry["action"] = ("source_change_review_needed" if observation["source_provenance_reviews"]
+                               else "retry_wait" if unresolved else "healthy")
+        if state.get("unresolved_signature") and not unresolved:
             telemetry["action"] = "recovery_observed"
             state["recovery_observed_at"] = now
             state["attempts"] = {}
             state["next_dispatch_at"] = 0
-        state["unresolved_signature"] = ""
+        if not unresolved:
+            state["unresolved_signature"] = ""
     else:
         state["unresolved_signature"] = signature
         record = state.setdefault("attempts", {}).setdefault(signature, {"count": 0, "next_dispatch_at": 0})
