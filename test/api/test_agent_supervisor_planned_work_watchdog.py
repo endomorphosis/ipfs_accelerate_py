@@ -40,6 +40,17 @@ def test_opt_out_preserves_existing_idle_behavior(plan):
     assert not state
 
 
+@pytest.mark.parametrize('invalid', [{'enabled': 'yes'}, {'enabled': 1}, []])
+def test_malformed_explicit_policy_reports_an_incident_instead_of_healthy_idle(plan, invalid):
+    root, tasks, _, _ = plan
+    result = observe_planned_work(policy=invalid, repo_root=root, tasks=tasks,
+                                  lanes=[], state={}, now=1000)
+    assert result['enabled'] is False
+    assert result['state'] == 'configuration_error'
+    assert result['configuration_errors']
+    assert result['incidents'][0]['kind'] == 'planned_work_policy_invalid'
+
+
 def test_real_dependency_frontier_is_actionable_only_after_persisted_grace(plan):
     root, tasks, goals, _policy = plan
     tasks["T-003"] = {"status": "planned", "depends": ["T-002"]}

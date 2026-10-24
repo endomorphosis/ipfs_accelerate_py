@@ -42,8 +42,10 @@ def observe_planned_work(*, policy: Any, repo_root: Path, tasks: dict[str, dict[
     errors: list[str] = []
     if not isinstance(policy, dict) or policy.get("enabled") is not True:
         # An invalid explicit policy is maintenance work, never implicit opt-in.
+        message = "planned_work_policy.enabled must be boolean"
         return {"enabled": False, "state": "configuration_error",
-                "configuration_errors": ["planned_work_policy.enabled must be boolean"], "incidents": []}
+                "configuration_errors": [message],
+                "incidents": [{"kind": "planned_work_policy_invalid", "evidence": {"reason": message}}]}
     grace = policy.get("grace_seconds", 60)
     if type(grace) is not int or not 1 <= grace <= 3600:
         errors.append("planned_work_policy.grace_seconds must be an integer in 1..3600")
