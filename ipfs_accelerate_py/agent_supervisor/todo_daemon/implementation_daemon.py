@@ -40002,6 +40002,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "pruned_seeded_context": pruned_seeded_context,
             evidence_field: dict(evidence),
         }
+        # Administrative recovery daemons need not have registered a dispatch
+        # cache. A checkpoint always carries its actual canonical task context.
+        identity = self._identity_for_task(task)
+        result.update(canonical_task_cid=identity.canonical_task_cid,
+                      canonical_task_key=identity.canonical_task_key,
+                      board_namespace=identity.board_namespace)
         if retain_on_failure:
             result["retained"] = worktree_path.exists()
             if not preserved_commit:
