@@ -35,6 +35,20 @@ def pending(tmp_path, monkeypatch, request):
     daemon, repo, workspace, _ = _protected_git_worktree_daemon(tmp_path)
     daemon.state_path = tmp_path / "state/portal_task_state.json"
     daemon.strategy_path = tmp_path / "state/portal_strategy.json"
+    if "dependency_marker" in request.fixturenames:
+        dependency = tmp_path / "runtime-dependency"
+        dependency.mkdir()
+        subprocess.run(["git", "init", "-q", str(dependency)], check=True)
+        (dependency / "runtime.py").write_text("DEPENDENCY = 1\n")
+        subprocess.run(["git", "add", "."], cwd=dependency, check=True)
+        subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], cwd=dependency, check=True)
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=dependency, text=True).strip()
+        subprocess.run(["git", "update-index", "--add", "--cacheinfo", "160000," + commit + ",external/runtime"], cwd=repo, check=True)
+        subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture dependency"], cwd=repo, check=True)
+        baseline = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+        subprocess.run(["git", "merge", "--ff-only", baseline], cwd=workspace, check=True, capture_output=True)
+        (workspace / "external").mkdir(exist_ok=True)
+        subprocess.run(["git", "clone", "--shared", str(dependency), str(workspace / "external/runtime")], check=True, capture_output=True)
     task, lease, claim_path = _persist_live_shaped_interrupted_attempt(daemon, workspace=workspace)
     directory = daemon.state_path.parent
     directory.chmod(0o700)
@@ -72,6 +86,21 @@ print(json.dumps({'launch':launch,'dispatch':child}))
     reserved = {"timestamp", "type", "stream_id", "snapshot_id", "sequence", "event_id", "previous_event_id"}
     daemon._record_event("implementation_started", {**{k:v for k,v in start.items() if k not in reserved},
         "worktree_lifecycle": {"state": "active", "fence": life.fence, "lease_id": life.lease_id}})
+    if getattr(request, "param", None) == "candidate":
+        output = workspace / "src/example.py"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("VALUE = 34\n")
+        subprocess.run(["git", "add", "--", "src/example.py"], cwd=workspace, check=True, capture_output=True)
+        # Explicit synthetic accepted history, not a validation/completion
+        # receipt. Its proposal identity is independently checked against the
+        # real Native builder in the candidate tests below.
+        daemon._record_event("implementation_proposal_validated", {"task_id": task.task_id,
+            "accepted": True, "attempted": True, "reason_codes": [],
+            "repository_tree_id": start["baseline_ref"],
+            "proposal_id": recovery._candidate_proposal_id(daemon, task, workspace, start["baseline_ref"]),
+            "receipt_id": "1" * 64, "policy_id": "2" * 64})
+        daemon.worktree_lifecycle.mark_settling(workspace, lease_id=life.lease_id,
+            expected_fence=life.fence, expected_record=life)
     code = """import json,sys
 from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import WorktreeLifecycleStore

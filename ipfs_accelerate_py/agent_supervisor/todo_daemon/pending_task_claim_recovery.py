@@ -12,8 +12,12 @@ from collections.abc import Mapping
 from contextlib import ExitStack
 from copy import deepcopy
 import importlib
+import hashlib
+import json
 import os
 from pathlib import Path
+import re
+import shlex
 import stat
 import subprocess
 
@@ -25,6 +29,7 @@ from .current_incident_adjudication import (
 SCHEMA = "ordinary-pending-task-claim-recovery@1"
 DIRECTORY = "pending-task-claim-recoveries"
 _OUTCOMES = {"implementation_finished", "implementation_terminated", "implementation_timeout"}
+CANDIDATE_SCHEMA = "ordinary-preserved-pending-candidate-recovery@1"
 
 
 def runtime_sources() -> dict:
@@ -35,7 +40,8 @@ def runtime_sources() -> dict:
     """
     names = (".current_incident_adjudication", ".implementation_daemon",
              ".portal_task_state_control_plane", "..merge.worktree_lifecycle", "..merge.checkout_lock",
-             "..merge.merge_queue", "..merge.workspace_quarantine", "..runtime.grok_cli_runner")
+             "..merge.merge_queue", "..merge.workspace_quarantine", "..runtime.grok_cli_runner",
+             "..proof.code_proof_obligations", "..validation.proposal_validation")
     modules = {name: importlib.import_module(name, __package__) for name in names}
     paths = {name: Path(module.__file__).resolve() for name, module in modules.items()}
     paths["pending_task_claim_recovery"] = Path(__file__).resolve()
@@ -161,7 +167,7 @@ def _build(daemon, task_id: str) -> dict:
             "pins": {name: _pin(path) for name, path in paths.items()}}
 
 
-def _validated(daemon, request: dict, prior: dict | None) -> dict:
+def _validated(daemon, request: dict, prior: dict | None, *, candidate: dict | None = None) -> dict:
     native = _ordinary(daemon)
     keys = {"schema", "runtime_revision", "runtime_sources", "repo_root", "repo_head", "state_path", "state_sha256",
             "task_id", "task_cid", "task_key", "board_namespace", "task_header_prefix", "attempt",
@@ -302,7 +308,8 @@ def _validated(daemon, request: dict, prior: dict | None) -> dict:
     # authenticated native shutdown history; it need not impersonate the old daemon.
     original = start.get("worktree_lifecycle", {})
     _need(original.get("state") == "active" and type(original.get("fence")) is int
-          and original["fence"] + 1 == life.fence and original.get("lease_id") != life.lease_id
+          and original["fence"] + (2 if candidate is not None else 1) == life.fence
+          and original.get("lease_id") != life.lease_id
           and life.terminal_reason in {"controlled_restart_dead_owner", "controlled_shutdown_quiesced_owner"}
           and life.lane_id == f"{daemon.state_path.parent}:{daemon.task_shard_index}/{daemon.task_shard_count}:{birth.pid}",
           "controlled_terminal_transition_unproved")
@@ -330,10 +337,13 @@ def _validated(daemon, request: dict, prior: dict | None) -> dict:
     lease_proof = _ordinary_implementation_lease_proof(daemon, request, lease, claim, birth)
     _need(not daemon._implementation_process_active(start), "implementation_process_still_active")
     _fresh_container_quiescence(daemon, workspace)
-    _baseline_unchanged(task, workspace, request["baseline_ref"], native)
-    _need(_git(workspace, "rev-parse", "HEAD") == _git(workspace, "rev-parse", request["baseline_ref"] + "^{commit}")
-          and not _git(workspace, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"),
-          "pending_workspace_not_clean_baseline")
+    if candidate is None:
+        _baseline_unchanged(task, workspace, request["baseline_ref"], native)
+        _need(_git(workspace, "rev-parse", "HEAD") == _git(workspace, "rev-parse", request["baseline_ref"] + "^{commit}")
+              and not _git(workspace, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"),
+              "pending_workspace_not_clean_baseline")
+    else:
+        _need(_candidate_source(daemon, request) == candidate, "pending_candidate_source_changed")
     return {"claim_raw_base64": base64.b64encode(_bytes(claim)).decode(), "claim": claim,
             "implementation_lease_proof": lease_proof, "maintenance_owner_proof": maintenance_owner,
             "task_status": native.normalize_status(task.status)}
@@ -415,3 +425,431 @@ def reconcile(daemon, *, request: Mapping) -> dict:
                     "receipt_path": str(path), "receipt_id": released["receipt_id"], "counters_preserved": True, "task_status_unchanged": True}
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
         return {**result, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+
+
+def _candidate_dependencies(workspace: Path) -> dict:
+    """Pin initialized dependencies; root-only custody cannot discard their edits."""
+    result = {}
+    def visit(root, prefix="", depth=0):
+        _need(depth <= 8 and len(result) <= 64, "candidate_dependency_inventory_limit")
+        for row in _git(root, "ls-files", "--stage", "-z").split("\0"):
+            if not row: continue
+            metadata, relative = row.split("\t", 1)
+            mode, commit, stage = metadata.split()
+            if mode != "160000": continue
+            path = root / relative
+            _need(stage == "0" and path.resolve() == path and not path.is_symlink(), "candidate_dependency_alias")
+            if not path.exists(): continue
+            _need(path.is_dir(), "candidate_dependency_not_directory")
+            if not (path / ".git").exists():
+                _need(not any(path.iterdir()), "candidate_unmanaged_dependency_contents")
+                continue
+            _need(_git(path, "rev-parse", "--show-toplevel") == str(path)
+                  and _git(path, "rev-parse", "HEAD") == commit, "candidate_dependency_revision_changed")
+            _need(not _git(path, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"),
+                  "candidate_dependency_source_changed")
+            result[prefix + relative] = commit
+            visit(path, prefix + relative + "/", depth + 1)
+    visit(workspace)
+    return result
+
+
+def _candidate_proposal_id(daemon, task, workspace: Path, baseline: str) -> str:
+    """Rebuild Native's source-bound proposal without admission or mutation.
+
+    This deliberately admits root regular files only. Submodule expansion,
+    staging and scope adjudication remain the normal later Native gates.
+    """
+    from . import implementation_daemon as native
+    from ..proof.code_proof_obligations import collect_git_candidate_diff
+    from ..validation.proposal_validation import (
+        ImplementationProposal, ProposalOperation, ProposalRisk, ProposalValidationStep,
+    )
+    authority = daemon._proposal_authority_values(task, workspace_path=workspace, baseline_ref=baseline)
+    entries = tuple(collect_git_candidate_diff(workspace, base_revision=baseline, include_untracked=True))
+    changed = tuple(sorted({path for entry in entries for path in (entry.old_path, entry.new_path) if path}))
+    scope = daemon._proposal_scope_paths(task)
+    rationale = tuple(sorted({f"task:{task.task_id}",
+        *((f"acceptance:{task.task_id}",) if task.acceptance else ()),
+        *(f"output:{path}" for path in scope)}))
+    operations = tuple(ProposalOperation(operation=entry.change_kind.value, path=entry.path,
+        old_path=entry.old_path if entry.change_kind.value in {"rename", "copy"} else "",
+        rationale_refs=(f"output:{entry.path}" if f"output:{entry.path}" in rationale else f"task:{task.task_id}",))
+        for entry in entries)
+    commands = []
+    for raw in task.validation:
+        command = native.rewrite_validation_command(str(raw))
+        if daemon._task_uses_typed_local_execution(task):
+            command, _ = daemon._normalize_validation_command(command)
+        commands.append(ProposalValidationStep(command=tuple(shlex.split(command)),
+            rationale_refs=(f"task:{task.task_id}",)))
+    nonce = hashlib.sha256(json.dumps({"task_id": task.task_id,
+        "tree": authority["repository_tree_id"], "context": authority["context_id"],
+        "changed_paths": changed, "operations": [(e.change_kind.value, e.old_path, e.new_path) for e in entries]},
+        sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return ImplementationProposal(**authority, candidate_diff=entries, declared_paths=changed,
+        operations=operations, rationale_references=rationale, validation_plan=tuple(commands),
+        risks=(ProposalRisk(risk="candidate behavior may regress task-owned interfaces",
+            mitigation="run the task-declared validation plan before merge"),),
+        authority_claims={**authority, "proof_authoritative": False, "code_proof_authoritative": False,
+            "completion_authoritative": False, "completed": False},
+        patch_text=daemon._proposal_patch_text(workspace, baseline, entries), replay_nonce=nonce,
+        proposal_version="2").proposal_id
+
+
+def _candidate_source(daemon, base: dict) -> dict:
+    """Pin only already-staged declared regular outputs; never stage in review."""
+    from . import implementation_daemon as native
+    task = next(task for task in daemon._load_tasks() if task.task_id == base["task_id"])
+    workspace, baseline = Path(base["workspace"]), base["baseline_ref"]
+    _need(_git(workspace, "rev-parse", "HEAD") == baseline, "candidate_requires_original_baseline_head")
+    dependencies = _candidate_dependencies(workspace)
+    rows = _git(workspace, "status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all").splitlines()
+    allowed = set(task.outputs)
+    _need(allowed and rows, "nonempty_declared_candidate_required")
+    changed = []
+    for row in rows:
+        _need(len(row) >= 4 and row[0] in {"A", "M"} and row[1] == " "
+              and row[3:] in allowed, "candidate_scope_or_unstaged_change")
+        changed.append(row[3:])
+    _need(len(changed) == len(set(changed)), "candidate_duplicate_path")
+    files = {}
+    for relative in sorted(allowed):
+        _need(native.PortalImplementationDaemon._repo_relative_path_safe(relative), "candidate_unsafe_output_path")
+        path = workspace / relative
+        _need(path.resolve(strict=True) == path and path.is_file(), "candidate_output_alias_or_missing")
+        raw = _read(path)
+        entries = _git(workspace, "ls-files", "--stage", "--", relative).splitlines()
+        _need(len(entries) == 1, "candidate_output_not_tracked")
+        metadata, name = entries[0].split("\t", 1)
+        mode, blob, stage = metadata.split()
+        _need(name == relative and mode in {"100644", "100755"} and stage == "0", "candidate_output_mode_changed")
+        indexed = subprocess.run(["git", "--no-replace-objects", "show", ":" + relative], cwd=workspace,
+                                 capture_output=True, timeout=15, check=False)
+        _need(indexed.returncode == 0 and indexed.stdout == raw, "candidate_index_working_bytes_differ")
+        files[relative] = {"sha256": _sha(raw), "bytes": len(raw), "mode": mode, "blob": blob}
+    rows = _event_rows(_read(daemon.events_path))
+    start = next(r for r in rows if r["event_id"] == base["start_event_id"])
+    _need(_git(workspace, "symbolic-ref", "--short", "HEAD") == start.get("branch"),
+          "candidate_workspace_branch_changed")
+    accepted = [row for row in rows if row.get("task_id") == base["task_id"]
+                and row.get("canonical_task_cid") == base["task_cid"]
+                and row.get("sequence", 0) > next(r["sequence"] for r in rows if r["event_id"] == base["start_event_id"])
+                and row.get("type") in {"implementation_proposal_validated", "implementation_proposal_receipt_reused",
+                                         "implementation_proposal_rejected"}]
+    _need(accepted and accepted[-1].get("accepted") is True and accepted[-1].get("attempted") is True
+          and not accepted[-1].get("reason_codes") and accepted[-1].get("repository_tree_id") == baseline
+          and accepted[-1].get("canonical_task_key") == base["task_key"]
+          and all(re.fullmatch(r"[a-f0-9]{64}", str(accepted[-1].get(key)))
+                  for key in ("proposal_id", "receipt_id", "policy_id")), "latest_accepted_candidate_proposal_required")
+    _need(_candidate_proposal_id(daemon, task, workspace, baseline) == accepted[-1]["proposal_id"],
+          "accepted_proposal_candidate_changed")
+    patch = _git(workspace, "diff", "--cached", "--binary", "--full-index", baseline, "--")
+    _need(bool(patch), "nonempty_candidate_patch_required")
+    return {"files": files, "changed_paths": sorted(changed), "patch_sha256": _sha(patch.encode()),
+            "accepted_event_id": accepted[-1]["event_id"], "proposal_id": accepted[-1].get("proposal_id"),
+            "baseline_ref": baseline, "dependencies": dependencies}
+
+
+def _candidate_receipt_path(daemon, task_id: str) -> Path:
+    native = _ordinary(daemon)
+    tasks = [task for task in daemon._load_tasks() if task.task_id == task_id]
+    _need(len(tasks) == 1, "current_task_not_unique")
+    identity = daemon._identity_for_task(tasks[0])
+    state = native.PortalTaskState.load(daemon.state_path)
+    attempt = state.implementation_attempts.get(task_id)
+    _need(type(attempt) is int and attempt > 0, "consumed_ordinal_mismatch")
+    key = _sha(_bytes({"task_cid": identity.canonical_task_cid, "attempt": attempt}))
+    return daemon.state_path.parent / DIRECTORY / ("candidate-" + key + ".json")
+
+
+def _candidate_prior(path: Path, request: dict | None = None) -> dict | None:
+    if not os.path.lexists(path):
+        return None
+    prior = _object(_read(path))
+    _need(prior.get("schema") == CANDIDATE_SCHEMA
+          and prior.get("receipt_id") == "sha256:" + _sha(_bytes({k:v for k,v in prior.items() if k != "receipt_id"}))
+          and (request is None or prior.get("request") == request), "candidate_receipt_corrupt")
+    _need(prior.get("phase") in {"prepared", "preserved", "retired", "released"}
+          and prior.get("operation_id") == "sha256:" + _sha(_bytes(prior["request"]))
+          and all(prior.get(key) is False for key in _FALSE), "candidate_receipt_corrupt")
+    return prior
+
+
+def _candidate_stable(daemon, request: dict, prior: dict, *, released=False) -> None:
+    """Check the authorities which preservation is never allowed to change."""
+    native = _ordinary(daemon); base = request["base"]
+    _need(set(request) == {"schema", "base", "candidate"} and request["schema"] == CANDIDATE_SCHEMA
+          and base["schema"] == SCHEMA and base["repo_root"] == str(daemon.repo_root.resolve())
+          and base["state_path"] == str(daemon.state_path) and base["task_header_prefix"] == daemon.task_header_prefix,
+          "candidate_request_scope_changed")
+    _need(base["runtime_revision"] == runtime_revision() and base["runtime_sources"] == runtime_sources(),
+          "pending_claim_runtime_changed")
+    _need(_state_hash(daemon) == base["state_sha256"] and _queue(daemon) == base["merge_queue"],
+          "candidate_state_or_queue_changed")
+    _need(_git(daemon.repo_root, "rev-parse", "HEAD") == base["repo_head"], "pending_claim_source_changed")
+    _need(daemon.max_task_attempts <= 0 or base["attempt"] < daemon.max_task_attempts, "retry_budget_exhausted")
+    task = [t for t in daemon._load_tasks() if t.task_id == base["task_id"] and daemon._canonical_ref(t) == base["task_cid"]]
+    _need(len(task) == 1 and native.normalize_status(task[0].status) in {"todo", "ready", "in_progress"},
+          "pending_current_task_required")
+    identity = daemon._identity_for_task(task[0])
+    _need(identity.canonical_task_key == base["task_key"] and identity.board_namespace == base["board_namespace"],
+          "pending_claim_task_identity_changed")
+    _need(daemon._retained_provider_capacity_deferral() is None, "capacity_hold_present")
+    for name in ("strategy", "launcher", "shutdown", "board"):
+        pin = base["pins"][name]
+        _need(_pin(Path(pin["path"])) == pin, "candidate_stable_" + name + "_changed")
+    claim = Path(base["pins"]["claim"]["path"])
+    if os.path.lexists(claim):
+        _need(not released and _read(claim) == base64.b64decode(prior["claim_raw_base64"], validate=True)
+              and _pin(claim) == base["pins"]["claim"], "candidate_claim_changed")
+    else:
+        _need(prior.get("phase") in {"preserved", "retired", "released"}, "candidate_claim_missing_before_preservation")
+    rows = _event_rows(_read(daemon.events_path)); pin = base["pins"]["events"]
+    _need(_sha(_read(daemon.events_path)[:pin["bytes"]]) == pin["sha256"], "candidate_history_changed")
+    info = daemon.events_path.lstat()
+    _need(all(getattr(info, key) == value for key, value in pin["identity"].items()
+              if key not in {"st_mtime_ns", "st_ctime_ns"}), "candidate_history_identity_changed")
+    starts = [row for row in rows if row.get("type") == "implementation_started"
+              and row.get("canonical_task_cid") == base["task_cid"]]
+    _need(starts and starts[-1]["event_id"] == base["start_event_id"] and not any(
+        row.get("type") in _OUTCOMES and row.get("canonical_task_cid") == base["task_cid"]
+        and row.get("attempt") == base["attempt"] for row in rows), "candidate_attempt_history_changed")
+    if prior["phase"] != "prepared":
+        _need(prior.get("preserved_candidate") == _preserved_history(daemon, request, prior["operation_id"],
+              _candidate_receipt_path(daemon, base["task_id"])), "candidate_preservation_history_changed")
+    launch = _object(_read(Path(base["pins"]["launcher"]["path"])))["identity"]
+    launch_birth = native.ProcessBirthIdentity(pid=launch["pid"], start_time_ticks=launch["start_ticks"], boot_id=launch["boot_id"])
+    for owner in (native.ProcessBirthIdentity.from_dict(prior["claim"]["owner_process_birth"]), launch_birth):
+        _need(native.owner_liveness(owner, proc_root=daemon.worktree_lifecycle.proc_root) is native.OwnerLiveness.DEAD,
+              "pending_claim_owner_live_or_unknown")
+    _terminal_maintenance_owner(daemon, native, native.ProcessBirthIdentity.from_dict(prior["terminal_lifecycle"]["owner"]))
+    workspace = Path(base["workspace"])
+    life = daemon.worktree_lifecycle.load_workspace(workspace)
+    if life is not None:
+        _need(life.to_dict() == prior["terminal_lifecycle"], "candidate_lifecycle_changed")
+        _need(_pin(daemon.worktree_lifecycle.task_index_path_for(canonical_task_cid=base["task_cid"],
+                  task_id=base["task_id"], attempt=life.attempt)) == base["pins"]["lifecycle_index"],
+              "candidate_lifecycle_index_changed")
+    else:
+        _need(prior["phase"] != "prepared" or _preserved_history(daemon, request, prior["operation_id"],
+              _candidate_receipt_path(daemon, base["task_id"])) is not None, "candidate_lifecycle_missing")
+        _need(not daemon.worktree_lifecycle.task_index_path_for(canonical_task_cid=base["task_cid"],
+              task_id=base["task_id"], attempt=prior["terminal_lifecycle"]["attempt"]).exists(),
+              "candidate_lifecycle_index_changed")
+    _need(daemon.worktree_lifecycle.load_quarantine(workspace) is None
+          and not daemon.worktree_lifecycle.quarantines_for_task_attempt(canonical_task_cid=base["task_cid"],
+              task_id=base["task_id"], attempt=prior["terminal_lifecycle"]["attempt"]), "lifecycle_quarantine_present")
+    for protected in (daemon._implementation_protected_active_snapshot_path(), daemon._implementation_protected_incident_path(),
+                      daemon._protected_path_maintenance_lock_path()):
+        _need(not os.path.lexists(protected), "protected_hold_present")
+    lease_path = daemon._implementation_lock_path()
+    lease_sha = _sha(_read(lease_path)) if os.path.lexists(lease_path) else ""
+    if lease_sha != base["implementation_lease_sha256"]:
+        _need(released and not lease_sha and any(row.get("type") == "implementation_lock_cleared"
+            and row.get("lock_path") == str(lease_path) and row.get("lock_owner_pid") == prior["claim"]["pid"]
+            and row.get("task_id") == base["task_id"] for row in rows), "implementation_lease_changed")
+    _need(not daemon._implementation_process_active(next(row for row in rows if row["event_id"] == base["start_event_id"])),
+          "implementation_process_still_active")
+    _fresh_container_quiescence(daemon, Path(base["workspace"]))
+
+
+def _candidate_checkout(daemon, request: dict, prior: dict, *, preserved: dict | None = None) -> None:
+    """A prior checkpoint never authorizes cleanup of a reused checkout/ref."""
+    workspace = Path(request["base"]["workspace"])
+    branch = prior["terminal_lifecycle"]["branch"]
+    if workspace.exists():
+        _need(workspace.resolve() == workspace and _git(workspace, "symbolic-ref", "--short", "HEAD") == branch,
+              "candidate_workspace_reused")
+        _need(_candidate_dependencies(workspace) == request["candidate"]["dependencies"],
+              "candidate_dependencies_changed")
+        head = _git(workspace, "rev-parse", "HEAD")
+        if preserved is None and head == request["base"]["baseline_ref"]:
+            _need(_candidate_source(daemon, request["base"]) == request["candidate"], "pending_candidate_source_changed")
+        else:
+            _candidate_commit(daemon, request, preserved or {"commit": head})
+            _need(head == (preserved or {"commit": head})["commit"]
+                  and not _git(workspace, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"),
+                  "candidate_workspace_changed_after_preservation")
+    else:
+        _need(preserved is not None, "candidate_workspace_missing_without_preservation")
+    if daemon._git_ref_exists(branch):
+        expected = preserved["commit"] if preserved else (_git(workspace, "rev-parse", "HEAD"))
+        _need(_git(daemon.repo_root, "rev-parse", branch) == expected, "candidate_branch_reused")
+
+
+def _candidate_commit(daemon, request: dict, preserved: dict) -> None:
+    base, candidate = request["base"], request["candidate"]
+    commit = preserved["commit"]
+    if preserved.get("rescue_ref"):
+        _need(_git(daemon.repo_root, "rev-parse", preserved["rescue_ref"]) == commit, "candidate_rescue_ref_changed")
+    _need(_git(daemon.repo_root, "rev-list", "--parents", "-n", "1", commit).split() == [commit, base["baseline_ref"]],
+          "candidate_commit_parent_changed")
+    patch = _git(daemon.repo_root, "diff", "--binary", "--full-index", base["baseline_ref"], commit, "--")
+    _need(_sha(patch.encode()) == candidate["patch_sha256"], "candidate_commit_patch_changed")
+    for relative, pin in candidate["files"].items():
+        result = subprocess.run(["git", "--no-replace-objects", "show", commit + ":" + relative], cwd=daemon.repo_root,
+                                capture_output=True, timeout=15, check=False)
+        _need(result.returncode == 0 and _sha(result.stdout) == pin["sha256"], "candidate_commit_output_changed")
+
+
+def _preserved_history(daemon, request, operation, path):
+    base = request["base"]
+    rows = _event_rows(_read(daemon.events_path))
+    matches = [row for row in rows if row.get("type") == "implementation_pending_candidate_preserved"
+        and row.get("pending_candidate_recovery", {}).get("operation_id") == operation
+        and row.get("task_id") == base["task_id"] and row.get("attempt") == base["attempt"]
+        and row.get("canonical_task_cid") == base["task_cid"]]
+    if not matches: return None
+    row = matches[-1]
+    start = next(row for row in rows if row["event_id"] == base["start_event_id"])
+    expected_ref = daemon._interrupted_worktree_rescue_branch_name(start["branch"],
+        "pending-candidate-" + operation.removeprefix("sha256:")[:20])
+    _need(row.get("branch") == start["branch"] and row.get("worktree_path") == base["workspace"]
+          and row.get("rescue_branch") == expected_ref, "native_preservation_scope_changed")
+    value = {"commit": row["preserved_commit"], "rescue_ref": row["rescue_branch"],
+        "baseline_ref": base["baseline_ref"], "source_root": str(daemon.repo_root),
+        "original_workspace": base["workspace"], "original_branch": row["branch"],
+        "task_id": base["task_id"], "task_cid": base["task_cid"], "task_key": base["task_key"],
+        "attempt": base["attempt"], "source_manifest_sha256": _sha(_bytes(request["candidate"])),
+        "preservation_receipt_path": str(path), "preservation_event_id": row["event_id"]}
+    _need(row.get("preserved") is True and row.get("pending_candidate_recovery", {}).get("candidate_manifest_sha256")
+          == value["source_manifest_sha256"], "native_preservation_event_changed")
+    _candidate_commit(daemon, request, value)
+    return value
+
+
+def review_candidate(daemon, *, task_id: str) -> dict:
+    """Review staged provider code without granting it validation authority."""
+    path = _candidate_receipt_path(daemon, task_id); prior = _candidate_prior(path)
+    if prior is not None:
+        request = prior["request"]
+        _candidate_stable(daemon, request, prior, released=prior["phase"] == "released")
+        if prior.get("preserved_candidate"):
+            _candidate_commit(daemon, request, prior["preserved_candidate"])
+        elif _preserved_history(daemon, request, prior["operation_id"], path) is None:
+            _candidate_checkout(daemon, request, prior)
+        return request
+    base = _build(daemon, task_id); candidate = _candidate_source(daemon, base)
+    _validated(daemon, base, None, candidate=candidate)
+    return {"schema": CANDIDATE_SCHEMA, "base": base, "candidate": candidate}
+
+
+def reconcile_candidate(daemon, *, request: Mapping) -> dict:
+    """Preserve exact code with Native, retire its old fence, then CAS-release."""
+    result = {"reconciled": False, "blocked": True, "provider_outcome": "unknown", **_FALSE}
+    try:
+        _need(isinstance(request, Mapping), "candidate_request_required")
+        request = deepcopy(dict(request)); _need(set(request) == {"schema", "base", "candidate"}
+            and request["schema"] == CANDIDATE_SCHEMA, "candidate_request_shape_changed")
+        base = request["base"]; native = _ordinary(daemon)
+        path = _candidate_receipt_path(daemon, base["task_id"])
+        prior = _candidate_prior(path, request)
+        if prior is None:
+            checked = _validated(daemon, base, None, candidate=request["candidate"])
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        _need(path.parent.resolve() == path.parent and path.parent.stat().st_uid == os.getuid()
+              and not path.parent.stat().st_mode & 0o077, "unsafe_pending_claim_receipt_directory")
+        claim_path = Path(base["pins"]["claim"]["path"])
+        operation = "sha256:" + _sha(_bytes(request))
+        with ExitStack() as stack:
+            # Native preservation/finalization own their lifecycle locks. Do
+            # not retain those here and deadlock its existing CAS operations.
+            for lock in (daemon._implementation_lock_path(), path.parent / "recovery.lock", claim_path, daemon.strategy_path):
+                stack.enter_context(native.serialized_lock_update(lock))
+            prior = _candidate_prior(path, request)
+            if prior is None:
+                checked = _validated(daemon, base, None, candidate=request["candidate"])
+                branch = _object(_read(Path(base["pins"]["lifecycle"]["path"]))) ["branch"]
+                rescue = daemon._interrupted_worktree_rescue_branch_name(branch,
+                    "pending-candidate-" + operation.removeprefix("sha256:")[:20])
+                _need(not daemon._git_ref_exists(rescue), "candidate_rescue_ref_already_exists")
+                body = {"schema": CANDIDATE_SCHEMA, "request": request, "operation_id": operation,
+                        "claim_raw_base64": base64.b64encode(_read(claim_path)).decode(), "claim": checked["claim"],
+                        "terminal_lifecycle": _object(_read(Path(base["pins"]["lifecycle"]["path"]))), **_FALSE}
+            else: body = {k:v for k,v in prior.items() if k not in {"phase", "receipt_id"}}
+            def publish(phase):
+                value = {**body, "phase": phase}; value["receipt_id"] = "sha256:" + _sha(_bytes(value))
+                daemon._write_private_task_claim_release_receipt(path, value); return value
+            if prior is None: prior = publish("prepared")
+            _candidate_stable(daemon, request, prior, released=prior["phase"] == "released")
+            if prior["phase"] == "prepared":
+                history = _preserved_history(daemon, request, operation, path)
+                if history is None:
+                    _candidate_checkout(daemon, request, prior)
+                    rescue = daemon._interrupted_worktree_rescue_branch_name(prior["terminal_lifecycle"]["branch"],
+                        "pending-candidate-" + operation.removeprefix("sha256:")[:20])
+                    if daemon._git_ref_exists(rescue):
+                        head = _git(Path(base["workspace"]), "rev-parse", "HEAD")
+                        _candidate_commit(daemon, request, {"commit": head, "rescue_ref": rescue})
+                    task = next(t for t in daemon._load_tasks() if t.task_id == base["task_id"])
+                    # Native itself commits, checkpoints its rescue ref/event,
+                    # and cleans the old checkout. No replacement task claim
+                    # or source reset is synthesized by this recovery API.
+                    preserved = daemon._preserve_interrupted_worktree(Path(base["workspace"]),
+                        prior["terminal_lifecycle"]["branch"], task, base["attempt"],
+                        evidence={"operation_id": operation, "candidate_manifest_sha256": _sha(_bytes(request["candidate"])), **_FALSE},
+                        rescue_suffix="pending-candidate-" + operation.removeprefix("sha256:")[:20],
+                        event_type="implementation_pending_candidate_preserved", evidence_field="pending_candidate_recovery",
+                        baseline_ref=base["baseline_ref"], retain_on_failure=True)
+                    _need(preserved.get("preserved") is True, "native_candidate_preservation_failed")
+                    history = _preserved_history(daemon, request, operation, path)
+                _need(history is not None, "native_preservation_event_required")
+                body["preserved_candidate"] = history
+                prior = publish("preserved")
+            _candidate_commit(daemon, request, prior["preserved_candidate"])
+            _candidate_stable(daemon, request, prior, released=prior["phase"] == "released")
+            if prior["phase"] == "preserved":
+                _candidate_checkout(daemon, request, prior, preserved=prior["preserved_candidate"])
+                if Path(base["workspace"]).exists() or daemon._worktree_path_registered_in_repo(daemon.repo_root, Path(base["workspace"])):
+                    cleanup = daemon._cleanup_merged_worktree(Path(base["workspace"]), prior["terminal_lifecycle"]["branch"])
+                    _need(cleanup.get("cleaned") is True, "candidate_checkout_cleanup_unproved")
+                _need(not Path(base["workspace"]).exists()
+                      and not daemon._worktree_path_registered_in_repo(daemon.repo_root, Path(base["workspace"]))
+                      and not daemon._git_ref_exists(prior["terminal_lifecycle"]["branch"]),
+                      "candidate_checkout_cleanup_incomplete")
+                life = native.WorkspaceLifecycleRecord.from_dict(prior["terminal_lifecycle"])
+                existing = daemon.worktree_lifecycle.load_workspace(base["workspace"])
+                if existing is not None:
+                    _need(existing == life, "candidate_lifecycle_changed")
+                    finalized = daemon._finalize_exact_worktree_lifecycle(life, reason="pending_candidate_preserved")
+                    _need(finalized.get("finalized") is True, "candidate_lifecycle_retirement_unproved")
+                _need(not daemon.worktree_lifecycle.workspace_path_for(base["workspace"]).exists()
+                    and not daemon.worktree_lifecycle.task_index_path_for(canonical_task_cid=base["task_cid"],
+                        task_id=base["task_id"], attempt=life.attempt).exists(), "candidate_lifecycle_retirement_incomplete")
+                prior = publish("retired")
+            _candidate_stable(daemon, request, prior, released=prior["phase"] == "released")
+            if prior["phase"] == "retired":
+                if claim_path.exists():
+                    claim_path.unlink()
+                    descriptor = os.open(claim_path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                    try: os.fsync(descriptor)
+                    finally: os.close(descriptor)
+                prior = publish("released")
+                daemon._record_event("implementation_preserved_pending_candidate_claim_released", {
+                    "task_id": base["task_id"], "canonical_task_cid": base["task_cid"], "attempt": base["attempt"],
+                    "operation_id": operation, "receipt_id": prior["receipt_id"], **_FALSE})
+            _need(prior["phase"] == "released", "candidate_receipt_phase_invalid")
+            _candidate_stable(daemon, request, prior, released=True)
+            return {**result, "reconciled": True, "blocked": False, "reason": "preserved_candidate_pending_task_claim_released",
+                    "receipt_path": str(path), "receipt_id": prior["receipt_id"], "preserved_candidate": prior["preserved_candidate"],
+                    "counters_preserved": True, "task_status_unchanged": True}
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, StopIteration, subprocess.SubprocessError) as exc:
+        return {**result, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+
+
+def review_recovery(daemon, *, task_id: str) -> dict:
+    """Prefer a durable preserved-candidate replay before ordinary no-claim cleanup."""
+    path = _candidate_receipt_path(daemon, task_id)
+    if os.path.lexists(path): return review_candidate(daemon, task_id=task_id)
+    base = _build(daemon, task_id)
+    if _git(Path(base["workspace"]), "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"):
+        return review_candidate(daemon, task_id=task_id)
+    return review(daemon, task_id=task_id)
+
+
+def reconcile_recovery(daemon, *, request: Mapping) -> dict:
+    """Dispatch only the closed request schemas produced by the public reviewer."""
+    if isinstance(request, Mapping) and request.get("schema") == CANDIDATE_SCHEMA:
+        return reconcile_candidate(daemon, request=request)
+    return reconcile(daemon, request=request)
