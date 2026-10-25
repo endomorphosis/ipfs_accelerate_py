@@ -274,7 +274,7 @@ from ..validation.validation_scheduler import (
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor import validated_protected_attempt_latch
-from .supervisor_runtime import run_process_group_stream
+from .supervisor_runtime import ProcessGroupCleanupUnverified, run_process_group_stream
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
@@ -49490,6 +49490,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         mount registry).  Give every command a fresh private home rather than
         exposing the operator's profile or sharing mutable state between
         validations.
+
+        Linux commands require child-subreaper custody. Other platforms retain
+        their canonical-direct compatibility path without that custody claim.
         """
 
         started_at = utc_now()
@@ -49632,18 +49635,74 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 launcher_evidence
                             ),
                         }
-                    completed = subprocess.run(
-                        command_argv,
-                        cwd=workspace_path,
-                        text=True,
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        timeout=timeout_seconds,
-                        check=False,
-                        env=launcher_environment,
-                        pass_fds=sealed_fds,
-                    )
+                    if sys.platform != "linux":
+                        completed = subprocess.run(command_argv, cwd=workspace_path, text=True,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            timeout=timeout_seconds, check=False, env=launcher_environment,
+                            pass_fds=sealed_fds)
+                    else:
+                        # An isolated subreaper retains custody of orphaned
+                        # setsid/double-fork descendants after the shell exits.
+                        # Capture to a private file, not an inherited PIPE whose
+                        # drain can hang after subprocess.run kills only a shell.
+                        subreaper = Path(__file__).with_name("native_cli_subreaper.py")
+                        with tempfile.TemporaryFile(mode="w+b") as capture, tempfile.TemporaryFile(mode="w+b") as status:
+                            wrapper = [sys.executable, "-I", "-S", "-B", str(subreaper.resolve(strict=True))]
+                            for descriptor in sealed_fds:
+                                wrapper.extend(("--pass-fd", str(descriptor)))
+                            wrapper.extend(("--result-fd", str(status.fileno()),
+                                "--timeout-seconds", str(float(timeout_seconds)),
+                                "--output-limit-bytes", str(AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES),
+                                "--", *command_argv))
+                            # The inner deadline bounds command execution. This
+                            # extra interval belongs only to descendant cleanup.
+                            try:
+                                wrapped = run_process_group_stream(wrapper, cwd=workspace_path,
+                                    stdout=capture, input_text="", env=launcher_environment,
+                                    inherit_environment=False, replace_env=True,
+                                    timeout_seconds=float(timeout_seconds) + 10.0,
+                                    termination_grace_seconds=5.0,
+                                    pass_fds=(*sealed_fds, status.fileno()))
+                            except ProcessGroupCleanupUnverified:
+                                return {"command": str(spec.command), "raw_command": str(spec.raw_command or spec.command),
+                                    "started_at": started_at, "finished_at": utc_now(), "returncode": 75,
+                                    "output": "", "error": "validation_process_cleanup_unverified",
+                                    "infrastructure_failure": True, "validation_python_launcher": launcher_evidence}
+                            capture.seek(0)
+                            output = capture.read(AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES + 1)
+                            status.seek(0)
+                            try:
+                                report = json.loads(status.read(1025))
+                                expected = {"returncode", "timed_out", "output_limit_exceeded", "termination_signal", "children_reaped"}
+                                if (not isinstance(report, dict) or set(report) != expected
+                                        or type(report["returncode"]) is not int
+                                        or type(report["timed_out"]) is not bool
+                                        or type(report["output_limit_exceeded"]) is not bool
+                                        or type(report["termination_signal"]) is not int
+                                        or report["termination_signal"] != 0
+                                        or report["children_reaped"] is not True):
+                                    raise ValueError("invalid child custody report")
+                                expected_exit = (124 if report["timed_out"] else 75 if report["output_limit_exceeded"]
+                                    else min(255, 128 + abs(report["returncode"])) if report["returncode"] < 0
+                                    else min(255, report["returncode"]))
+                                if wrapped.returncode != expected_exit:
+                                    raise ValueError("child custody exit mismatch")
+                            except (ValueError, TypeError, KeyError):
+                                return {"command": str(spec.command), "raw_command": str(spec.raw_command or spec.command),
+                                    "started_at": started_at, "finished_at": utc_now(), "returncode": 75,
+                                    "output": "", "error": "validation_process_cleanup_unverified",
+                                    "infrastructure_failure": True, "validation_python_launcher": launcher_evidence}
+                            text_output = output[:AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES].decode("utf-8", errors="replace")
+                            if report["timed_out"]:
+                                timeout_error = subprocess.TimeoutExpired(command_argv, timeout_seconds, output=text_output)
+                                timeout_error.process_tree_quiesced = True
+                                raise timeout_error
+                            if report["output_limit_exceeded"] or len(output) > AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES:
+                                return {"command": str(spec.command), "raw_command": str(spec.raw_command or spec.command),
+                                    "started_at": started_at, "finished_at": utc_now(), "returncode": 75,
+                                    "output": text_output, "error": "validation_output_limit_exceeded",
+                                    "infrastructure_failure": True, "validation_python_launcher": launcher_evidence}
+                            completed = subprocess.CompletedProcess(command_argv, report["returncode"], text_output)
             except ValidationRuntimeError as exc:
                 return {
                     "command": str(spec.command),
@@ -49671,6 +49730,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "returncode": int(completed.returncode),
             "output": output,
         }
+        if sys.platform != "linux":
+            result["validation_process_custody"] = {"supported": False, "scope": "direct_process_only"}
         if launcher_receipt is not None:
             result["validation_python_launcher"] = {
                 "content_sha256": launcher_receipt.content_sha256,
