@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import socket
 import subprocess
 import time
 from typing import Any, Callable, Iterator
@@ -38,6 +39,7 @@ from .planned_work_watchdog import observe_planned_work
 
 
 SCHEMA = "ipfs_accelerate_py.agent_supervisor.repair-dispatcher@1"
+SERVICE_WATCHDOG_VERSION = 1
 FLAGS = {"work_complete": False, "completion_authority": False}
 _HELD_STATES = {"paused", "draining", "stopping"}
 _COMPLETED = {"completed", "complete", "done"}
@@ -231,6 +233,79 @@ def _find_owner(
     if len(owners) > 1:
         errors.append("multiple_verified_watchdog_owners")
     return owner, [_public_process(process) for process in owners], errors
+
+
+def _native_rotation_grace(config: Config, state: dict[str, Any], lane: dict[str, Any],
+                           owner: dict[str, Any], report: dict[str, Any], *, now: float,
+                           report_age: float | None, owner_uncertain: bool,
+                           storage_pressure: bool) -> dict[str, Any] | None:
+    """Give a verified native watchdog one bounded ordinary lease rotation."""
+    pid = lane["process"].get("pid")
+    stamp = lane.get("terminal_heartbeat_at_ms")
+    if (lane["state"] != "stopped" or lane["phase"] != "lane_resume_exited"
+            or lane["terminal_reason"] != "resume_duration_elapsed"
+            or type(pid) is not int or pid <= 0 or lane.get("status_pid") != pid
+            or lane["process"].get("process_state") not in (None, "Z", "X")
+            or type(stamp) not in (int, float) or not math.isfinite(stamp)
+            or not 0 < stamp / 1000 <= now):
+        return None
+    interval = _option(owner.get("argv", []), "--check-interval")
+    if interval is None and owner.get("alive"):
+        try:
+            directory = Path("/proc") / str(owner["pid"])
+            if directory.stat().st_uid != os.getuid():
+                return None
+            # Read only the native watchdog's nonsecret poll setting. Never
+            # persist its environment or use the dispatcher's own setting.
+            environment = (directory / "environ").read_bytes()
+            interval = next((entry.split(b"=", 1)[1].decode() for entry in environment.split(b"\0")
+                             if entry.startswith(b"WATCHDOG_CHECK_INTERVAL_SECONDS=")), None)
+        except (OSError, UnicodeError):
+            return None
+    try:
+        poll = float(interval) if interval is not None else 120.0
+        if not math.isfinite(poll) or poll <= 0:
+            return None
+    except (TypeError, ValueError):
+        return None
+    grace = min(600.0, max(config.startup_grace_seconds, poll + config.interval + 15.0))
+    records = state.setdefault("lease_rotation_observations", {})
+    if not isinstance(records, dict):
+        records = state["lease_rotation_observations"] = {}
+    previous = records.get(lane["lane"], {})
+    if isinstance(previous, dict) and previous.get("expired_pid") == pid:
+        anchor, deadline = previous.get("anchor"), previous.get("deadline")
+        if (type(anchor) not in (int, float) or type(deadline) not in (int, float)
+                or not math.isfinite(anchor) or not math.isfinite(deadline)
+                or not 0 < anchor <= deadline <= anchor + 600):
+            return None
+    else:
+        anchor, deadline = stamp / 1000, stamp / 1000 + grace
+    observation = {"lane": lane["lane"], "expired_pid": pid, "anchor": anchor,
+                   "deadline": deadline, "waiting": False,
+                   "watchdog_pid": owner.get("pid"), "watchdog_start_ticks": owner.get("start_ticks")}
+    records[lane["lane"]] = observation
+    status = report.get("status") if isinstance(report.get("status"), dict) else {}
+    if (now >= deadline or owner_uncertain or storage_pressure or not owner.get("alive")
+            or not owner.get("identity_verified") or report_age is None
+            or report_age > config.report_seconds or status.get("pid") != owner.get("pid")
+            or status.get("state") not in {"healthy", "starting", "degraded"}):
+        return observation
+    for prior in report.get("reports", []):
+        if not isinstance(prior, dict) or prior.get("bundle_key") != lane["lane"]:
+            continue
+        if (prior.get("action") in {"restart_failed", "fenced_stop_required"}
+                or str(prior.get("action", "")).startswith("repeated_")):
+            return observation
+    # Independently reread the real role/UID/start tick; an advisory PID or a
+    # report belonging to an earlier process cannot earn this grace.
+    actual, errors = discover_watchdogs(config.manifest_path.resolve(), config.repo_root.resolve())
+    if (errors or len(actual) != 1 or actual[0]["pid"] != owner["pid"]
+            or str(actual[0]["start_ticks"]) != str(owner.get("start_ticks"))
+            or report_age > float(owner.get("age_seconds", 0)) + 1):
+        return observation
+    observation["waiting"] = True
+    return observation
 
 
 def _runtime_policy_provenance() -> dict[str, Any]:
@@ -473,6 +548,7 @@ def observe(
                           "last_task_transition_at_ms": transition,
                           "gate_recovery_needed": status.get("gate_recovery_needed") is True,
                           "heartbeat_age_seconds": heartbeat_age, "transition_age_seconds": transition_age,
+                          "status_pid": status.get("pid"), "terminal_heartbeat_at_ms": heartbeat,
                           "storage_pressure": storage_pressure, "emergency_identity_verified": bool(emergency),
                           "log_age_seconds": _age(log_path, now), "status_error": status_error,
                           "held": bool(intentional or lane_holds), "hold_paths": lane_holds})
@@ -494,13 +570,23 @@ def observe(
     current_exhausted: set[str] = set()
     retry_waits: list[dict[str, Any]] = []
     provenance_reviews: list[dict[str, Any]] = []
+    rotation_waits: list[dict[str, Any]] = []
+    current_rotations: set[str] = set()
     for lane in eligible:
         key, task, phase = lane["lane"], lane["active_task_id"], lane["phase"]
         alive = lane["process"]["alive"]
         lane_ready = ready or ([task] if task and not tasks else [])
         if not alive and lane_ready:
-            incident("lane_dead_pending", key, task, pending_task_ids=lane_ready,
-                     terminal_reason=lane["terminal_reason"], pid=lane["process"]["pid"])
+            rotation = _native_rotation_grace(config, state, lane, owner, report, now=now,
+                report_age=report_age, owner_uncertain=owner_uncertain,
+                storage_pressure=owner_pressure or lane["storage_pressure"])
+            if rotation is not None:
+                current_rotations.add(key)
+            if rotation and rotation["waiting"]:
+                rotation_waits.append(rotation)
+            else:
+                incident("lane_dead_pending", key, task, pending_task_ids=lane_ready,
+                         terminal_reason=lane["terminal_reason"], pid=lane["process"]["pid"])
         elif alive:
             if lane["storage_pressure"]:
                 continue
@@ -582,6 +668,11 @@ def observe(
                                 for lane in eligible)
             if holds or task_id not in ready or not running_retry:
                 exhausted_waits.pop(key)
+    if not isinstance(state.get("lease_rotation_observations", {}), dict):
+        state["lease_rotation_observations"] = {}
+    for key in list(state.get("lease_rotation_observations", {})):
+        if key not in current_rotations:
+            state["lease_rotation_observations"].pop(key)
     planned_work = observe_planned_work(policy=manifest.get("planned_work_policy"),
         repo_root=config.repo_root, tasks=tasks, lanes=snapshots, state=state, now=now,
         held=bool(holds) or owner_uncertain or bool(snapshots) and not eligible
@@ -607,6 +698,7 @@ def observe(
             "report_path": str(report_path), "report_age_seconds": report_age,
             "pending_task_ids": pending, "selectable_task_ids": ready,
             "retry_waits": retry_waits, "source_provenance_reviews": provenance_reviews,
+            "native_rotation_grace": rotation_waits,
             "retry_failure_observation_pending": bool(exhausted_waits),
             "native_retry_wait_observed": bool(ready) and any(
                 lane["phase"] in {"attempt_retry_wait", "semantic_failure_wait"} for lane in eligible),
@@ -739,7 +831,8 @@ def stop_adopted_worker(identity: dict[str, Any]) -> bool:
     return True
 
 
-def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any]], None], *,
+               on_poll: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     if not config.worker_argv or config.prompt_path is None:
         return {"outcome": "configuration_error", "error": "worker argv and prompt path are required"}
     process = None
@@ -754,6 +847,7 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
             tree.snapshot()
             on_start(probe_process(process.pid))
             deadline = time.monotonic() + config.worker_timeout
+            next_control_poll = time.monotonic() + min(30.0, config.interval)
             while True:
                 tree.snapshot()
                 try:
@@ -763,6 +857,14 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
                     if time.monotonic() >= deadline:
                         _stop_owned_worker(process)
                         return {"outcome": "timed_out", "exit_code": process.returncode}
+                    # A real bounded wait and the original deadline/owned tree
+                    # check must complete before any control-plane heartbeat.
+                    tree.snapshot()
+                    if on_poll is not None and time.monotonic() >= next_control_poll:
+                        identity = probe_process(process.pid)
+                        if identity["alive"] and process.poll() is None:
+                            on_poll(identity)
+                        next_control_poll = time.monotonic() + min(30.0, config.interval)
     except (OSError, ValueError) as exc:
         if is_storage_pressure(exc):
             storage_result = {"outcome": "storage_blocked", "error": str(exc),
@@ -833,6 +935,8 @@ def _retry_storage_payload(config: Config) -> OSError | None:
 
 
 def _save(config: Config, state: dict[str, Any], telemetry: dict[str, Any]) -> bool:
+    telemetry.update(control_heartbeat_at=time.time(), control_pid=os.getpid(),
+                     control_start_ticks=probe_process(os.getpid()).get("start_ticks"))
     pending = state
     try:
         _atomic_json(config.state_dir / "state.json", state)
@@ -863,10 +967,14 @@ def tick(
     try:
         observation = observe(config, state, now=now, probe=probe)
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        telemetry = {"schema": SCHEMA, "observed_at": now, "action": "observation_error", "error": str(exc), **FLAGS}
+        telemetry = {"schema": SCHEMA, "observed_at": now,
+                     "last_full_observation_at": state.get("last_full_observation_at"),
+                     "action": "observation_error", "error": str(exc), **FLAGS}
         _save(config, state, telemetry)
         return telemetry
-    telemetry = {**observation, "action": "observational", "apply": apply}
+    state["last_full_observation_at"] = observation["observed_at"]
+    telemetry = {**observation, "last_full_observation_at": observation["observed_at"],
+                 "action": "observational", "apply": apply}
     active = state.get("active_worker", {})
     if active:
         live = probe(int(active.get("pid") or 0))
@@ -920,8 +1028,10 @@ def tick(
     elif not signature:
         unresolved = (observation["retry_failure_observation_pending"] or
                       observation["native_retry_wait_observed"] or
+                      bool(observation["native_rotation_grace"]) or
                       bool(observation["source_provenance_reviews"]))
         telemetry["action"] = ("source_change_review_needed" if observation["source_provenance_reviews"]
+                               else "native_lease_rotation_wait" if observation["native_rotation_grace"]
                                else "retry_wait" if unresolved else "healthy")
         if state.get("unresolved_signature") and not unresolved:
             telemetry["action"] = "recovery_observed"
@@ -1019,6 +1129,45 @@ def tick(
     return telemetry
 
 
+def _notify_control_watchdog() -> bool:
+    """Notify systemd only when its watchdog explicitly targets this PID."""
+    try:
+        address = os.environ.get("NOTIFY_SOCKET", "")
+        if (not address or int(os.environ.get("WATCHDOG_PID", "0")) != os.getpid()
+                or int(os.environ.get("WATCHDOG_USEC", "0")) <= 0
+                or not address.startswith(("/", "@"))):
+            return False
+        if address.startswith("@"):
+            address = "\0" + address[1:]
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as channel:
+            channel.settimeout(0.05)
+            channel.sendto(b"WATCHDOG=1", address)
+        return True
+    except (OSError, ValueError, TypeError):
+        # An optional notification failure cannot stop the CLI or its worker.
+        return False
+
+
+def _control_worker(config: Config, state: dict[str, Any], log_path: Path,
+                    on_start: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+    """Keep the synchronous owned worker observable after genuine poll steps."""
+    last_observation = _json(config.state_dir / "status.json")
+
+    def polled(identity: dict[str, Any]) -> None:
+        active = state.get("active_worker", {})
+        if (identity.get("pid") != active.get("pid")
+                or identity.get("start_ticks") != active.get("start_ticks")):
+            return
+        telemetry = {**last_observation, "action": "worker_running",
+                     "control_phase": "worker_poll", "active_worker": dict(active)}
+        # Preserve observed_at/last_full_observation_at: this is control
+        # liveness, never a new lane observation, repair, or task progress.
+        _save(config, state, telemetry)
+        _notify_control_watchdog()
+
+    return run_worker(config, log_path, on_start, on_poll=polled)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest-path", required=True, type=Path)
@@ -1087,8 +1236,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"action": "state_error", "error": str(exc), **FLAGS}), flush=True)
                 return 2
             while True:
-                result = tick(config, state, apply=args.apply)
-                print(json.dumps({k: result.get(k) for k in ("action", "signature", "observed_at", "attempt_count", "error")}), flush=True)
+                result = tick(config, state, apply=args.apply,
+                              worker=lambda cfg, log, started: _control_worker(cfg, state, log, started))
+                print(json.dumps({k: result.get(k) for k in ("action", "signature", "observed_at", "control_heartbeat_at", "attempt_count", "error")}), flush=True)
+                _notify_control_watchdog()
                 if args.once:
                     return 2 if result["action"] == "observation_error" else 0
                 time.sleep(config.interval)
