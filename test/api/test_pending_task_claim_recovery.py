@@ -28,7 +28,7 @@ def write(path, value):
 
 
 @pytest.fixture
-def pending(tmp_path, monkeypatch):
+def pending(tmp_path, monkeypatch, request):
     monkeypatch.setenv(native.AUTOMATIC_RETRY_REARM_ENV, "0")
     reconciler = native.CrashFenceReconciler
     monkeypatch.setattr(native, "CrashFenceReconciler", lambda daemon: reconciler(daemon, max_hold_seconds=10))
@@ -79,8 +79,12 @@ store=WorktreeLifecycleStore(Path(sys.argv[1]))
 value=store.reclaim_dead_owner_for_controlled_restart(sys.argv[2],expected_state_dir=sys.argv[3])
 print(json.dumps(value.to_dict()))
 """
-    terminal = json.loads(subprocess.run([sys.executable, "-c", code, str(repo), str(workspace), str(directory)],
-                                        capture_output=True, text=True, check=True, timeout=30).stdout)
+    if getattr(request, "param", None) == "current_maintenance":
+        terminal = daemon.worktree_lifecycle.reclaim_dead_owner_for_controlled_restart(
+            workspace, expected_state_dir=directory).to_dict()
+    else:
+        terminal = json.loads(subprocess.run([sys.executable, "-c", code, str(repo), str(workspace), str(directory)],
+                                            capture_output=True, text=True, check=True, timeout=30).stdout)
     assert terminal["owner"]["pid"] != claim["pid"]
     assert terminal["owner"]["parent_pid"] != tree["launch"]["pid"]
     cleanup = daemon.reconcile_quiesced_active_attempt()
@@ -273,3 +277,43 @@ def test_standalone_helper_pins_loaded_native_not_decoy_sibling_source(tmp_path)
     assert sources[".implementation_daemon"]["path"]==str(Path(native.__file__).resolve())
     assert sources[".implementation_daemon"]["sha256"]==hashlib.sha256(Path(native.__file__).read_bytes()).hexdigest()
     assert sources["pending_task_claim_recovery"]["path"]==str(copied)
+
+
+@pytest.mark.parametrize("pending", ["current_maintenance"], indirect=True)
+def test_same_public_recovery_call_can_release_its_own_terminal_maintenance_record(pending):
+    daemon,task,workspace,claim=pending
+    record=daemon.worktree_lifecycle.load_workspace(workspace)
+    assert record.owner==native.current_process_birth()
+    before=asdict(native.PortalTaskState.load(daemon.state_path))
+    request=daemon.review_quiesced_pending_task_claim(task_id=task.task_id)
+    result=daemon.reconcile_quiesced_pending_task_claim(request=request)
+    assert result["reconciled"] and not claim.exists(),result
+    proof=json.loads(Path(result["receipt_path"]).read_text())["maintenance_owner_proof"]
+    assert proof=={"source":"exact_current_recovery_process","owner":record.owner.to_dict()}
+    assert asdict(native.PortalTaskState.load(daemon.state_path))==before
+
+
+@pytest.mark.parametrize("damage", ["foreign_live", "reused_birth", "altered_current_birth", "unknown"])
+def test_terminal_maintenance_exception_never_accepts_foreign_reused_or_unknown_birth(pending,monkeypatch,damage):
+    daemon,_,_,_=pending
+    from ipfs_accelerate_py.agent_supervisor.merge import worktree_lifecycle
+    if damage in {"foreign_live","reused_birth"}:
+        child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(30)"])
+        try:
+            owner=worktree_lifecycle.read_process_birth(child.pid)
+            assert owner is not None
+            if damage=="reused_birth":owner=replace(owner,start_time_ticks=owner.start_time_ticks+1)
+            with pytest.raises(ValueError,match="terminal_maintenance_owner_foreign_or_reused"):
+                recovery._terminal_maintenance_owner(daemon,native,owner)
+        finally:
+            child.terminate();child.wait(timeout=5)
+    else:
+        owner=native.current_process_birth()
+        if damage=="unknown":
+            def unavailable(*args,**kwargs):raise OSError("synthetic process inspection unavailable")
+            monkeypatch.setattr(worktree_lifecycle,"read_process_birth",unavailable)
+            with pytest.raises(OSError):recovery._terminal_maintenance_owner(daemon,native,owner)
+        else:
+            owner=replace(owner,parent_pid=owner.parent_pid+1)
+            with pytest.raises(ValueError,match="terminal_maintenance_owner_foreign_or_reused"):
+                recovery._terminal_maintenance_owner(daemon,native,owner)

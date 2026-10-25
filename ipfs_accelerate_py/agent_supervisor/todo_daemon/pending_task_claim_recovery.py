@@ -95,6 +95,31 @@ def _ordinary(daemon):
     return native
 
 
+def _terminal_maintenance_owner(daemon, native, owner) -> dict:
+    """Allow a dead maintenance birth or this exact recovery process only.
+
+    A terminal record owns no running implementation. A controlled restart
+    may have just written it in this same public recovery call; that caller
+    need not exit before retiring the original, separately proven-dead claim.
+    PID reuse is not accepted as provenance for a maintenance record.
+    """
+    from ..merge.worktree_lifecycle import read_process_birth
+    _need(owner.pid > 0 and owner.start_time_ticks > 0 and bool(owner.boot_id),
+          "terminal_maintenance_birth_invalid")
+    proc = daemon.worktree_lifecycle.proc_root
+    observed = read_process_birth(owner.pid, proc_root=proc)
+    liveness = native.owner_liveness(owner, proc_root=proc)
+    current = native.current_process_birth(proc_root=proc)
+    if observed is None:
+        _need(liveness is native.OwnerLiveness.DEAD, "terminal_maintenance_owner_unknown")
+        source = "dead_controlled_restart_maintenance_owner"
+    else:
+        _need(liveness is native.OwnerLiveness.ALIVE and owner == observed == current
+              and current.pid == os.getpid(), "terminal_maintenance_owner_foreign_or_reused")
+        source = "exact_current_recovery_process"
+    return {"source": source, "owner": owner.to_dict()}
+
+
 def _build(daemon, task_id: str) -> dict:
     native = _ordinary(daemon)
     tasks = [task for task in daemon._load_tasks() if task.task_id == task_id]
@@ -252,12 +277,12 @@ def _validated(daemon, request: dict, prior: dict | None) -> dict:
     birth = native.ProcessBirthIdentity.from_dict(claim.get("owner_process_birth"))
     launch = launcher.get("identity", {})
     launch_birth = native.ProcessBirthIdentity(pid=launch.get("pid", 0), start_time_ticks=launch.get("start_ticks", 0), boot_id=launch.get("boot_id", ""))
-    for owner in (birth, launch_birth, life.owner):
+    for owner in (birth, launch_birth):
         _need(owner.pid > 0 and owner.start_time_ticks > 0 and owner.boot_id
               and native.owner_liveness(owner, proc_root=daemon.worktree_lifecycle.proc_root) is native.OwnerLiveness.DEAD,
               "pending_claim_owner_live_or_unknown")
+    maintenance_owner = _terminal_maintenance_owner(daemon, native, life.owner)
     _need(claim.get("pid") == birth.pid and birth.boot_id == launch_birth.boot_id
-          and life.owner.boot_id == launch_birth.boot_id
           and (birth.pid == launch_birth.pid and birth.start_time_ticks == launch_birth.start_time_ticks
                or birth.parent_pid == launch_birth.pid and birth.start_time_ticks >= launch_birth.start_time_ticks),
           "claim_not_in_stopped_launcher")
@@ -310,7 +335,8 @@ def _validated(daemon, request: dict, prior: dict | None) -> dict:
           and not _git(workspace, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"),
           "pending_workspace_not_clean_baseline")
     return {"claim_raw_base64": base64.b64encode(_bytes(claim)).decode(), "claim": claim,
-            "implementation_lease_proof": lease_proof, "task_status": native.normalize_status(task.status)}
+            "implementation_lease_proof": lease_proof, "maintenance_owner_proof": maintenance_owner,
+            "task_status": native.normalize_status(task.status)}
 
 
 def review(daemon, *, task_id: str) -> dict:
@@ -360,6 +386,7 @@ def reconcile(daemon, *, request: Mapping) -> dict:
             body = {"schema": SCHEMA, "request": request, "operation_id": operation,
                     "claim_raw_base64": base64.b64encode(_read(claim_path)).decode() if claim_path.exists() else prior["claim_raw_base64"],
                     "implementation_lease_proof": checked["implementation_lease_proof"],
+                    "maintenance_owner_proof": checked["maintenance_owner_proof"],
                     "provider_outcome": "unknown", "task_status": checked["task_status"], **_FALSE}
             def publish(phase):
                 value = {**body, "phase": phase}
