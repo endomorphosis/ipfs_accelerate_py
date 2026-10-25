@@ -10795,6 +10795,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         from .current_incident_adjudication import review
         return review(self, task_id=task_id, incident_cid=incident_cid)
 
+    def review_quiesced_pending_task_claim(self, *, task_id: str) -> dict[str, Any]:
+        """Prove an unchanged stopped ordinary attempt without changing custody."""
+        from .pending_task_claim_recovery import review
+        return review(self, task_id=task_id)
+
+    def reconcile_quiesced_pending_task_claim(self, *, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Release the exact reviewed dead pending claim, without task authority.
+
+        The caller retains its application launcher/checkout/queue guards;
+        Native rechecks the complete proof under dispatch and claim CAS guards.
+        """
+        from .pending_task_claim_recovery import reconcile
+        return reconcile(self, request=request)
+
     def adjudicate_quiesced_ordinary_incident(self, *, request: Mapping[str, Any]) -> dict[str, Any]:
         """Explicit administrative abandonment, requiring caller launcher guards.
 
