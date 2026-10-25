@@ -40,7 +40,7 @@ def rotation(rig,monkeypatch):
     assert owner.poll() is None and (config.repo_root/'fixture-ready').exists()
     marker=config.manifest_path.parent/'watchdog.pid';marker.write_text(str(owner.pid))
     live[200]=False
-    f.status(lane,state='stopped',phase='lane_resume_exited',active_task_id='',terminal_reason='resume_duration_elapsed',heartbeat_at_ms=now*1000)
+    f.status(lane,state='stopped',phase='lane_resume_exited',active_task_id='',terminal_reason='resume_duration_elapsed',heartbeat_at_ms=int(now*1000))
     report=config.repo_root/'runtime/report.json'
     def fresh(offset=0,**changes):
         value={'status':{'pid':owner.pid,'state':'healthy'},'reports':[]};value.update(changes)
@@ -72,7 +72,7 @@ def test_deadline_is_anchored_across_report_heartbeat_churn_and_dispatcher_resta
     config,now,lane,live,probe,owner,fresh,spawn=rotation
     state={};first=d.observe(config,state,now=now,probe=probe)['native_rotation_grace'][0]
     state=json.loads(json.dumps(state));fresh(179)
-    f.status(lane,heartbeat_at_ms=(now+170)*1000)
+    f.status(lane,heartbeat_at_ms=int((now+170)*1000))
     result=d.observe(config,state,now=now+179,probe=probe)
     assert result['native_rotation_grace'][0]['deadline']==first['deadline']
     fresh(181)
@@ -96,7 +96,7 @@ def test_successive_expired_pid_has_its_own_bounded_rotation(rotation):
     config,now,lane,live,probe,owner,fresh,spawn=rotation
     state={};d.observe(config,state,now=now,probe=probe);fresh(120)
     (lane/'vog_bundle_supervisor.pid').write_text('201')
-    f.status(lane,pid=201,heartbeat_at_ms=(now+120)*1000)
+    f.status(lane,pid=201,heartbeat_at_ms=int((now+120)*1000))
     result=d.observe(config,state,now=now+120,probe=probe)
     assert result['native_rotation_grace'][0]['expired_pid']==201
     assert result['native_rotation_grace'][0]['deadline']==pytest.approx(now+300,abs=.001)
@@ -105,7 +105,7 @@ def test_successive_expired_pid_has_its_own_bounded_rotation(rotation):
 def test_real_native_recovery_clears_rotation_observation(rotation):
     config,now,lane,live,probe,owner,fresh,spawn=rotation
     state={};d.observe(config,state,now=now,probe=probe);fresh(36)
-    live[200]=True;f.status(lane,state='healthy',phase='deterministic_command',terminal_reason='',active_task_id='VOG-001',heartbeat_at_ms=(now+36)*1000)
+    live[200]=True;f.status(lane,state='healthy',phase='deterministic_command',terminal_reason='',active_task_id='VOG-001',heartbeat_at_ms=int((now+36)*1000))
     result=d.observe(config,state,now=now+36,probe=probe)
     assert not result.get('native_rotation_grace', []) and not state.get('lease_rotation_observations', {})
     assert 'lane_dead_pending' not in f.kinds(result)
@@ -314,6 +314,7 @@ def test_observation_error_preserves_prior_full_observation_timestamp(rig,monkey
 
 def test_actual_main_sigkill_preserves_owned_worker_for_deadline_bound_adoption(rig,notify_socket):
     config,now,lane,live,probe=rig;receiver,path=notify_socket
+    config.repair_lock_path=config.repo_root/'repair-presence.json'
     source=Path(d.__file__).resolve()
     script='''
 import importlib.util,json,os,sys
@@ -332,7 +333,7 @@ tick=d.tick;d.tick=lambda cfg,state,**kw:tick(cfg,state,probe=probe,**kw)
 os.environ['WATCHDOG_PID']=str(os.getpid())
 raise SystemExit(d.main(['--manifest-path',str(manifest),'--repo-root',str(root),'--state-dir',sys.argv[4],
  '--apply','--prompt-path',sys.argv[5],'--worker-argv-json',json.dumps([sys.executable,'-c','import time;time.sleep(20)']),
- '--worker-timeout','10','--interval','.02']))
+ '--worker-timeout','10','--interval','.02','--repair-lock-path',str(root/'repair-presence.json')]))
 '''
     environment={**os.environ,'PYTHONPATH':str(source_root),'PYTHONDONTWRITEBYTECODE':'1'}
     child=subprocess.Popen([sys.executable,'-c',script,str(source),str(config.repo_root),str(config.manifest_path),
@@ -343,14 +344,164 @@ raise SystemExit(d.main(['--manifest-path',str(manifest),'--repo-root',str(root)
         receiver.settimeout(3);assert receiver.recv(1024)==b'WATCHDOG=1'
         durable=json.loads((config.state_dir/'state.json').read_text());active=durable['active_worker']
         assert active['owned_session'] and d.probe_process(active['pid'])['alive']
+        marker=json.loads(config.repair_lock_path.read_text())
+        assert marker['pid']==active['pid'] and marker['start_ticks']==active['start_ticks']
+        assert marker['token']==active['repair_marker']['token'] and marker['schema']==d.SCHEMA
+        with pytest.raises(d.AlreadyRunning):
+            with d.repair_lock(config.repair_lock_path):pytest.fail('second repair while original parent lives')
         child.kill();child.wait(timeout=3)
         assert d.probe_process(active['pid'])['alive']
+        with pytest.raises(d.AlreadyRunning):
+            with d.repair_lock(config.repair_lock_path):pytest.fail('second repair before adoption')
         def actual(pid):return d.probe_process(pid) if pid==active['pid'] else probe(pid)
         result=d.tick(config,durable,apply=True,now=time.time(),probe=actual,
                       worker=lambda *_:pytest.fail('duplicate replacement worker'))
         assert result['action']=='worker_already_running' and durable['active_worker']==active
         assert sum(record['count'] for record in durable['attempts'].values())==1
         assert 'recovery_observed_at' not in durable and result['control_heartbeat_at']
+        with pytest.raises(d.AlreadyRunning):
+            with d.repair_lock(config.repair_lock_path):pytest.fail('second repair after adoption')
+        assert json.loads(config.repair_lock_path.read_text())==marker
+        assert d.stop_adopted_worker(active)
+        config.state_dir.joinpath('hold').write_text('fixture operator hold prevents unrelated recovery')
+        result=d.tick(config,durable,apply=True,now=time.time(),probe=actual,
+                      worker=lambda *_:pytest.fail('new repair after adopted exit'))
+        assert result['action']=='held' and not config.repair_lock_path.exists()
+        assert sum(record['count'] for record in durable['attempts'].values())==1
     finally:
         if child.poll() is None:child.kill();child.wait(timeout=3)
         if active:d.stop_adopted_worker(active)
+
+
+@pytest.fixture
+def presence_worker():
+    process=subprocess.Popen([sys.executable,'-c','import time;time.sleep(20)'],start_new_session=True)
+    try:yield process
+    finally:
+        if process.poll() is None:process.terminate()
+        process.wait(timeout=3)
+
+
+def test_repair_context_transfers_same_token_to_actual_worker_and_releases_new_inode(rig,presence_worker):
+    config,now,lane,live,probe=rig;path=config.repo_root/'presence.json'
+    with d.repair_lock(path) as lease:
+        original=json.loads(path.read_text());old_inode=path.stat().st_ino
+        saved=d._transfer_repair_marker(lease,d.probe_process(presence_worker.pid))
+        actual=json.loads(path.read_text())
+        assert actual['pid']==presence_worker.pid and actual['start_ticks']==d.probe_process(presence_worker.pid)['start_ticks']
+        assert actual['token']==original['token'] and actual['schema']==original['schema']
+        assert path.stat().st_ino!=old_inode and lease['inode']==saved['inode']==path.stat().st_ino
+        with pytest.raises(d.AlreadyRunning):
+            with d.repair_lock(path):pytest.fail('overlapping repair')
+        presence_worker.terminate();presence_worker.wait(timeout=3)
+    assert not path.exists()
+
+
+def test_handoff_refuses_nonchild_or_non_session_owner_without_mutating_marker(rig):
+    config,now,lane,live,probe=rig;path=config.repo_root/'presence.json'
+    with d.repair_lock(path) as lease:
+        original=path.read_bytes()
+        with pytest.raises(d.AlreadyRunning):d._transfer_repair_marker(lease,d.probe_process(os.getpid()))
+        assert path.read_bytes()==original
+    assert not path.exists()
+
+
+def test_handoff_rechecks_owned_marker_after_temporary_fsync(rig,presence_worker,monkeypatch):
+    config,now,lane,live,probe=rig;path=config.repo_root/'presence.json'
+    foreign=None;real_fsync=os.fsync
+    with d.repair_lock(path) as lease:
+        def swapped(fd):
+            nonlocal foreign
+            real_fsync(fd)
+            if foreign is None and os.readlink('/proc/self/fd/'+str(fd)).endswith('.transfer'):
+                value=json.loads(path.read_text());value['token']='foreign-writer'
+                other=path.with_suffix('.foreign');other.write_text(json.dumps(value));os.replace(other,path)
+                foreign=path.read_bytes()
+        monkeypatch.setattr(d.os,'fsync',swapped)
+        with pytest.raises(d.AlreadyRunning):d._transfer_repair_marker(lease,d.probe_process(presence_worker.pid))
+        assert path.read_bytes()==foreign
+    assert path.read_bytes()==foreign
+
+
+def test_context_release_never_removes_replaced_pid_start_metadata(rig,presence_worker):
+    config,now,lane,live,probe=rig;path=config.repo_root/'presence.json'
+    with d.repair_lock(path) as lease:
+        d._transfer_repair_marker(lease,d.probe_process(presence_worker.pid))
+        value=json.loads(path.read_text());value['start_ticks']+=1
+        path.write_text(json.dumps(value));foreign=path.read_bytes()
+    assert path.read_bytes()==foreign and presence_worker.poll() is None
+
+
+def test_adopted_worker_foreign_marker_is_attention_without_duplicate_or_budget_refund(rig,presence_worker):
+    config,now,lane,live,probe=rig;config.repair_lock_path=config.repo_root/'presence.json'
+    identity=d.probe_process(presence_worker.pid)
+    with d.repair_lock(config.repair_lock_path) as lease:
+        marker=d._transfer_repair_marker(lease,identity)
+        active={**identity,'repair_marker':marker,'owned_session':True,'started_at':now,'deadline':now+60}
+        state={'active_worker':active,'attempts':{'spent':{'count':2}},'unresolved_signature':'spent','next_dispatch_at':now+30}
+        value=json.loads(config.repair_lock_path.read_text());value['token']='foreign-marker'
+        config.repair_lock_path.write_text(json.dumps(value));foreign=config.repair_lock_path.read_bytes()
+        def actual(pid):return d.probe_process(pid) if pid==presence_worker.pid else probe(pid)
+        result=d.tick(config,state,apply=True,now=now,probe=actual,
+                      worker=lambda *_:pytest.fail('duplicate worker'))
+        assert result['action']=='attention_required' and result['reason']=='adopted_worker_presence_mismatch'
+        assert state['active_worker']==active and state['attempts']['spent']['count']==2
+        assert state['next_dispatch_at']==now+30 and 'recovery_observed_at' not in state
+    assert config.repair_lock_path.read_bytes()==foreign
+
+
+def test_dead_adopted_worker_does_not_release_foreign_reused_pid_marker(rig,presence_worker):
+    config,now,lane,live,probe=rig;config.repair_lock_path=config.repo_root/'presence.json'
+    identity=d.probe_process(presence_worker.pid)
+    with d.repair_lock(config.repair_lock_path) as lease:
+        marker=d._transfer_repair_marker(lease,identity)
+        active={**identity,'repair_marker':marker,'owned_session':True,'started_at':now,'deadline':now+60}
+        state={'active_worker':active,'attempts':{'spent':{'count':2}},'unresolved_signature':'spent','next_dispatch_at':now+30}
+        foreign_value=json.loads(config.repair_lock_path.read_text())
+        foreign_value.update(pid=os.getpid(),start_ticks=d.probe_process(os.getpid())['start_ticks'],token='foreign-live-process')
+        config.repair_lock_path.write_text(json.dumps(foreign_value));foreign=config.repair_lock_path.read_bytes()
+        presence_worker.terminate();presence_worker.wait(timeout=3)
+        config.state_dir.mkdir(parents=True);(config.state_dir/'hold').write_text('fixture hold')
+        def actual(pid):return d.probe_process(pid) if pid==presence_worker.pid else probe(pid)
+        result=d.tick(config,state,apply=True,now=now,probe=actual)
+        assert result['action']=='held' and config.repair_lock_path.read_bytes()==foreign
+        assert state['attempts']['spent']['count']==2 and not state.get('active_worker')
+    assert config.repair_lock_path.read_bytes()==foreign
+
+
+def test_postspawn_metadata_failure_releases_transferred_marker_only_after_owned_cleanup(rig,monkeypatch):
+    import errno
+    config,now,lane,live,probe=rig;live[200]=False
+    config.repair_lock_path=config.repo_root/'presence.json'
+    config.worker_argv=[sys.executable,'-c','import time;time.sleep(20)']
+    original=d._atomic_json;started=[]
+    def failed(path,value):
+        if path==config.state_dir/'state.json' and value.get('active_worker'):
+            active=value['active_worker'];started.append(dict(active))
+            assert json.loads(config.repair_lock_path.read_text())['pid']==active['pid']
+            raise OSError(errno.ENOSPC,'fixture durable metadata capacity failure')
+        return original(path,value)
+    monkeypatch.setattr(d,'_atomic_json',failed)
+    state={};result=d.tick(config,state,apply=True,now=now,probe=probe)
+    assert started and result['action']=='storage_blocked'
+    assert not d.probe_process(started[0]['pid'])['alive'] and not config.repair_lock_path.exists()
+    assert sum(record['count'] for record in state['attempts'].values())==1
+
+
+def test_foreign_presence_never_disables_original_owned_worker_deadline(rig,presence_worker):
+    config,now,lane,live,probe=rig;config.repair_lock_path=config.repo_root/'presence.json'
+    identity=d.probe_process(presence_worker.pid)
+    with d.repair_lock(config.repair_lock_path) as lease:
+        marker=d._transfer_repair_marker(lease,identity)
+        active={**identity,'repair_marker':marker,'owned_session':True,'started_at':now-80,'deadline':now-1}
+        state={'active_worker':active,'attempts':{'spent':{'count':2}},'unresolved_signature':'spent'}
+        value=json.loads(config.repair_lock_path.read_text());value['token']='foreign-marker'
+        config.repair_lock_path.write_text(json.dumps(value));foreign=config.repair_lock_path.read_bytes()
+        def actual(pid):return d.probe_process(pid) if pid==presence_worker.pid else probe(pid)
+        result=d.tick(config,state,apply=True,now=now,probe=actual,
+                      worker=lambda *_:pytest.fail('new maintenance on original worker timeout'))
+        assert result['action']=='adopted_worker_timed_out'
+        assert not d.probe_process(presence_worker.pid)['alive'] and not state.get('active_worker')
+        assert state['attempts']['spent']['count']==2 and 'recovery_observed_at' not in state
+        assert config.repair_lock_path.read_bytes()==foreign
+    assert config.repair_lock_path.read_bytes()==foreign

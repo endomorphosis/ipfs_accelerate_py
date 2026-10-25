@@ -21,6 +21,7 @@ from pathlib import Path
 import re
 import signal
 import socket
+import stat
 import subprocess
 import time
 from typing import Any, Callable, Iterator
@@ -742,19 +743,106 @@ def _remove_owned_marker(path: Path, inode: int, token: str) -> None:
         pass
 
 
+def _repair_marker_matches(lease: dict[str, Any]) -> bool:
+    try:
+        path = Path(lease["path"])
+        info = path.lstat()
+        value = _json(path)
+        return (stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+                and (info.st_dev, info.st_ino) == (lease["device"], lease["inode"])
+                and value.get("schema") == SCHEMA and value.get("token") == lease["token"]
+                and value.get("pid") == lease["pid"]
+                and value.get("start_ticks") == lease["start_ticks"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _release_repair_marker(lease: dict[str, Any] | None) -> bool:
+    if lease is None or not _repair_marker_matches(lease):
+        return False
+    try:
+        path = Path(lease["path"])
+        current = path.lstat()
+        if (current.st_dev, current.st_ino) != (lease["device"], lease["inode"]):
+            return False
+        path.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _transfer_repair_marker(lease: dict[str, Any] | None,
+                            identity: dict[str, Any]) -> dict[str, Any] | None:
+    if lease is None or not identity.get("alive"):
+        return None
+    pid = identity.get("pid")
+    actual = probe_process(int(pid or 0))
+    try:
+        directory = Path("/proc") / str(pid)
+        parent = int((directory / "stat").read_text().rsplit(")", 1)[1].split()[1])
+        owned = (directory.stat().st_uid == os.getuid() and parent == os.getpid()
+                 and actual.get("alive") and actual.get("start_ticks") == identity.get("start_ticks")
+                 and actual.get("pgid") == pid and actual.get("session_id") == pid)
+    except (OSError, ValueError, IndexError):
+        owned = False
+    if not owned or not _repair_marker_matches(lease):
+        raise AlreadyRunning("repair presence ownership changed before worker handoff")
+    path = Path(lease["path"])
+    value = _json(path)
+    value.update(pid=pid, start_ticks=actual["start_ticks"], owner_kind="repair_worker")
+    temporary = path.with_name(f".{path.name}.{lease['token']}.{uuid.uuid4().hex}.transfer")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, "w") as handle:
+            json.dump(value, handle, sort_keys=True, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+            replacement = os.fstat(handle.fileno())
+        if not _repair_marker_matches(lease):
+            raise AlreadyRunning("repair presence changed during worker handoff")
+        os.replace(temporary, path)
+        lease.update(device=replacement.st_dev, inode=replacement.st_ino,
+                     pid=pid, start_ticks=actual["start_ticks"])
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        return dict(lease)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _saved_repair_marker(config: Config, active: dict[str, Any]) -> dict[str, Any] | None:
+    marker = active.get("repair_marker")
+    if not isinstance(marker, dict) or config.repair_lock_path is None:
+        return None
+    if (marker.get("path") != str(config.repair_lock_path.absolute())
+            or marker.get("pid") != active.get("pid")
+            or marker.get("start_ticks") != active.get("start_ticks")):
+        return None
+    return marker
+
+
 @contextlib.contextmanager
-def repair_lock(path: Path | None) -> Iterator[None]:
+def repair_lock(path: Path | None) -> Iterator[dict[str, Any] | None]:
     """Share a presence marker with older repair agents without taking theirs."""
     if path is None:
         yield
         return
+    path = path.absolute()
     path.parent.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
     temporary = path.with_name(f".{path.name}.{token}.tmp")
+    start_ticks = probe_process(os.getpid()).get("start_ticks")
     _atomic_json(temporary, {"schema": SCHEMA, "pid": os.getpid(),
-                            "start_ticks": probe_process(os.getpid()).get("start_ticks"),
+                            "start_ticks": start_ticks,
                             "token": token, "created_at": time.time(), **FLAGS})
-    inode = temporary.stat().st_ino
+    information = temporary.stat()
+    inode = information.st_ino
+    lease = {"path": str(path), "device": information.st_dev, "inode": inode,
+             "token": token, "pid": os.getpid(), "start_ticks": start_ticks}
     try:
         try:
             os.link(temporary, path)
@@ -774,10 +862,10 @@ def repair_lock(path: Path | None) -> Iterator[None]:
             except (OSError, ValueError, TypeError) as error:
                 raise AlreadyRunning(str(path)) from error
         temporary.unlink()
-        yield
+        yield lease
     finally:
         temporary.unlink(missing_ok=True)
-        _remove_owned_marker(path, inode, token)
+        _release_repair_marker(lease)
 
 
 def _stop_owned_worker(process: subprocess.Popen[Any]) -> None:
@@ -979,6 +1067,8 @@ def tick(
     if active:
         live = probe(int(active.get("pid") or 0))
         if live["alive"] and live.get("start_ticks") == active.get("start_ticks"):
+            marker = _saved_repair_marker(config, active)
+            marker_mismatch = "repair_marker" in active and (marker is None or not _repair_marker_matches(marker))
             deadline = active.get("deadline")
             if deadline is None:
                 telemetry["action"] = "attention_required"
@@ -992,13 +1082,17 @@ def tick(
                     stopped = stop_adopted_worker(active)
                     telemetry["action"] = "adopted_worker_timed_out" if stopped else "attention_required"
                     if stopped:
+                        _release_repair_marker(_saved_repair_marker(config, active))
                         state.pop("active_worker", None)
                         state["last_worker"] = {"outcome": "timed_out", "finished_at": now, **FLAGS}
                         state["next_dispatch_at"] = now + config.cooldown_seconds
+            elif marker_mismatch:
+                telemetry.update(action="attention_required", reason="adopted_worker_presence_mismatch")
             else:
                 telemetry["action"] = "worker_already_running"
             _save(config, state, telemetry)
             return telemetry
+        _release_repair_marker(_saved_repair_marker(config, active))
         state.pop("active_worker", None)
         state["last_worker"] = {"outcome": "interrupted", "finished_at": now, **FLAGS}
     if state.get("spawn_intent"):
@@ -1056,7 +1150,7 @@ def tick(
             before_dispatch = copy.deepcopy(state)
             worker_started = False
             try:
-                with repair_lock(config.repair_lock_path):
+                with repair_lock(config.repair_lock_path) as presence:
                     record["count"] += 1
                     delay = min(config.max_cooldown_seconds, config.cooldown_seconds * 2 ** min(record["count"] - 1, 30))
                     record["next_dispatch_at"] = now + delay
@@ -1072,8 +1166,14 @@ def tick(
                         return telemetry
 
                     def started(identity: dict[str, Any]) -> None:
+                        # Handoff before state commit: if the dispatcher dies
+                        # here, live worker presence still excludes contenders
+                        # and the persisted spawn_intent refuses another launch.
+                        marker = _transfer_repair_marker(presence, identity)
                         state["active_worker"] = {**_public_process(identity), "owned_session": True,
                                                   "started_at": now, "deadline": now + config.worker_timeout}
+                        if marker is not None:
+                            state["active_worker"]["repair_marker"] = marker
                         state.pop("spawn_intent", None)
                         try:
                             _atomic_json(config.state_dir / "state.json", state)
