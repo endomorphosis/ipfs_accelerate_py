@@ -14961,6 +14961,17 @@ class PortalImplementationSupervisor:
                 skipped.append({**candidate, "reason": "reconciliation_limit_reached"})
                 continue
 
+            # A retained failed attempt can conflict after a later attempt of
+            # the exact same current task genuinely completed. Prove that
+            # history before preflight; do not merge, retire or cache a skip.
+            from .startup_terminal_candidate import completed_retained_candidate
+            terminal_proof = completed_retained_candidate(self, candidate)
+            if terminal_proof is not None:
+                skipped.append({**candidate,
+                    "reason": "reconciliation_candidate_completed_by_integrated_later_attempt",
+                    "terminal_completion_proof": terminal_proof})
+                continue
+
             preflight_result: dict[str, Any] = {}
             preflight_resolver_escalated = False
             if self.config.worktree_reconciliation_preflight_enabled:
