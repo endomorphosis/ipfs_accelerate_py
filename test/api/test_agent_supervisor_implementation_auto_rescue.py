@@ -1132,3 +1132,75 @@ def test_scoped_test_secret_remediation_rejects_deleted_security_assertion(
     assert binding["test_semantics_reason"] == (
         "replacement_inventory_unavailable"
     )
+
+
+def _scoped_secret_with_informational_diagnostic():
+    result = _scoped_test_secret_failure_result()
+    result["failure_review"]["reason_codes"].insert(0, "diagnostic_path_evidence_incomplete")
+    return result
+
+
+def test_informational_diagnostic_keeps_fully_bound_scoped_secret_repair_bounded():
+    result = _scoped_secret_with_informational_diagnostic()
+    plan = plan_automatic_implementation_rescue(validation_result=result,
+        expected_outputs=("tests/unit/test_redaction.py",), allow_provider_rescue=True,
+        provider_rescue_passes_used=0, accepted_effect_count=0, merge_effect_count=0)
+    assert plan.action is AutoRescueAction.REMEDIATE_SCOPED_TEST_SECRET
+    assert plan.max_provider_rescue_passes == 1
+    assert plan.prior_proposal_id == result["proposal_gate"]["proposal_id"]
+    assert plan.prior_receipt_id == result["proposal_gate"]["receipt_id"]
+    assert plan.prior_test_semantic_inventory == result["secret_change_scope_examination"]["test_semantic_inventory"]
+    assert result["proposal_gate"]["accepted"] is False
+
+
+@pytest.mark.parametrize("damage", ["missing_examination", "incomplete_paths", "out_of_scope",
+    "private_key", "noncredential_change", "missing_inventory", "proposal_mismatch",
+    "accepted_unknown", "merge_unknown", "accepted_effect", "merge_effect", "already_repaired",
+    "additional_security_reason", "unknown_diagnostic_reason"])
+def test_informational_diagnostic_never_replaces_scoped_repair_proofs(damage):
+    result = _scoped_secret_with_informational_diagnostic()
+    examination = result["secret_change_scope_examination"]
+    arguments = {"provider_rescue_passes_used": 0, "accepted_effect_count": 0, "merge_effect_count": 0}
+    if damage == "missing_examination":
+        result.pop("secret_change_scope_examination")
+    elif damage == "incomplete_paths":
+        examination["candidate_diff_path_coverage_complete"] = False
+    elif damage == "out_of_scope":
+        examination["out_of_scope_paths"] = ["other/test_redaction.py"]
+    elif damage == "private_key":
+        examination["private_key_material_detected"] = True
+        examination["private_key_material_absence_verified"] = False
+    elif damage == "noncredential_change":
+        examination["credential_assignment_only"] = False
+    elif damage == "missing_inventory":
+        examination.pop("test_semantic_inventory")
+    elif damage == "proposal_mismatch":
+        result["proposal_gate"]["proposal_id"] = "proposal:different"
+    elif damage == "accepted_unknown":
+        arguments["accepted_effect_count"] = None
+    elif damage == "merge_unknown":
+        arguments["merge_effect_count"] = None
+    elif damage == "accepted_effect":
+        arguments["accepted_effect_count"] = 1
+    elif damage == "merge_effect":
+        arguments["merge_effect_count"] = 1
+    elif damage == "already_repaired":
+        arguments["provider_rescue_passes_used"] = 1
+    else:
+        result["failure_review"]["reason_codes"].append(
+            "scope_expansion_denied" if damage == "additional_security_reason" else "unknown_diagnostic_reason")
+    plan = plan_automatic_implementation_rescue(validation_result=result,
+        expected_outputs=("tests/unit/test_redaction.py",), allow_provider_rescue=True, **arguments)
+    assert plan.action is AutoRescueAction.NONE
+
+
+def test_informational_diagnostic_uses_existing_one_pass_and_fresh_validation(tmp_path, monkeypatch):
+    original = _scoped_test_secret_failure_result
+
+    def with_informational_diagnostic():
+        result = original()
+        result["failure_review"]["reason_codes"].insert(0, "diagnostic_path_evidence_incomplete")
+        return result
+
+    monkeypatch.setitem(globals(), "_scoped_test_secret_failure_result", with_informational_diagnostic)
+    test_scoped_test_secret_remediation_runs_once_then_fully_revalidates(tmp_path, monkeypatch)
