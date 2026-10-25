@@ -695,14 +695,38 @@ def _candidate_commit(daemon, request: dict, preserved: dict) -> None:
 
 def _preserved_history(daemon, request, operation, path):
     base = request["base"]
+    native = _ordinary(daemon)
+    _need(path == _candidate_receipt_path(daemon, base["task_id"]), "candidate_receipt_scope_changed")
+    prior = _candidate_prior(path, request)
+    _need(prior is not None and prior["operation_id"] == operation == "sha256:" + _sha(_bytes(request)),
+          "candidate_prepared_operation_required")
+    identities = {"canonical_task_cid": base["task_cid"], "canonical_task_key": base["task_key"],
+                  "board_namespace": base["board_namespace"]}
+    task = [task for task in daemon._load_tasks() if task.task_id == base["task_id"]]
+    _need(len(task) == 1 and native.normalize_status(task[0].status) in {"todo", "in_progress", "ready"}
+          and _state_hash(daemon) == base["state_sha256"], "candidate_current_task_required")
+    identity = daemon._identity_for_task(task[0])
+    _need(identity.canonical_task_cid == base["task_cid"] and identity.canonical_task_key == base["task_key"]
+          and identity.board_namespace == base["board_namespace"], "candidate_current_identity_changed")
+    evidence = {"operation_id": operation, "candidate_manifest_sha256": _sha(_bytes(request["candidate"])),
+                **identities, **_FALSE}
     rows = _event_rows(_read(daemon.events_path))
     matches = [row for row in rows if row.get("type") == "implementation_pending_candidate_preserved"
-        and row.get("pending_candidate_recovery", {}).get("operation_id") == operation
-        and row.get("task_id") == base["task_id"] and row.get("attempt") == base["attempt"]
-        and row.get("canonical_task_cid") == base["task_cid"]]
+        and row.get("pending_candidate_recovery") == evidence
+        and all(row["pending_candidate_recovery"].get(key) is False for key in _FALSE)
+        and row.get("task_id") == base["task_id"] and type(row.get("attempt")) is int
+        and row["attempt"] == base["attempt"]
+        and (not any(key in row for key in identities) or all(row.get(key) == value for key, value in identities.items()))]
     if not matches: return None
+    _need(len(matches) == 1, "candidate_checkpoint_ambiguous")
     row = matches[-1]
     start = next(row for row in rows if row["event_id"] == base["start_event_id"])
+    decisions = [row for row in rows if row.get("type") in {"implementation_proposal_validated",
+        "implementation_proposal_receipt_reused", "implementation_proposal_rejected"}
+        and row.get("task_id") == base["task_id"] and row.get("canonical_task_cid") == base["task_cid"]
+        and row.get("sequence", 0) > start["sequence"]]
+    _need(decisions and decisions[-1]["event_id"] == request["candidate"]["accepted_event_id"],
+          "candidate_proposal_superseded")
     expected_ref = daemon._interrupted_worktree_rescue_branch_name(start["branch"],
         "pending-candidate-" + operation.removeprefix("sha256:")[:20])
     _need(row.get("branch") == start["branch"] and row.get("worktree_path") == base["workspace"]
@@ -788,7 +812,9 @@ def reconcile_candidate(daemon, *, request: Mapping) -> dict:
                     # or source reset is synthesized by this recovery API.
                     preserved = daemon._preserve_interrupted_worktree(Path(base["workspace"]),
                         prior["terminal_lifecycle"]["branch"], task, base["attempt"],
-                        evidence={"operation_id": operation, "candidate_manifest_sha256": _sha(_bytes(request["candidate"])), **_FALSE},
+                        evidence={"operation_id": operation, "candidate_manifest_sha256": _sha(_bytes(request["candidate"])),
+                            "canonical_task_cid": base["task_cid"], "canonical_task_key": base["task_key"],
+                            "board_namespace": base["board_namespace"], **_FALSE},
                         rescue_suffix="pending-candidate-" + operation.removeprefix("sha256:")[:20],
                         event_type="implementation_pending_candidate_preserved", evidence_field="pending_candidate_recovery",
                         baseline_ref=base["baseline_ref"], retain_on_failure=True)

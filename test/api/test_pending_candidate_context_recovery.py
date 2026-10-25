@@ -6,10 +6,12 @@ fixture flag, proving the missing cache enrichment without any event patch.
 """
 from dataclasses import asdict
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -22,7 +24,30 @@ pytestmark = pytest.mark.parametrize("pending", ["candidate"], indirect=True)
 
 
 @pytest.fixture
-def checkpoint(pending, monkeypatch):
+def historical_helper(tmp_path, monkeypatch):
+    """This historical bridge always exercises its actual frozen70 dependency."""
+    if hashlib.sha256(Path(legacy.__file__).read_bytes()).hexdigest() == bridge.LEGACY_SHA256:
+        return legacy
+    source = Path(legacy.__file__).resolve().parents[3]
+    root = tmp_path / "frozen-sdk70"
+    subprocess.run(["git", "clone", "--shared", "--no-checkout", str(source), str(root)], check=True, capture_output=True)
+    subprocess.run(["git", "sparse-checkout", "init", "--no-cone"], cwd=root, check=True)
+    relative = "ipfs_accelerate_py/agent_supervisor/todo_daemon/pending_task_claim_recovery.py"
+    subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "/" + relative], cwd=root, check=True)
+    subprocess.run(["git", "checkout", "--detach", bridge.LEGACY_COMMIT], cwd=root, check=True, capture_output=True)
+    name = legacy.__name__; parent = sys.modules[legacy.__package__]
+    spec = importlib.util.spec_from_file_location(name, root / relative)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(parent, "pending_task_claim_recovery", module)
+    monkeypatch.setattr(bridge, "legacy", module)
+    monkeypatch.setattr(sys.modules[__name__], "legacy", module)
+    return module
+
+
+@pytest.fixture
+def checkpoint(pending, monkeypatch, historical_helper):
     daemon, task, workspace, claim = pending
     daemon._task_identity_by_display_id.clear()
     request = legacy.review_recovery(daemon, task_id=task.task_id)
