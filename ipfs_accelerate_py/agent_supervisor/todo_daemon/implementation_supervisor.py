@@ -171,6 +171,7 @@ from .implementation_daemon import (
     write_text_atomic,
 )
 from .supervisor import (
+    active_validation_subprocess_exists,
     active_codex_exec_workers,
     descendant_processes,
     worktree_phase_worker_status,
@@ -21158,27 +21159,7 @@ class PortalImplementationSupervisor:
         daemon_pid = self._read_managed_daemon_pid()
         if not daemon_pid:
             return False
-        markers = (
-            "playwright",
-            "run_playwright_test.mjs",
-            "pytest",
-            "vitest",
-            "npm run test",
-            "npm run evidence",
-            "release-readiness-gate",
-            "audit-release-evidence-freshness",
-            "build-virtual-desktop-release-evidence",
-            "tsc --noemit",
-            "run_legal_ir_10m_smoke.sh",
-            "run_legal_ir_8h_canary.sh",
-            "run_hammer_leanstral_smoke.sh",
-            "run_hammer_leanstral_hparam.sh",
-            "uscode_modal_daemon_runner",
-        )
-        return any(
-            any(marker in " ".join(item.get("cmdline") or ()).lower() for marker in markers)
-            for item in descendant_processes(daemon_pid)
-        )
+        return active_validation_subprocess_exists(daemon_pid)
 
     def is_stuck(
         self,
