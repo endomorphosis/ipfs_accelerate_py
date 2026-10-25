@@ -31046,7 +31046,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "commit_result": commit_result,
                 "implementation_commit": candidate_commit,
                 "merge_result": merge_result,
-                "validation_result": validation_result,
+                "validation_result": (
+                    self._detach_in_process_proposal_validation(
+                        validation_result
+                    )
+                ),
                 "protected_path_violation": protected_path_violation,
                 "recovery_key": recovery_key,
             }
