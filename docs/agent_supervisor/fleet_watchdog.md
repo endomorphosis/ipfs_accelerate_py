@@ -27,6 +27,84 @@ grace period, while transient kernel waits can clear before repair. Holds and
 native recovery admission still apply, and providers in other lanes remain
 visible. These diagnostics do not authorize signalling or callback replay.
 
+
+## LegalIR service fleet
+
+The existing LegalIR deployment retains four implementation services:
+`legal-ir-autoencoder-v1.service` and `legal-ir-autoencoder-v1-lane-{1,2,3}.service`.
+`legal-ir-autoencoder-v1-monitor.timer` runs the bounded
+`board_service_fleet_monitor.py` oneshot every 60 seconds, with five-second
+accuracy. `config/legal_ir_autoencoder_fleet_monitor.json` names the four
+`legal_ir_autoencoder_lane_{0,1,2,3}_monitor.json` configurations, each bound to
+one exact service, state directory, board namespace and task shard. These are
+host-specific deployment configurations; preserve their existing bindings.
+
+The native monitor separates parent heartbeat, worker liveness and useful task
+progress. Polling and task selection cannot renew the ready-work deadline.
+Fresh active work remains healthy within its absolute deadline; a stale worker,
+expired task deadline, stale parent heartbeat or stalled eligible ready backlog
+can qualify for recovery. A fresh completed board with no runnable work is
+healthy idle, without asserting completion of the wider legal programme.
+Dependency waits and typed retry, quota, resource or native policy fences remain
+visible without a service restart. Review and legal-meaning gates remain closed;
+observations do not supply their missing decisions.
+
+Each lane permits only its configured unit's restart, with a 600-second cooldown
+and at most four charged attempts per hour. The attempt and restart intent are
+durable before the effect; corrupt budget state suppresses recovery. Immediately
+before charging, the monitor refreshes native evidence and checks the same
+systemd `MainPID` and `ExecMainStartTimestampMonotonic` service birth. Changed or
+unverifiable identity, newly active work, recovered idle or a native fence
+suppresses the restart without charging. A replacement generation receives a
+fresh ready-work window. These are sequential observations, not an atomic
+snapshot or a generation-conditioned `systemctl restart`; changes after the
+recheck remain possible.
+
+The monitor writes per-lane health/recovery records and the shared
+`data/legal-ir-autoencoder-v1/fleet-health.json` and `fleet-events.jsonl` beneath
+the existing LegalIR worktree. Repeated structured failures, duplicate active
+tasks and stale merge receipt projections remain diagnostics, without a fleet
+restart or task mutation. The existing `ipfs-taskboard-legal-ir-watchdog.service`
+reads that report through its installed `service_fleet_probe` with exact expected
+lane/unit bindings and a 180-second freshness limit. Persistent incidents enter
+its existing durable `incident.json` and repair queue; the existing
+`ipfs-taskboard-legal-ir-repair.service` dispatches the configured repair worker.
+No additional loop, queue or task-state owner is needed. Native child recovery,
+claim ownership, holds, retry budgets and acceptance gates retain their authority;
+repair success still requires a fresh configured probe.
+
+Inspect the native timer, diagnostic services and retained evidence:
+
+```sh
+systemctl --user status legal-ir-autoencoder-v1-monitor.timer \
+  ipfs-taskboard-legal-ir-watchdog.service ipfs-taskboard-legal-ir-repair.service
+journalctl --user -u legal-ir-autoencoder-v1-monitor.service -n 5 --no-pager
+cat /home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/fleet-health.json
+cat ~/.local/state/ipfs-taskboard-watchdog/legal-ir/status.json
+```
+
+The diagnostic configuration is
+`~/.config/ipfs-taskboard-watchdog/legal-ir/fleet.json`; its `state_dir` contains
+`legal-ir/incident.json` when an incident exists and `repairs/legal-ir/` for
+retained jobs, prompts, reports and logs. For source maintenance, stop only the
+native monitor timer and running oneshot before installing the verified monitor
+source; preserve the four implementation lanes and diagnostic services. Restart
+the same timer afterward. Otherwise a monitor may recover an intentionally
+stopped worker. Enabled user units and user lingering provide persistence across
+logout.
+
+From the supervisor repository, the focused failure-injection suite is:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -o addopts= \
+  -o cache_dir=/tmp/legal-ir-monitor-pytest-cache \
+  test/api/test_board_service_monitor.py test/api/test_board_service_fleet_monitor.py
+```
+
+Qualification on public base `a8f18f6a3fc9a1d3f5efe8307dcff2b25a8cb95f` passed
+all **160 tests**. The cases cover bounded recovery, changed/reused PID births,
+fresh worker/completed-idle/resource-fence suppression and unreadable evidence.
+
 ## Operation
 
 Each board may explicitly configure read-only active-storage checks:
