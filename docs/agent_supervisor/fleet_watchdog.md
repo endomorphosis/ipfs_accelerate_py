@@ -27,6 +27,26 @@ grace period, while transient kernel waits can clear before repair. Holds and
 native recovery admission still apply, and providers in other lanes remain
 visible. These diagnostics do not authorize signalling or callback replay.
 
+## Isolated LegalIR diagnostic profile
+
+`install_fleet_watchdog.py --profile legal-ir` stages a separate instance of these same watchdog/repair owners. It consumes the existing minute LegalIR fleet-monitor report and does not add another lane monitor. The six-board global configuration, units, operator holds and repair history remain unchanged. Use this profile when the global runtime/source bindings require their own separate review.
+
+Prepare a host inventory containing exactly one `service_fleet_report` board with an absolute report path, namespace,180-second freshness limit and explicit lane-to-service bindings. Its ensure command must be empty: the existing LegalIR service monitor retains exact-service recovery. The diagnostic board cannot acquire publication or completion authority.
+
+```sh
+python3 scripts/ops/agent_supervisor/install_fleet_watchdog.py \
+  --profile legal-ir --inventory /path/to/legal-ir-inventory.json \
+  --repair-cwd /accepted/accelerate-development-checkout --dry-run
+```
+
+Review the returned file postimages, then repeat without `--dry-run` to stage them. Profile staging performs no systemctl commands; `--enable` records intent only. Activate explicitly through `systemctl --user daemon-reload` and enable/start only `ipfs-taskboard-legal-ir-watchdog.service` and `ipfs-taskboard-legal-ir-repair.service`. Existing installations require exact idempotence or an explicit reconciliation; they are never silently overwritten.
+
+Configuration lives in `~/.config/ipfs-taskboard-watchdog/legal-ir/`; state and repair evidence live in `~/.local/state/ipfs-taskboard-watchdog/legal-ir/`. The dedicated coding unit is `ipfs-taskboard-legal-ir-repair-job.service`, preventing collision with the global dispatcher. The profile inherits the operator's existing repair model/argv, uses the explicitly selected development checkout, and limits this diagnostic board to three cumulative coding attempts with visible `repair_budget_exhausted` escalation.
+
+The report probe validates regular bounded JSON, freshness, namespace, exact lane/service population, counts and native liveness. Confirmed empty engineering work stays healthy without advancing a progress timestamp or claiming task/goal completion. Newly runnable work starts its own stall interval. A fresh bound dependency wait is a noncoding wait. Stale, malformed or foreign reports cannot prove recovery; a coding exit code alone cannot do so either. A fresh bound report can verify diagnostic runtime recovery only, retaining all semantic/task/goal authority as false.
+
+The completed135-task legacy engineering board and the separate34-goal/64-task LegalIR programme retain distinct scopes. Before corpus-worker cutover, reviewed execution packets and authenticated native task/goal scope must be admitted through the existing owners. This diagnostic profile does not rematerialize that population, rearm attempts, approve legal meanings or declare the US Code formalized.
+
 ## Operation
 
 Each board may explicitly configure read-only active-storage checks:

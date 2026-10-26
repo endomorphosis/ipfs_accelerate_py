@@ -1754,3 +1754,126 @@ def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
         "max_ensure_attempts": 2,
     }
     assert fleet.select_action(state, board, 100) == "supervisor_heal"
+
+
+def _service_fleet_case(now=1000.0, *, ready=0):
+    units = {"lane-0": "legal-ir-autoencoder-v1.service",
+             "lane-1": "legal-ir-autoencoder-v1-lane-1.service"}
+    board = dict(id="legal-ir", stall_seconds=60,
+                 service_fleet_binding=dict(board_namespace="legal-ir-autoencoder-v1",
+                                            max_age_seconds=180, lanes=units))
+    lanes = [dict(lane_id=k, service=v, healthy=True, checked_at_epoch=now,
+                  native_status_at_epoch=now, active=False, ready_count=ready,
+                  selectable_ready_count=ready, global_ready_count=ready,
+                  blocked_count=0, waiting_count=0, task_count=135 + ready,
+                  completed_count=135) for k, v in units.items()]
+    report = dict(schema="service-fleet-diagnostic/v1",
+                  board_namespace="legal-ir-autoencoder-v1", checked_at_epoch=now,
+                  completion_authority=False, lanes=lanes,
+                  work_availability="runnable_work" if ready else "no_runnable_work")
+    observation = dict(board_id="legal-ir", health="healthy", complete=False,
+                       completion_candidate=False, busy=False, reason_codes=[],
+                       progress_token="same-work", details=dict(service_fleet=report,
+                                                               completion_authority=False))
+    return board, observation
+
+
+def test_confirmed_exhausted_service_fleet_is_idle_without_fake_progress():
+    board, observation = _service_fleet_case()
+    previous = dict(last_progress_at=1, progress_token="same-work")
+    state = fleet.assess(observation, previous, board, 1000)
+    assert state["health"] == "healthy"
+    assert state["idle_without_runnable_work"] is True
+    assert state["last_progress_at"] == 1
+    assert state["observation"]["complete"] is False
+    assert state["observation"]["completion_candidate"] is False
+    assert fleet.select_action(state, board, 1000) == ""
+    board, observation = _service_fleet_case(100000)
+    later = fleet.assess(observation, state, board, 100000)
+    assert later["health"] == "healthy"
+    assert later["last_progress_at"] == 1
+
+
+@pytest.mark.parametrize("fault", ["stale", "future", "namespace", "service", "missing_lane",
+                                  "duplicate_lane", "boolean_count", "authority", "candidate",
+                                  "ready_hidden", "unsettled_hidden", "unconfigured"])
+def test_unbound_or_incomplete_service_idle_cannot_suppress_stall(fault):
+    board, observation = _service_fleet_case()
+    report = observation["details"]["service_fleet"]
+    if fault == "stale":
+        report["checked_at_epoch"] = 819
+    elif fault == "future":
+        report["checked_at_epoch"] = 1001
+    elif fault == "namespace":
+        report["board_namespace"] = "another-board"
+    elif fault == "service":
+        report["lanes"][0]["service"] = "other.service"
+    elif fault == "missing_lane":
+        report["lanes"].pop()
+    elif fault == "duplicate_lane":
+        report["lanes"][1] = dict(report["lanes"][0])
+    elif fault == "boolean_count":
+        report["lanes"][0]["ready_count"] = False
+    elif fault == "authority":
+        report["completion_authority"] = True
+    elif fault == "candidate":
+        observation["completion_candidate"] = True
+    elif fault == "ready_hidden":
+        report["lanes"][0]["ready_count"] = 1
+    elif fault == "unsettled_hidden":
+        report["lanes"][0]["completed_count"] = 134
+    elif fault == "unconfigured":
+        board.pop("service_fleet_binding")
+    assert fleet._service_fleet_availability(observation, board, 1000) == ""
+    if fault != "candidate":
+        state = fleet.assess(observation, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+        assert state["health"] == "stalled"
+
+
+def test_service_work_gets_stall_interval_without_counting_idle_as_progress():
+    board, idle = _service_fleet_case(1000)
+    state = fleet.assess(idle, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+    board, work = _service_fleet_case(10000, ready=1)
+    state = fleet.assess(work, state, board, 10000)
+    assert state["health"] == "healthy"
+    assert state["work_available_since"] == 10000
+    assert state["last_progress_at"] == 1
+    # Refreshed monitor observations and heartbeat times cannot renew this interval.
+    board, work = _service_fleet_case(10059, ready=1)
+    state = fleet.assess(work, state, board, 10059)
+    assert state["health"] == "healthy"
+    board, work = _service_fleet_case(10060, ready=1)
+    state = fleet.assess(work, state, board, 10060)
+    assert state["health"] == "stalled"
+    assert state["work_available_since"] == 10000
+    assert state["last_progress_at"] == 1
+
+
+def test_unknown_probe_does_not_restart_existing_service_work_deadline():
+    board, observation = _service_fleet_case(1000, ready=1)
+    state = fleet.assess(observation, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+    unknown = dict(observation, health="unknown", details={}, reason_codes=["probe_failed"])
+    state = fleet.assess(unknown, state, board, 1030)
+    board, observation = _service_fleet_case(1060, ready=1)
+    state = fleet.assess(observation, state, board, 1060)
+    assert state["health"] == "stalled"
+    assert state["work_available_since"] == 1000
+
+
+def test_confirmed_service_dependency_wait_does_not_enqueue_code_repair():
+    board, observation = _service_fleet_case(1000)
+    report = observation["details"]["service_fleet"]
+    for lane in report["lanes"]:
+        lane.update(task_count=136, completed_count=135, waiting_count=1)
+    report["work_availability"] = "dependency_wait"
+    observation.update(health="blocked", reason_codes=["external_dependency_wait"])
+    state = fleet.assess(observation, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+    assert state["health"] == "blocked"
+    assert state["stall_class"] == "external_dependency_wait"
+    assert fleet.select_action(state, board, 100000) == ""
+    assert state["last_progress_at"] == 1
+    # A ready task or stale source report cannot supply this exemption.
+    report["lanes"][0]["ready_count"] = 1
+    assert fleet._service_fleet_availability(observation, board, 1000) == ""
+    report["lanes"][0]["ready_count"] = 0
+    assert fleet._service_fleet_availability(observation, board, 1181) == ""

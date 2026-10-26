@@ -37,6 +37,7 @@ WAIT_STALLS = {
     "closeout_requires_native_authority",
     "closeout_waiting_on_unsettled_goals",
     "operator_hold",
+    "external_dependency_wait",
     "board_checkout_missing",
     "kernel_uninterruptible_wait",
     "native_status_unavailable_with_live_workers",
@@ -584,6 +585,82 @@ def _carry_observational_task_counts(
     return observation
 
 
+def _service_fleet_availability(observation: dict[str, Any], board: dict[str, Any], now: float) -> str:
+    """Validate diagnostic scheduling evidence without granting task authority.
+
+    Only explicitly enrolled service fleets may wait indefinitely with no work.
+    Ordinary native boards retain their existing admitted-progress contract.
+    """
+    binding = board.get("service_fleet_binding")
+    details = observation.get("details")
+    if not isinstance(binding, dict) or not isinstance(details, dict):
+        return ""
+    report = details.get("service_fleet")
+    if not isinstance(report, dict) or report.get("schema") != "service-fleet-diagnostic/v1":
+        return ""
+    namespace, expected = binding.get("board_namespace"), binding.get("lanes")
+    maximum = binding.get("max_age_seconds", 180)
+    if (not isinstance(namespace, str) or not namespace
+            or not isinstance(expected, dict) or not 1 <= len(expected) <= 32
+            or any(not isinstance(k, str) or not k or not isinstance(v, str)
+                   or not re.fullmatch(r"[A-Za-z0-9_.@:-]+\.service", v)
+                   for k, v in expected.items())
+            or len(set(expected.values())) != len(expected)
+            or type(maximum) is not int or not 1 <= maximum <= 3600
+            or observation.get("board_id") != board.get("id")
+            or observation.get("health") not in {"healthy", "blocked"}
+            or observation.get("complete") is not False
+            or observation.get("completion_candidate") is not False
+            or details.get("completion_authority") is not False
+            or report.get("completion_authority") is not False
+            or report.get("board_namespace") != namespace):
+        return ""
+
+    def fresh(value: Any) -> bool:
+        return (type(value) in (int, float) and math.isfinite(value)
+                and 0 <= now - value <= maximum)
+
+    if not fresh(report.get("checked_at_epoch")):
+        return ""
+    lanes = report.get("lanes")
+    if not isinstance(lanes, list) or len(lanes) != len(expected):
+        return ""
+    seen: set[str] = set()
+    idle, runnable, waiting = True, False, False
+    for lane in lanes:
+        if not isinstance(lane, dict):
+            return ""
+        identifier = lane.get("lane_id")
+        if (not isinstance(identifier, str) or identifier in seen
+                or identifier not in expected or lane.get("service") != expected[identifier]
+                or lane.get("healthy") is not True
+                or not fresh(lane.get("checked_at_epoch"))
+                or not fresh(lane.get("native_status_at_epoch"))
+                or type(lane.get("active")) is not bool):
+            return ""
+        seen.add(identifier)
+        keys = ("ready_count", "selectable_ready_count", "global_ready_count",
+                "blocked_count", "waiting_count", "task_count", "completed_count")
+        if any(type(lane.get(k)) is not int or lane[k] < 0 for k in keys):
+            return ""
+        if lane["completed_count"] > lane["task_count"]:
+            return ""
+        idle = idle and (not lane["active"] and all(lane[k] == 0 for k in keys[:5])
+                         and lane["completed_count"] == lane["task_count"])
+        runnable = runnable or lane["active"] or any(lane[k] > 0 for k in keys[:3])
+        waiting = waiting or lane["blocked_count"] > 0 or lane["waiting_count"] > 0
+    availability = report.get("work_availability")
+    if availability == "no_runnable_work" and idle and observation["health"] == "healthy":
+        return availability
+    if availability == "runnable_work" and runnable and observation["health"] == "healthy":
+        return availability
+    if (availability == "dependency_wait" and waiting and not runnable
+            and observation["health"] == "blocked"
+            and "external_dependency_wait" in observation.get("reason_codes", [])):
+        return availability
+    return ""
+
+
 def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[str, Any], now: float) -> dict[str, Any]:
     state = dict(previous)
     observation = _carry_observational_task_counts(observation, previous)
@@ -616,14 +693,24 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     # A newly healthy heartbeat is not work progress. Stale busy flags are the
     # adapter's responsibility; only an explicit live activity probe sets busy.
     health = observation["health"]
+    availability = _service_fleet_availability(observation, board, now)
+    confirmed_idle = availability == "no_runnable_work"
+    if confirmed_idle:
+        state.pop("work_available_since", None)
+    elif availability == "runnable_work":
+        # Start a scheduling interval, not an accepted-work/progress event.
+        state.setdefault("work_available_since", now)
+    state["idle_without_runnable_work"] = confirmed_idle
+    stall_anchor = max(state["last_progress_at"], state.get("work_available_since", state["last_progress_at"]))
     if (health == "healthy" and observation.get("completion_candidate") is not True
-            and observation.get("busy") is not True
-            and now - state["last_progress_at"] >= board.get("stall_seconds", 900)):
+            and observation.get("busy") is not True and not confirmed_idle
+            and now - stall_anchor >= board.get("stall_seconds", 900)):
         health = "stalled"
         observation = dict(observation, health=health,
                            reason_codes=[*observation.get("reason_codes", []), "no_task_progress"])
         state["observation"] = observation
-    state["stall_class"] = classify_stall(observation, previous)
+    state["stall_class"] = ("external_dependency_wait" if availability == "dependency_wait"
+                            else classify_stall(observation, previous))
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]
     if previous.get("incident_signature") != signature:
