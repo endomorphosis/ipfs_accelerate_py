@@ -1,5 +1,6 @@
 """External monitor failure injection without importing the supervisor package."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -957,7 +958,9 @@ def checkpoint_owner(config, *, foreign=False):
     # Exact independently captured native checkpoint, retained from 2026-10-21.
     # SHA256 54b6b15e1b84b3f95e6985b2d1af81e5e0f62ffe919225bca99e3a0d4f98609a.
     # Fixture bytes stay intact; the owner rebinds only the three paths below.
-    original=json.loads((Path(__file__).with_name("fixtures")/"legal_ir_deployed_event_driven_checkpoint.json").read_text())
+    fixture=(Path(__file__).with_name("fixtures")/"legal_ir_deployed_event_driven_checkpoint.json").read_bytes()
+    assert hashlib.sha256(fixture).hexdigest() == "54b6b15e1b84b3f95e6985b2d1af81e5e0f62ffe919225bca99e3a0d4f98609a"
+    original=json.loads(fixture)
     projection=copy.deepcopy(original["projection"])
     projection["result"].update(state_path=str(owner.config.state_path),events_path=str(owner.config.state_dir/(owner.config.state_prefix+"_events.jsonl")),strategy_path=str(owner.config.strategy_path))
     if foreign:projection["result"]["state_path"]="/foreign/board.json"
