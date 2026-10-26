@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import ProjectionDeltaCheckpointStore
 from ..merge.workspace_quarantine import maintenance_boundary as _workspace_maintenance_boundary
 from ..merge.workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
 
@@ -9732,6 +9733,92 @@ class PortalImplementationSupervisor:
             except FileNotFoundError:
                 pass
 
+    def _unavailable_child_recovery_status(
+        self, *, daemon_pid: int | None, observed_at: str,
+        supervisor_birth: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Read native state/worker/lease owners; never release a fence or task."""
+        blockers: list[str] = []
+        state_source = "unavailable"
+        workers = None
+        validation = None
+        state = None
+        try:
+            if daemon_pid:
+                blockers.append("managed_daemon_present")
+            if self._database_authority_enabled():
+                blockers.append("database_canonical_readiness_not_attested")
+            state = load_json_dict(self.config.state_path)
+            state_source = str(self.config.state_path)
+            if not state:
+                path = self.config.state_path.with_name(self.config.state_path.stem + ".event-driven-checkpoint.json")
+                checkpoint = ProjectionDeltaCheckpointStore(path).load_record()
+                projection = checkpoint.get("projection") if isinstance(checkpoint, Mapping) else None
+                result = projection.get("result") if isinstance(projection, Mapping) else None
+                if (not isinstance(projection, Mapping)
+                        or projection.get("schema") != "ipfs_accelerate_py.agent_supervisor.event-driven-runtime-checkpoint@1"
+                        or not isinstance(result, Mapping)
+                        or result.get("state_path") != str(self.config.state_path)
+                        or result.get("events_path") != str(self.config.state_dir / f"{self.config.state_prefix}_events.jsonl")
+                        or result.get("strategy_path") != str(self.config.strategy_path)):
+                    blockers.append("native_checkpoint_scope_unproven")
+                    state = None
+                else:
+                    state = projection.get("task_state")
+                    state_source = str(path)
+            if (not isinstance(state, Mapping)
+                    or state.get("board_namespace") not in (None, self.config.board_namespace)
+                    or type(state.get("active_task_id")) is not str or state.get("active_task_id")
+                    or state.get("implementation_in_progress") is not False
+                    or state.get("active_phase") not in {"", "idle", "selected"}):
+                blockers.append("native_task_quiescence_unproven")
+            workers = self._active_agent_worker_processes()
+            validation = self._active_validation_subprocess_exists()
+            if workers:
+                blockers.append("implementation_worker_active")
+            if validation:
+                blockers.append("validation_worker_active")
+            if self._current_supervisor_checkout_lease() is not None:
+                blockers.append("supervisor_checkout_transaction_active")
+            for path in {self._repo_merge_lock_path(), checkout_mutation_lock_path(self.config.repo_root)}:
+                if path.is_symlink() or path.exists():
+                    blockers.append("checkout_fence_present_or_unverifiable")
+        except Exception:
+            blockers.append("native_quiescence_observation_failed")
+        empty = workers == [] and validation is False
+        return {"schema": "ipfs-accelerate/unavailable-child-recovery-safety@1",
+                "observed_at": observed_at, "supervisor_process_birth": dict(supervisor_birth),
+                "safe": not blockers, "blockers": blockers,
+                "state_source": state_source, "board_namespace": self.config.board_namespace,
+                "active_worker_count": 0 if empty else None,
+                "active_worker_pids": [] if empty else None,
+                "worker_descendant_count": 0 if empty else None,
+                "worker_phase": state.get("active_phase") if isinstance(state, Mapping) else None,
+                "lease_or_task_mutation_authority": False}
+
+
+    def _publish_unavailable_child_recovery(self, *, run_id: str, restart_count: int) -> None:
+        """Common outer-loop publication, including lanes that skip maintenance."""
+        now = utc_now()
+        birth = read_process_birth(os.getpid())
+        if birth is None:
+            return
+        proof = self._unavailable_child_recovery_status(
+            daemon_pid=None, observed_at=now, supervisor_birth=birth.to_dict())
+        path = self._supervisor_status_path()
+        payload = load_json_dict(path) or {}
+        payload.update(status="native_child_recovery", updated_at=now,
+            supervisor_pid=os.getpid(), supervisor_pid_alive=True,
+            supervisor_process_birth=birth.to_dict(), daemon_pid=None, daemon_pid_alive=False,
+            run_id=run_id, restart_count=restart_count,
+            implementation_enabled=bool(self.config.implement and not self.config.reconciliation_only),
+            unavailable_child_recovery=proof)
+        for key in ("active_worker_count", "active_worker_pids", "worker_descendant_count", "worker_phase"):
+            payload[key] = proof[key]
+        write_json_atomic(path, payload)
+        self._persist_own_supervisor_pid()
+
+
     def _write_supervisor_maintenance_status(
         self,
         phase: str,
@@ -9819,6 +9906,12 @@ class PortalImplementationSupervisor:
                 "supervisor_heartbeat_seconds": max(0.01, float(self.config.check_interval)),
             }
         )
+        payload["unavailable_child_recovery"] = self._unavailable_child_recovery_status(
+            daemon_pid=daemon_pid, observed_at=now,
+            supervisor_birth=supervisor_birth.to_dict(),
+        )
+        for key in ("active_worker_count", "active_worker_pids", "worker_descendant_count", "worker_phase"):
+            payload[key] = payload["unavailable_child_recovery"][key]
         if error:
             payload["last_agentic_maintenance_error"] = error[-1000:]
         else:
@@ -11337,6 +11430,9 @@ class PortalImplementationSupervisor:
                 self._reload_for_control_plane_update()
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
                 return
+
+            self._publish_unavailable_child_recovery(
+                run_id=result.last_run_id, restart_count=result.restart_count)
 
             if (
                 result.status == "typed_child_blocker"
