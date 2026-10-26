@@ -89,8 +89,13 @@ The diagnostic configuration is
 retained jobs, prompts, reports and logs. For source maintenance, stop only the
 native monitor timer and running oneshot before installing the verified monitor
 source; preserve the four implementation lanes and diagnostic services. Restart
-the same timer afterward. Otherwise a monitor may recover an intentionally
-stopped worker. Enabled user units and user lingering provide persistence across
+the same timer afterward. For protected board, plan or worker-source maintenance,
+use the existing fleet quiescence procedure instead: pause both native recovery
+timers and diagnostic watchdog/repair dispatch, stop the worker target, then
+verify provider children and native claims have quiesced before writing. Restore
+the same services only after contract validation. Never remove claims manually
+or bypass review/resource gates. This prevents recovery from fighting intentional
+maintenance. Enabled user units and user lingering provide persistence across
 logout.
 
 From the supervisor repository, the focused failure-injection suite is:
