@@ -1877,3 +1877,87 @@ def test_confirmed_service_dependency_wait_does_not_enqueue_code_repair():
     assert fleet._service_fleet_availability(observation, board, 1000) == ""
     report["lanes"][0]["ready_count"] = 0
     assert fleet._service_fleet_availability(observation, board, 1181) == ""
+
+
+def test_service_fleet_stall_tick_enqueues_bounded_repair_without_native_heal(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_repair as repair
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal",
+                        lambda *a, **k: pytest.fail("diagnostic stall must not heal a native owner"))
+    board, observation = _service_fleet_case(1000, ready=1)
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]},
+                 repair={"argv": ["repair", "enqueue"]}, hold_files=[],
+                 failure_grace_seconds=10, blocked_grace_seconds=20,
+                 cooldown_seconds=30, max_backoff_seconds=3600, max_repair_attempts=3)
+    root = tmp_path / "watch"
+    cfg = dict(state_dir=str(root), boards=[board], repair_worker={"cwd": str(tmp_path)})
+    queued = []
+
+    def enqueue_actual(spec, **kwargs):
+        assert spec["argv"][:3] == ["repair", "enqueue", "--incident"]
+        result = repair.enqueue(cfg, Path(spec["argv"][3]))
+        queued.append(result)
+        return dict(returncode=0, stdout=json.dumps(result), stderr="")
+
+    runner = Runner(observation, action=enqueue_actual)
+
+    def tick(now):
+        runner.observation = _service_fleet_case(now, ready=1)[1]
+        return fleet.tick_board(board, root, apply=True, runner=runner, now=now)
+
+    assert tick(1000)["health"] == "healthy"
+    assert tick(1060)["health"] == "stalled"
+    assert tick(1079)["planned_action"] == ""
+    assert queued == []  # Full failure grace follows the work deadline.
+    state = tick(1080)
+    assert state["last_action"] == "repair"
+    assert state["next_action_at"] == 1110
+    assert len(queued) == 1 and queued[0]["status"] == "queued"
+    path = root / "repairs/legal-ir/job.json"
+    job = fleet.read_json(path)
+    assert job["latest_incident"]["action"] == "repair"
+    assert job["latest_incident"]["observation"]["complete"] is False
+    assert repair.next_job(cfg, time.time() + 1)[0]["id"] == "legal-ir"
+    assert tick(1081)["planned_action"] == ""
+    assert tick(1109)["planned_action"] == ""
+    assert len(queued) == 1
+
+    # The existing queue owns provider-attempt accounting. A new watchdog
+    # notification cannot replenish the configured three spent attempts.
+    job.update(attempts=3, status="queued", next_attempt_at=0)
+    fleet.write_json(path, job)
+    tick(1110)
+    assert len(queued) == 2 and queued[-1]["status"] == "escalated"
+    assert fleet.read_json(path)["attempts"] == 3
+    assert repair.next_job(cfg, 9999) is None
+    assert tick(1169)["planned_action"] == ""
+    tick(1170)
+    assert len(queued) == 3 and queued[-1]["status"] == "escalated"
+    assert fleet.read_json(path)["attempts"] == 3
+    assert repair.next_job(cfg, 9999) is None
+
+
+@pytest.mark.parametrize("availability", ["no_runnable_work", "dependency_wait"])
+def test_service_fleet_idle_and_dependency_tick_never_enqueue_repair(tmp_path, monkeypatch, availability):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal",
+                        lambda *a, **k: pytest.fail("idle or dependency wait cannot heal a native owner"))
+    board, observation = _service_fleet_case()
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]},
+                 repair={"argv": ["repair", "enqueue"]}, hold_files=[],
+                 blocked_grace_seconds=0, cooldown_seconds=30, max_repair_attempts=3)
+    runner = Runner(observation, action=lambda *a, **k: pytest.fail("wait cannot enqueue coding repair"))
+    for now in (1000, 2000, 100000):
+        runner.observation = _service_fleet_case(now)[1]
+        if availability == "dependency_wait":
+            report = runner.observation["details"]["service_fleet"]
+            report["work_availability"] = availability
+            for lane in report["lanes"]:
+                lane.update(task_count=136, waiting_count=1)
+            runner.observation.update(health="blocked", reason_codes=["external_dependency_wait"])
+        state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=now)
+        assert state["planned_action"] == ""
+        assert state["observation"]["complete"] is False
+    assert all(call["argv"] == ["probe"] for call in runner.calls)

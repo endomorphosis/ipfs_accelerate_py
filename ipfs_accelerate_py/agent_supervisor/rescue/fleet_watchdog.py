@@ -788,6 +788,12 @@ def reset_failed_ensure_unit(board: dict[str, Any]) -> bool:
 
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
     health = state["health"]
+    diagnostic_stall = (isinstance(board.get("service_fleet_binding"), dict)
+                        and state.get("stall_class") == "stalled_no_progress")
+    if diagnostic_stall and now < state.get("next_action_at", 0):
+        # Diagnostic coding repair keeps its durable cooldown. Native-owner
+        # healing below may retry early, but this fleet has no native owner.
+        return ""
     if now < state.get("next_action_at", 0):
         stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
         observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
@@ -853,6 +859,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "kernel_uninterruptible_wait":
         return "supervisor_heal"
     if stall == "stalled_no_progress":
+        # Service-fleet diagnostics have no native owner to heal. Their
+        # configured repair queue owns bounded coding recovery instead.
+        if diagnostic_stall:
+            return "repair"
         # Remaining SAWM/DOEP todos are not llm_router work.
         return "supervisor_heal"
     if stall == "independent_work_beside_blocked_peer":
@@ -1127,8 +1137,14 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             else:
                 state.pop("publication_failure", None)
         elif action in {"repair", "completion_review"}:
-            from .fleet_heals import apply_supervisor_heal
-            heal = apply_supervisor_heal(board, state)
+            if (isinstance(board.get("service_fleet_binding"), dict)
+                    and state.get("stall_class") == "stalled_no_progress"):
+                # Preserve the original service monitor's restart authority;
+                # this diagnostic stall is only a coding-queue incident.
+                heal = {"status": "skip", "reason": "service_fleet_diagnostic_stall"}
+            else:
+                from .fleet_heals import apply_supervisor_heal
+                heal = apply_supervisor_heal(board, state)
             if heal.get("status") in {"applied", "wait"}:
                 action_result = {"status": heal["status"], "supervisor_heal": heal,
                                  "incident": str(incident_path)}

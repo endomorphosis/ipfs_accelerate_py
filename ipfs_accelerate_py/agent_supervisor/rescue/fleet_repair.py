@@ -283,7 +283,9 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                                 and fresh.get("completion_candidate") is not True
                                 and isinstance(fresh.get("details"), dict)
                                 and fresh.get("details", {}).get("authenticated_task_observation") is True)
-            incident = _current_recovery_incident(current.get("latest_incident", {}), state, board["id"], now)
+            incident = current.get("latest_incident", {})
+            if not diagnostic:
+                incident = _current_recovery_incident(incident, state, board["id"], now)
             verification = (verify_job_recovery(board, incident, fresh,
                             root / board["id"] / "publication") if admitted_healthy or diagnostic
                             else {"verified": False})
@@ -363,9 +365,15 @@ def repair_route_is_current(job: dict[str, Any]) -> bool:
     return job.get("repair_route") == LLM_ROUTER_ROUTE
 
 
-def repair_workspace_is_stale(job: dict[str, Any], board: dict[str, Any]) -> bool:
-    """Jobs launched in the shared maintenance tree cannot heal board-local dirt."""
+def repair_workspace_is_stale(job: dict[str, Any], board: dict[str, Any],
+                              policy: dict[str, Any] | None = None) -> bool:
+    """Bind diagnostic engine repairs to policy; native repairs to board dirt."""
     cwd = board.get("cwd")
+    if isinstance(board.get("service_fleet_binding"), dict):
+        try:
+            cwd = str(repair_workspace(board, policy or {}))
+        except (OSError, ValueError):
+            return True
     if not cwd:
         return False
     bound = job.get("repair_workspace")
@@ -759,17 +767,41 @@ def _mirror_job_recovery(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _service_fleet_recovery(board: dict[str, Any], observation: dict[str, Any],
-                            now: float) -> dict[str, Any] | None:
+def _service_fleet_recovery(board: dict[str, Any], incident: dict[str, Any],
+                            observation: dict[str, Any], now: float) -> dict[str, Any] | None:
     """Retire diagnostic coding work without minting native or legal authority."""
     if "service_fleet_binding" not in board:
         return None
     from .fleet_watchdog import _service_fleet_availability
     availability = _service_fleet_availability(observation, board, now)
+    baseline = incident.get("observation")
+    baseline = baseline if isinstance(baseline, dict) else {}
+    stalled = (incident.get("stall_class") == "stalled_no_progress"
+               or "no_task_progress" in baseline.get("reason_codes", []))
+    progressed = False
+    if availability == "runnable_work" and stalled:
+        details = baseline.get("details")
+        report = details.get("service_fleet") if isinstance(details, dict) else None
+        if isinstance(report, dict):
+            # The baseline is historical; validate its original binding and
+            # counts at its own observation time, never as a fresh heartbeat.
+            prior = dict(baseline, health="healthy")
+            at = report.get("checked_at_epoch")
+            if (type(at) in (int, float) and at <= now
+                    and _service_fleet_availability(prior, board, at) == "runnable_work"):
+                before = {lane["lane_id"]: lane["completed_count"] for lane in report["lanes"]}
+                after = observation["details"]["service_fleet"]["lanes"]
+                # Global counts may be repeated across lanes. Compare each
+                # bound lane, without summing or accepting status/token churn.
+                progressed = (all(lane["completed_count"] >= before[lane["lane_id"]] for lane in after)
+                              and any(lane["completed_count"] > before[lane["lane_id"]] for lane in after))
+    verified = (availability == "no_runnable_work"
+                or availability == "runnable_work" and (not stalled or progressed))
     return {
-        "verified": availability in {"no_runnable_work", "runnable_work"},
+        "verified": verified,
         "wait": availability == "dependency_wait",
-        "reason": ("service_fleet_runtime_verified" if availability in {"no_runnable_work", "runnable_work"}
+        "reason": ("service_fleet_runtime_verified" if verified
+                   else "service_fleet_stall_without_work_progress" if availability == "runnable_work" and stalled
                    else "external_dependency_wait" if availability == "dependency_wait"
                    else "service_fleet_runtime_not_verified"),
         "scope": "service_fleet_diagnostic_runtime", "work_availability": availability or None,
@@ -787,7 +819,7 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
     integrity = details.get("source_integrity", {}) if isinstance(details, dict) else {}
     if isinstance(integrity, dict) and integrity.get("configured") is True and integrity.get("valid") is not True:
         return _mirror_job_recovery({"verified": False, "reason": "source_integrity_not_verified"})
-    diagnostic = _service_fleet_recovery(board, observation, time.time())
+    diagnostic = _service_fleet_recovery(board, incident, observation, time.time())
     if diagnostic is not None:
         return _mirror_job_recovery(diagnostic)
     if observation.get("health") == "complete" or observation.get("completion_candidate") is True:
@@ -844,7 +876,7 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
         due = float(job.get("next_attempt_at") or 0)
         if (due > now and not repair_route_is_stale(job)
                 and not repair_launch_failed_immediately(job, now)
-                and not repair_workspace_is_stale(job, board)):
+                and not repair_workspace_is_stale(job, board, config.get("repair_worker", {}))):
             continue
         candidates.append((job.get("last_started_at", 0), job.get("queued_at", 0), board, path))
     if not candidates:
@@ -904,7 +936,11 @@ def repair_workspace(board: dict[str, Any], policy: dict[str, Any]) -> Path:
     or gitlink pins. Supervisor-code heals still belong in that tree when the
     board checkout is missing.
     """
-    for candidate in (board.get("cwd"), policy.get("cwd")):
+    # Diagnostic service-fleet incidents repair the configured engine source,
+    # not the older legal-data board checkout. An invalid policy fails closed.
+    candidates = ((policy.get("cwd"),) if isinstance(board.get("service_fleet_binding"), dict)
+                  else (board.get("cwd"), policy.get("cwd")))
+    for candidate in candidates:
         if not candidate:
             continue
         path = Path(str(candidate)).expanduser()
@@ -1077,7 +1113,7 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     running = [(board, job) for board, job in jobs if job.get("status") == "running"]
     if running:
         return any(
-            repair_workspace_is_stale(job, board) or board_wait_stall(config, board["id"])
+            repair_workspace_is_stale(job, board, config.get("repair_worker", {})) or board_wait_stall(config, board["id"])
             for board, job in running
         )
     latest = max(
@@ -1089,7 +1125,7 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     if latest is None:
         return False
     board, job = latest
-    if repair_workspace_is_stale(job, board):
+    if repair_workspace_is_stale(job, board, config.get("repair_worker", {})):
         return True
     return bool(job.get("status") == "queued" and job.get("finished_at")
                 and job.get("returncode") not in {0, None})
@@ -1159,7 +1195,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         initial = {"board_id": board["id"], "health": "unknown"}
     initial_at = time.time()
     if "service_fleet_binding" in board:
-        verification = verify_job_recovery(board, {}, initial,
+        verification = verify_job_recovery(board, read_json(path).get("latest_incident", {}), initial,
                             Path(config["state_dir"]) / board["id"] / "publication")
         if verification["verified"] or verification.get("wait") is True:
             with lock(path.parent / "queue.lock") as acquired:
@@ -1288,8 +1324,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         limit = _repair_limits(current_config)[board["id"]]
     fresh = command(board["probe"], cwd=board["cwd"], timeout=90)
     observation = normalize_probe(board["id"], fresh)
-    incident = _current_recovery_incident(incident, read_json(
-        Path(config["state_dir"]) / board["id"] / "state.json"), board["id"], time.time())
+    if "service_fleet_binding" not in board:
+        incident = _current_recovery_incident(incident, read_json(
+            Path(config["state_dir"]) / board["id"] / "state.json"), board["id"], time.time())
     verification = verify_job_recovery(
         board, incident, observation,
         Path(config["state_dir"]) / board["id"] / "publication",

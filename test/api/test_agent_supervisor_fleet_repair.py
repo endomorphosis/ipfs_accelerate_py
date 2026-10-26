@@ -3493,11 +3493,14 @@ def _diagnostic_repair_case(tmp_path, availability="no_runnable_work"):
 @pytest.mark.parametrize("attempts", [0, 3])
 def test_diagnostic_fleet_recovery_retires_queue_without_native_authority(tmp_path, monkeypatch, availability, attempts):
     cfg, board, sample = _diagnostic_repair_case(tmp_path, availability)
+    baseline = json.loads(json.dumps(sample))
+    if availability == "runnable_work":
+        baseline["details"]["service_fleet"]["lanes"][0]["completed_count"] = 0
+    baseline.update(health="stalled", reason_codes=["no_task_progress"])
     path = tmp_path / "repairs/spar/job.json"
     write_json(path, {"status": "queued" if attempts == 0 else "escalated", "attempts": attempts,
         "max_repair_attempts": 3, "escalation_reason": "repair_budget_exhausted",
-        "next_attempt_at": 9000, "latest_incident": {"observation": {"health": "stalled",
-        "reason_codes": ["no_task_progress"]}}})
+        "next_attempt_at": 9000, "latest_incident": {"observation": baseline}})
     write_json(tmp_path / "spar/state.json", {"board_id": "spar", "observed_at": 1000,
                                              "health": sample["health"], "observation": sample})
     monkeypatch.setattr(repair.time, "time", lambda: 1001)
@@ -3692,3 +3695,97 @@ def test_worker_reclaims_only_configured_repair_unit(tmp_path, monkeypatch):
     monkeypatch.setattr(repair, "command", lambda spec, **kw: commands.append(spec["argv"]))
     assert repair.main(["run", "--config", str(tmp_path / "config.json"), "--once"]) == 0
     assert commands == [["systemctl", "--user", "stop", unit]]
+
+
+@pytest.mark.parametrize("change", ["same", "heartbeat", "token_busy_status", "advance", "regress", "advance_with_regression"])
+@pytest.mark.parametrize("attempts", [0, 3])
+def test_stalled_diagnostic_queue_requires_monotonic_work_before_recovery(tmp_path, monkeypatch, change, attempts):
+    cfg, board, sample = _diagnostic_repair_case(tmp_path, "runnable_work")
+    baseline = json.loads(json.dumps(sample))
+    baseline.update(health="stalled", reason_codes=["no_task_progress"])
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": "queued", "attempts": attempts, "next_attempt_at": 0,
+                      "latest_incident": {"board_id": "spar", "observation": baseline}})
+    report = sample["details"]["service_fleet"]
+    report["checked_at_epoch"] = 1100
+    for lane in report["lanes"]:
+        lane.update(checked_at_epoch=1100, native_status_at_epoch=1100)
+    if change == "heartbeat":
+        sample["progress_token"] = "new-heartbeat-token"
+    elif change == "token_busy_status":
+        sample.update(progress_token="new-status-token", busy=True)
+        report["lanes"][0].update(active=True, status="running")
+    elif change == "advance":
+        report["lanes"][0]["completed_count"] = 2
+    elif change in {"regress", "advance_with_regression"}:
+        report["lanes"][1]["completed_count"] = 0
+        if change == "advance_with_regression":
+            report["lanes"][0]["completed_count"] = 2
+    write_json(tmp_path / "spar/state.json", {"board_id": "spar", "health": "healthy",
+                                             "observed_at": 1100, "observation": sample})
+    monkeypatch.setattr(repair.time, "time", lambda: 1101)
+    monkeypatch.setattr(repair.subprocess, "Popen", lambda *a, **k: pytest.fail("reconciliation cannot launch providers"))
+    def runner(*args, **kwargs):
+        return {"returncode": 0, "stdout": json.dumps(sample)}
+    repair.reconcile_queued_jobs(cfg, 1100, runner=runner)
+    current = read_json(path)
+    expected = "verified_healthy" if change == "advance" else "escalated" if attempts == 3 else "queued"
+    assert current["status"] == expected and current["attempts"] == attempts
+    if change == "advance":
+        assert current["verification"]["completion_authority"] is False
+        assert current["verification"]["complete"] is False
+    else:
+        assert current["latest_incident"]["observation"] == baseline
+        selected = next_job(cfg, 1102)
+        assert (selected is not None) is (attempts < 3)
+
+
+@pytest.mark.parametrize("advance", [False, True])
+def test_direct_stalled_diagnostic_repair_keeps_queued_work_baseline(tmp_path, monkeypatch, advance):
+    cfg, board, sample = _diagnostic_repair_case(tmp_path, "runnable_work")
+    cfg["repair_worker"]["argv"] = ["codex", "exec"]
+    baseline = json.loads(json.dumps(sample))
+    baseline.update(health="stalled", reason_codes=["no_task_progress"])
+    if advance:
+        sample["details"]["service_fleet"]["lanes"][0]["completed_count"] = 2
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": "queued", "attempts": 0,
+                      "latest_incident": {"board_id": "spar", "observation": baseline}})
+    monkeypatch.setattr(repair.time, "time", lambda: 1001)
+    preflights = []
+    def preflight(*args):
+        preflights.append(1)
+        return None if len(preflights) == 1 else "focused_test_no_provider_launch"
+    monkeypatch.setattr(repair, "_launch_preflight", preflight)
+    monkeypatch.setattr(repair, "_storage_preflight", lambda *a: None)
+    monkeypatch.setattr(repair, "_repair_temporary_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(repair.subprocess, "Popen", lambda *a, **k: pytest.fail("test cannot launch providers"))
+    def command(spec, **kwargs):
+        if spec["argv"][0] == "systemctl":
+            return {"returncode": 3, "stdout": "inactive"}
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(sample)}
+    monkeypatch.setattr(repair, "command", command)
+    result = repair.run_job(cfg, board, path)
+    assert result["status"] == ("verified_healthy" if advance else "launch_deferred")
+    assert len(preflights) == (1 if advance else 2)
+    assert read_json(path)["attempts"] == 0
+
+
+def test_diagnostic_repair_workspace_binds_policy_and_preserves_native_board_priority(tmp_path):
+    board_root = tmp_path / "old-board"
+    engine_root = tmp_path / "reviewed-engine"
+    board_root.mkdir(); engine_root.mkdir()
+    board = dict(id="legal-ir", cwd=str(board_root), service_fleet_binding={})
+    policy = dict(cwd=str(engine_root))
+    assert repair.repair_workspace(board, policy) == engine_root
+    job = dict(repair_route=repair.LLM_ROUTER_ROUTE, repair_workspace=str(engine_root))
+    assert repair.repair_workspace_is_stale(job, board, policy) is False
+    job["repair_workspace"] = str(board_root)
+    assert repair.repair_workspace_is_stale(job, board, policy) is True
+    with pytest.raises(ValueError):
+        repair.repair_workspace(board, dict(cwd=str(tmp_path / "missing")))
+    assert repair.repair_workspace_is_stale(job, board, {}) is True
+    board.pop("service_fleet_binding")
+    assert repair.repair_workspace(board, policy) == board_root
+    assert repair.repair_workspace_is_stale(job, board, policy) is False
