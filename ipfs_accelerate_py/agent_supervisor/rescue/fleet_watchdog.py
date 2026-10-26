@@ -40,6 +40,7 @@ WAIT_STALLS = {
     "board_checkout_missing",
     "kernel_uninterruptible_wait",
     "native_status_unavailable_with_live_workers",
+    "service_fleet_waiting_on_contract",
     "complete",
 }
 FLEET_HEALTH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/ducklake-fleet-health@1"
@@ -185,7 +186,8 @@ def _locally_validated_blocked_ids(
     return set(blocked) <= passed and bool(passed)
 
 
-def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None = None) -> str:
+def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None = None,
+                   *, board: dict[str, Any] | None = None) -> str:
     """Map probe evidence to a bounded stall class. Never infers completion."""
     health = observation.get("health")
     reasons = {str(x) for x in observation.get("reason_codes") or []}
@@ -195,6 +197,19 @@ def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None 
         return "board_checkout_missing"
     if health == "operator_hold":
         return "operator_hold"
+    service_fleet = ((board or {}).get("probe_profile") == "board_service_fleet"
+                     or details.get("probe_profile") == "board_service_fleet")
+    if service_fleet:
+        if health == "complete" or observation.get("complete") is True:
+            return "service_fleet_native_completion_refused"
+        # This adapter has no Quack owner or native task mutation authority.
+        # Its original service monitor owns deadlines/restarts; only genuine
+        # monitor faults may enter the existing bounded coding-repair queue.
+        if "service_fleet_waiting_on_contract" in reasons:
+            return "service_fleet_waiting_on_contract"
+        if observation.get("completion_candidate") is True:
+            return "closeout_requires_native_authority"
+        return "none" if health == "healthy" else "service_fleet_monitor_requires_repair"
     if health == "complete" or observation.get("complete") is True:
         return "complete"
     if "source_integrity_not_verified" in reasons:
@@ -587,6 +602,16 @@ def _carry_observational_task_counts(
 def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[str, Any], now: float) -> dict[str, Any]:
     state = dict(previous)
     observation = _carry_observational_task_counts(observation, previous)
+    if (board.get("probe_profile") == "board_service_fleet"
+            and (observation.get("health") == "complete" or observation.get("complete") is True)):
+        # Configuration owns this denial. Missing or spoofed probe details
+        # cannot promote an observational service fleet to native closeout.
+        details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
+        observation = dict(observation, health="degraded", complete=False,
+            completion_candidate=False, busy=False, recovery_action="repair",
+            reason_codes=["service_fleet_native_completion_refused"],
+            details=dict(details, probe_profile="board_service_fleet",
+                         native_completion_authority=False, refused_native_completion_claim=True))
     state.update(board_id=board["id"], observed_at=now, observation=observation)
     token = observation.get("progress_token")
     details = observation.get("details", {})
@@ -616,14 +641,20 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     # A newly healthy heartbeat is not work progress. Stale busy flags are the
     # adapter's responsibility; only an explicit live activity probe sets busy.
     health = observation["health"]
-    if (health == "healthy" and observation.get("completion_candidate") is not True
+    delegated_service_monitor = (
+        board.get("probe_profile") == "board_service_fleet"
+        and details.get("probe_profile") == "board_service_fleet"
+        and details.get("monitor_scope_verified") is True
+        and details.get("monitor_progress_authority") is True
+    )
+    if (health == "healthy" and not delegated_service_monitor and observation.get("completion_candidate") is not True
             and observation.get("busy") is not True
             and now - state["last_progress_at"] >= board.get("stall_seconds", 900)):
         health = "stalled"
         observation = dict(observation, health=health,
                            reason_codes=[*observation.get("reason_codes", []), "no_task_progress"])
         state["observation"] = observation
-    state["stall_class"] = classify_stall(observation, previous)
+    state["stall_class"] = classify_stall(observation, previous, board=board)
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]
     if previous.get("incident_signature") != signature:
@@ -701,8 +732,13 @@ def reset_failed_ensure_unit(board: dict[str, Any]) -> bool:
 
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
     health = state["health"]
+    if (board.get("probe_profile") == "board_service_fleet"
+            and (health == "complete" or (state.get("observation") or {}).get("complete") is True)):
+        # Defend direct/stale state callers as well as freshly assessed probes.
+        # No publication setting can grant this profile native closeout.
+        return ""
     if now < state.get("next_action_at", 0):
-        stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+        stall = state.get("stall_class") or classify_stall(state.get("observation") or {}, board=board)
         observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
         details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
         # A ready exclusive owner after ensure is not a 1h launch backoff.
@@ -727,9 +763,13 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         if stall in PUBLICATION_STOP_STALLS:
             return ""
         return "publish" if board.get("publication") else "completion_review"
-    stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
+    stall = state.get("stall_class") or classify_stall(state.get("observation") or {}, board=board)
     if stall == "closeout_requires_native_authority":
         # Observational completion_candidate is not publication authority.
+        return ""
+    if stall == "service_fleet_waiting_on_contract":
+        # Legal review, dependency, provider/retry and resource fences are
+        # not permission for a coding agent to waive the original contract.
         return ""
     if stall == "closeout_waiting_on_unsettled_goals":
         reasons = {str(x) for x in (state.get("observation") or {}).get("reason_codes") or []}
@@ -879,7 +919,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                 stall_class="board_checkout_missing" if stall == "board_checkout_missing" else "operator_hold",
                 holds=holds,
             )
-            if apply:
+            if board.get("probe_profile") == "board_service_fleet":
+                # Operational service projections cannot release native
+                # source-admission or operator holds, even when stale details
+                # purport to describe an authenticated owner.
+                state["planned_action"] = ""
+            elif apply:
                 from .fleet_holds import review_board_holds
                 result = review_board_holds(board, state.get("observation") or {})
                 state.update(last_action="hold_review", last_action_at=now,
@@ -936,7 +981,21 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         if action == "ensure":
             state["ensure_attempts"] = state.get("ensure_attempts", 0) + 1
         write_json(path, state)
-        if action == "supervisor_heal":
+        if board.get("probe_profile") == "board_service_fleet":
+            # This closed profile has no native owner/overlay mutation
+            # authority. Its only effects are the declared monitor oneshot
+            # (which owns bounded lane restarts) or the coding-repair queue.
+            if action == "ensure" and board.get("ensure"):
+                reset_failed_ensure_unit(board)
+                action_result = runner(board["ensure"], cwd=board["cwd"], timeout=180)
+            elif action == "repair" and board.get("repair"):
+                spec = dict(board["repair"])
+                spec["argv"] = [*spec["argv"], "--incident", str(incident_path)]
+                action_result = runner(spec, cwd=board["cwd"], timeout=120)
+            else:
+                action_result = {"status": "service_fleet_action_refused", "action": action,
+                                 "incident": str(incident_path)}
+        elif action == "supervisor_heal":
             from .fleet_heals import apply_supervisor_heal
             action_result = apply_supervisor_heal(board, state)
             reason = str((action_result or {}).get("reason") or "")

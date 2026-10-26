@@ -231,3 +231,43 @@ def test_missing_checkout_can_be_retained_only_under_existing_explicit_hold(inpu
     installed = json.loads(Path(result['config']).read_text())
     assert str(hold) in installed['boards'][0]['hold_files']
     assert not missing.exists()
+
+
+def test_install_service_fleet_profile_preserves_six_native_boards_and_original_restart_authority(inputs):
+    source, inventory, board_root, home = inputs
+    template = json.loads(inventory.read_text())["boards"][0]
+    boards = [dict(template, id=name, ensure_argv=[]) for name in ("spar", "sawm", "aseh", "pctdd", "pcpr", "doep")]
+    monitor_argv = ["systemctl", "--user", "start", "legal-ir-autoencoder-v1-monitor.service"]
+    boards.append(dict(template, id="legal-ir-legacy", probe_profile="board_service_fleet",
+        probe_max_age_seconds=180, ensure_argv=monitor_argv))
+    inventory.write_text(json.dumps({"boards": boards}))
+    config_path = home / ".config/ipfs-taskboard-watchdog/fleet.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(json.dumps({"boards": [dict(id=b["id"], publication={"native_gate": b["id"]},
+        cooldown_seconds=777, hold_files=[]) for b in boards]}))
+    result = installer.install(source, inventory, board_root, enable=False)
+    actual = json.loads(Path(result["config"]).read_text())["boards"]
+    assert [b["id"] for b in actual] == [b["id"] for b in boards]
+    for native in actual[:6]:
+        assert "rescue.live_board_probe" in " ".join(native["probe"]["argv"])
+        assert native["publication"] == {"native_gate": native["id"]}
+        assert native["cooldown_seconds"] == 777
+    legacy = actual[-1]
+    assert legacy["probe_profile"] == "board_service_fleet"
+    assert "rescue.board_service_fleet_monitor" in " ".join(legacy["probe"]["argv"])
+    assert "--fleet-probe-inventory" in legacy["probe"]["argv"]
+    assert "--apply" not in legacy["probe"]["argv"]
+    assert legacy["ensure"]["argv"] == monitor_argv
+    assert "publication" not in legacy
+    assert {"board_service_monitor", "board_service_fleet_monitor"} <= set(installer.MODULES)
+
+
+@pytest.mark.parametrize("changes", [{"probe_profile": "invented"},
+    {"probe_profile": "board_service_fleet", "probe_max_age_seconds": True},
+    {"probe_profile": "board_service_fleet", "probe_max_age_seconds": float("nan")}])
+def test_install_refuses_unknown_service_fleet_profiles_or_age_bounds(inputs, changes):
+    _, inventory, board_root, _ = inputs
+    value = json.loads(inventory.read_text())
+    value["boards"][0].update(changes)
+    with pytest.raises(ValueError):
+        installer.validate_inventory(value, board_root)

@@ -261,6 +261,9 @@ def board_wait_stall(config: dict[str, Any], board_id: str) -> str | None:
 
 def board_is_complete(config: dict[str, Any], board_id: str) -> bool:
     """Native complete or a published receipt is not a coding-repair stall."""
+    board = next((item for item in config.get("boards", []) if item.get("id") == board_id), {})
+    if board.get("probe_profile") == "board_service_fleet":
+        return False
     state = read_json(Path(config["state_dir"]) / board_id / "state.json")
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
     result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
@@ -400,7 +403,19 @@ def _continuation_context(job: dict[str, Any], directory: Path) -> dict[str, Any
 def repair_prompt(board: dict[str, Any], incident: dict[str, Any], config: dict[str, Any],
                   report: Path, prior_report: dict[str, Any] | None = None,
                   diagnostic_handoff: dict[str, Any] | None = None) -> str:
-    return f"""You are the persistent repair worker for the user's DuckDB taskboard watchdog.
+    service_fleet_scope = "" if board.get("probe_profile") != "board_service_fleet" else """
+LEGALIR SERVICE-FLEET AUTHORIZATION: The user also authorizes monitoring the
+configured legacy LegalIR fleet and fixing reusable supervisor/monitor engine
+faults so infrastructure failures recover in future. The original per-service
+monitor is the sole authority for bounded lane restarts. Use its existing
+systemd oneshot; do not signal workers, reset task/retry budgets, invent a Quack
+owner or replace its locks. Dependency, provider, resource, source-data and legal
+review waits remain explicit external blockers. Never manufacture statutory
+meaning, governing applicability, signatures or training/gold admission.
+Completed legacy engineering tasks are not completion of the U.S. Code corpus.
+This observational profile grants no native completion or publication authority.
+"""
+    return f"""You are the persistent repair worker for the user's DuckDB taskboard watchdog.{service_fleet_scope}
 
 USER AUTHORIZATION: Keep SPAR, SAWM, ASEH, PCTDD and DOEP ipfs_accelerate_py
 agent supervisors and todo daemons working; diagnose stalls or blocks; fix the
@@ -668,10 +683,27 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
     """Verify progress or current publication; model reports grant neither."""
     if hold_paths(board):
         return _mirror_job_recovery({"verified": False, "reason": "operator_hold"})
+    if (board.get("probe_profile") == "board_service_fleet"
+            and (observation.get("health") == "complete" or observation.get("complete") is True)):
+        # A stale/manual observation or residual publication configuration
+        # cannot enter a native publisher through the coding-repair callback.
+        return _mirror_job_recovery({"verified": False,
+            "reason": "service_fleet_completion_is_observational"})
     details = observation.get("details", {})
     integrity = details.get("source_integrity", {}) if isinstance(details, dict) else {}
     if isinstance(integrity, dict) and integrity.get("configured") is True and integrity.get("valid") is not True:
         return _mirror_job_recovery({"verified": False, "reason": "source_integrity_not_verified"})
+    if board.get("probe_profile") == "board_service_fleet":
+        stamp = details.get("checked_at_epoch")
+        verified = (observation.get("health") == "healthy"
+                    and details.get("probe_profile") == "board_service_fleet"
+                    and details.get("monitor_scope_verified") is True
+                    and details.get("native_completion_authority") is False
+                    and integrity.get("configured") is True and integrity.get("valid") is True
+                    and type(stamp) in (int, float) and 0 <= time.time() - stamp <= 180)
+        return _mirror_job_recovery({"verified": verified,
+            "reason": "service_fleet_runtime_health_verified" if verified else "service_fleet_runtime_health_unverified",
+            "completion_authority": False, "publication_verified": False})
     if observation.get("health") == "complete" or observation.get("completion_candidate") is True:
         if not board.get("publication"):
             return _mirror_job_recovery({"verified": False, "reason": "publication_configuration_required"})

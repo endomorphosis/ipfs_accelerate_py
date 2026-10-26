@@ -555,3 +555,63 @@ The read session controls resource lifetime only. It does not begin a read
 transaction, freeze task heads, grant authority, or replace native source/owner
 admission. The caller must retain the final snapshot comparison and retry only
 the typed observation drift that the native restart-check contract permits.
+
+## Existing service-fleet monitor profile
+
+An existing legacy implementation fleet can join the coding-repair watchdog
+without creating a second task owner or restart loop. Its inventory entry uses
+`"probe_profile": "board_service_fleet"` and an absolute `config_path` for the
+existing `board_service_fleet_monitor` configuration. For example:
+
+```json
+{
+  "id": "legal-ir-legacy",
+  "probe_profile": "board_service_fleet",
+  "probe_max_age_seconds": 180,
+  "cwd": "/absolute/qualified/accelerate-checkout",
+  "config_path": "/absolute/legal_ir_autoencoder_fleet_monitor.json",
+  "runtime_root": "/absolute/legal-ir-runtime",
+  "ensure_argv": ["systemctl", "--user", "start", "legal-ir-autoencoder-v1-monitor.service"],
+  "status_argv": [],
+  "hold_paths": []
+}
+```
+
+Use the canonical installer with the complete inventory, preserving all existing
+boards. It packages both original service-monitor modules in the immutable
+release and selects their read-only `--fleet-probe-board-id` /
+`--fleet-probe-inventory` adapter. The probe rejects `--apply`; it reads the
+original monitor's snapshot and checks its age, exact configured lane/service
+identities, current systemd generations and process births. R/S scheduling
+changes are distinct from process identity; stopped or uninterruptible processes
+remain degraded. Configured source-integrity checks still apply.
+
+The original service monitor retains progress deadlines, cooldowns, restart
+budgets and sole authority for scoped lane restarts. Generic idle timeouts do
+not replace those deadlines. Dependency, provider, resource and explicit
+missing-prerequisite waits stay visible without launching coding repair or
+waiving their contracts. Persistent infrastructure faults enter the existing
+bounded coding-repair queue. The service profile bypasses generic native owner,
+source-restoration and overlay-cleanup helpers in both repair and ensure dispatch;
+operator holds are retained without invoking native hold-release review. Its profile-specific prompt restricts repairs to
+supervisor infrastructure; it cannot invent source correspondence, legal
+meaning, approvals or training/gold admission.
+
+An observed all-tasks-completed legacy board is a healthy completion candidate,
+with `complete: false` and no native completion authority. Shared global counts
+from different lanes are not summed. The installer removes publication settings
+from this observational profile. Configured-profile guards also reject native
+completion dispatch and repair-publication callbacks if stale metadata overstates
+completion or publication settings are reintroduced. Fresh source-verified
+operational health can settle an infrastructure repair without granting native
+completion or publication authority. A completed engineering board does not establish
+that a scientific programme or the U.S. Code corpus has been completed.
+
+The repair fallback directory must exist. If the old shared maintenance checkout
+has been deleted, explicitly select an existing qualified checkout with
+`--repair-cwd`, preserving the remaining policy. With a coding job in flight,
+use `--defer-repair-restart`: the installer restarts the watchdog but leaves the
+repair job running. The native repair loop reloads its configuration between
+jobs and exits for a pending runtime update, after which systemd `Restart=always`
+loads the new unit. Verify the actual loaded process after deployment; an old
+runtime's support for this hook must not be inferred from current source.

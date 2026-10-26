@@ -15,7 +15,8 @@ from pathlib import Path
 
 MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "fleet_heals",
            "fleet_holds", "live_board_probe", "canonical_writer_custody",
-           "diagnostic_handoff", "storage_diagnostics")
+           "diagnostic_handoff", "storage_diagnostics", "board_service_monitor",
+           "board_service_fleet_monitor")
 
 
 def unit_directory(value: str) -> str:
@@ -62,6 +63,12 @@ def validate_inventory(inventory: dict, repair_cwd: Path) -> None:
         if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", identifier) or identifier in identifiers:
             raise ValueError("inventory board ids must be unique safe names")
         identifiers.add(identifier)
+        if entry.get("probe_profile", "native_board") not in {"native_board", "board_service_fleet"}:
+            raise ValueError(f"{identifier}: unsupported probe_profile")
+        if entry.get("probe_profile") == "board_service_fleet":
+            age = entry.get("probe_max_age_seconds", 180)
+            if type(age) not in (int, float) or not 5 <= age <= 300:
+                raise ValueError(f"{identifier}: probe_max_age_seconds must be5..300")
         for field in ("cwd", "config_path", "runtime_root"):
             value = entry.get(field)
             if not isinstance(value, str) or not Path(value).is_absolute():
@@ -150,6 +157,14 @@ def install(source: Path, inventory_path: Path, repair_cwd: Path, *, enable: boo
                  "repair": {"argv": [python, "-P", "-m", "ipfs_accelerate_py.agent_supervisor.rescue.fleet_repair",
                                      "enqueue", "--config", str(config_path)],
                             "env": env, "timeout_seconds": 15}}
+        if entry.get("probe_profile") == "board_service_fleet":
+            board["probe_profile"] = "board_service_fleet"
+            board["probe"] = {"argv": [python, "-P", "-m",
+                "ipfs_accelerate_py.agent_supervisor.rescue.board_service_fleet_monitor",
+                "--config", entry["config_path"], "--fleet-probe-board-id", board_id,
+                "--fleet-probe-inventory", str(installed_inventory),
+                "--max-health-age-seconds", str(entry.get("probe_max_age_seconds", 180))],
+                "env": env, "timeout_seconds": 90}
         if entry.get("ensure_argv"):
             ensure_argv = entry["ensure_argv"]
             if Path(ensure_argv[0]).name == "systemctl":
@@ -194,6 +209,10 @@ Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
                         "launch_only_hold_files", "diagnostic_handoff", "storage_checks"):
                 if key in prior.get(board["id"], {}):
                     board[key] = prior[board["id"]][key]
+            if board.get("probe_profile") == "board_service_fleet":
+                # Service-fleet task projections supply no native completion
+                # or publication admission, including on an existing entry.
+                board.pop("publication", None)
         shutil.copy2(config_path, config_path.with_suffix(".json.previous"))
     if "poll_seconds" in old:
         config["poll_seconds"] = old["poll_seconds"]

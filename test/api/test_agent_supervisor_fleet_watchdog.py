@@ -1754,3 +1754,119 @@ def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
         "max_ensure_attempts": 2,
     }
     assert fleet.select_action(state, board, 100) == "supervisor_heal"
+
+
+def service_fleet_observation(*, health="healthy", complete_candidate=False, waiting=False):
+    return dict(board_id="legal-ir-legacy", health=health, complete=False,
+        completion_candidate=complete_candidate, busy=False, progress_token="",
+        reason_codes=["service_fleet_waiting_on_contract"] if waiting else [],
+        recovery_action="repair" if health == "degraded" else "none",
+        details=dict(probe_profile="board_service_fleet", monitor_scope_verified=True,
+            monitor_progress_authority=True, authenticated_task_observation=False,
+            native_completion_authority=False))
+
+
+def test_service_fleet_ready_deadline_stays_with_original_bounded_monitor():
+    board = dict(id="legal-ir-legacy", probe_profile="board_service_fleet", stall_seconds=60)
+    state = fleet.assess(service_fleet_observation(), {}, board, 100)
+    state = fleet.assess(service_fleet_observation(), state, board, 1000)
+    assert state["health"] == "healthy" and state["last_progress_at"] == 100
+    assert fleet.select_action(state, board, 1000) == ""
+    ordinary = dict(board)
+    ordinary.pop("probe_profile")
+    state = fleet.assess(service_fleet_observation(), {}, ordinary, 100)
+    state = fleet.assess(service_fleet_observation(), state, ordinary, 1000)
+    assert state["health"] == "stalled"
+
+
+def test_service_fleet_completion_candidate_never_ensures_repairs_or_publishes():
+    board = dict(id="legal-ir-legacy", probe_profile="board_service_fleet",
+        publication={"unadmitted": True}, ensure={"argv": ["never"]}, repair={"argv": ["never"]})
+    state = fleet.assess(service_fleet_observation(complete_candidate=True), {}, board, 100)
+    assert state["stall_class"] == "closeout_requires_native_authority"
+    assert fleet.select_action(state, board, 10000) == ""
+
+
+def test_service_fleet_external_waits_do_not_enter_coding_repair():
+    board = dict(id="legal-ir-legacy", probe_profile="board_service_fleet", blocked_grace_seconds=5)
+    state = fleet.assess(service_fleet_observation(health="blocked", waiting=True), {}, board, 100)
+    assert state["stall_class"] in fleet.WAIT_STALLS
+    assert fleet.select_action(state, board, 10000) == ""
+
+
+def test_service_fleet_fault_uses_coding_repair_instead_of_native_quack_heal():
+    board = dict(id="legal-ir-legacy", probe_profile="board_service_fleet", blocked_grace_seconds=5)
+    state = fleet.assess(service_fleet_observation(health="degraded"), {}, board, 100)
+    assert state["stall_class"] == "service_fleet_monitor_requires_repair"
+    assert fleet.select_action(state, board, 106) == "repair"
+
+
+@pytest.mark.parametrize("complete_flag,health,publication,details", [
+    (True, "healthy", True, None),
+    (True, "healthy", False, {"probe_profile": "native_board", "native_completion_authority": True}),
+    (False, "complete", True, {"probe_profile": "native_board", "native_completion_authority": True}),
+    (False, "complete", False, None),
+])
+def test_service_fleet_configured_profile_cannot_dispatch_overstated_native_completion(
+        complete_flag, health, publication, details):
+    board = dict(id="legal-ir-legacy", probe_profile="board_service_fleet", blocked_grace_seconds=1)
+    if publication:
+        board["publication"] = {"must_not_run": True}
+    observation = dict(board_id=board["id"], health=health, complete=complete_flag,
+        completion_candidate=False, details=details, reason_codes=[], busy=False)
+    assert fleet.classify_stall(observation, board=board) == "service_fleet_native_completion_refused"
+    raw_state = dict(health=health, observation=observation, stall_class="complete")
+    assert fleet.select_action(raw_state, board, 100) == ""
+    assessed = fleet.assess(observation, {}, board, 100)
+    assert assessed["health"] == "degraded" and assessed["observation"]["complete"] is False
+    assert assessed["observation"]["details"]["refused_native_completion_claim"] is True
+    assert fleet.select_action(assessed, board, 102) not in {"publish", "completion_review"}
+
+
+def test_service_fleet_tick_repair_never_invokes_native_heal_or_source_restore(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal",
+        lambda *args, **kwargs: pytest.fail("service fleet must not invoke native heal/source restore"))
+    board = _board(tmp_path, id="legal-ir-legacy", probe_profile="board_service_fleet")
+    runner = Runner(service_fleet_observation(health="degraded"))
+    root = tmp_path / "watch"
+    fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=121)
+    assert state["last_action"] == "repair"
+    effects = [call for call in runner.calls if call["argv"][0] != "probe"]
+    assert len(effects) == 1 and effects[0]["argv"][0] == "repair"
+    assert effects[0]["argv"][1] == "--incident"
+
+
+def test_service_fleet_tick_ensure_runs_only_declared_monitor_without_overlay_cleanup(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+    monkeypatch.setattr(fleet_heals, "clear_overlay_copies_blocking_owner_start",
+        lambda *args, **kwargs: pytest.fail("service fleet must not remove native source overlays"))
+    monitor = ["systemctl", "--user", "start", "legal-ir-autoencoder-v1-monitor.service"]
+    monkeypatch.setattr(fleet, "reset_failed_ensure_unit", lambda board: False)
+    board = _board(tmp_path, id="legal-ir-legacy", probe_profile="board_service_fleet", ensure={"argv": monitor})
+    observation = service_fleet_observation(health="unknown")
+    observation["recovery_action"] = "ensure"
+    runner = Runner(observation)
+    root = tmp_path / "watch"
+    fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=111)
+    assert state["last_action"] == "ensure"
+    effects = [call for call in runner.calls if call["argv"][0] != "probe"]
+    assert [effect["argv"] for effect in effects] == [monitor]
+
+
+def test_service_fleet_tick_retains_operator_hold_without_native_hold_review(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_holds
+    monkeypatch.setattr(fleet_holds, "review_board_holds",
+        lambda *args, **kwargs: pytest.fail("service fleet must not release native/operator holds"))
+    marker = tmp_path / "HOLD"
+    marker.write_text("Operator investigation in progress")
+    board = _board(tmp_path, id="legal-ir-legacy", probe_profile="board_service_fleet", hold_files=[str(marker)])
+    observation = service_fleet_observation(health="degraded")
+    observation["details"].update(owner_ready=True, authenticated_task_observation=True)
+    runner = Runner(observation)
+    state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=100)
+    assert state["health"] == "operator_hold" and state["planned_action"] == ""
+    assert marker.read_text() == "Operator investigation in progress"
+    assert [call["argv"][0] for call in runner.calls] == ["probe"]

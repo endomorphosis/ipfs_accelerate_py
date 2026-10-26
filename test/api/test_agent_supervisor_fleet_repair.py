@@ -3285,3 +3285,48 @@ def test_collapse_extra_gate_recursion_binds_live_unit_not_inventory(tmp_path):
     assert skipped["status"] == "wait"
     assert skipped["completion_authority"] is False
     assert skipped["reason"] == "retain_owner_not_rewrapped"
+
+
+def test_service_fleet_repair_prompt_keeps_legal_and_restart_authority_scoped(tmp_path):
+    cfg = config(tmp_path)
+    board = dict(cfg["boards"][0], id="legal-ir-legacy", probe_profile="board_service_fleet")
+    prompt = repair_prompt(board, {"board_id": "legal-ir-legacy"}, cfg, tmp_path / "report.json")
+    assert "LEGALIR SERVICE-FLEET AUTHORIZATION" in prompt
+    assert "sole authority for bounded lane restarts" in prompt
+    assert "Never manufacture statutory" in prompt
+    assert "no native completion or publication authority" in prompt
+    ordinary = repair_prompt(cfg["boards"][0], {}, cfg, tmp_path / "ordinary.json")
+    assert "LEGALIR SERVICE-FLEET AUTHORIZATION" not in ordinary
+
+
+@pytest.mark.parametrize("publication", [True, False])
+def test_service_fleet_repair_callback_cannot_publish_stale_native_completion(tmp_path, monkeypatch, publication):
+    cfg = config(tmp_path)
+    board = dict(cfg["boards"][0], id="legal-ir-legacy", probe_profile="board_service_fleet")
+    if publication:
+        board["publication"] = {"must_not_run": True}
+    monkeypatch.setattr(repair, "_mirror_job_recovery", lambda value: value)
+    result = repair.verify_job_recovery(board, {}, dict(health="complete", complete=True,
+        details={"native_completion_authority": True}), tmp_path / "publication")
+    assert result == {"verified": False, "reason": "service_fleet_completion_is_observational"}
+    assert not (tmp_path / "publication").exists()
+    operational = dict(health="healthy", complete=False, completion_candidate=True,
+        details=dict(probe_profile="board_service_fleet", monitor_scope_verified=True,
+            native_completion_authority=False, checked_at_epoch=time.time(),
+            source_integrity={"configured": True, "valid": True}))
+    recovered = repair.verify_job_recovery(board, {}, operational, tmp_path / "publication")
+    assert recovered == {"verified": True, "reason": "service_fleet_runtime_health_verified",
+        "completion_authority": False, "publication_verified": False}
+    assert not (tmp_path / "publication").exists()
+    operational["details"]["checked_at_epoch"] -= 181
+    assert repair.verify_job_recovery(board, {}, operational, tmp_path / "publication")["verified"] is False
+
+
+def test_service_fleet_cached_complete_state_cannot_retire_native_board(tmp_path):
+    cfg = config(tmp_path)
+    board = dict(cfg["boards"][0], id="legal-ir-legacy", probe_profile="board_service_fleet")
+    cfg["boards"] = [board]
+    write_json(Path(cfg["state_dir"]) / board["id"] / "state.json",
+        dict(health="complete", observation={"complete": True}, last_action="publish",
+             last_action_result={"status": "published"}))
+    assert repair.board_is_complete(cfg, board["id"]) is False
