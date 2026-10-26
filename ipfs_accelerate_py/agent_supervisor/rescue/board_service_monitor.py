@@ -57,7 +57,7 @@ def load_config(path: Path) -> dict[str, Any]:
     for key, default in {
         "startup_grace_seconds": 120, "heartbeat_timeout_seconds": 300,
         "progress_timeout_seconds": 7200, "restart_cooldown_seconds": 600,
-        "max_restarts_per_hour": 3,
+        "max_restarts_per_hour": 3, "native_recovery_timeout_seconds": 600,
     }.items():
         value = config.setdefault(key, default)
         if (isinstance(value, bool) or not isinstance(value, (int, float))
@@ -243,6 +243,109 @@ def _unresolved_retry_deferrals(events: list[dict[str, Any]],
     )]
 
 
+def _process_snapshot(pid: int) -> dict[str, Any] | None:
+    """Read one Linux process birth and direct children; unknown never grants repair."""
+    try:
+        root = Path("/proc") / str(pid)
+        fields = (root / "stat").read_text().rsplit(")", 1)[1].split()
+        children = [int(value) for value in (root / "task" / str(pid) / "children").read_text().split()]
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        if not boot or len(children) > 256 or fields[0] in {"Z", "X"}:
+            return None
+        return {"pid": pid, "birth_ticks": int(fields[19]), "boot_id": boot,
+                "children": children}
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _native_recovery_observation(config: dict[str, Any], service: dict[str, Any],
+                                 evidence: dict[str, Any], previous: dict[str, Any],
+                                 now: float, monotonic: float) -> dict[str, Any]:
+    """Bound the parent's own recovery, with positive quiescence before escalation."""
+    result = {"tracked": False, "expired": False, "quiescent": False}
+    if evidence.get("native_daemon_pid_alive") is not False:
+        return result
+    try:
+        pid = int(service.get("MainPID", 0))
+        started = float(service.get("ExecMainStartTimestampMonotonic", 0)) / 1_000_000
+        status_at = evidence.get("native_status_at_epoch")
+        run_id = evidence.get("native_run_id")
+        retries = evidence.get("native_restart_count")
+        if (pid <= 1 or evidence.get("native_supervisor_pid") != pid
+                or service.get("ActiveState") != "active" or started <= 0
+                or not 0 <= monotonic - started
+                or type(status_at) not in (int, float) or not math.isfinite(status_at)
+                or not max(now - config["heartbeat_timeout_seconds"], now - (monotonic - started) - 1) <= status_at <= now
+                or type(run_id) is not str or not 0 < len(run_id) <= 256
+                or type(retries) is not int or retries < 0):
+            return {**result, "reason": "native_recovery_identity_unverified"}
+        process = _process_snapshot(pid)
+        if process is None:
+            return {**result, "reason": "native_recovery_process_unverified"}
+        identity = {key: process[key] for key in ("pid", "birth_ticks", "boot_id")}
+        old = previous.get("native_recovery")
+        old = old if type(old) is dict else {}
+        since = old.get("since_at_epoch") if old.get("identity") == identity else now
+        if type(since) not in (int, float) or not math.isfinite(since) or not 0 < since <= now:
+            since = now
+        work = evidence.get("last_work_event_at_epoch") or 0
+        if type(work) not in (int, float) or not math.isfinite(work):
+            return {**result, "reason": "native_recovery_progress_unverified"}
+        if old.get("identity") == identity and work > old.get("work_event_at_epoch", work):
+            since = now
+        safety = evidence.get("native_unavailable_child_recovery")
+        safety = safety if type(safety) is dict else {}
+        birth = safety.get("supervisor_process_birth")
+        birth = birth if type(birth) is dict else {}
+        proof_current = (safety.get("schema") == "ipfs-accelerate/unavailable-child-recovery-safety@1"
+            and safety.get("safe") is True and safety.get("blockers") == []
+            and birth.get("pid") == pid and birth.get("start_time_ticks") == process["birth_ticks"]
+            and birth.get("boot_id") == process["boot_id"]
+            and _timestamp(safety.get("observed_at"), now) == status_at)
+        first_deadline = old.get("maintenance_deadline_at_epoch") if old.get("identity") == identity and since != now else None
+        window = evidence.get("native_maintenance_window")
+        if first_deadline is None and evidence.get("native_managed_status") == "agentic_maintenance_started":
+            if type(window) is not dict or window.get("schema") != "ipfs_accelerate_py/agent-supervisor/supervisor-maintenance@1" or window.get("phase") != "running" or window.get("finished_at") is not None:
+                return {**result, "reason": "native_maintenance_window_unverified"}
+            begin = _timestamp(window.get("started_at"), now)
+            deadline_value = window.get("deadline_at")
+            if type(deadline_value) is not str or not 0 < len(deadline_value) <= 128:
+                return {**result, "reason": "native_maintenance_deadline_unverified"}
+            deadline_value = datetime.fromisoformat(deadline_value.replace("Z", "+00:00"))
+            if deadline_value.tzinfo is None or deadline_value.utcoffset() is None:
+                return {**result, "reason": "native_maintenance_deadline_unverified"}
+            first_deadline = deadline_value.timestamp()
+            duration = window.get("timeout_seconds")
+            if (begin is None or first_deadline is None or type(duration) not in (int, float)
+                    or not math.isfinite(duration) or duration <= 0
+                    or not math.isclose(first_deadline - begin, duration, abs_tol=0.000001)
+                    or not begin <= status_at):
+                return {**result, "reason": "native_maintenance_deadline_unverified"}
+        if first_deadline is not None and (type(first_deadline) not in (int, float)
+                or not math.isfinite(first_deadline) or first_deadline <= 0):
+            return {**result, "reason": "native_maintenance_deadline_unverified"}
+        checks = {
+            "native_owner_quiescence_not_proven": proof_current,
+            "native_worker_count_not_zero": type(safety.get("active_worker_count")) is int and safety["active_worker_count"] == 0,
+            "native_worker_pids_not_empty": safety.get("active_worker_pids") == [],
+            "native_worker_descendants_not_zero": type(safety.get("worker_descendant_count")) is int and safety["worker_descendant_count"] == 0,
+            "native_phase_not_quiescent": safety.get("worker_phase") in {"", "idle", "selected"},
+            "active_task_present": evidence.get("active") is False,
+            "supervisor_has_children": process["children"] == [],
+            "implementation_not_enabled": evidence.get("implement") is True,
+        }
+        timeout = config["native_recovery_timeout_seconds"]
+        deadline = max(since + timeout, first_deadline or 0)
+        return {"tracked": True, "identity": identity, "since_at_epoch": since,
+                "work_event_at_epoch": work, "maintenance_deadline_at_epoch": first_deadline,
+                "age_seconds": now - since, "timeout_seconds": timeout,
+                "deadline_at_epoch": deadline, "run_id": run_id, "restart_count": retries,
+                "expired": now >= deadline, "quiescent": all(checks.values()),
+                "quiescence_blockers": [key for key, good in checks.items() if not good]}
+    except (TypeError, ValueError, OverflowError):
+        return {**result, "reason": "native_recovery_observation_invalid"}
+
+
 def collect_evidence(config: dict[str, Any], now: float) -> dict[str, Any]:
     native, native_error = _read_json(config["native_state_path"])
     source = config["native_state_path"]
@@ -389,6 +492,15 @@ def collect_evidence(config: dict[str, Any], now: float) -> dict[str, Any]:
         "native_restart_count": status.get("restart_count"),
         "native_idle_ready_seconds": status.get("idle_ready_seconds"),
         "native_recycle_safe": status.get("idle_ready_recycle_safe"),
+        "native_supervisor_pid": status.get("supervisor_pid"),
+        "native_run_id": status.get("run_id"),
+        "native_active_worker_count": status.get("active_worker_count"),
+        "native_active_worker_pids": status.get("active_worker_pids"),
+        "native_worker_descendant_count": status.get("worker_descendant_count"),
+        "native_worker_phase": status.get("worker_phase"),
+        "native_recycle_blockers": status.get("idle_ready_recycle_blockers"),
+        "native_unavailable_child_recovery": status.get("unavailable_child_recovery"),
+        "native_maintenance_window": status.get("supervisor_maintenance"),
         "implement": status.get("implementation_enabled", status.get("implement",
                      status.get("config", {}).get("implement", config.get("implement"))
                      if isinstance(status.get("config"), dict) else config.get("implement"))),
@@ -458,6 +570,13 @@ def evaluate_health(config: dict[str, Any], service: dict[str, Any], evidence: d
         native_status_at >= now - config["heartbeat_timeout_seconds"]
         and (age is None or native_status_at >= now - age - 1)
     )
+    recovery = evidence.get("native_recovery") or {}
+    if recovery.get("expired") is True:
+        if recovery.get("quiescent") is True:
+            return decision("native_recovery_stalled", "The same birth-bound parent exhausted its native recovery grace with no owned work", restart=True)
+        return decision("native_recovery_blocked", "Native recovery exceeded its grace but positive quiescence is unproven; no restart authorized")
+    if recovery.get("tracked") is True:
+        return decision("native_child_restarting", "Birth-bound parent recovery is within its grace; no managed child is currently available")
     if (current_native_status and evidence.get("native_daemon_pid_alive") is False
             and evidence.get("native_managed_status") in {
                 "max_restarts_reached", "child_exited", "launch_failed"}):
@@ -584,11 +703,17 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
         previous = {}
     evidence = collect_evidence(config, now)
     service = systemd_show(config["service"])
-    health = evaluate_health(config, service, evidence, previous, now, time.monotonic())
+    monotonic = time.monotonic()
+    evidence["native_recovery"] = _native_recovery_observation(config, service, evidence, previous, now, monotonic)
+    health = evaluate_health(config, service, evidence, previous, now, monotonic)
     restarts = [value for value in previous.get("restart_attempts_at_epoch", [])
                 if isinstance(value, (float, int)) and value > now - 3600]
     current = {**scope, "first_seen_at_epoch": previous.get("first_seen_at_epoch", now),
                "restart_attempts_at_epoch": restarts}
+    if evidence["native_recovery"].get("tracked"):
+        current["native_recovery"] = evidence["native_recovery"]
+    elif evidence.get("native_daemon_pid_alive") is not True and type(previous.get("native_recovery")) is dict:
+        current["native_recovery"] = previous["native_recovery"]
     if evidence.get("ready_count") and not evidence.get("active"):
         current["ready_since_at_epoch"] = previous.get("ready_since_at_epoch", now)
     summary = {"schema": "ipfs-accelerate/board-service-monitor@1", **scope,
@@ -609,11 +734,14 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
             # are being observed. Re-read before charging any restart, and
             # never apply an old diagnosis to a different service generation.
             observed_service = service
+            observed_recovery = evidence.get("native_recovery") or {}
             observed_status = health["status"]
             now = time.time()
             evidence = collect_evidence(config, now)
             service = systemd_show(config["service"])
-            health = evaluate_health(config, service, evidence, previous, now, time.monotonic())
+            monotonic = time.monotonic()
+            evidence["native_recovery"] = _native_recovery_observation(config, service, evidence, previous, now, monotonic)
+            health = evaluate_health(config, service, evidence, previous, now, monotonic)
             summary.update(**health, evidence=evidence, service_observation=service,
                            checked_at=datetime.fromtimestamp(now, timezone.utc).isoformat(),
                            checked_at_epoch=now)
@@ -624,6 +752,11 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
                 "service_identity_unchanged": (
                     observed_identity is not None and observed_identity == refreshed_identity),
             }
+            rechecked_recovery = evidence["native_recovery"]
+            if rechecked_recovery.get("tracked"):
+                current["native_recovery"] = rechecked_recovery
+            elif evidence.get("native_daemon_pid_alive") is True:
+                current.pop("native_recovery", None)
             if not evidence.get("ready_count") or evidence.get("active"):
                 current.pop("ready_since_at_epoch", None)
             if observed_identity is None or refreshed_identity is None:
@@ -632,6 +765,10 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
                 summary["action"] = "restart_suppressed_service_changed"
                 if evidence.get("ready_count") and not evidence.get("active"):
                     current["ready_since_at_epoch"] = now
+            elif observed_status == "native_recovery_stalled" and not (
+                    rechecked_recovery.get("expired") is True and rechecked_recovery.get("quiescent") is True
+                    and rechecked_recovery.get("identity") == observed_recovery.get("identity")):
+                summary["action"] = "restart_suppressed_recovery_changed"
             elif not health["restart_eligible"]:
                 summary["action"] = "restart_suppressed_health_changed"
             else:

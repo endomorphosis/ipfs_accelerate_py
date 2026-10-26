@@ -782,3 +782,257 @@ def test_replacement_service_does_not_inherit_expired_ready_deadline(config, mon
     assert result["action"] == "restart_suppressed_service_changed" and calls == []
     saved = json.loads(Path(config["monitor_state_path"]).read_text())
     assert saved["ready_since_at_epoch"] == NOW and saved["restart_attempts_at_epoch"] == []
+
+
+# Execute the actual staged native emission helper without importing its model/runtime package.
+import ast
+import types
+from datetime import datetime, timezone
+_NATIVE_SOURCE = SOURCE.parents[1] / "todo_daemon/implementation_supervisor.py"
+_tree = ast.parse(_NATIVE_SOURCE.read_text())
+_native_node = next(n for n in ast.walk(_tree) if isinstance(n, ast.FunctionDef) and n.name == "_unavailable_child_recovery_status")
+_native_unit = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), _native_node], type_ignores=[])
+import sys
+import importlib.util
+import copy
+_base = SOURCE.parents[1]
+for _name, _directory in [("_watchdog_owners", _base), ("_watchdog_owners.proof", _base/"proof"),
+        ("_watchdog_owners.control", _base/"control"), ("_watchdog_owners.task_sources", _base/"task_sources"),
+        ("_watchdog_owners.todo_daemon", _base/"todo_daemon")]:
+    _package = types.ModuleType(_name);_package.__path__=[str(_directory)];sys.modules[_name]=_package
+for _name, _relative in [("proof.formal_verification_contracts", "proof/formal_verification_contracts.py"),
+        ("control.control_contracts", "control/control_contracts.py"),
+        ("task_sources.taskboard_store", "task_sources/taskboard_store.py"),
+        ("todo_daemon.supervisor_activity", "todo_daemon/supervisor_activity.py")]:
+    _spec=importlib.util.spec_from_file_location("_watchdog_owners."+_name,_base/_relative)
+    _module=importlib.util.module_from_spec(_spec);sys.modules[_spec.name]=_module;_spec.loader.exec_module(_module)
+_Store=sys.modules["_watchdog_owners.task_sources.taskboard_store"].ProjectionDeltaCheckpointStore
+_Window=sys.modules["_watchdog_owners.todo_daemon.supervisor_activity"].SupervisorMaintenanceWindow
+_native_globals = dict(Mapping=__import__("collections.abc", fromlist=["Mapping"]).Mapping,
+    load_json_dict=lambda p: json.loads(Path(p).read_text()) if Path(p).is_file() else None,
+    checkout_mutation_lock_path=lambda p: Path(p)/"global-checkout.lock", ProjectionDeltaCheckpointStore=_Store,
+    SupervisorMaintenanceWindow=_Window, os=types.SimpleNamespace(getpid=lambda:123),
+    read_process_birth=lambda pid:types.SimpleNamespace(to_dict=lambda:dict(pid=123,start_time_ticks=99,boot_id="test-boot")),
+    utc_now=lambda:datetime.fromtimestamp(NOW-1,timezone.utc).isoformat(), PROOF_ROLLOUT_PROJECTION_FIELDS=(),
+    write_json_atomic=lambda p,v:write_json(p,v))
+exec(compile(ast.fix_missing_locations(_native_unit), str(_NATIVE_SOURCE), "exec"), _native_globals)
+_native_emit = _native_globals["_unavailable_child_recovery_status"]
+_writer_node=next(n for n in ast.walk(_tree) if isinstance(n,ast.FunctionDef) and n.name=="_write_supervisor_maintenance_status")
+_writer_unit=ast.Module(body=[ast.ImportFrom(module="__future__",names=[ast.alias(name="annotations")],level=0),_writer_node],type_ignores=[])
+exec(compile(ast.fix_missing_locations(_writer_unit),str(_NATIVE_SOURCE),"exec"),_native_globals)
+_native_write=_native_globals["_write_supervisor_maintenance_status"]
+for _function in ("_publish_unavailable_child_recovery", "_run_forever_loop"):
+    _node=next(n for n in ast.walk(_tree) if isinstance(n,ast.FunctionDef) and n.name==_function)
+    _unit=ast.Module(body=[ast.ImportFrom(module="__future__",names=[ast.alias(name="annotations")],level=0),_node],type_ignores=[])
+    exec(compile(ast.fix_missing_locations(_unit),str(_NATIVE_SOURCE),"exec"),_native_globals)
+_native_publish=_native_globals["_publish_unavailable_child_recovery"]
+_native_parent_loop=_native_globals["_run_forever_loop"]
+
+
+def native_owner(config, **changes):
+    state = Path(config["native_state_path"])
+    write_json(state, dict(active_task_id="", implementation_in_progress=False, active_phase=""))
+    owner = types.SimpleNamespace(config=types.SimpleNamespace(state_path=state, repo_root=Path(config["state_dir"]),
+        events_path=Path(config["state_dir"])/(config["state_prefix"]+"_supervisor_events.jsonl"),strategy_path=Path(config["state_dir"])/"strategy.json",board_namespace=config["board_namespace"]),
+        _database_authority_enabled=lambda: False, _active_agent_worker_processes=lambda: [],
+        _active_validation_subprocess_exists=lambda: False, _current_supervisor_checkout_lease=lambda: None,
+        _repo_merge_lock_path=lambda: Path(config["state_dir"])/"board-checkout.lock")
+    owner._supervisor_status_path=lambda:Path(config["status_path"])
+    owner._supervisor_maintenance_timeout_seconds=lambda:900
+    owner._watchdog_startup_grace_seconds=lambda:60
+    owner.config.stale_seconds=120;owner.config.check_interval=20
+    owner.config.implement=True;owner.config.reconciliation_only=False
+    owner.config.state_dir=Path(config["state_dir"]);owner.config.state_prefix=config["state_prefix"]
+    owner.config.task_prefix="## TEST-";owner.config.task_shard_index=1
+    owner._managed_daemon_pid_path=lambda:Path(config["state_dir"])/"managed.pid"
+    owner._proof_rollout_status_fields=lambda _:{}
+    owner._autonomous_unstall_status=lambda:{}
+    owner._control_plane_status_projection=lambda:{}
+    owner._persist_own_supervisor_pid=lambda:None
+    owner._write_supervisor_maintenance_receipt=lambda *args,**kwargs:None
+    owner._unavailable_child_recovery_status=types.MethodType(_native_emit,owner)
+    owner.__dict__.update(changes)
+    return owner
+
+
+def process_snapshot(birth=99, children=None):
+    return dict(pid=123, birth_ticks=birth, boot_id="test-boot", children=children or [])
+
+
+def recovery_evidence(config, **changes):
+    proof = _native_emit(native_owner(config), daemon_pid=None,
+        observed_at=datetime.fromtimestamp(NOW-1, timezone.utc).isoformat(),
+        supervisor_birth=dict(pid=123, start_time_ticks=99, boot_id="test-boot"))
+    value = evidence(active=False, implement=True, native_managed_status="max_restarts_reached",
+        native_daemon_pid_alive=False, native_status_at_epoch=NOW-1, native_supervisor_pid=123,
+        native_run_id="attempt-1", native_restart_count=8, native_active_worker_count=0,
+        native_active_worker_pids=[], native_worker_descendant_count=0, native_worker_phase="",
+        native_recycle_safe=False, native_unavailable_child_recovery=proof)
+    value.update(changes)
+    return value
+
+
+def aged_recovery(config, monkeypatch, native):
+    monkeypatch.setattr(monitor, "_process_snapshot", lambda _: process_snapshot())
+    prior = monitor._native_recovery_observation(config, service(), native, {}, NOW, MONOTONIC)
+    prior["since_at_epoch"] = NOW-601
+    return {"native_recovery": prior}
+
+
+def test_actual_native_dead_child_guard_is_reachable_without_idle_recycle_flag(config, monkeypatch):
+    value = recovery_evidence(config)
+    assert value["native_recycle_safe"] is False and value["native_unavailable_child_recovery"]["safe"] is True
+    prior = aged_recovery(config, monkeypatch, value)
+    observed = monitor._native_recovery_observation(config, service(), value, prior, NOW, MONOTONIC)
+    assert observed["expired"] is True and observed["quiescent"] is True
+
+
+@pytest.mark.parametrize("blocker", ["daemon", "database", "task", "worker", "validation", "lease", "board_lock", "global_lock", "error"])
+def test_actual_native_emitter_preserves_every_native_work_and_checkout_fence(config, blocker):
+    owner = native_owner(config)
+    daemon = None
+    if blocker == "daemon":daemon=456
+    if blocker == "database":owner._database_authority_enabled=lambda: True
+    if blocker == "task":write_json(owner.config.state_path, dict(active_task_id="active", implementation_in_progress=True, active_phase="validation"))
+    if blocker == "worker":owner._active_agent_worker_processes=lambda: [456]
+    if blocker == "validation":owner._active_validation_subprocess_exists=lambda: True
+    if blocker == "lease":owner._current_supervisor_checkout_lease=lambda: object()
+    if blocker == "board_lock":owner._repo_merge_lock_path().write_text("retained")
+    if blocker == "global_lock":(owner.config.repo_root/"global-checkout.lock").write_text("retained")
+    if blocker == "error":owner._current_supervisor_checkout_lease=lambda: (_ for _ in ()).throw(OSError("unreadable"))
+    proof = _native_emit(owner, daemon_pid=daemon, observed_at="now", supervisor_birth={})
+    assert proof["safe"] is False and proof["blockers"] and proof["lease_or_task_mutation_authority"] is False
+
+
+def test_failed_run_and_restart_counter_changes_do_not_renew_unavailable_deadline(config, monkeypatch):
+    native = recovery_evidence(config)
+    prior = aged_recovery(config, monkeypatch, native)
+    native.update(native_run_id="failed-next-attempt", native_restart_count=9)
+    observed = monitor._native_recovery_observation(config, service(), native, prior, NOW, MONOTONIC)
+    assert observed["expired"] is True and observed["age_seconds"] == 601
+
+
+@pytest.mark.parametrize("changed", ["birth", "healthy", "work"])
+def test_new_parent_successful_child_or_actual_work_clears_recovery_grace(config, monkeypatch, changed):
+    native = recovery_evidence(config);prior=aged_recovery(config, monkeypatch, native)
+    if changed == "birth":monkeypatch.setattr(monitor, "_process_snapshot", lambda _: process_snapshot(birth=100))
+    if changed == "healthy":native["native_daemon_pid_alive"]=True
+    if changed == "work":native["last_work_event_at_epoch"]=NOW-1
+    observed=monitor._native_recovery_observation(config, service(), native, prior, NOW, MONOTONIC)
+    assert observed["expired"] is False
+
+
+def test_first_native_maintenance_deadline_is_respected_but_not_renewed_by_failed_attempts(config, monkeypatch):
+    native=recovery_evidence(config, native_managed_status="agentic_maintenance_started")
+    native["native_maintenance_window"]=dict(schema="ipfs_accelerate_py/agent-supervisor/supervisor-maintenance@1",
+        phase="running", started_at=datetime.fromtimestamp(NOW-1000, timezone.utc).isoformat(),
+        deadline_at=datetime.fromtimestamp(NOW+100, timezone.utc).isoformat(), timeout_seconds=1100, finished_at=None)
+    prior=aged_recovery(config, monkeypatch, native)
+    prior["native_recovery"]["maintenance_deadline_at_epoch"]=NOW-1
+    native["native_maintenance_window"]["deadline_at"]=datetime.fromtimestamp(NOW+500, timezone.utc).isoformat()
+    native["native_maintenance_window"]["timeout_seconds"]=1500
+    observed=monitor._native_recovery_observation(config, service(), native, prior, NOW, MONOTONIC)
+    assert observed["expired"] is True and observed["maintenance_deadline_at_epoch"] == NOW-1
+    fresh=monitor._native_recovery_observation(config, service(), native, {}, NOW, MONOTONIC)
+    assert fresh["expired"] is False and fresh["maintenance_deadline_at_epoch"] == NOW+500
+
+
+def test_native_recovery_grace_budget_and_before_effect_recheck(config, monkeypatch):
+    calls=stub_runtime(monkeypatch, service())
+    monkeypatch.setattr(monitor, "_process_snapshot", lambda _: process_snapshot())
+    monkeypatch.setattr(monitor, "collect_evidence", lambda *_: recovery_evidence(config))
+    monitor.monitor(config, apply=True)
+    state=json.loads(Path(config["monitor_state_path"]).read_text());state["native_recovery"]["since_at_epoch"]=NOW-601
+    write_json(config["monitor_state_path"],state)
+    processes=iter([process_snapshot(),process_snapshot(children=[456])]);monkeypatch.setattr(monitor,"_process_snapshot",lambda _:next(processes))
+    assert monitor.monitor(config,apply=True)["action"] == "restart_suppressed_recovery_changed" and calls == []
+    monkeypatch.setattr(monitor,"_process_snapshot",lambda _:process_snapshot())
+    assert monitor.monitor(config,apply=True)["action"] == "restart_requested"
+    assert monitor.monitor(config,apply=True)["action"] == "restart_suppressed_cooldown"
+    assert calls == [["systemctl","--user","restart",config["service"]]]
+
+
+def checkpoint_owner(config, *, foreign=False):
+    owner=native_owner(config);owner.config.state_path.unlink()
+    # Exact independently captured native checkpoint, retained from 2026-10-21.
+    # SHA256 54b6b15e1b84b3f95e6985b2d1af81e5e0f62ffe919225bca99e3a0d4f98609a.
+    # Fixture bytes stay intact; the owner rebinds only the three paths below.
+    original=json.loads((Path(__file__).with_name("fixtures")/"legal_ir_deployed_event_driven_checkpoint.json").read_text())
+    projection=copy.deepcopy(original["projection"])
+    projection["result"].update(state_path=str(owner.config.state_path),events_path=str(owner.config.state_dir/(owner.config.state_prefix+"_events.jsonl")),strategy_path=str(owner.config.strategy_path))
+    if foreign:projection["result"]["state_path"]="/foreign/board.json"
+    path=owner.config.state_path.with_name(owner.config.state_path.stem+".event-driven-checkpoint.json")
+    _Store(path).materialize(projection,original["cursor"])
+    return owner,path
+
+
+def test_real_maintenance_writer_emits_reachable_safe_checkpoint_payload_and_monitor_uses_it(config,monkeypatch):
+    owner,checkpoint=checkpoint_owner(config)
+    before=checkpoint.read_bytes();write_json(config["status_path"],dict(active_worker_count=0,active_worker_pids=[],worker_descendant_count=0,worker_phase="",run_id="failed-1",restart_count=8,implementation_enabled=True))
+    _native_write(owner,"recovery",status="running",started_at=datetime.fromtimestamp(NOW-2000,timezone.utc).isoformat())
+    status=json.loads(Path(config["status_path"]).read_text());assert not owner.config.state_path.exists() and checkpoint.read_bytes()==before
+    proof=status["unavailable_child_recovery"];assert proof["safe"] is True and proof["state_source"]==str(checkpoint)
+    assert status["supervisor_maintenance"]["schema"]=="ipfs_accelerate_py/agent-supervisor/supervisor-maintenance@1"
+    native=monitor.collect_evidence(config,NOW);assert native["native_managed_status"]=="agentic_maintenance_started"
+    prior=aged_recovery(config,monkeypatch,native)
+    observed=monitor._native_recovery_observation(config,service(),native,prior,NOW,MONOTONIC)
+    assert observed["expired"] is True and observed["quiescent"] is True
+
+
+@pytest.mark.parametrize("kind",["foreign","malformed","missing","tampered"])
+def test_checkpoint_failure_never_defaults_to_empty_quiescence(config,kind):
+    owner,checkpoint=checkpoint_owner(config,foreign=kind=="foreign")
+    if kind=="malformed":checkpoint.write_text("[]")
+    if kind=="missing":checkpoint.unlink()
+    if kind=="tampered":
+        value=json.loads(checkpoint.read_text());value["projection"]["task_state"]["active_task_id"]="resealed-not-provided";write_json(checkpoint,value)
+    proof=_native_emit(owner,daemon_pid=None,observed_at="now",supervisor_birth={})
+    assert proof["safe"] is False and proof["blockers"] and not owner.config.state_path.exists()
+
+
+@pytest.mark.parametrize("leader",[True,False])
+def test_actual_parent_recovery_publishes_fresh_guard_for_leader_and_nonleader(config,monkeypatch,leader):
+    owner,checkpoint=checkpoint_owner(config)
+    write_json(config["status_path"],dict(active_worker_count=9,active_worker_pids=[456],worker_descendant_count=9,worker_phase="old-finished-work"))
+    owner.ensure_event_log_file=lambda:None;owner.ensure_managed_daemon_pid_file=lambda:None
+    owner._is_board_maintenance_leader=lambda:leader;owner.repair_main_checkout_merge_state=lambda:None
+    owner.run_once=lambda **kwargs:{};owner._record_event=lambda *args:None
+    result=types.SimpleNamespace(status="max_restarts_reached",restart_count=8,last_exit_code=1,last_recycle_reason="launch_failed",last_run_id="failed-8",last_log_path="none")
+    owner.shared_supervisor_loop_class=lambda *args,**kwargs:types.SimpleNamespace(run=lambda:result)
+    owner.build_supervisor_loop_config=lambda:None;owner._supervisor_loop_watchdog_decision=lambda *args:None
+    owner._publish_unavailable_child_recovery=types.MethodType(_native_publish,owner)
+    owner._supervisor_loop_recovery_delay_seconds=lambda:20
+    monkeypatch.setitem(_native_globals,"RECOVERABLE_SUPERVISOR_LOOP_STATUSES",{"max_restarts_reached"})
+    monkeypatch.setitem(_native_globals,"CONTROL_PLANE_RELOAD_STATUS","other")
+    monkeypatch.setitem(_native_globals,"time",types.SimpleNamespace(monotonic=lambda:MONOTONIC,sleep=lambda _:(_ for _ in ()).throw(RuntimeError("one-cycle-complete"))))
+    with pytest.raises(RuntimeError,match="one-cycle-complete"):_native_parent_loop(owner)
+    status=json.loads(Path(config["status_path"]).read_text())
+    assert status["status"]=="native_child_recovery" and status["unavailable_child_recovery"]["safe"] is True
+    assert status["active_worker_count"]==status["worker_descendant_count"]==0 and status["active_worker_pids"]==[] and status["worker_phase"]==""
+    monkeypatch.setattr(monitor,"_process_snapshot",lambda _:process_snapshot())
+    native=monitor.collect_evidence(config,NOW)
+    native["native_recovery"]=monitor._native_recovery_observation(config,service(),native,{},NOW,MONOTONIC)
+    health=evaluate(config,native=native)
+    assert native["native_recovery"]["tracked"] is True and native["native_recovery"]["expired"] is False
+    assert health["status"]=="native_child_restarting" and health["healthy"] is False and health["restart_eligible"] is False
+
+
+@pytest.mark.parametrize("phase",["agentic_maintenance_completed","agentic_maintenance_failed","native_child_recovery"])
+def test_no_child_terminal_or_completed_maintenance_does_not_clear_recovery_interval(config,monkeypatch,phase):
+    native=recovery_evidence(config);prior=aged_recovery(config,monkeypatch,native)
+    native["native_managed_status"]=phase
+    observed=monitor._native_recovery_observation(config,service(),native,prior,NOW,MONOTONIC)
+    assert observed["expired"] is True and observed["since_at_epoch"]==NOW-601
+
+
+def test_native_checkpoint_uses_child_events_and_refuses_resealed_parent_supervisor_stream(config):
+    owner,path=checkpoint_owner(config)
+    child_path=owner.config.state_dir/(owner.config.state_prefix+"_events.jsonl")
+    assert owner.config.events_path != child_path
+    proof=_native_emit(owner,daemon_pid=None,observed_at="now",supervisor_birth={})
+    assert proof["safe"] is True
+    checkpoint=json.loads(path.read_text());projection=checkpoint["projection"]
+    projection["result"]["events_path"]=str(owner.config.events_path)
+    _Store(path).materialize(projection,checkpoint["cursor"])
+    refused=_native_emit(owner,daemon_pid=None,observed_at="now",supervisor_birth={})
+    assert refused["safe"] is False and "native_checkpoint_scope_unproven" in refused["blockers"]
