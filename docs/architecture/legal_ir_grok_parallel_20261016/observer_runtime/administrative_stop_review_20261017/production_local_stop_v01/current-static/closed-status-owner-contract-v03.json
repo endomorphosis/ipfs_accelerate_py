@@ -1,0 +1,124 @@
+{
+  "closed_request_and_receipt_contracts": {
+    "current_A_protocol_pin_scope": "Current pinned protocol corroboration of original declared import and terminal CID; original leaf bytes were not recorded in historical launch inventory.",
+    "owner_result_result_additions": [
+      "nonadmitting_census_controls_report_pin",
+      "runtime_census_helper_pin",
+      "runtime_census_metadata_pin"
+    ],
+    "receipt_exact45_keys_unchanged": true,
+    "receipt_source_pins_additions": [
+      "runtime_census_helper",
+      "retained_link_metadata"
+    ],
+    "request_keyset_unchanged_from_corrected_v02": true
+  },
+  "controller_head": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "diagnostics": {
+    "arbitrary_error_plaintext_or_locals_env_credentials": false,
+    "diagnostics_are_ACK_or_exit_or_close_or_completion_witness": false,
+    "failure_metadata": "Error type, bounded argument SHA256, optional fixed authored-safe reason, bounded known-source frames, last durable fixed stage.",
+    "failure_stderr_maximum_bytes": 8192,
+    "fixed_stages_and_charge_indexes_only": true,
+    "maximum_progress_bytes": 65536,
+    "progress_path": "owner-private-progress.jsonl"
+  },
+  "inert_controls": {
+    "actual_execution_not_claimed_by_this_contract": true,
+    "expected_cases": 9,
+    "native_custody_authority": false,
+    "retained_report": "nonadmitting-runtime-census-controls-report.json",
+    "run_location": "Only newly created private objects under the actual admitted attempt directory.",
+    "synthetic_link_FIFO_hardlink_cleanup_before_strict_native_guard": true
+  },
+  "pins": {
+    "actor": {
+      "bytes": 50588,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/production_unknown_closed_status_owner_v01.py",
+      "sha256": "c0a7494b8de54641ae759c1754110c548a52f6be647c26a3329d75d3a972eee3"
+    },
+    "actor_patch": {
+      "bytes": 16095,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/status-charge-window-census-and-diagnostics-v03.patch",
+      "sha256": "4ea27306e09f49bfb49b1d7c42bbd715b06cb0ecc45b8b37ab3be88676613ec8"
+    },
+    "actor_reciprocal_review": {
+      "bytes": 5314,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-window-census-diagnostic-independent-review-v03.json",
+      "sha256": "8b386d94a2f07b7df43981d68eb64db287a744acbf0c01da9a007ff19a59534f"
+    },
+    "helper_review": {
+      "bytes": 3987,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/runtime-tree-census-independent-review-v01.json",
+      "sha256": "865f21da9c34f03b179855db3ed6e4796ea1cb588d5fc472ccc3b3261d9f0d36"
+    },
+    "metadata_preparer": {
+      "bytes": 18264,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/prepare_production_closed_status_request_v03.py",
+      "sha256": "9cbb9322a970270fa04f81a942051796b173aa27b48580143d339ddda586c599"
+    },
+    "prepared_request": {
+      "bytes": 1344646,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-request-v03.json",
+      "sha256": "bf766688224e3e4a53674bdf08ee918deeb80e197d9802c7045890082f290804"
+    },
+    "preparer_patch": {
+      "bytes": 2313,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/status-request-preparer-v03.patch",
+      "sha256": "b08511769dbc4e1e38201a6de5ee01a3248bb686bbfbb05fc9d955a1d54bde8c"
+    },
+    "retained_link_metadata": {
+      "bytes": 3745,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-retained-log-links-metadata-v01.json",
+      "sha256": "3bb9c81cbc71cf4f5da79b42e5f18e332b04f3705c246a9bca292b901b201fa2"
+    },
+    "runtime_census_helper": {
+      "bytes": 15403,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+      "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+    }
+  },
+  "prepared_request_scope": {
+    "fresh_attempt": "legal-ir-production-unknown-closed-status-20261017-02",
+    "native_actions_by_preparer": false,
+    "preparer_execution_by_this_author": false,
+    "root_reported_metadata_preparation_exit": 0
+  },
+  "preserved_native_behavior": [
+    "Genuine NativeExecutionStatusOwner read-only observation and actual close; no physical maintenance, backup or absent-WAL receipt invented.",
+    "Exact DB bytes/inode generation and no-WAL before/after observations, raw/native snapshot and13-metadata joins, strict original child/master custody and tagged original-owner absence remain required.",
+    "No ADMIN append, FAILED settlement, provider/model dispatch, rearm, successor or cap increase in this actor.",
+    "Original failed76683 attempt and retained reservation remain unchanged. Exact old ValueError cause was not captured and is not inferred from these source findings."
+  ],
+  "resource_and_timing": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "deadline_or_latency_guarantee": false,
+    "disk_reservation_duration_seconds": 420,
+    "driver_deadline_sealed_after": "All four actual external-accounting calls and nine short inert metadata controls return.",
+    "driver_duration_seconds": 120,
+    "external_charge_bytes": 335544320,
+    "memory_mb": 2048,
+    "native_F07_policy_changed": false,
+    "native_status_handle_duration_seconds": 30,
+    "provider_attempt_cap": 2,
+    "storage_bytes": 536870912,
+    "strict_attempt_remaining_bytes": 201326592
+  },
+  "runtime_qualification": {
+    "author_imports_or_execution": false,
+    "genuine_new_status_outcome": "Pending; root actual owner73846 was active when this metadata was authored.",
+    "output_review_gate": "Do not inspect active outputs; require root notification of actual exit0 and complete outer finalization/release first."
+  },
+  "runtime_tree_census": {
+    "all_other_aliases_specials_refused": true,
+    "counting": "Link own bytes plus same-parent regular target exactly once as an ordinary entry.",
+    "directory_identity": "device/inode/uid/mode; directory size/mtime may change with genuine DB/WAL activity.",
+    "exact_allowed_retained_log_links": 3,
+    "link_and_target_generation_pins_checked": true,
+    "production_scope": "Exact approved R06 state tree only.",
+    "scope_limit": "Cooperative bounded non-atomic observation; no atomic exclusion of concurrent ancestor replacement.",
+    "target_bytes_followed_or_opened": false
+  },
+  "schema": "production-closed-status-window-and-exact-log-census-source-contract@3"
+}

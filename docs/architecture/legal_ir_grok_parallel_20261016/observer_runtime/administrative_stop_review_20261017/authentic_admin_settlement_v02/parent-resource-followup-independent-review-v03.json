@@ -1,0 +1,49 @@
+{
+  "C_or_worker_or_parent_source_edits_by_reviewer": false,
+  "imports_performed": false,
+  "limits": [
+    "Source/AST review only; no reviewed module import, test, native admission, child/socket/model/provider call, database open, C edit or foreign cleanup occurred.",
+    "Runtime F07 admission, installed components, worker launch/registration, AF_UNIX handshake, crash/replay and actual resource finalization remain unqualified.",
+    "These are cooperative, bounded and non-atomic observations; no continuous custody, namespace/ABA exclusion or kernel quota guarantee is inferred.",
+    "Unknown surviving descendants deliberately retain cleanup-pending native contexts. No reused/foreign group signal or universally bounded cleanup is authorized.",
+    "Pre-finalization parent-result files do not replace actual outer owner finalization or grant authority to start the next native job.",
+    "Scope remains distinctly disposable fixture-only, preserves provider UNKNOWN and blocked automatic retry, and grants no production action or original native launch receipt authority."
+  ],
+  "parent_source_pin": {
+    "bytes": 43309,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_native_parent_v02.py",
+    "sha256": "2394125824b30e28cca6c7a99603f734ec86cbaadb40b7d9e65b1c283714778e"
+  },
+  "prepared_at_utc": "2026-10-17T06:32:17.536188+00:00",
+  "previous_review_pin": {
+    "bytes": 7351,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/parent-resource-independent-review-v02.json",
+    "sha256": "329c513e6d291a8689bd9e98a7e9ee753f321315559d6c1313a144cbec0bf827"
+  },
+  "previous_review_preserved": true,
+  "production_authority_granted": false,
+  "remaining_concrete_blockers_found": [],
+  "reviewed_corrections": [
+    {
+      "case": "stale0700 metadata after READY publication",
+      "disposition": "No remaining concrete blocker found for the stated non-atomic private scope.",
+      "finding": "One ready_published observation controls the branch. If its earlier lstat observed0700 but READY is published, parent refreshes the same descriptor-relative entry once and requires same device/inode/UID, socket/nlink1 and actual0600. Only that same inode can advance from pending0700 to final0600; no reversal or alias acceptance."
+    },
+    {
+      "case": "known AF_UNIX entry disappears during genuine graceful stop",
+      "disposition": "No remaining concrete blocker found; this observation does not assert final native close until later genuine worker exit record and outer finalization.",
+      "finding": "Only exact admin.sock ENOENT after authenticated READY, this parent fsynced exact stop JSON/empty marker, retained stop pin and actual worker generation is tolerated. If poll/birth lookup races actual exit, parent re-observes the same genuine Popen and requires0 exit, reaped state and original group absence. Other missing entries or failed/unknown child outcomes refuse."
+    },
+    {
+      "case": "log-FD close error after successful Popen",
+      "disposition": "Concrete custody gap resolved in reviewed239412 candidate.",
+      "finding": "The assignment-only ActualChild is now stored inside the Popen try immediately after return, before os.close(descriptor) in finally. Actual boot/birth observation occurs later in bind, followed by actual disk.check_usage(child_pid). A descriptor-close/birth/registration error therefore retains the genuine child object for outer close/kill/reap, rather than leaving Runtime.child None.",
+      "prior_affected_sha256": "91b0bca72a78802b685f69286fb2f93a73c5b7488b844e076d4b34fce7040a08"
+    }
+  ],
+  "reviewer": "main_integration_survey",
+  "runtime_qualified": false,
+  "schema": "authentic-CD-parent-resource-independent-followup/v3",
+  "scope": "Narrow static followup for READY/socket disappearance publication races and immediate actual-child custody; prior F07/store/worker/verifier review limits remain in force.",
+  "tests_or_jobs_performed": false
+}

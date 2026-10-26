@@ -1,0 +1,263 @@
+{
+  "active_launch_root_excluded_from_reads": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05",
+  "actual_native_session": 41228,
+  "authentic_ADMIN_settlement_qualified": false,
+  "authentic_supervisor_launch_qualified": false,
+  "completed_fixture_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight",
+  "concrete_blockers": [],
+  "current_native_attempt": {
+    "control_revision": 5,
+    "coordinator_claim": "accepted",
+    "coordinator_lease": "accepted",
+    "fence_epoch": 2,
+    "fencing_token": 2,
+    "ordinal": 2,
+    "phase": "context",
+    "revision": 2
+  },
+  "database_queried": false,
+  "helper_or_product_backend_imported": false,
+  "historical_native_attempt": {
+    "coordinator_status": "failed",
+    "fence_epoch": 1,
+    "fencing_token": 1,
+    "ordinal": 1,
+    "phase": "failed",
+    "raw_callback_unknown_preserved": true,
+    "revision": 3
+  },
+  "historical_unknown_resolved": false,
+  "limitations": [
+    "No DB engine/import/query/recovery/resource-manager query or native qualification rerun occurred; DB/WAL files were only hashed as opaque bytes under the completed -preflight root.",
+    "The active launch root and its live stores/output artifacts were excluded from all reads; C/source/frozen records were untouched.",
+    "These are disposable preflight UNKNOWN rows, not resolutions of historical production UNKNOWNs. Callback closure/nonreachability/remote cancellation/external effects remain unproved.",
+    "Fixture ordinal1 failure/rearm is explicit disposable setup; it does not authorize production administrative rearm, successor attempts or exclusion waivers.",
+    "No independent migration receipt/schema fingerprint or direct runtime capsuleNone observation is retained. Native source-import provenance expectations do not qualify a protected route.",
+    "Root storage census/release/lease/process absence are retained point-in-time observations; arithmetic and identities were reconciled without issuing native ACKs or claiming continuous custody.",
+    "Original authentic supervisor_launch, genuine B WAL/status custody, C ADMIN and D settlement remain separate gates; this review does not qualify them."
+  ],
+  "native_job_started": false,
+  "native_master": {
+    "active_and_terminal_content_CIDs_independently_recomputed": true,
+    "active_pin": {
+      "bytes": 414,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/master-active-binding-observed.json",
+      "sha256": "3f5c541a28e3b426c960cb74580b405445b3b414a54bb0e27002cd6bf2fd054c"
+    },
+    "actual_master_pid": 2647198,
+    "actual_parent_pid": 2638690,
+    "all_trees_fenced": true,
+    "master_marker_absent": true,
+    "native_task_completion_authority": false,
+    "terminal_pin": {
+      "bytes": 1137,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/current-lane/master.pid.terminal.json",
+      "sha256": "b351b550845e10157176ff3927239975b2031bdfa3a2af97d29c1d69c93768d1"
+    },
+    "terminal_quiescent_summary_false_preserved": true,
+    "track_count": 0
+  },
+  "native_resource_state_queried": false,
+  "native_snapshot_counts": {
+    "goal_edges": 0,
+    "goals": 1,
+    "objectives": 1,
+    "plans": 1,
+    "task_acceptance": 64,
+    "task_dependencies": 0,
+    "task_outputs": 64,
+    "task_validations": 64,
+    "tasks": 64
+  },
+  "native_unknowns": [
+    {
+      "attempt_id": "attempt:7131348fc740475199d28bdcb3e66a73",
+      "attempt_number": 1,
+      "fence_epoch": 1,
+      "fencing_token": 1,
+      "invocation_id": "provider:276f25e08862994af38a22a1",
+      "raw_result_json_sha256": "2a88a4665cecff5fdb5831a30cb481164ebc57bd16f111df486547ae1c08d2fb",
+      "raw_unknown_state_preserved": true
+    },
+    {
+      "attempt_id": "attempt:ac47e8cfa7434af5b28757aae0bf8edf",
+      "attempt_number": 2,
+      "fence_epoch": 2,
+      "fencing_token": 2,
+      "invocation_id": "provider:b0eb2c33f551c29b4333b2f2",
+      "raw_result_json_sha256": "3defa35e660f08b3f1a50d01a97138d1a51cdcbd0be0e36ca3759be2e180ee1d",
+      "raw_unknown_state_preserved": true
+    }
+  ],
+  "original_preparation_owner_receipt_pin": {
+    "bytes": 639,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05-preflight/receipt.json",
+    "sha256": "b6ba9ab7686a7fbed12fb1789e69c65bd1f296409e5b64cb0f18c32bcd018a1f"
+  },
+  "original_preparation_owner_request_pin": {
+    "bytes": 723421,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/original-v05-producer-preflight-request.json",
+    "sha256": "1746dfebb12a8b88c76e524e82ce5c60be15d76635ffa9e00bc035066b23bc4c"
+  },
+  "producer_request_pin": {
+    "bytes": 1339720,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/producer-preflight-request.json",
+    "sha256": "94b1d0cbb372b7c37d5cf99f3aa068e43e28f9aa4869f4ede2183856cd4c21a1"
+  },
+  "producer_result_pin": {
+    "bytes": 95496,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/producer-result.json",
+    "sha256": "61fffa59b4837027be4389b1be935992a6710b241bdfe39a3be5caa190ce77b2"
+  },
+  "production_action_authorized": false,
+  "provenance_scope": {
+    "conventional_Git_denial_import_path_source_checked": true,
+    "direct_retained_runtime_capsule_observation_present": false,
+    "fake_Git_output_or_production_catalog_patch": false,
+    "imported_capsule_unavailable_is_source_inference": true,
+    "native_metadata_empty_control_schema_fingerprint_preserved": true,
+    "protected_route_qualified": false,
+    "schema_availability_evidence": "Successful actual native repository operations and real pinned migration-resource path, not an independently queried DB migration catalog or schema fingerprint receipt."
+  },
+  "retained_selected_input_pins": [
+    {
+      "bytes": 1897,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer05-preflight-post-owner-observation-v01.json",
+      "sha256": "8a9a113f0c7ee99fa97350ae75de69c1ffa7b671c21172423393bf24dec988ce"
+    },
+    {
+      "bytes": 95496,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/producer-result.json",
+      "sha256": "61fffa59b4837027be4389b1be935992a6710b241bdfe39a3be5caa190ce77b2"
+    },
+    {
+      "bytes": 639,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05-preflight/receipt.json",
+      "sha256": "b6ba9ab7686a7fbed12fb1789e69c65bd1f296409e5b64cb0f18c32bcd018a1f"
+    },
+    {
+      "bytes": 1339720,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/producer-preflight-request.json",
+      "sha256": "94b1d0cbb372b7c37d5cf99f3aa068e43e28f9aa4869f4ede2183856cd4c21a1"
+    },
+    {
+      "bytes": 723421,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/original-v05-producer-preflight-request.json",
+      "sha256": "1746dfebb12a8b88c76e524e82ce5c60be15d76635ffa9e00bc035066b23bc4c"
+    },
+    {
+      "bytes": 81042,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/native-preimage.json",
+      "sha256": "0c959d2461262907297091676537a505dd0116ebb60048a6a5970faee05e2969"
+    },
+    {
+      "bytes": 414,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/master-active-binding-observed.json",
+      "sha256": "3f5c541a28e3b426c960cb74580b405445b3b414a54bb0e27002cd6bf2fd054c"
+    },
+    {
+      "bytes": 1137,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/current-lane/master.pid.terminal.json",
+      "sha256": "b351b550845e10157176ff3927239975b2031bdfa3a2af97d29c1d69c93768d1"
+    },
+    {
+      "bytes": 31731712,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/canonical.duckdb",
+      "sha256": "c07b6e585c8c38818d30fa80fbba43049f747b01f5d7853b7c62fc6cc074c7d0"
+    },
+    {
+      "bytes": 6303744,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/coordination.duckdb",
+      "sha256": "a9277154bcb35c16b1aca49cdd76c3203fee0875de2562c03c95bbd5e38326ec"
+    },
+    {
+      "bytes": 12288,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/current-lane/crash-copy.execution.shard-0001-of-0003.duckdb",
+      "sha256": "47b7d96ee0c4d2d2cfb89931b50d765265c74020c39d4fd37c035e775a4386a9"
+    },
+    {
+      "bytes": 14228,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/current-lane/crash-copy.execution.shard-0001-of-0003.duckdb.wal",
+      "sha256": "29e45c5235c25115b422e63285033cde85adb0508e9a9c886951b6e521d40b43"
+    },
+    {
+      "bytes": 3944448,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/historical-lane/crash-copy.execution.shard-0001-of-0003.duckdb",
+      "sha256": "6e31f1cbc44649adf95a20ab4b88a4cb3139d10f6f26de47d69436963d9cd993"
+    },
+    {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    {
+      "bytes": 24133,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/test/api/native_execution_crash_wal_fixture.py",
+      "sha256": "391f3d1b32d7e999f1bf91d7046a56cd6512c7d36aa4d034574cbbe992e5f03a"
+    },
+    {
+      "bytes": 7845032,
+      "path": "/usr/bin/python3.12",
+      "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    },
+    {
+      "bytes": 6471,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-prepare-20261017-05/seed-inputs/duckdb-installation.json",
+      "sha256": "ab33bb1610496e557b7b105deb481fff0d22354223d207ec5766645879355bce"
+    }
+  ],
+  "reviewer": "/root/grok_confinement_review",
+  "root_post_owner_observation_pin": {
+    "bytes": 1897,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer05-preflight-post-owner-observation-v01.json",
+    "sha256": "8a9a113f0c7ee99fa97350ae75de69c1ffa7b671c21172423393bf24dec988ce"
+  },
+  "schema": "authentic-full-producer-preflight-retained-evidence-independent-review@1",
+  "scoped_findings": [
+    "Pinned native repository/coordinator/daemon/Portal bridge APIs completed real disposable two-attempt setup using actual C schema resources; fullpreflight source and retained bytepins match, with opaque canonical/coordinator/historical DBs closed and actual current execution WAL retained after producer exit.",
+    "Two seven-column native callback-intent rows remain exact UNKNOWN payloads, joined to distinct real attempt/claim/lease/owner identities, contiguous ordinals1/2 and native fences1/2. Current attempt remains running/context rev2 with accepted coordination and no recorded effects.",
+    "Canonical snapshot includes64 task rows plus all64 normalized outputs/acceptance/validations; selected fullIntent identity/revision joins current binding, while63 unrelated tasks remain blocked/rev1 without completion receipts.",
+    "Genuine inert factory observations occurred twice before Portal/model construction in the disposable fixture. The producer uses actual daemon.run_provider and bound native Portal bridge; source contains no provider-row SQL synthesis.",
+    "Actual empty-track native master emitted ACTIVE and terminal artifacts with independently recomputed CIDs and same child/master generation. Trackcount0/alltreesfenced is a native empty-workload fence, not provider/task completion or external-effect proof.",
+    "Actual controller_preparation owner receipt and root post-owner observation join request hash/reservation/owner-child PIDs/root-phase IDs and recorded full release. The preflight deliberately supplies no genuine supervisor_launch custody authority."
+  ],
+  "snapshot_pin": {
+    "bytes": 81042,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05-preflight/native-preimage.json",
+    "sha256": "0c959d2461262907297091676537a505dd0116ebb60048a6a5970faee05e2969"
+  },
+  "source_checks": {
+    "all_current_hashes_match_completed_request": true,
+    "native_owner_source_bytes": 110234250,
+    "native_owner_source_pin_count": 2831,
+    "physical_SQL_pin_count": 6,
+    "producer_pin": {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    "product_map_bytes": 107034805,
+    "product_map_count": 2816,
+    "resource_loader_pin": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    }
+  },
+  "status": "completed_two_attempt_full_preflight_evidence_reconciled",
+  "storage_observation": {
+    "arithmetic_reconciled": true,
+    "census_reexecuted_by_reviewer": false,
+    "conservative_future_B_growth_bytes": 33568660,
+    "conservative_total_through_B_bytes": 80524634,
+    "execution_DB_bytes": 12288,
+    "execution_WAL_bytes": 14228,
+    "limit_bytes": 134217728,
+    "root_observed_whole_fixture_bytes": 46955974
+  }
+}

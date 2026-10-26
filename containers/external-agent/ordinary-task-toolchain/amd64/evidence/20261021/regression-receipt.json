@@ -1,0 +1,20 @@
+{
+  "schema": "ordinary-amd64-image-regression/v1",
+  "junit_local_path": "/tmp/complaint_ordinary_amd64_validation.xml",
+  "junit_sha256": "9b82a1374721d93599e83c83fbc1c9f884e2f01ce61da082df0c44eae3e47f60",
+  "counts": {
+    "tests": 60,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "modules": [
+    "test_agent_supervisor_ordinary_worker_amd64_image.py",
+    "test_agent_supervisor_ordinary_worker_image.py",
+    "test_agent_supervisor_private_workspace_paths.py"
+  ],
+  "generation_note": "The private-path tests cover the image-profile integration generation preceding the subsequent unsupported List-rule parser fix; that fix has its own validation. Image profile and ARM/protected identity checks are unchanged by that narrow parser correction.",
+  "provider_calls": 0,
+  "network_calls_in_tests": 0,
+  "actual_container_qualification": "runtime-report.json"
+}

@@ -1,0 +1,175 @@
+{
+  "allowed_owner_roots_source": "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261016-01/run_native_owner_v05.py",
+  "authority_limits": {
+    "administrative_decision": false,
+    "callback_closure_claim": false,
+    "model_or_provider_dispatch": false,
+    "production_store_access": false,
+    "remote_nonreachability_claim": false,
+    "successor_or_rearm_by_wrapper": false,
+    "synthetic_owner_or_fence_receipt": false
+  },
+  "executable_request": false,
+  "fixture_only": true,
+  "next_gate_not_implemented_here": "After two_attempt authentic custody/status succeeds, separately qualify unmocked ADMIN append, actual ADMIN creator process exit, fresh native durable audit lookup and staged idempotent FAILED/coord/BLOCKED settlement. No production decision or automatic replay.",
+  "parent_finalization_gate": {
+    "observations": [
+      "Actual outer original/direct owner process exit with exit status recorded.",
+      "Retained native root/phase/disk finalization observation and native reservation verification before the next serialized job.",
+      "Completed receipt, dead PIDs and original v05 native_finalized stdout alone do not establish ledger finalization."
+    ],
+    "original_v05_timing": "status=completed precedes disk.finalize; original native_finalized stdout precedes lexical root/phase exit. The direct fixture adapter prints only after its lexical owners exit.",
+    "required": true
+  },
+  "path_constraints": {
+    "attempts": "NEW absolute disjoint directories under actual original F07 roots",
+    "external_tree_limit_bytes": 134217728,
+    "fixture_root_basename_prefix": "legal-ir-unknown-authentic-fixture-",
+    "preflight_attempt": "NEW_LAUNCH_ATTEMPT + -preflight",
+    "preflight_root": "NEW_FIXTURE_ROOT + -preflight"
+  },
+  "placeholder_rule": "Root substitutes explicit paths, actual qualified HEAD and freshly rendered request SHA; these templates are never directly submitted as native requests.",
+  "placeholders": [
+    "PYTHON",
+    "QUALIFIED_C_ROOT",
+    "QUALIFIED_C_HEAD",
+    "NEW_PRIVATE_INPUT_DIR",
+    "NEW_FIXTURE_ROOT",
+    "NEW_PREPARE_ATTEMPT",
+    "NEW_LAUNCH_ATTEMPT",
+    "NEW_MAINTENANCE_ATTEMPT",
+    "REQUEST_SHA256",
+    "PROFILE"
+  ],
+  "production_access": false,
+  "profiles": {
+    "one_attempt": "Authentic launch/stop/WAL/status gate only; frozen administrative-abandonment contract does not admit ordinal1.",
+    "two_attempt": "Creates native ordinal1 UNKNOWN, native disposable failure/rearm history, then ordinal2 UNKNOWN; original production R06 is never opened."
+  },
+  "qualified_original_owner_sha256": "3e5357925d3be41630e73adc0b8a31b1fd25c35ad3f5bc4ad1b01dbaeffebb14",
+  "schema": "authentic-native-fixture-request-templates@1",
+  "steps": [
+    {
+      "argv": [
+        "PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/render_authentic_fixture_request_v01.py",
+        "prepare",
+        "--repo-root",
+        "QUALIFIED_C_ROOT",
+        "--controller-head",
+        "QUALIFIED_C_HEAD",
+        "--fixture-root",
+        "NEW_FIXTURE_ROOT",
+        "--prepare-attempt",
+        "NEW_PREPARE_ATTEMPT",
+        "--launch-attempt",
+        "NEW_LAUNCH_ATTEMPT",
+        "--profile",
+        "PROFILE",
+        "--board-namespace",
+        "authentic-fixture-UNIQUE",
+        "--output",
+        "NEW_PRIVATE_INPUT_DIR/prepare-request.json"
+      ],
+      "metadata_only": true,
+      "operation": "render_prepare",
+      "step": 1
+    },
+    {
+      "argv": [
+        "PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+        "--request",
+        "NEW_PRIVATE_INPUT_DIR/prepare-request.json",
+        "--request-sha256",
+        "REQUEST_SHA256"
+      ],
+      "gate": "Require direct owner exit0 plus its native_finalized output after actual disk finalization and phase/root release. Preparation imports backend but opens no fixture or production DB.",
+      "native_owner": "ONE direct F07 root/phase/disk owner; do not wrap in original v05 or any other owner",
+      "operation": "prepare_launch",
+      "step": 2
+    },
+    {
+      "argv": [
+        "PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-supervisor-start-20261016-01/run_native_owner_v05.py",
+        "NEW_PREPARE_ATTEMPT/seed-inputs/original-v05-producer-preflight-request.json"
+      ],
+      "gate": "Run exact same isolated producer/source/installation/profile as later launch, changing only the NEW fixture root. Require original completed receipt/child0/group quiescence, actual producer result and actual parent+child exit. This supplies no native launch fence authority.",
+      "native_owner": "Exact original v05 controller_preparation, ONE root, actual bounded child cleanup",
+      "operation": "full_producer_preflight",
+      "step": 3
+    },
+    {
+      "argv": [
+        "PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/render_authentic_fixture_request_v01.py",
+        "launch",
+        "--preparation-result",
+        "NEW_PREPARE_ATTEMPT/owner-result.json",
+        "--preflight-owner-receipt",
+        "NEW_LAUNCH_ATTEMPT-preflight/receipt.json",
+        "--output",
+        "NEW_PRIVATE_INPUT_DIR/launch-request.json"
+      ],
+      "metadata_only": true,
+      "operation": "render_launch",
+      "step": 4
+    },
+    {
+      "argv": [
+        "PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+        "--request",
+        "NEW_PRIVATE_INPUT_DIR/launch-request.json",
+        "--request-sha256",
+        "REQUEST_SHA256"
+      ],
+      "gate": "Do not invoke if full producer preflight failed. Genuine producer is native master; actual C runner ACTIVE/terminal, actual A observer proof, original v05 child reap/group quiescence and owner finalization required. Missing genuine terminal retains custody; no fallback.",
+      "native_owner": "Wrapper acquires NO root and calls unchanged exact original v05 supervisor_launch main; original finite owner and actual A NativeFenceObserver hold ONE genuine root",
+      "operation": "authentic_launch",
+      "step": 5
+    },
+    {
+      "argv": [
+        "PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/render_authentic_fixture_request_v01.py",
+        "maintenance",
+        "--preparation-result",
+        "NEW_PREPARE_ATTEMPT/owner-result.json",
+        "--launch-owner-receipt",
+        "NEW_LAUNCH_ATTEMPT/receipt.json",
+        "--maintenance-attempt",
+        "NEW_MAINTENANCE_ATTEMPT",
+        "--logical-store-id",
+        "authentic-fixture-UNIQUE-canonical",
+        "--output",
+        "NEW_PRIVATE_INPUT_DIR/maintenance-request.json"
+      ],
+      "metadata_only": true,
+      "operation": "render_maintenance",
+      "step": 6
+    },
+    {
+      "argv": [
+        "PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py",
+        "--request",
+        "NEW_PRIVATE_INPUT_DIR/maintenance-request.json",
+        "--request-sha256",
+        "REQUEST_SHA256"
+      ],
+      "gate": "Only after original owner+child exact generations are absent. Genuine native WAL maintenance retains original DB/WAL backups under fixture root and performs physical checkpoint only; genuine post-maintenance read-only status must match actual snapshot. Preserve raw UNKNOWNs, task/coord history and closed canonical/coord byte pins. Actual native close failure retains same component/F07 contexts until close succeeds; no operation retry.",
+      "native_owner": "ONE direct real F07 root/phase/disk owner; no nested original owner",
+      "operation": "authentic_maintenance_status",
+      "step": 7
+    }
+  ]
+}

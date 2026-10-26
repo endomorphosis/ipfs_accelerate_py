@@ -1,0 +1,395 @@
+{
+  "all_primary_requests_model_pinned": true,
+  "all_primary_requests_temperature_zero": true,
+  "all_request_classes_known": true,
+  "all_requests_credential_fixture": true,
+  "all_wire_requests_primary_model": false,
+  "all_wire_requests_temperature_zero": false,
+  "assistant_tool_calls": [
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "read_file"
+      },
+      "id": "call-forbidden-read_file",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"command\": \"printf 'fixture-only-forbidden-terminal'\"}",
+        "name": "run_terminal_command"
+      },
+      "id": "call-forbidden-run_terminal_command",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "search_tool"
+      },
+      "id": "call-forbidden-search_tool",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+        "name": "use_tool"
+      },
+      "id": "call-forbidden-use_tool",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+        "name": "CallMcpTool"
+      },
+      "id": "call-forbidden-CallMcpTool",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "FetchMcpResource"
+      },
+      "id": "call-forbidden-FetchMcpResource",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "ListMcpResources"
+      },
+      "id": "call-forbidden-ListMcpResources",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "spawn_subagent"
+      },
+      "id": "call-forbidden-spawn_subagent",
+      "type": "function"
+    }
+  ],
+  "case": "canonical-planning-adversarial",
+  "charged_case_root": "/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial",
+  "charged_fixture_root": "/tmp/pytest-of-barberb/grk17f",
+  "error": null,
+  "exact_injected_call_set": true,
+  "explicit_native_parse_stage_refusals": {
+    "CallMcpTool": true,
+    "FetchMcpResource": true,
+    "ListMcpResources": true,
+    "read_file": true,
+    "run_terminal_command": true,
+    "search_tool": true,
+    "spawn_subagent": true,
+    "use_tool": true
+  },
+  "fixture_config_pin": {
+    "path": "/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/grok-home/config.toml",
+    "sha256": "d8f064791662b3a6b433c82d4aa7756b2048b1d6b66572fc699246a186e222ff",
+    "size_bytes": 636
+  },
+  "legacy_function_names": [
+    [],
+    []
+  ],
+  "native_allocation_database": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/fixture-allocation.duckdb",
+  "native_command_profile_verified": true,
+  "native_process_observations": [
+    {
+      "all_symlink_targets_inside_charged_fixture_root": true,
+      "argv": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/native/grok",
+        "--max-turns",
+        "2",
+        "--model",
+        "grok-4.7",
+        "--output-format",
+        "json",
+        "--no-plan",
+        "--no-subagents",
+        "--disable-web-search",
+        "--no-memory",
+        "--verbatim",
+        "--permission-mode",
+        "dontAsk",
+        "--tools",
+        "read_file",
+        "--disallowed-tools",
+        "read_file,search_tool,use_tool",
+        "--reasoning-effort",
+        "high",
+        "--session-id",
+        "2a0f02b1a80f4c54918bbfaa5722ec2d",
+        "--prompt-file",
+        "/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/temporary/llm-router-grok-prompt-j6ozy6pp.txt"
+      ],
+      "charged_fixture_root": "/tmp/pytest-of-barberb/grk17f",
+      "config_pin": {
+        "path": "/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/temporary/llm-router-grok-sampling-qg7fxx08/config.toml",
+        "sha256": "e3ac834da64fa2424e010eb25aa5c247040b0cdb9d85e26cbb05fa22a8dd60c1",
+        "size_bytes": 643
+      },
+      "cwd": "None",
+      "environment_home_unchanged": true,
+      "fixture_credential_only": true,
+      "leader_disabled": true,
+      "owned_allocation_database_preserved": true,
+      "owned_temporary_environment": true,
+      "prelaunch_inventory_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/canonical-planning-adversarial/fixture-inventory-prelaunch-01.json",
+        "sha256": "6554a5dce024c9bfa88bc3fd766799463e7b0d4845a8eea924ea33f0b26c0e85",
+        "size_bytes": 54891
+      },
+      "safe_import_limits_preserved": true,
+      "sampling_config_under_owned_temporary_directory": true,
+      "sampling_temperature_zero": true
+    }
+  ],
+  "observed_wire_calls": [
+    {
+      "class": "auxiliary_session_title",
+      "model": "grok-4.6",
+      "path": "/v1/responses",
+      "temperature": 1.0
+    },
+    {
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    },
+    {
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    },
+    {
+      "class": "auxiliary_dashboard_summary",
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    }
+  ],
+  "offered_tool_names": [
+    [],
+    []
+  ],
+  "output": "QUALIFICATION_DONE",
+  "passed": true,
+  "positive_sentinel_returned": false,
+  "post_native_agent_exit_inventory_pin": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-rootlesskit-loopback-20261017-06/rootlesskit-loopback/canonical-planning-adversarial/fixture-inventory-after-agent-exit.json",
+    "sha256": "75eb57fc269ff5d033fb571f13709f832d660be6fef0946774213fba3053cbfa",
+    "size_bytes": 52810
+  },
+  "primary_requests": 2,
+  "refusal_registry_identity_established": false,
+  "requests": 4,
+  "runtime_invocation": {
+    "allocation_catalog": "aa-intelligence-index-v4.3",
+    "completion_authority": false,
+    "context_delivery_observation": {
+      "billing_total_verified": false,
+      "completion_authority": false,
+      "error_type": null,
+      "invocation_id": "2a0f02b1a80f4c54918bbfaa5722ec2d",
+      "invocation_id_sha256": "1f514d92d108533d3ba7f9a0c1d8d35cc68fe5781db680cae74d96cbb729e6a4",
+      "model": "grok-4.7",
+      "model_prompt": {
+        "bytes": 60,
+        "count_scope": "rendered_user_prompt_only",
+        "sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0"
+      },
+      "native_context_delivery": {
+        "counts": null,
+        "coverage": null,
+        "interaction_telemetry_sha256": null,
+        "ledger_schema": null,
+        "ledger_sha256": null,
+        "payload_measurements": null,
+        "source_ledger_sha256": null,
+        "status": "unavailable",
+        "telemetry_binding_verified": false
+      },
+      "native_usage": {
+        "artifact_sha256": "54ccb8ba3ee6fc81a47099a678a6e344b0b309b5c09f8b163a232a6817d8ad29",
+        "complete": null,
+        "counts": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 2,
+          "output_tokens": 2,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 4
+        },
+        "identity_kind": "invocation_final_envelope",
+        "normalized_counts": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 0,
+          "fresh_input_tokens": 2,
+          "input_tokens_including_cache": 2,
+          "output_tokens": 2,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 4
+        },
+        "observed_records": 1,
+        "reasons": [
+          "native_usage_completeness_unknown"
+        ],
+        "schema": "native-grok-final-usage@1",
+        "scope": "native_final_envelope",
+        "session_id_sha256": null,
+        "status": "unknown_complete_usage"
+      },
+      "observation_only": true,
+      "observation_sha256": "ac512a91e9ca74f6df8de897d10215695dbe9beb1ac0d18596f458b5ce4b508b",
+      "phase": null,
+      "provider": "grok_cli",
+      "provider_delivery_verified": false,
+      "provider_ingestion_verified": false,
+      "purpose": "planning",
+      "raw_content_exported": false,
+      "receipt_sha256": "6c5df595b2e25137dbc63d8bb987c9ed61261d383350aec1ace2e539c0bd2c42",
+      "schema": "supervisor-context-delivery-invocation@1",
+      "status": "provider_returned",
+      "token_savings_established": false,
+      "total_token_savings_measured": false,
+      "workspace_binding_sha256": "0a0ba39f07e0a57165f713c3b3fd044676d17e7ce136db2a8d593d7f8114cdbf"
+    },
+    "doctor_residual_context": null,
+    "external_container_boundary": null,
+    "invocation_id": "2a0f02b1a80f4c54918bbfaa5722ec2d",
+    "model": "grok-4.7",
+    "model_prompt_bytes": 60,
+    "model_prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "native_prompt_bytes": 60,
+    "native_prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "native_provider_outcome": {
+      "classification_source": "stop_reason",
+      "completion_authority": false,
+      "envelope_observed": true,
+      "error_observed": false,
+      "error_subtype": "unknown",
+      "process_outcome": "returned",
+      "raw_provider_data_exported": false,
+      "reason_code": "end_turn",
+      "schema": "native-grok-outcome@1",
+      "stop_reason": "end_turn"
+    },
+    "native_rollout_usage": {
+      "billing_total_verified": false,
+      "cache_included_in_input": false,
+      "dollar_cost": null,
+      "observed_final_usage_records": 1,
+      "raw_provider_data_exported": false,
+      "schema": "native-grok-final-usage@1",
+      "task_complete_observed": true,
+      "totals_scope": "native_final_envelope",
+      "usage": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 0,
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 4
+      },
+      "usage_available": true,
+      "usage_complete_observed": null,
+      "usage_observation_sha256": "54ccb8ba3ee6fc81a47099a678a6e344b0b309b5c09f8b163a232a6817d8ad29"
+    },
+    "prompt_bytes": 60,
+    "prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "provider": "grok_cli",
+    "provider_invocation_policy": {
+      "disallowed_tools": [
+        "read_file",
+        "search_tool",
+        "use_tool"
+      ],
+      "effective_toolset_verified": false,
+      "max_turns": 2,
+      "native_tool_allowlist": [
+        "read_file"
+      ],
+      "native_tool_denylist": [
+        "read_file",
+        "search_tool",
+        "use_tool"
+      ],
+      "permission_mode": "dontAsk",
+      "tools_profile": "none"
+    },
+    "provider_output_token_cap_enforced": false,
+    "public_instruction": null,
+    "purpose": "planning",
+    "reasoning_effort": "high",
+    "requested_output_tokens": 4096,
+    "router_calls": 1,
+    "router_prompt_bytes": 60,
+    "router_prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "schema": "router-implementation-invocation@1",
+    "seconds": 0.8995054902043194,
+    "semantic_translation": null,
+    "status": "provider_returned",
+    "timeout_seconds": 40,
+    "usage": {
+      "completion_tokens": 2,
+      "exit_code": 0,
+      "model_id": "grok-4.7",
+      "num_turns": 2,
+      "prompt_tokens": 2,
+      "reasoning_tokens": 0,
+      "session_id": "2a0f02b1a80f4c54918bbfaa5722ec2d",
+      "stop_reason": "end_turn"
+    },
+    "workspace": "/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace",
+    "workspace_advisory_bytes": 0,
+    "workspace_advisory_sha256": null
+  },
+  "tool_responses": [
+    {
+      "content": "Failed to parse arguments for tool `read_file`: Tool not found: read_file\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-read_file"
+    },
+    {
+      "content": "Failed to parse arguments for tool `run_terminal_command`: Tool not found: run_terminal_command\n\nYour original arguments:\n{\"command\": \"printf 'fixture-only-forbidden-terminal'\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-run_terminal_command"
+    },
+    {
+      "content": "Failed to parse arguments for tool `search_tool`: Tool not found: search_tool\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-search_tool"
+    },
+    {
+      "content": "Failed to parse arguments for tool `use_tool`: Tool not found: use_tool\n\nYour original arguments:\n{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-use_tool"
+    },
+    {
+      "content": "Failed to parse arguments for tool `CallMcpTool`: Tool not found: CallMcpTool\n\nYour original arguments:\n{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-CallMcpTool"
+    },
+    {
+      "content": "Failed to parse arguments for tool `FetchMcpResource`: Tool not found: FetchMcpResource\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-FetchMcpResource"
+    },
+    {
+      "content": "Failed to parse arguments for tool `ListMcpResources`: Tool not found: ListMcpResources\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-ListMcpResources"
+    },
+    {
+      "content": "Failed to parse arguments for tool `spawn_subagent`: Tool not found: spawn_subagent\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/grk17f/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-spawn_subagent"
+    }
+  ]
+}

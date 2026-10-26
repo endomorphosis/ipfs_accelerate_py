@@ -7374,8 +7374,33 @@ def start_track(
         raise
     assert out_handle is not None
     process: subprocess.Popen[bytes] | None = None
+    authority_handoff = None
+    authority_executable_fd: int | None = None
     try:
         try:
+            # Ordinary control tracks can receive their Quack selection via
+            # shared CLI arguments, leaving database_program metadata unset.
+            # The actual sealed broker binding determines whether this trusted
+            # control hop needs a post-hardening handoff. Unbound legacy tracks
+            # and existing sealed/gated paths retain their launch behavior.
+            if not plan_bound_dispatch and not live_seal_required:
+                from .process_security import (
+                    STATE_AUTHORITY_DESCRIPTOR_ENV_NAMES,
+                    STATE_AUTHORITY_DESCRIPTOR_SOCKET_ENV,
+                    STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+                    prepare_state_authority_child_handoff,
+                )
+                if any(str(launch_environment.get(name, "") or "").strip()
+                       for name in (*STATE_AUTHORITY_DESCRIPTOR_ENV_NAMES,
+                                    STATE_AUTHORITY_DESCRIPTOR_SOCKET_ENV)):
+                    authority_handoff = prepare_state_authority_child_handoff(
+                        launch_environment,
+                        parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+                        bind_execution_identity=True,
+                    )
+                    authority_executable_fd = os.open(
+                        command[0], os.O_RDONLY | os.O_CLOEXEC,
+                    )
             # This is a conservative lower bound for the child generation.
             # Capture it before Popen because a fast child may publish its
             # PID-bound status before Popen returns to the parent.
@@ -7422,6 +7447,19 @@ def start_track(
             setattr(process, "_agent_supervisor_fencing_epoch", 0)
             weakref.finalize(process, cleanup_anchor.close)
             cleanup_anchor = None  # ownership transferred to the Popen lifetime
+            # Install lifecycle/cleanup custody before an ACK can fail so the
+            # existing post-birth failure path can fence this exact child tree.
+            if authority_handoff is not None:
+                remaining_handoff_seconds = (
+                    45.0 if birth_deadline is None else
+                    max(0.1, min(45.0, birth_deadline - time.monotonic()))
+                )
+                authority_handoff.deliver(
+                    process,
+                    expected_executable_descriptor=authority_executable_fd,
+                    expected_argv=command,
+                    timeout_seconds=remaining_handoff_seconds,
+                )
             if birth_deadline is not None and time.monotonic() >= birth_deadline:
                 raise SupervisorRunWindowExpired(
                     "run window closed during supervisor process birth"
@@ -7464,6 +7502,16 @@ def start_track(
                 cause_type=type(exc).__name__,
             ) from exc
     finally:
+        if authority_handoff is not None:
+            try:
+                authority_handoff.close()
+            except OSError:
+                pass
+        if authority_executable_fd is not None:
+            try:
+                os.close(authority_executable_fd)
+            except OSError:
+                pass
         if out_handle is not None:
             try:
                 out_handle.close()
@@ -14547,6 +14595,24 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                     or ""
                 ),
             )
+        )
+        if any(
+            item in {"--implement", "--no-implement"}
+            for item in args.common_arg
+        ):
+            # This list still contains only injected defaults. Remove their
+            # implementation mode once, leaving explicit arguments untouched
+            # so the child parser can reject conflicting operator choices.
+            common_args.remove("--implement")
+    # An explicitly selected worker is independent of the optional bundle of
+    # standard supervisor defaults.  Configured boards supply their own common
+    # policy args and deliberately leave that bundle disabled.
+    if (
+        args.implementation_supervisor_command
+        and "--implementation-command" not in common_args
+    ):
+        common_args.extend(
+            ["--implementation-command", args.implementation_supervisor_command]
         )
     if (
         bool(

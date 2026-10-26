@@ -53,11 +53,26 @@ class RepositorySourceSession:
     At most eight generations are retained by default, including at most 128 MiB
     of original source bytes before representation and native-index overhead.
     ``close`` releases handles; the caller removes its private state directory.
+    Optional scheduler/parent controls admit native index work. Cancellation
+    and inherited deadlines also fence capture, read, publication and precommit
+    edits cooperatively; they cannot preempt synchronous work or lock waits.
+    Supplied index factories must accept explicit controls instead of silently
+    dropping them. A borrowed parent remains owned and released by the caller.
     """
 
     def __init__(self, workspace: Path, state_dir: Path, *, representation="compact",
                  index_factory=None, max_files=512, max_total_bytes=16 * 1024 * 1024,
-                 max_file_bytes=256 * 1024, max_generations=8):
+                 max_file_bytes=256 * 1024, max_generations=8,
+                 scheduler=None, parent_lease=None, cancel_event=None, deadline_monotonic=None):
+        from .repository_source_index import (
+            _resource_controls, _check_resource_cancellation, _validate_resource_deadline,
+        )
+
+        cancellation = _resource_controls(scheduler=scheduler, parent_lease=parent_lease,
+                                          cancel_event=cancel_event)
+        self._deadline_monotonic = _validate_resource_deadline(deadline_monotonic)
+        self._resource_cancellation = cancellation
+        _check_resource_cancellation(cancellation, self._deadline_monotonic)
         if not isinstance(representation, str) or representation not in {"original", "compact"}:
             _fail("invalid_representation")
         if not _integer(max_generations, 1, DEFAULT_LIMITS["max_generations"]):
@@ -82,10 +97,17 @@ class RepositorySourceSession:
         self._previous_manifest_sha256 = None
         self._validate_locations()
         try:
+            self._checkpoint()
             if index_factory is None:
                 from .repository_source_index import NativeRepositoryIndex
                 index_factory = NativeRepositoryIndex
-            self._index = index_factory(self.state_dir / "index")
+            controls = {key: value for key, value in dict(scheduler=scheduler,
+                parent_lease=parent_lease, cancel_event=cancel_event,
+                deadline_monotonic=deadline_monotonic).items() if value is not None}
+            # Preserve the existing single-argument factory contract only when
+            # no explicit native controls were requested. Never retry dropping
+            # unsupported controls on a caller-provided factory.
+            self._index = index_factory(self.state_dir / "index", **controls)
             self._capture()
         except BaseException:
             self.close()
@@ -125,8 +147,19 @@ class RepositorySourceSession:
     def _open(self):
         if self._closed:
             _fail("session_closed")
+        self._checkpoint()
         fd = self._state_fd()
         os.close(fd)
+
+    def _checkpoint(self):
+        """Cooperative control fence; cleanup and post-write bookkeeping bypass it."""
+        from .repository_source_index import _check_resource_cancellation
+        _check_resource_cancellation(self._resource_cancellation, self._deadline_monotonic)
+
+    def _edit_controls(self):
+        # Preserve existing editor/mock signatures when controls are absent.
+        return ({"checkpoint": self._checkpoint} if self._resource_cancellation is not None
+                or self._deadline_monotonic is not None else {})
 
     def _state_fd(self):
         fd = views._open_directory(self.state_dir)
@@ -145,6 +178,7 @@ class RepositorySourceSession:
             _fail("stale_generation")
 
     def _current(self):
+        self._checkpoint()
         if self._refresh_required:
             _fail("refresh_required")
         try:
@@ -152,6 +186,7 @@ class RepositorySourceSession:
         except (views.RepositorySourceViewError, OSError):
             self._refresh_required = True
             _fail("stale_source")
+        self._checkpoint()
 
     def _identity(self):
         receipt = self._capture_receipt
@@ -169,6 +204,7 @@ class RepositorySourceSession:
             _fail("generation_limit")
 
     def _capture(self):
+        self._checkpoint()
         self._capacity()
         self._refresh_required = True
         # Failed candidates are removed. Only fully indexed, source-current
@@ -176,17 +212,24 @@ class RepositorySourceSession:
         name = "generation-" + uuid.uuid4().hex
         candidate = self.state_dir / name
         state_fd = self._state_fd()
-        os.mkdir(name, 0o700, dir_fd=state_fd)
         package, materialized = candidate / "package", candidate / "original"
+        created = False
         try:
+            os.mkdir(name, 0o700, dir_fd=state_fd)
+            created = True
+            self._checkpoint()
             receipt = views.create_repository_view(
                 self.workspace, package,
                 **{key: self.limits[key] for key in ("max_files", "max_total_bytes", "max_file_bytes")})
+            self._checkpoint()
             manifest = views.load_repository_view(package, expected_manifest_sha256=receipt["manifest_sha256"])
+            self._checkpoint()
             materialization = views.restore_repository_view(
                 package, materialized, expected_manifest_sha256=receipt["manifest_sha256"],
                 representation="original")
+            self._checkpoint()
             native = self._index.refresh(materialized, manifest)
+            self._checkpoint()
             if (not isinstance(native, dict) or "head" not in native
                     or "semantic_state_cid" not in native or "coverage" not in native
                     or native.get("source_tree_sha256") != receipt["source_tree_sha256"]
@@ -196,8 +239,10 @@ class RepositorySourceSession:
             views.assert_repository_current(self.workspace, manifest)
             check_fd = self._state_fd()
             os.close(check_fd)
+            self._checkpoint()
         except BaseException:
-            views._cleanup(state_fd, name)
+            if created:
+                views._cleanup(state_fd, name)
             raise
         finally:
             os.close(state_fd)
@@ -437,9 +482,11 @@ class RepositorySourceSession:
 
     def _preflight_edit(self, path, symbol, expected_sha256, replacement, edit_format):
         """Apply the same editor to a disposable original, never the index root."""
+        self._checkpoint()
         retained = views.read_repository_file(
             self._package, expected_manifest_sha256=self._capture_receipt["manifest_sha256"],
             path=path, representation="original")
+        self._checkpoint()
         data = (retained["content"].encode("utf-8") if retained["encoding"] == "utf-8"
                 else base64.b64decode(retained["content"], validate=True))
         state_fd = self._state_fd()
@@ -454,7 +501,9 @@ class RepositorySourceSession:
                 views._write_new(parent_fd, target.name, data, mode=0o600)
                 editor = CodeSourceView(proposal)
                 delivered = editor.read(path, symbol, edit_format)
-                edit = editor.replace(path, symbol, expected_sha256, replacement, format=edit_format)
+                edit = editor.replace(path, symbol, expected_sha256, replacement, format=edit_format,
+                                      **self._edit_controls())
+                self._checkpoint()
                 if edit["semantic_no_op"] and replacement != delivered["content"]:
                     _fail("ambiguous_symbol_noop_use_original_edit")
                 updated, _ = views._read_regular(parent_fd, target.name, self.limits["max_file_bytes"])
@@ -463,6 +512,7 @@ class RepositorySourceSession:
                     _fail("total_bytes_limit")
                 if views._sha(updated) != edit["result_sha256"]:
                     _fail("proposal_changed")
+                self._checkpoint()
                 return edit["result_sha256"]
             finally:
                 os.close(parent_fd)
@@ -504,13 +554,17 @@ class RepositorySourceSession:
             self._current()
             try:
                 editor = CodeSourceView(self.workspace)
-                edit = editor.replace(path, symbol, expected_sha256, replacement, format=edit_format)
-            except (SourceViewError, OSError, UnicodeError, ValueError):
+                self._checkpoint()
+                edit = editor.replace(path, symbol, expected_sha256, replacement, format=edit_format,
+                                      **self._edit_controls())
+            except Exception:
                 # The editor can raise after atomic replacement. Only a fresh
                 # full-tree observation can establish that bytes are unchanged.
                 try:
+                    self._checkpoint()
                     views.assert_repository_current(self.workspace, self._manifest)
-                except (views.RepositorySourceViewError, OSError):
+                    self._checkpoint()
+                except Exception:
                     self._refresh_required = True
                     return dict(self._identity(), operation="replace_symbol", path=path,
                                 changed=None, canonical_changed=None, canonical_change="uncertain", refresh_required=True,

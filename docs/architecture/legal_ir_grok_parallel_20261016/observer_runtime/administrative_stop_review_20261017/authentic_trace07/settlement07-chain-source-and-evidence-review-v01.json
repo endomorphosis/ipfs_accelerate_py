@@ -1,0 +1,412 @@
+{
+  "C_source_HEAD_or_existing_frozen_artifacts_edited": false,
+  "all_six_native_stages_complete_and_outer_release_reported": true,
+  "controller_head_bound_through_trace": "592d07580fca33894f37723dea4f84630a957f37",
+  "database_WAL_or_credential_files_read_or_copied": false,
+  "final_result_identity": {
+    "canonical_JSON_bytes": 2479,
+    "canonical_JSON_sha256": "0ae15fa4bc342a43344f57bb87530f82f43de76345805abaf005140138400203",
+    "claim_state": "released",
+    "control_revision": 6,
+    "control_status": "blocked",
+    "coordination_attempt_status": "failed",
+    "execution_status": "failed",
+    "failure_payload_digest": "sha256:40761a6a006d91f7752e994bc614055fd849b06f1dd0ba06f690a97ba8d339dc",
+    "settlement_id": "baguqeerabsla3s5akctdecw7xm7cbhsfb7zdbcymjqhpqy5at3hv6jzoxvtq"
+  },
+  "fixture_only": true,
+  "independently_verified_invariants": {
+    "D5_D6": "Complete Python result objects compare equal; canonical JSON bytes independently compare exactly equal across separately exited/reaped owners.",
+    "attempt": "After D1 the exact same FAILED attempt object persists through D6: original immutable body/IDs/ordinal2/fences2, revision3 and original failure timestamp; no later attempt identity substituted.",
+    "chain": "Each new parent/worker request pins the same C07 context/audit/creator-exit/input/source and exact preceding D result. Fresh parent/child identities, nonce/request hashes, exit/reap/group witness fields and outer root/phase/native lease/disk IDs reconcile.",
+    "failure_identity": "Failure payload SHA256 recomputed from old control binding and ADMIN evidence/context/current+historical UNKNOWN digests; failure receipt settlement CID recomputed without its settlement_id field.",
+    "reconciliation_source": "Implementation daemon skips administrative_operator_stop_outcome_unknown before generic receipt validation/mutations. Genuine worker asserts ordinary reconciliation returns[] and leaves inspect unchanged before each stage; complete/replay also asserts automatic exclusion. Runtime DB effects of those assertions are native attribution below.",
+    "scope": "Published terminal result actual_store_bindings equals the original in-place fixture07 stores; failure receipt exact typed attempt/claim/lease/owner/fence scope and original control revision5 match A07 preimage.",
+    "source": "Diagnostic worker entire run() body remains byte-identical to previously reviewed ed72; no live ADMIN gateway construction/rebind in settlement worker. Native source bytes match all configured pins."
+  },
+  "limits": {
+    "D_operator_rearm_performed": false,
+    "D_successor_attempt_admitted": false,
+    "automatic_retry_admitted": false,
+    "callback_closed": false,
+    "old_failed_C06_or_B05_replayed_or_retrospectively_promoted": false,
+    "possible_external_effects": "unverified",
+    "production_R06_custody_or_mutation_qualified": false,
+    "production_action_performed": false,
+    "provider_or_model_nonreachability_proved": false,
+    "provider_outcome": "unknown",
+    "real_transport_drop_tested": false,
+    "remote_cancellation_proved": false,
+    "scope": "DISPOSABLE_AUTHENTIC_FIXTURE_ONLY",
+    "task_completion_authority": false
+  },
+  "live_process_resource_state_requeried": false,
+  "native_runtime_assertion_attribution": {
+    "D4_timing": "D4 exits immediately after genuine _record_event return and inspect terminal_count1; it precedes native settlement exact-terminal-body validation. That later validator is exercised by successful fresh D5/D6.",
+    "D5_D6_native_checks": [
+      "Actual genuine three-store handles/writer lock and in-place physical paths.",
+      "Unique old durable ADMIN evidence/event and exact canonical envelope/content identity under original stopped creator.",
+      "Raw current UNKNOWN row byte equality and zero effects; historical sidecar byte pins and complete ordinal/fence history unchanged.",
+      "Exact persisted FAILED phase/failure receipt and complete canonical Intent body/identity; unrelated task/goal/plan/graph population preserved.",
+      "Exact unique existing terminal event body equals result; same-owner terminal replay equals result.",
+      "Ordinary reconciliation remains inert, task remains automatically excluded, no duplicate native audit/event, genuine daemon.close returns."
+    ],
+    "UNKNOWN_scope": "Both original UNKNOWN inventory digests and full history are preserved by native validators. This local FAILED/BLOCKED disposition does not turn UNKNOWN into an accepted result or prove external effect closure.",
+    "group_and_finalization": "Root post-owner JSON group field is null and remains null in this review. Group absence is the actual native parent child witness; root post-owner JSON separately reports actual tool exit0, released reservation, exact PIDs/lease IDs absent. Reviewer did not requery live kernel/scheduler/ledger.",
+    "postcommit_loss_boundary": "D1-D4 call actual bound native method first, observe the committed stage, then exit73 without claiming handle close. Parent witnesses actual reap/group absence; full outer owner completion is separately recorded.",
+    "scope_of_independent_review": "These are successful checks in pinned genuine native worker/policy source, not independently queried current database facts. Review independently rehashes source/artifacts and compares their published records."
+  },
+  "old_C_scope": {
+    "audit_event_id": "baguqeeras7iv5g46quajqry3egbjffwmbtsljqhlniohwc6ulmliyqn7smoa",
+    "audit_evidence_id": "baguqeerafqzcd7oqwymgjtcpukovnqefk54ufxx3q3wga4pgappmm5pqotcq",
+    "audit_response_pin": {
+      "bytes": 32242,
+      "path": "/tmp/pytest-of-barberb/unk17c7/audit-response.json",
+      "sha256": "06e8f000b34faf2b089169d2ad1058044aadbab6fd8829226780376969208eea"
+    },
+    "context_cid": "baguqeeraxdymh623p6fezmqjbbi25sh5c3uxig6zwfmvpzjbm44it2zoswmq",
+    "creator_exit_witness_pin": {
+      "bytes": 1273,
+      "path": "/tmp/pytest-of-barberb/unk17c7/admin-exit-witness.json",
+      "sha256": "18d66e3a5279954d9cae5e39d892e09b1589a386e02381dff3f5b615cccabdc0"
+    },
+    "parent_result_pin": {
+      "bytes": 2561,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-admin-20261017-07/parent-result.json",
+      "sha256": "087dc8d5badb2c4602b6161c543715d56296453db4931424758afa8624734f6c"
+    },
+    "sealed_context_pin": {
+      "bytes": 14594,
+      "path": "/tmp/pytest-of-barberb/unk17c7/sealed-context.json",
+      "sha256": "f64d29d8e5585add6195007340f1909968e1caad34f2747b606d96e331351045"
+    }
+  },
+  "production_access": false,
+  "review_method": "Standard-library immutable JSON/SHA256/AST comparisons only; no target/backend imports, native jobs/tests, credential files, database/WAL bytes or live process/resource queries.",
+  "review_result": "PASS for the completed authentic disposable D1-D6 chain, bounded by immutable JSON/source evidence and attributed native runtime assertions.",
+  "schema": "authentic-settlement07-chain-source-and-evidence-review@1",
+  "source_pins": {
+    "ADMIN_worker": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "loader": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "parent": {
+      "bytes": 46961,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/authentic_unknown_native_parent_v04.py",
+      "sha256": "d774c6781f7563514c0b1175933196e25fc1674ddd5f6f50e3a56b68b908022c"
+    },
+    "producer": {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    "settlement_worker": {
+      "bytes": 21633,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/authentic_unknown_settlement_worker_v05.py",
+      "sha256": "a30a3081b72502e1bc95380fe435421b5b3281b40c6915a2e21abc0027b519d6"
+    }
+  },
+  "stages": [
+    {
+      "D": 1,
+      "actual_native_tool_session_reported": 33612,
+      "child_exit_witness_pin": {
+        "bytes": 388,
+        "path": "/tmp/pytest-of-barberb/unk17d71/settlement-exit-witness.json",
+        "sha256": "ff69e0914dcb8e41588d7b75fdbb6adeb248576b684c6340a1e3f9060a7f48ee"
+      },
+      "native_child_exit": 73,
+      "outer_tool_exit": 0,
+      "parent_request_pin": {
+        "bytes": 3056,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement-parent-request-v07-d1.json",
+        "sha256": "2011e7b3f9c90a1e29490a7038823b419d21c7ec33fcc102e7c40261f248f013"
+      },
+      "parent_result_pin": {
+        "bytes": 2448,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-01/parent-result.json",
+        "sha256": "8a7870e09075e09f92f665232d601b3d7a38acb7d7bd8f0ea853720994a64eeb"
+      },
+      "post_owner_observation_pin": {
+        "bytes": 1131,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d1-post-owner-observation-v01.json",
+        "sha256": "73244bc1c4a5dc2248a35c58f388e0416b576a2339b46333a826e2f0238387d7"
+      },
+      "reported_state": {
+        "claim_state": "accepted",
+        "control_revision": 5,
+        "control_status": "in_progress",
+        "coordination_attempt_status": "running",
+        "lease_state": "accepted",
+        "terminal_count": 0
+      },
+      "root_post_owner_group_field": null,
+      "stage": "failed",
+      "worker_request_pin": {
+        "bytes": 2056,
+        "path": "/tmp/pytest-of-barberb/unk17d71/settlement-request.json",
+        "sha256": "ca54f28d1d016bfee72f615fde28cbb7db87c82c2f54663c86e810c4cc6b5671"
+      },
+      "worker_result_pin": {
+        "bytes": 2889,
+        "path": "/tmp/pytest-of-barberb/unk17d71/lost-stage.json",
+        "sha256": "84ef38bb01d43131a4cc5bb30c4c1a065b33274530a5736f7f64b5fe4e1790e1"
+      }
+    },
+    {
+      "D": 2,
+      "actual_native_tool_session_reported": 78138,
+      "child_exit_witness_pin": {
+        "bytes": 388,
+        "path": "/tmp/pytest-of-barberb/unk17d72/settlement-exit-witness.json",
+        "sha256": "7e16aa1c9def60ceef9c4b983b1c24ea987f3da90dfedda8658362d82812b39e"
+      },
+      "native_child_exit": 73,
+      "outer_tool_exit": 0,
+      "parent_request_pin": {
+        "bytes": 3342,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement-parent-request-v07-d2.json",
+        "sha256": "92d8f219717addbf2a80edf76d9f3cec2648e49acc94110d7d760084acd53995"
+      },
+      "parent_result_pin": {
+        "bytes": 2740,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-02/parent-result.json",
+        "sha256": "e2a34b663b33c79b6287ef6be31bf46335197d91068a049bd8934ad104e6dc37"
+      },
+      "post_owner_observation_pin": {
+        "bytes": 1131,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d2-post-owner-observation-v01.json",
+        "sha256": "91cf367bce8e63f737d18768630fdaf1a74ae585e60e13d2966d32a6efd4bfe4"
+      },
+      "reported_state": {
+        "claim_state": "released",
+        "control_revision": 5,
+        "control_status": "in_progress",
+        "coordination_attempt_status": "failed",
+        "lease_state": "released",
+        "terminal_count": 0
+      },
+      "root_post_owner_group_field": null,
+      "stage": "coordination",
+      "worker_request_pin": {
+        "bytes": 2062,
+        "path": "/tmp/pytest-of-barberb/unk17d72/settlement-request.json",
+        "sha256": "31625c6bd7c5d6c5c744a2a5e56d80189061d070d67f2c0432ff79dd73cc43a7"
+      },
+      "worker_result_pin": {
+        "bytes": 2894,
+        "path": "/tmp/pytest-of-barberb/unk17d72/lost-stage.json",
+        "sha256": "7c678f021cc7ff44b880b6183d8d20b0b390b6f3062469c512765c5a9cfb64ed"
+      }
+    },
+    {
+      "D": 3,
+      "actual_native_tool_session_reported": 5063,
+      "child_exit_witness_pin": {
+        "bytes": 388,
+        "path": "/tmp/pytest-of-barberb/unk17d73/settlement-exit-witness.json",
+        "sha256": "35033422d0d0c3ca631fe6efda5e3ee2aebf133b7aac6a70a11e8a4fefefc40b"
+      },
+      "native_child_exit": 73,
+      "outer_tool_exit": 0,
+      "parent_request_pin": {
+        "bytes": 3337,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement-parent-request-v07-d3.json",
+        "sha256": "3f1b33510bff24552f721f9e04e9ba7e9f0c83881ebbc952f55e5becc781861a"
+      },
+      "parent_result_pin": {
+        "bytes": 2730,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-03/parent-result.json",
+        "sha256": "c0007c16d1a0c76eb3792859b35a237c088b345a250c06b5479214636119b918"
+      },
+      "post_owner_observation_pin": {
+        "bytes": 1130,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d3-post-owner-observation-v01.json",
+        "sha256": "1d2183cafe0686dc582f02c491394cf0397799cef5da3fb45881598dfc65fb7f"
+      },
+      "reported_state": {
+        "claim_state": "released",
+        "control_revision": 6,
+        "control_status": "blocked",
+        "coordination_attempt_status": "failed",
+        "lease_state": "released",
+        "terminal_count": 0
+      },
+      "root_post_owner_group_field": null,
+      "stage": "blocked",
+      "worker_request_pin": {
+        "bytes": 2057,
+        "path": "/tmp/pytest-of-barberb/unk17d73/settlement-request.json",
+        "sha256": "35e0de7719159301207538258c901d01850b65af04f3b6d44868cd041d0be168"
+      },
+      "worker_result_pin": {
+        "bytes": 2885,
+        "path": "/tmp/pytest-of-barberb/unk17d73/lost-stage.json",
+        "sha256": "c441adef1944be15fb251ef3e874ca73152bfba84e361834c0fb067d72bd5519"
+      }
+    },
+    {
+      "D": 4,
+      "actual_native_tool_session_reported": 16442,
+      "child_exit_witness_pin": {
+        "bytes": 388,
+        "path": "/tmp/pytest-of-barberb/unk17d74/settlement-exit-witness.json",
+        "sha256": "3782244922052683260f758be7a186e11f68ecf4343bb62f48117d18a07683d0"
+      },
+      "native_child_exit": 73,
+      "outer_tool_exit": 0,
+      "parent_request_pin": {
+        "bytes": 3344,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement-parent-request-v07-d4.json",
+        "sha256": "61be92ecdcf71009d7b5417423bf37672fc6071b5fe310cbd56f13532ff877f3"
+      },
+      "parent_result_pin": {
+        "bytes": 2744,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-04/parent-result.json",
+        "sha256": "8dbfea287820e7951b3a77ddd6301929eae755cd642a163603fbf150fee7640d"
+      },
+      "post_owner_observation_pin": {
+        "bytes": 1131,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d4-post-owner-observation-v01.json",
+        "sha256": "736e813bbea626075bb98ad9449ac5718e37cb53bbc9f1ce112b4bb552203ae7"
+      },
+      "reported_state": {
+        "claim_state": "released",
+        "control_revision": 6,
+        "control_status": "blocked",
+        "coordination_attempt_status": "failed",
+        "lease_state": "released",
+        "terminal_count": 1
+      },
+      "root_post_owner_group_field": null,
+      "stage": "terminal_event",
+      "worker_request_pin": {
+        "bytes": 2064,
+        "path": "/tmp/pytest-of-barberb/unk17d74/settlement-request.json",
+        "sha256": "5e56ceb84aac22a867f7b57461c02a38b2cf15d4d50a8b9b90d5febbfa09a80c"
+      },
+      "worker_result_pin": {
+        "bytes": 2892,
+        "path": "/tmp/pytest-of-barberb/unk17d74/lost-stage.json",
+        "sha256": "49962ba9a8447609f9c91b425279421a5ff7e97afb242d566e0dae49e0bb5ff2"
+      }
+    },
+    {
+      "D": 5,
+      "actual_native_tool_session_reported": 47384,
+      "child_exit_witness_pin": {
+        "bytes": 383,
+        "path": "/tmp/pytest-of-barberb/unk17d75/settlement-exit-witness.json",
+        "sha256": "2dbcf57ced641d4deacf805ef0216a7bc1996d4470dc72a0eecae0626905a37f"
+      },
+      "native_child_exit": 0,
+      "outer_tool_exit": 0,
+      "parent_request_pin": {
+        "bytes": 3338,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement-parent-request-v07-d5.json",
+        "sha256": "9af57901f09ea7fb36954a27833c925c8706a6255681ab4b42557511802478c1"
+      },
+      "parent_result_pin": {
+        "bytes": 2741,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-05/parent-result.json",
+        "sha256": "271598c16e1b1076fea72dc5c2f28d4bb9c7dfe7b85d33770e375254753e5709"
+      },
+      "post_owner_observation_pin": {
+        "bytes": 1131,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d5-post-owner-observation-v01.json",
+        "sha256": "6586e348196c21e7ea19d03fe7d1a92fb07f58c041dc622192c369e675880306"
+      },
+      "reported_state": {
+        "claim_state": "released",
+        "control_revision": 6,
+        "control_status": "blocked",
+        "coordination_attempt_status": "failed",
+        "lease_state": "released",
+        "terminal_count": 1
+      },
+      "root_post_owner_group_field": null,
+      "stage": "complete",
+      "worker_request_pin": {
+        "bytes": 2058,
+        "path": "/tmp/pytest-of-barberb/unk17d75/settlement-request.json",
+        "sha256": "6c0376a05e845f15421eef885308d5cf61a6d2015220655a95a393d803d7debe"
+      },
+      "worker_result_pin": {
+        "bytes": 11880,
+        "path": "/tmp/pytest-of-barberb/unk17d75/settlement-result.json",
+        "sha256": "3dc469a215e5287f4a9bdd8fd44dd422694a38c34570106016626d3dce0ea45f"
+      }
+    },
+    {
+      "D": 6,
+      "actual_native_tool_session_reported": 66796,
+      "child_exit_witness_pin": {
+        "bytes": 383,
+        "path": "/tmp/pytest-of-barberb/unk17d76/settlement-exit-witness.json",
+        "sha256": "85184d60a4d132e44349e972984cc440c99adce4a3c26e07cc60f6d877d7bfb8"
+      },
+      "native_child_exit": 0,
+      "outer_tool_exit": 0,
+      "parent_request_pin": {
+        "bytes": 3336,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement-parent-request-v07-d6.json",
+        "sha256": "4cc7dffa16bb2c48bbab8ae1be315d831a05c36a0975b667c066511b814f7951"
+      },
+      "parent_result_pin": {
+        "bytes": 2736,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-06/parent-result.json",
+        "sha256": "e3bbb0b6ac87d63e56e04ebb3ea15a895957a9bd13d1e3a73af1416da8e97cae"
+      },
+      "post_owner_observation_pin": {
+        "bytes": 1131,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/settlement07-d6-post-owner-observation-v01.json",
+        "sha256": "e1704fadaeb2e86c6873752fc7b721ba226bf30fbe6a7a78d969442a4f855d23"
+      },
+      "reported_state": {
+        "claim_state": "released",
+        "control_revision": 6,
+        "control_status": "blocked",
+        "coordination_attempt_status": "failed",
+        "lease_state": "released",
+        "terminal_count": 1
+      },
+      "root_post_owner_group_field": null,
+      "stage": "replay",
+      "worker_request_pin": {
+        "bytes": 2056,
+        "path": "/tmp/pytest-of-barberb/unk17d76/settlement-request.json",
+        "sha256": "2d69c36cc6189d7afc0300189b855010b11591b0eafb18d84c74e5f5b666c009"
+      },
+      "worker_result_pin": {
+        "bytes": 11878,
+        "path": "/tmp/pytest-of-barberb/unk17d76/settlement-result.json",
+        "sha256": "df5a07b4cbc0ea148abf242ea3f5cfe116384f93abfa903e5dc6e5c594e0d3f4"
+      }
+    }
+  ],
+  "verification_command": [
+    "python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/review_settlement07_immutable_evidence_v01.py",
+    "--through",
+    "6"
+  ],
+  "verification_program_pin": {
+    "bytes": 13536,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/review_settlement07_immutable_evidence_v01.py",
+    "sha256": "7ccf7e8a15860002eb9060573bfebfed8b4c8e4481393ee5454bb9499bd47933"
+  },
+  "verification_program_result": {
+    "completed_successfully": true,
+    "configured_C_source_files_rehashed": 2816,
+    "distinct_immutable_JSON_source_files_rehashed": 2885,
+    "final_trace_complete": true,
+    "through_D": 6
+  }
+}

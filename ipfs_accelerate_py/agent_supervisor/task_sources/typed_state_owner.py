@@ -90,6 +90,14 @@ LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS: Final = 125.0
 _LOCAL_COMPLETION_REQUEST_DEADLINE = ContextVar("local_completion_request_deadline", default=None)
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+PLANNING_UNKNOWN_ABANDONMENT_OPERATION: Final = "planning_unknown_abandonment_decide/v1"
+PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID: Final = "planning-unknown-abandonment-administrator"
+NAMESPACE_GUARD_ADJUDICATION_OPERATION: Final = (
+    "namespace_guard_nonreachability_adjudicate/v1"
+)
+NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID: Final = (
+    "namespace-guard-nonreachability-administrator"
+)
 TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1"
 )
@@ -443,9 +451,23 @@ _EVENT_WAIT_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
 _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {COMPLETION_PROGRESS_SNAPSHOT_OPERATION, "completion.closeout.snapshot"}
 )
+NATIVE_EXECUTION_STATUS_OPERATION: Final = "native_execution.status.snapshot"
+NATIVE_EXECUTION_STATUS_PROFILE: Final = "dedicated_native_execution_status"
+NATIVE_EXECUTION_STATUS_CLIENT_ID: Final = "native-execution-status-operator"
+NATIVE_EXECUTION_STATUS_SCOPE: Final = "native_execution_status_binding_cid"
+NATIVE_EXECUTION_STATUS_MAX_ENVELOPE_BYTES: Final = 1_048_576
+NATIVE_EXECUTION_STATUS_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-native-execution-status-snapshot@1"
+)
+_NATIVE_EXECUTION_STATUS_CONTROL_KEYS: Final = frozenset({
+    "store_id", "database_uuid", "schema_revision", "schema_fingerprint",
+})
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
+        NAMESPACE_GUARD_ADJUDICATION_OPERATION,
+        PLANNING_UNKNOWN_ABANDONMENT_OPERATION,
         "source.get",
+        NATIVE_EXECUTION_STATUS_OPERATION,
         "local.task.validation.run",
         "derived.coordination.read",
         "derived.coordination.write",
@@ -1102,6 +1124,8 @@ class OwnerClientGrant:
             "task_cid",
             "reviewed_preflight_cid",
             "recovery_scope_cid",
+            "abandonment_scope_cid",
+            NATIVE_EXECUTION_STATUS_SCOPE,
             "subscription_id",
             "consumer_id",
             "event_id",
@@ -1116,7 +1140,7 @@ class OwnerClientGrant:
             )
         object.__setattr__(self, "entity_scopes", tuple(sorted(scopes)))
         authority_profile = str(self.authority_profile or "").strip()
-        if authority_profile not in {"", "dedicated_store_status_portfolio", "dedicated_database_status"}:
+        if authority_profile not in {"", "dedicated_store_status_portfolio", "dedicated_database_status", NATIVE_EXECUTION_STATUS_PROFILE}:
             raise TypedStateOwnerAuthorizationError(
                 "owner grant authority profile is invalid"
             )
@@ -5492,8 +5516,25 @@ class TypedStateOwnerGateway:
         self._status_bootstrap_scope: dict[str, str] = {}
         self._database_status_binding: dict[str, Any] = {}
         self._database_closeout_profile: Any = None
+        self._native_execution_status_owner: Any = None
+        self._native_execution_status_binding: Any = None
+        self._native_execution_status_control: bytes | None = None
+        self._native_execution_status_identity: bytes | None = None
+        self._native_execution_status_deadline = 0.0
+        self._native_execution_status_connection: Any = None
+        self._native_execution_status_lock: Any = None
+        self._native_execution_status_scope: bytes | None = None
+        self._native_execution_status_attempted = False
+        self._native_execution_status_invalidated = False
+        self._native_execution_status_creator = (os.getpid(), _process_start_time_ticks(os.getpid()))
         self._legacy_merge_queue_service: Any | None = None
         self._legacy_merge_recovery_service: Any | None = None
+        self._planning_unknown_abandonment_service: Any | None = None
+        self._planning_unknown_abandonment_creator_pid = os.getpid()
+        self._planning_unknown_abandonment_creator_birth = kernel_process_birth_id(os.getpid())
+        self._namespace_guard_adjudication_service: Any | None = None
+        self._namespace_guard_adjudication_creator_pid = os.getpid()
+        self._namespace_guard_adjudication_creator_birth = kernel_process_birth_id(os.getpid())
         self._derived_coordination_service: Any | None = None
         self._current_source_lookup: Any | None = None
         self._current_source_read_guard = threading.Lock()
@@ -5536,6 +5577,194 @@ class TypedStateOwnerGateway:
             # Older/custom schema owners remain usable, but cannot serve
             # hash observations before the additive migration is installed.
             pass
+
+    def _require_native_execution_status_operator(self) -> None:
+        creator = self._native_execution_status_creator
+        if creator != (os.getpid(), _process_start_time_ticks(os.getpid())):
+            raise TypedStateOwnerAuthorizationError("native status requires its original operator process")
+
+    def _native_execution_control_task(self, binding: Any) -> dict[str, Any]:
+        # Reobserve the actual primary generation, not just a retained identity.
+        row = self._connection.execute(
+            "SELECT generation,schema_revision,fence_epoch,database_uuid,birth_id "
+            "FROM store_generations ORDER BY generation DESC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            raise TypedStateOwnerAuthorizationError("native status primary generation is unavailable")
+        names = ("generation", "schema_revision", "fence_epoch", "database_uuid", "birth_id")
+        values = [row[name] for name in names] if isinstance(row, Mapping) else list(row)
+        expected = [self.identity.get(key) for key in ("generation", "schema_revision", "fence_epoch", "database_uuid", "process_birth_id")]
+        if len(values) != 5 or any(not _strict_scalar_equal(value, want) for value, want in zip(values, expected)):
+            raise TypedStateOwnerAuthorizationError("native status actual primary generation differs")
+        # Only this fixed primary-owner query is used. No client SQL or selector.
+        rows = self._connection.execute(
+            "SELECT task_cid,task_alias,status,revision,"
+            "CASE WHEN octet_length(encode(body_json))<=262144 THEN body_json ELSE NULL END AS body_json "
+            "FROM tasks WHERE task_cid=? LIMIT 2", [binding.task_cid],
+        ).fetchall()
+        if len(rows) != 1:
+            raise TypedStateOwnerAuthorizationError("native status control task is not unique")
+        row = rows[0]
+        names = ("task_cid", "task_alias", "status", "revision", "body_json")
+        values = [row[name] for name in names] if isinstance(row, Mapping) else list(row)
+        if len(values) != len(names):
+            raise TypedStateOwnerAuthorizationError("native status control projection differs")
+        body, _encoded = _closed_canonical_json_object(
+            values[4], noun="native status control body", maximum_bytes=_MAX_EXECUTOR_TASK_BODY_JSON_BYTES,
+        )
+        task = dict(zip(names[:4], values[:4]))
+        task["body"] = body
+        binding.validate_control_task(task)
+        return task
+
+    def bind_native_execution_status_before_start(
+        self, *, binding: Mapping[str, Any], control_identity: Mapping[str, Any],
+        deadline_monotonic: float,
+    ) -> None:
+        """Open one exact read-only sidecar before accepting any client.
+
+        Inputs are operator-local metadata, never grants. The primary owner
+        must independently be admitted and retain custody of both sources.
+        """
+        from ..todo_daemon.native_execution_status_owner import (
+            MAX_LIFETIME_SECONDS, NativeExecutionStatusBinding, NativeExecutionStatusOwner,
+        )
+        self._require_native_execution_status_operator()
+        with self._transaction_lock:
+            if (self._native_execution_status_attempted or self._listener is not None
+                    or self._thread is not None or self._stop.is_set()):
+                raise TypedStateOwnerAuthorizationError("native status startup binding cannot be rebound")
+            self._native_execution_status_attempted = True
+            if (not isinstance(control_identity, Mapping)
+                    or set(control_identity) != _NATIVE_EXECUTION_STATUS_CONTROL_KEYS):
+                raise TypedStateOwnerAuthorizationError("native status control identity is incomplete")
+            control = dict(control_identity)
+            if (any(type(control[key]) is not str or not control[key] or len(control[key].encode("utf-8")) > 1024
+                    for key in ("store_id", "database_uuid", "schema_fingerprint"))
+                    or type(control["schema_revision"]) is not int
+                    or control["schema_revision"] < 1
+                    or any(not _strict_scalar_equal(self.identity.get(key), value)
+                           for key, value in control.items())):
+                raise TypedStateOwnerAuthorizationError("native status original control owner differs")
+            selected = NativeExecutionStatusBinding.from_dict(binding)
+            if (selected.control_store_id != self.store_id
+                    or selected.control_store_id != control["store_id"]
+                    or selected.control_schema_version != control["schema_revision"]
+                    or not self._database_status_binding
+                    or selected.task_cid not in self._database_status_binding["task_cids"]):
+                raise TypedStateOwnerAuthorizationError("native status is outside the sealed control scope")
+            now = time.monotonic()
+            if (type(deadline_monotonic) not in (int, float)
+                    or not math.isfinite(deadline_monotonic)
+                    or not now < deadline_monotonic <= now + MAX_LIFETIME_SECONDS):
+                raise TypedStateOwnerAuthorizationError("native status deadline is invalid")
+            before = canonical_json_bytes(self._native_execution_control_task(selected))
+            service = NativeExecutionStatusOwner(selected, deadline_monotonic=deadline_monotonic)
+            # Retain the genuine handle before open; teardown failures must
+            # remain owned by the gateway's existing shutdown path.
+            self._native_execution_status_owner = service
+            self._native_execution_status_binding = selected
+            self._native_execution_status_control = canonical_json_bytes(control)
+            self._native_execution_status_identity = canonical_json_bytes(dict(self.identity))
+            self._native_execution_status_deadline = float(deadline_monotonic)
+            self._native_execution_status_connection = self._connection
+            self._native_execution_status_lock = self._transaction_lock
+            self._native_execution_status_scope = canonical_json_bytes(self._database_status_binding)
+            try:
+                service.open()
+                if canonical_json_bytes(self._native_execution_control_task(selected)) != before:
+                    raise TypedStateOwnerAuthorizationError("native status control cursor changed during open")
+            except BaseException:
+                self._native_execution_status_invalidated = True
+                service.close()
+                self._native_execution_status_owner = None
+                raise
+
+    def _require_native_execution_status_bound(self) -> Any:
+        self._require_native_execution_status_operator()
+        self._require_live_server_binding()
+        selected = self._native_execution_status_binding
+        if (selected is None or self._native_execution_status_owner is None
+                or self._native_execution_status_invalidated
+                or self._native_execution_status_connection is not self._connection
+                or self._native_execution_status_lock is not self._transaction_lock
+                or canonical_json_bytes(self._database_status_binding) != self._native_execution_status_scope
+                or time.monotonic() >= self._native_execution_status_deadline
+                or canonical_json_bytes(dict(self.identity)) != self._native_execution_status_identity):
+            raise TypedStateOwnerAuthorizationError("native status owner is not admitted")
+        control = json.loads(self._native_execution_status_control)
+        if any(not _strict_scalar_equal(self.identity.get(key), value) for key, value in control.items()):
+            raise TypedStateOwnerAuthorizationError("native status primary identity changed")
+        return selected
+
+    def _require_native_execution_status_grant(self, grant: OwnerClientGrant) -> Any:
+        selected = self._require_native_execution_status_bound()
+        if (grant.authority_profile != NATIVE_EXECUTION_STATUS_PROFILE
+                or grant.client_id != NATIVE_EXECUTION_STATUS_CLIENT_ID
+                or grant.process_birth_id != kernel_process_birth_id(grant.peer_pid, start_time_ticks=grant.peer_start_time_ticks)
+                or grant.peer_uid != os.geteuid()
+                or grant.allowed_operations != frozenset({NATIVE_EXECUTION_STATUS_OPERATION})
+                or grant.allowed_command_operations or grant.allowed_database_task_commands
+                or grant.tenant_id or grant.federation_id
+                or dict(grant.entity_scopes) != {
+                    "task_cid": selected.task_cid,
+                    NATIVE_EXECUTION_STATUS_SCOPE: selected.binding_cid,
+                }):
+            raise TypedStateOwnerAuthorizationError("native status requires its exact operator grant")
+        return selected
+
+    def issue_native_execution_status_grant(
+        self, *, process_birth_id: str, peer_pid: int, ttl_seconds: float = 30.0,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Issue an ephemeral separate read grant; never publish a bootstrap token."""
+        selected = self._require_native_execution_status_bound()
+        if not process_birth_id:
+            raise TypedStateOwnerAuthorizationError("native status requires process birth identity")
+        return self.issue_grant(
+            client_id=NATIVE_EXECUTION_STATUS_CLIENT_ID, process_birth_id=process_birth_id,
+            peer_pid=peer_pid, ttl_seconds=ttl_seconds,
+            allowed_operations=(NATIVE_EXECUTION_STATUS_OPERATION,),
+            entity_scopes={"task_cid": selected.task_cid,
+                           NATIVE_EXECUTION_STATUS_SCOPE: selected.binding_cid},
+        )
+
+    def _native_execution_status_snapshot(self, grant: OwnerClientGrant, payload: Any) -> dict[str, Any]:
+        from ..todo_daemon.native_execution_status_owner import MAX_OBSERVATION_BYTES
+        selected = self._require_native_execution_status_grant(grant)
+        if type(payload) is not dict or payload != {"binding_cid": selected.binding_cid}:
+            raise TypedStateOwnerAuthorizationError("native status payload differs from its binding")
+        service = self._native_execution_status_owner
+        try:
+            before = canonical_json_bytes(self._native_execution_control_task(selected))
+            observation = service.observe_attempt()
+            if (service is not self._native_execution_status_owner
+                    or selected is not self._native_execution_status_binding
+                    or canonical_json_bytes(self._native_execution_control_task(selected)) != before):
+                raise TypedStateOwnerAuthorizationError("native status control cursor changed during observation")
+            self._require_native_execution_status_grant(grant)
+            self._require_active_grant(grant, peer_identity=(grant.peer_pid, grant.peer_uid, grant.peer_start_time_ticks))
+            # Existing typed envelopes intentionally reject floats. Preserve any
+            # finite native JSON values in a bounded JSON string, without changing
+            # that transport grammar or turning observations into control values.
+            encoded = json.dumps(observation, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+            if len(encoded.encode("utf-8")) > MAX_OBSERVATION_BYTES:
+                raise TypedStateOwnerProtocolError("native status observation exceeds its bound")
+            result = {
+                "schema": NATIVE_EXECUTION_STATUS_SNAPSHOT_SCHEMA,
+                "binding_cid": selected.binding_cid, "task_cid": selected.task_cid,
+                "control_revision": selected.control_revision,
+                "control_owner_identity": dict(self.identity), "control_join_verified": True,
+                "native_observation_json": encoded, "observation_only": True,
+                "completion_authority": False, "automatic_retry_admitted": False,
+                "semantic_admission": False,
+            }
+            if len(canonical_json_bytes(result)) > NATIVE_EXECUTION_STATUS_MAX_ENVELOPE_BYTES:
+                raise TypedStateOwnerProtocolError("native status envelope exceeds its bound")
+            return result
+        except BaseException:
+            self._native_execution_status_invalidated = True
+            service.cancel()
+            raise
 
     def _require_live_server_binding(self) -> None:
         thread = self._thread
@@ -5876,6 +6105,196 @@ class TypedStateOwnerGateway:
         _mirror_legacy_merge_binding(
             "legacy_merge_recovery_binding", repository_id, target_branch
         )
+
+    def _require_planning_unknown_abandonment_owner(self) -> None:
+        self._require_live_server_binding()
+        if (os.getpid() != self._planning_unknown_abandonment_creator_pid
+                or kernel_process_birth_id(os.getpid())
+                != self._planning_unknown_abandonment_creator_birth):
+            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment requires its original creator process")
+
+
+    def bind_planning_unknown_abandonment_service(
+        self, *, expected_identity: Mapping[str, Any],
+        authority_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Register one registered administrative decision context with the exclusive owner.
+
+        Only the host administrator calls this binding API. Transport callers
+        provide a context identity and CAS revision, never paths or source bytes.
+        Binding opens no database and issues no ordinary worker capability.
+        """
+        from ..todo_daemon.planning_unknown_abandonment import scope as planning_unknown_abandonment_scope
+        from .database_task_source import DatabaseTaskSource
+        from .intent_repository import IntentRepository
+
+        frozen = canonical_json_bytes(dict(authority_context))
+        if len(frozen) > 64 * 1024:
+            raise TypedStateOwnerProtocolError("UNKNOWN abandonment context exceeds its bound")
+        with self._transaction_lock:
+            self._require_planning_unknown_abandonment_owner()
+            if (canonical_json_bytes(dict(expected_identity))
+                    != canonical_json_bytes(dict(self.identity))):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment owner identity differs")
+            if self._planning_unknown_abandonment_service is not None:
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment service is already bound")
+            context = json.loads(frozen)
+            if (canonical_json_bytes(context.get("registered_owner_identity"))
+                    != canonical_json_bytes(dict(self.identity))
+                    or canonical_json_bytes(context.get("registered_creator"))
+                    != canonical_json_bytes({
+                        "pid": os.getpid(), "process_birth_id": kernel_process_birth_id(os.getpid())})):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment registered owner/creator differs")
+            scope = dict(planning_unknown_abandonment_scope(context))
+            database_paths = [(row[0],) for row in self._connection.execute(
+                "SELECT path FROM duckdb_databases() WHERE database_name = current_database()"
+            ).fetchall()]
+            if (database_paths != [(scope["canonical_store_id"],)]
+                    or scope["logical_store_id"] != self.store_id
+                    or self.identity.get("store_id") != self.store_id):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment canonical store differs")
+            repository = IntentRepository(
+                bound_connection=self._connection, install_schema=False,
+                owner_id=str(self.identity["server_id"]),
+                session_id=PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID,
+            )
+            source = DatabaseTaskSource(intent=repository, install_schema=False)
+            self._planning_unknown_abandonment_service = (source, frozen, scope)
+            return MappingProxyType(dict(scope))
+
+
+    def issue_planning_unknown_abandonment_grant(
+        self, *, peer_pid: int | None = None,
+        ttl_seconds: float = 60.0,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Issue a dedicated ADMIN service capability, never a worker grant."""
+        with self._transaction_lock:
+            self._require_planning_unknown_abandonment_owner()
+            service = self._planning_unknown_abandonment_service
+            if service is None:
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment service is unavailable")
+            scope = service[2]
+            selected_pid = os.getpid() if peer_pid is None else int(peer_pid)
+            return self.issue_grant(
+                client_id=PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID,
+                process_birth_id=kernel_process_birth_id(selected_pid),
+                peer_pid=selected_pid, ttl_seconds=ttl_seconds,
+                allowed_operations=(PLANNING_UNKNOWN_ABANDONMENT_OPERATION,),
+                entity_scopes={"task_cid": scope["task_cid"],
+                               "abandonment_scope_cid": scope["abandonment_scope_cid"]},
+            )
+
+
+    def _require_planning_unknown_abandonment_grant(
+        self, grant: OwnerClientGrant,
+    ) -> tuple[Any, bytes, Mapping[str, Any]]:
+        self._require_planning_unknown_abandonment_owner()
+        service = self._planning_unknown_abandonment_service
+        if service is None:
+            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment service is unavailable")
+        scope = service[2]
+        if (grant.client_id != PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID
+                or grant.allowed_operations != frozenset({PLANNING_UNKNOWN_ABANDONMENT_OPERATION})
+                or grant.allowed_command_operations or grant.allowed_database_task_commands
+                or grant.tenant_id or grant.federation_id or grant.authority_profile
+                or not grant.process_birth_id
+                or dict(grant.entity_scopes) != {
+                    "task_cid": scope["task_cid"],
+                    "abandonment_scope_cid": scope["abandonment_scope_cid"]}):
+            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment requires its exact ADMIN grant")
+        return service
+
+
+    def _require_namespace_guard_adjudication_owner(self) -> None:
+        self._require_live_server_binding()
+        if (os.getpid() != self._namespace_guard_adjudication_creator_pid
+                or kernel_process_birth_id(os.getpid())
+                != self._namespace_guard_adjudication_creator_birth):
+            raise TypedStateOwnerAuthorizationError("adjudication requires its original creator process")
+
+    def bind_namespace_guard_adjudication_service(
+        self, *, expected_identity: Mapping[str, Any],
+        authority_context: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Register one reviewed historical proof with the exclusive owner.
+
+        Only the host administrator calls this binding API. Transport callers
+        provide a proof identity and CAS revision, never paths or source bytes.
+        Binding opens no database and issues no ordinary worker capability.
+        """
+        from ..todo_daemon.namespace_guard_adjudication import (
+            namespace_guard_adjudication_scope,
+        )
+        from .database_task_source import DatabaseTaskSource
+        from .intent_repository import IntentRepository
+
+        frozen = canonical_json_bytes(dict(authority_context))
+        if len(frozen) > 64 * 1024:
+            raise TypedStateOwnerProtocolError("adjudication context exceeds its bound")
+        with self._transaction_lock:
+            self._require_namespace_guard_adjudication_owner()
+            if (canonical_json_bytes(dict(expected_identity))
+                    != canonical_json_bytes(dict(self.identity))):
+                raise TypedStateOwnerAuthorizationError("adjudication owner identity differs")
+            if self._namespace_guard_adjudication_service is not None:
+                raise TypedStateOwnerAuthorizationError("adjudication service is already bound")
+            context = json.loads(frozen)
+            scope = dict(namespace_guard_adjudication_scope(context))
+            database_paths = [(row[0],) for row in self._connection.execute(
+                "SELECT path FROM duckdb_databases() WHERE database_name = current_database()"
+            ).fetchall()]
+            if (database_paths != [(scope["canonical_store_id"],)]
+                    or scope["logical_store_id"] != self.store_id
+                    or self.identity.get("store_id") != self.store_id):
+                raise TypedStateOwnerAuthorizationError("adjudication canonical store differs")
+            repository = IntentRepository(
+                bound_connection=self._connection, install_schema=False,
+                owner_id=str(self.identity["server_id"]),
+                session_id=NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID,
+            )
+            source = DatabaseTaskSource(intent=repository, install_schema=False)
+            self._namespace_guard_adjudication_service = (source, frozen, scope)
+            return MappingProxyType(dict(scope))
+
+    def issue_namespace_guard_adjudication_grant(
+        self, *, peer_pid: int | None = None,
+        ttl_seconds: float = 60.0,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Issue a dedicated ADMIN service capability, never a worker grant."""
+        with self._transaction_lock:
+            self._require_namespace_guard_adjudication_owner()
+            service = self._namespace_guard_adjudication_service
+            if service is None:
+                raise TypedStateOwnerAuthorizationError("adjudication service is unavailable")
+            scope = service[2]
+            selected_pid = os.getpid() if peer_pid is None else int(peer_pid)
+            return self.issue_grant(
+                client_id=NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID,
+                process_birth_id=kernel_process_birth_id(selected_pid),
+                peer_pid=selected_pid, ttl_seconds=ttl_seconds,
+                allowed_operations=(NAMESPACE_GUARD_ADJUDICATION_OPERATION,),
+                entity_scopes={"task_cid": scope["task_cid"],
+                               "recovery_scope_cid": scope["recovery_scope_cid"]},
+            )
+
+    def _require_namespace_guard_adjudication_grant(
+        self, grant: OwnerClientGrant,
+    ) -> tuple[Any, bytes, Mapping[str, Any]]:
+        self._require_namespace_guard_adjudication_owner()
+        service = self._namespace_guard_adjudication_service
+        if service is None:
+            raise TypedStateOwnerAuthorizationError("adjudication service is unavailable")
+        scope = service[2]
+        if (grant.client_id != NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID
+                or grant.allowed_operations != frozenset({NAMESPACE_GUARD_ADJUDICATION_OPERATION})
+                or grant.allowed_command_operations or grant.allowed_database_task_commands
+                or grant.tenant_id or grant.federation_id or grant.authority_profile
+                or not grant.process_birth_id
+                or dict(grant.entity_scopes) != {
+                    "task_cid": scope["task_cid"],
+                    "recovery_scope_cid": scope["recovery_scope_cid"]}):
+            raise TypedStateOwnerAuthorizationError("adjudication requires its exact ADMIN grant")
+        return service
 
     def _bind_eaaef_typed_owner_command_service_from_server(
         self,
@@ -6429,12 +6848,28 @@ class TypedStateOwnerGateway:
             tenant_id=tenant_id,
             federation_id=federation_id,
             entity_scopes=tuple((entity_scopes or {}).items()),
+            authority_profile=(NATIVE_EXECUTION_STATUS_PROFILE if NATIVE_EXECUTION_STATUS_OPERATION in operations else ""),
             peer_pid=selected_pid,
             peer_uid=selected_uid,
             peer_start_time_ticks=selected_start,
             issued_at=issued_at,
             expires_at=issued_at + int(ttl * 1_000),
         )
+        if NAMESPACE_GUARD_ADJUDICATION_OPERATION in operations:
+            self._require_namespace_guard_adjudication_grant(grant)
+            if grant.process_birth_id != kernel_process_birth_id(selected_pid):
+                raise TypedStateOwnerAuthorizationError("adjudication administrator birth differs")
+        if PLANNING_UNKNOWN_ABANDONMENT_OPERATION in operations:
+            self._require_planning_unknown_abandonment_grant(grant)
+            if grant.process_birth_id != kernel_process_birth_id(selected_pid):
+                raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment administrator birth differs")
+        if NATIVE_EXECUTION_STATUS_OPERATION in operations:
+            with self._transaction_lock:
+                self._require_native_execution_status_grant(grant)
+                remaining = self._native_execution_status_deadline - time.monotonic()
+                if ttl > min(60.0, remaining):
+                    raise TypedStateOwnerAuthorizationError("native status grant outlives its owner")
+                self._native_execution_control_task(self._native_execution_status_binding)
         if "source.get" in operations:
             with self._transaction_lock:
                 self._authorize_source_grant(grant, self._current_source_lookup)
@@ -6542,6 +6977,8 @@ class TypedStateOwnerGateway:
                     "owner grant cannot be renewed"
                 )
             token, current = matches[0]
+            if current.authority_profile == NATIVE_EXECUTION_STATUS_PROFILE:
+                raise TypedStateOwnerAuthorizationError("native status grants cannot be renewed")
             try:
                 peer_uid = os.stat(f"/proc/{current.peer_pid}").st_uid
                 peer_start = _process_start_time_ticks(current.peer_pid)
@@ -6716,6 +7153,19 @@ class TypedStateOwnerGateway:
                 "typed owner clients did not quiesce before teardown"
             )
         with self._transaction_lock:
+            native_service = self._native_execution_status_owner
+            if native_service is not None:
+                native_service.close()
+                self._native_execution_status_owner = None
+                self._native_execution_status_invalidated = True
+            adjudication_service = self._namespace_guard_adjudication_service
+            self._namespace_guard_adjudication_service = None
+            if adjudication_service is not None:
+                adjudication_service[0].close()
+            abandonment_service = self._planning_unknown_abandonment_service
+            self._planning_unknown_abandonment_service = None
+            if abandonment_service is not None:
+                abandonment_service[0].close()
             with self._eaaef_service_bind_lock:
                 plan_service = self._eaaef_plan_r2_owner_service
                 command_service = self._eaaef_typed_owner_command_service
@@ -7257,7 +7707,19 @@ class TypedStateOwnerGateway:
                             grant,
                             peer_identity=peer_identity, session_id=session_id,
                         )
-                    if action == "begin":
+                    if action == NATIVE_EXECUTION_STATUS_OPERATION:
+                        self._reject_unknown(request, {"schema", "action", "request_id", "payload"}, "native status request")
+                        if transaction_active or request.get("schema") != TYPED_STATE_OWNER_SCHEMA:
+                            raise TypedStateOwnerProtocolError("native status requires a standalone request")
+                        if not self._transaction_lock.acquire(timeout=max(0.0, min(5.0,
+                                self._native_execution_status_deadline - time.monotonic()))):
+                            raise TypedStateOwnerProtocolError("native status owner is busy")
+                        try:
+                            grant = self._require_active_grant(grant, peer_identity=peer_identity, session_id=session_id)
+                            response = {"ok": True, "result": self._native_execution_status_snapshot(grant, request.get("payload"))}
+                        finally:
+                            self._transaction_lock.release()
+                    elif action == "begin":
                         self._reject_unknown(
                             request,
                             {"schema", "action", "request_id", "command"},
@@ -7576,6 +8038,44 @@ class TypedStateOwnerGateway:
                         finally:
                             self._transaction_lock.release()
                         response = {"ok": True, "result": dict(observation_result)}
+                    elif action == NAMESPACE_GUARD_ADJUDICATION_OPERATION:
+                        if (set(request) != {"schema", "action", "request_id", "payload"}
+                                or request.get("schema") != TYPED_STATE_OWNER_SCHEMA):
+                            raise TypedStateOwnerProtocolError("adjudication request fields differ")
+                        if transaction_active or type(request.get("payload")) is not dict:
+                            raise TypedStateOwnerAuthorizationError("adjudication requires a standalone request")
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError("adjudication owner is busy")
+                        try:
+                            grant = self._require_active_grant(
+                                grant, peer_identity=peer_identity, session_id=session_id,
+                            )
+                            source, frozen_context, _scope = self._require_namespace_guard_adjudication_grant(grant)
+                            result = source.adjudicate_namespace_guard_nonreachability(
+                                request["payload"], authority_context=json.loads(frozen_context),
+                            )
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": dict(result)}
+                    elif action == PLANNING_UNKNOWN_ABANDONMENT_OPERATION:
+                        if (set(request) != {"schema", "action", "request_id", "payload"}
+                                or request.get("schema") != TYPED_STATE_OWNER_SCHEMA):
+                            raise TypedStateOwnerProtocolError("UNKNOWN abandonment request fields differ")
+                        if transaction_active or type(request.get("payload")) is not dict:
+                            raise TypedStateOwnerAuthorizationError("UNKNOWN abandonment requires a standalone request")
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError("UNKNOWN abandonment owner is busy")
+                        try:
+                            grant = self._require_active_grant(
+                                grant, peer_identity=peer_identity, session_id=session_id,
+                            )
+                            source, frozen_context, _scope = self._require_planning_unknown_abandonment_grant(grant)
+                            result = source.record_planning_unknown_abandonment_decision(
+                                request["payload"], authority_context=json.loads(frozen_context),
+                            )
+                        finally:
+                            self._transaction_lock.release()
+                        response = {"ok": True, "result": dict(result)}
                     elif action == "database_task_command":
                         self._reject_unknown(
                             request,
@@ -14184,6 +14684,56 @@ class TypedStateOwnerConnection:
                 )
             return response
 
+    def native_execution_status_snapshot(self, *, binding_cid: str) -> dict[str, Any]:
+        """Read the server-bound native attempt without paths, SQL or retries."""
+        from ..todo_daemon.native_execution_status_owner import MAX_OBSERVATION_BYTES, OBSERVATION_SCHEMA
+        if (self._active or type(binding_cid) is not str
+                or self.grant.get("authority_profile") != NATIVE_EXECUTION_STATUS_PROFILE
+                or self.grant.get("allowed_operations") != [NATIVE_EXECUTION_STATUS_OPERATION]
+                or self.grant.get("allowed_command_operations")
+                or self.grant.get("allowed_database_task_commands")
+                or dict(self.grant.get("entity_scopes") or {}).get(NATIVE_EXECUTION_STATUS_SCOPE) != binding_cid):
+            raise TypedStateOwnerAuthorizationError("native status is outside the client grant")
+        response = self._request(NATIVE_EXECUTION_STATUS_OPERATION, payload={"binding_cid": binding_cid})
+        result = response.get("result")
+        keys = {"schema", "binding_cid", "task_cid", "control_revision", "control_owner_identity",
+                "control_join_verified", "native_observation_json", "observation_only",
+                "completion_authority", "automatic_retry_admitted", "semantic_admission"}
+        if (type(result) is not dict or set(result) != keys
+                or result.get("schema") != NATIVE_EXECUTION_STATUS_SNAPSHOT_SCHEMA
+                or result.get("binding_cid") != binding_cid
+                or result.get("task_cid") != dict(self.grant.get("entity_scopes") or {}).get("task_cid")
+                or result.get("control_owner_identity") != dict(self.identity)
+                or type(result.get("control_revision")) is not int
+                or result["control_revision"] < 1
+                or result.get("control_join_verified") is not True
+                or result.get("observation_only") is not True
+                or any(result.get(key) is not False for key in (
+                    "completion_authority", "automatic_retry_admitted", "semantic_admission"))):
+            self._poison_transport()
+            raise TypedStateOwnerProtocolError("native status response identity differs")
+        if len(canonical_json_bytes(result)) > NATIVE_EXECUTION_STATUS_MAX_ENVELOPE_BYTES:
+            self._poison_transport()
+            raise TypedStateOwnerProtocolError("native status envelope exceeds its bound")
+        raw = result["native_observation_json"]
+        if type(raw) is not str or len(raw.encode("utf-8")) > MAX_OBSERVATION_BYTES:
+            self._poison_transport()
+            raise TypedStateOwnerProtocolError("native status response exceeds its bound")
+        try:
+            observation = json.loads(raw)
+            encoded = json.dumps(observation, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+            if (encoded != raw or type(observation) is not dict
+                    or observation.get("schema") != OBSERVATION_SCHEMA
+                    or observation.get("binding_cid") != binding_cid
+                    or observation.get("observation_only") is not True
+                    or any(observation.get(key) is not False for key in (
+                        "completion_authority", "automatic_retry_admitted", "semantic_admission"))):
+                raise ValueError("invalid observation")
+        except (TypeError, ValueError, RecursionError) as exc:
+            self._poison_transport()
+            raise TypedStateOwnerProtocolError("native status observation is malformed") from exc
+        return {**result, "native_observation": observation}
+
     def source_get(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Return one complete validated source-read envelope without SQL."""
         from ..runtime.current_source_lookup import validate_source_response
@@ -14213,6 +14763,48 @@ class TypedStateOwnerConnection:
                 "hash observation response must be an object"
             )
         return dict(result)
+
+    def record_planning_unknown_abandonment_decision(
+        self, context_cid: str, expected_task_revision: int,
+    ) -> Mapping[str, Any]:
+        """Append/replay a separately granted decision; grant no settlement/retry."""
+        if self._active:
+            raise TypedStateOwnerProtocolError("UNKNOWN abandonment requires a standalone request")
+        payload = {"operation": PLANNING_UNKNOWN_ABANDONMENT_OPERATION,
+                   "context_cid": context_cid, "expected_task_revision": expected_task_revision}
+        try:
+            response = self._request(PLANNING_UNKNOWN_ABANDONMENT_OPERATION, payload=payload)
+            result = response.get("result")
+            if not isinstance(result, Mapping):
+                raise TypedStateOwnerProtocolError("UNKNOWN abandonment result is invalid")
+        except TypedStateOwnerRemoteError:
+            raise
+        except (OSError, TypedStateOwnerProtocolError) as exc:
+            raise TypedStateOwnerPlanningUnknownAbandonmentOutcomeUnknownError(context_cid) from exc
+        return MappingProxyType(dict(result))
+
+    def adjudicate_namespace_guard_nonreachability(
+        self, payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Request the separately granted, audit-only administrator operation."""
+        if self._active:
+            raise TypedStateOwnerProtocolError("adjudication requires a standalone request")
+        try:
+            response = self._request(
+                NAMESPACE_GUARD_ADJUDICATION_OPERATION, payload=dict(payload),
+            )
+            result = response.get("result")
+            if not isinstance(result, Mapping):
+                raise TypedStateOwnerProtocolError("adjudication result is invalid")
+        except TypedStateOwnerRemoteError:
+            raise
+        except (OSError, TypedStateOwnerProtocolError) as exc:
+            # An audit may have committed before transport loss. Preserve its
+            # exact proof identity for lookup; this is not retry admission.
+            raise TypedStateOwnerNamespaceGuardOutcomeUnknownError(
+                str(payload.get("proof_id") or "")
+            ) from exc
+        return MappingProxyType(dict(result))
 
     def execute_database_task_command(
         self,
@@ -14317,6 +14909,12 @@ def open_typed_state_owner_connection(
 
 
 __all__ = [
+    "PLANNING_UNKNOWN_ABANDONMENT_OPERATION",
+    "PLANNING_UNKNOWN_ABANDONMENT_ADMIN_CLIENT_ID",
+    "TypedStateOwnerPlanningUnknownAbandonmentOutcomeUnknownError",
+    "NAMESPACE_GUARD_ADJUDICATION_ADMIN_CLIENT_ID",
+    "NAMESPACE_GUARD_ADJUDICATION_OPERATION",
+    "TypedStateOwnerNamespaceGuardOutcomeUnknownError",
     "LOCAL_COMPLETION_RPC_TIMEOUT_ENV",
     "LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS",
     "COMPLETION_PROGRESS_SNAPSHOT_OPERATION",
@@ -14444,6 +15042,22 @@ class TypedStateOwnerDatabaseTaskCommandError(TypedStateOwnerError):
         # Never forward a repository or driver exception message over the
         # wire. It can contain SQL, paths, or caller-controlled values.
         super().__init__("database-task command failed an owner gate")
+
+class TypedStateOwnerPlanningUnknownAbandonmentOutcomeUnknownError(TypedStateOwnerError):
+    """A separate ADMIN decision may be durable despite response loss."""
+
+    def __init__(self, context_cid: str) -> None:
+        self.context_cid = str(context_cid or "")
+        super().__init__("UNKNOWN abandonment audit outcome is unknown")
+
+
+class TypedStateOwnerNamespaceGuardOutcomeUnknownError(TypedStateOwnerError):
+    """An exact ADMIN audit may have committed without a received response."""
+
+    def __init__(self, proof_id: str) -> None:
+        self.proof_id = str(proof_id or "")
+        super().__init__("namespace adjudication audit outcome is unknown")
+
 
 class TypedStateOwnerDatabaseTaskOutcomeUnknownError(TypedStateOwnerError):
     """A task command was dispatched but no authoritative response arrived."""

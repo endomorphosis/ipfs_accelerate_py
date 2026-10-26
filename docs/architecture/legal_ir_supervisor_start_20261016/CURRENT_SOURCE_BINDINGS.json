@@ -1,0 +1,116 @@
+{
+  "schema": "legal-ir-supervisor-current-source-bindings/v1",
+  "status": "observed_metadata",
+  "observation": {
+    "origin": "genuine native integration owner; published upstream merged normally before metadata commit",
+    "observed_at_utc": "2026-10-16T20:23:56.815360+00:00",
+    "evidence_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-start-20261016-preflight02/child.sanitized.log"
+  },
+  "repositories": [
+    {
+      "repository": "ipfs_accelerate_py",
+      "status": "observed_metadata",
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller",
+      "head": "734336a74c8780f6f75e9384f1c15241f5746710",
+      "tree": "590814849ec2ee26af309fcff156a020ea406133",
+      "branch": "agent/legal-ir-supervisor-start-20261016",
+      "source_files": [
+        {
+          "path": "scripts/ops/agent_supervisor/configured_board_scheduler.py",
+          "bytes": 2408,
+          "sha256": "e526c145f751e88b5bfbc207cafdd4344fb1d8bde016d6e96b7e40dcdd386214"
+        },
+        {
+          "path": "scripts/run_legal_autoformalization_supervisor.py",
+          "bytes": 26621,
+          "sha256": "d05e9c92fa77aa09dc65a6c4c2484908e06ba95307cce16b2a58be3667248e6d"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+          "bytes": 266206,
+          "sha256": "9a3db2b03f792f977ddd84e76a6d5fb522ac9b94678c6d13122c264461c31580"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "bytes": 624176,
+          "sha256": "da85f716215df06edd5fd3664e510f1e10dae3534b3da2174663a4c69e7397f8"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "bytes": 3297689,
+          "sha256": "d8bff8e58c3168082ed2b175710dc077333d99b41312b40425a38b41cc064d54"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+          "bytes": 469802,
+          "sha256": "d83c55e354552e28f8792b675586b3cf741b704a1dfd31ced3d31702ebb6f41a"
+        },
+        {
+          "path": "ipfs_accelerate_py/llm_router.py",
+          "bytes": 573274,
+          "sha256": "fa9edb968434eb46f8c46af70166cde55c7219d5625fb4b9c9cff78b5b9b726b"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_implementation_route.py",
+          "bytes": 342403,
+          "sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+          "bytes": 141908,
+          "sha256": "a5c0bd01ba08f8abd6bf257cc8cdc77a04ef8c2a2e4c11886032df28bb90cb01"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+          "bytes": 170884,
+          "sha256": "eadafdc7177a848dcb0dbd9db794a9b128bcf07249b0b7b9eb497cecffa16133"
+        },
+        {
+          "path": "ipfs_accelerate_py/cli_runtime/grok_turn_policy.py",
+          "bytes": 3200,
+          "sha256": "4349fd8dcaef980993291e38307ac3e68d2631695730b7d176bebaef6e2f1ba6"
+        }
+      ]
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "status": "observed_metadata",
+      "checkout_path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets",
+      "head": "5ea18e0d0ac9216b49462c7677e154649187ca88",
+      "tree": "5fe133b72e8a6a60de38a562c65f6c5964659ccf",
+      "branch": "codex/legal-ir-supervisor-startup-status-20261016",
+      "source_files": [
+        {
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/tasks.json",
+          "bytes": 206904,
+          "sha256": "66ebc6a95adde4fc717dd19ffaf5f03387f909662d1a47eccbb5c2a51857e9e6"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/goals.objectives.md",
+          "bytes": 17303,
+          "sha256": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+          "bytes": 105869,
+          "sha256": "739e17b95aef9c7fde9d023e08fdb9bcdeabb363786e108b9b0353e0cd324b90"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+          "bytes": 58840,
+          "sha256": "089ef19ebd74e6a7d541786be798b4cf5972e9bc0fa8296fc5205e076202102e"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Accelerator HEAD/tree observed after normal upstream merge and before this source-metadata-only commit.",
+    "The selected runtime sources match published main ff69c6dec3608b78aab7af48c053d0e984bb9ffe; the shared canonical working checkout is not rewritten or declared equivalent.",
+    "The generic Grok turn-limit refinement is included through its published upstream commit, rather than copying unpublished working edits.",
+    "Published datasets gitlink1b63e750 is an ancestor of the held owned datasets checkout; actual imports remain explicitly bound to that checkout and no submodule was initialized.",
+    "Source metadata and native preflight do not prove isolated provider execution, target-model access or independent completion.",
+    "The controller shares read-only Git objects; rehydrate before launch if its source object store becomes unavailable."
+  ],
+  "execution_authority": false,
+  "independent_acceptance_required": true
+}

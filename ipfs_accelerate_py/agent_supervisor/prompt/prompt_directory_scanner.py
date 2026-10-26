@@ -23,10 +23,11 @@ import os
 import re
 import stat
 import subprocess
+import threading
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -511,8 +512,9 @@ def _run_git(
 
 def _git_entries(
     root: Path, *, deadline: float
-) -> tuple[dict[str, _GitEntry], dict[str, _GitEntry]]:
+) -> tuple[dict[str, _GitEntry], dict[str, _GitEntry], tuple[str, ...]]:
     head: dict[str, _GitEntry] = {}
+    gitlinks: set[str] = set()
     for record in _run_git(
         root,
         ("ls-tree", "-rz", "--full-tree", "HEAD"),
@@ -527,7 +529,10 @@ def _git_entries(
             path = raw_path.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
             raise DirectoryResolutionError("HEAD contains an undecodable entry") from exc
-        if kind != "blob" or mode == "160000":
+        if kind == "commit" or mode == "160000":
+            gitlinks.add(path)
+            continue
+        if kind != "blob":
             raise NestedRepositoryError(f"nested repository or submodule is forbidden at {path!r}")
         head[path] = _GitEntry(mode, object_id)
 
@@ -544,9 +549,10 @@ def _git_entries(
         if stage != "0":
             raise DirectoryResolutionError(f"unmerged Git index entry is forbidden at {path!r}")
         if mode == "160000":
-            raise NestedRepositoryError(f"nested repository or submodule is forbidden at {path!r}")
+            gitlinks.add(path)
+            continue
         index[path] = _GitEntry(mode, object_id)
-    return head, index
+    return head, index, tuple(sorted(gitlinks))
 
 
 def _in_scope(path: str, scope: str) -> bool:
@@ -706,6 +712,13 @@ def _validate_output_paths(
     return tuple(sorted(set(results)))
 
 
+def _is_gitlink_path(path: str, gitlinks: Sequence[str]) -> bool:
+    for item in gitlinks:
+        if path == item or path.startswith(item + "/"):
+            return True
+    return False
+
+
 def _worktree_paths(
     root: Path,
     directory: Path,
@@ -713,6 +726,7 @@ def _worktree_paths(
     *,
     reject_nested: bool,
     exclude_generated_state: bool,
+    gitlinks: Sequence[str],
     deadline: float,
 ) -> tuple[set[str], set[str]]:
     files: set[str] = set()
@@ -730,6 +744,9 @@ def _worktree_paths(
         for name in sorted(names):
             child = current_path / name
             relative = child.relative_to(root).as_posix()
+            if _is_gitlink_path(relative, gitlinks):
+                excluded_directories.add(relative)
+                continue
             default_reason = _default_directory_reason(
                 relative,
                 exclude_generated_state=exclude_generated_state,
@@ -1314,23 +1331,145 @@ def _verify_root_witness(
         raise UnstableDirectoryScanError("repository or directory root changed during scan")
 
 
-def scan_prompt_directory_detailed(
+@dataclass
+class _ScanPrelude:
+    """File selection and program behavior captured before a receipt is sealed.
+
+    ``program_root`` on the request is not an input. The scan derives it from
+    behavior bytes. A later receipt must be sealed with that same root or the
+    stored request identity will not match a fresh scan.
+    """
+
+    allowlist: RepositoryAllowlist
+    budget: PromptWorkflowBudget
+    started_at_ms: int
+    deadline: float
+    root: Path
+    directory: Path
+    scope: str
+    witness: _RootWitness
+    output_exclusions: tuple[str, ...]
+    decisions: dict[str, _Decision]
+    included: list[str]
+    inspected_bytes: int
+    behavior: Any
+    actual_paths: tuple[str, ...]
+    dirty_worktree_root: str
+    program_root: str
+    ast_root: str
+    tracked: set[str]
+    artifact_store: Any
+
+
+_PRELUDE_SLOT: dict[str, _ScanPrelude] = {}
+_PRELUDE_LOCK = threading.Lock()
+
+
+def _prelude_cache_key(
+    request: PromptWorkflowRequest,
+    *,
+    allowlist: RepositoryAllowlist,
+    artifact_store: Any,
+    previous: DirectoryScanDetails | None,
+) -> str:
+    payload = request.to_dict()
+    payload["program_root"] = ""
+    previous_root = ""
+    if previous is not None:
+        previous_root = str(previous.program_behavior.behavior_root)
+    return _cid_for(
+        {
+            "request_without_program_root": payload,
+            "allowlist_cid": allowlist.allowlist_cid,
+            "artifact_store": 0 if artifact_store is None else id(artifact_store),
+            "previous_behavior_root": previous_root,
+        }
+    )
+
+
+def _store_scan_prelude(
+    request: PromptWorkflowRequest,
+    prelude: _ScanPrelude,
+    *,
+    allowlist: RepositoryAllowlist,
+    artifact_store: Any,
+    previous: DirectoryScanDetails | None,
+) -> None:
+    key = _prelude_cache_key(
+        request,
+        allowlist=allowlist,
+        artifact_store=artifact_store,
+        previous=previous,
+    )
+    with _PRELUDE_LOCK:
+        _PRELUDE_SLOT.clear()
+        _PRELUDE_SLOT[key] = prelude
+
+
+def _take_bound_scan_prelude(
+    request: PromptWorkflowRequest,
+    *,
+    allowlist: RepositoryAllowlist,
+    artifact_store: Any,
+    previous: DirectoryScanDetails | None,
+) -> _ScanPrelude | None:
+    key = _prelude_cache_key(
+        request,
+        allowlist=allowlist,
+        artifact_store=artifact_store,
+        previous=previous,
+    )
+    with _PRELUDE_LOCK:
+        prelude = _PRELUDE_SLOT.get(key)
+        if prelude is None or prelude.program_root != request.program_root:
+            return None
+        _PRELUDE_SLOT.pop(key, None)
+        return prelude
+
+
+def _python_behavior_weight(path: str, record: Any) -> tuple[int, int, int]:
+    """Return observation count, AST-record bytes, and an observation-byte ceiling.
+
+    The count matches ``_observations_for``: one AST fact, one per symbol,
+    interface, import, and assignment, and two per call. The ceiling is larger
+    than the canonical observation document so a repository that cannot fit
+    the declared manifest is excluded here instead of aborting the prompt.
+    """
+
+    count = (
+        1
+        + len(record.qualified_symbols)
+        + len(record.interfaces)
+        + (2 * len(record.calls))
+        + len(record.imports)
+        + len(record.state_transitions)
+    )
+    encoded = json.dumps(
+        record.to_dict(),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    fact_bytes = (
+        sum(len(item) for item in record.qualified_symbols) * 2
+        + sum(len(item) for item in record.interfaces)
+        + sum(len(item) for item in record.calls) * 2
+        + sum(len(item) for item in record.imports)
+        + sum(len(item) for item in record.state_transitions)
+    )
+    ceiling = count * (len(path) + 400) + fact_bytes
+    return count, len(encoded), ceiling
+
+
+def _build_scan_prelude(
     request: PromptWorkflowRequest,
     *,
     repository_allowlist: RepositoryAllowlist | Sequence[str | os.PathLike[str]],
     artifact_store: "BoundedArtifactStore | None" = None,
-    optional_analysis: OptionalAnalysisAdapter
-    | Callable[[OptionalAnalysisContext], Any]
-    | None = None,
     previous: DirectoryScanDetails | None = None,
     clock_ms: Callable[[], int] | None = None,
-) -> DirectoryScanDetails:
-    """Build a stable receipt plus local body-free evidence manifests.
-
-    ``previous`` enables the existing program-behavior AST reuse path.  It is
-    only a performance hint: every current byte and every returned root is
-    still verified.
-    """
+) -> _ScanPrelude:
+    """Select admitted files and the behavior-derived program root."""
 
     if not isinstance(request, PromptWorkflowRequest):
         raise TypeError("request must be PromptWorkflowRequest")
@@ -1341,13 +1480,14 @@ def scan_prompt_directory_detailed(
     root, directory, scope, witness, output_exclusions = _resolve_request(
         request, allowlist, deadline=deadline
     )
-    head, index = _git_entries(root, deadline=deadline)
+    head, index, gitlinks = _git_entries(root, deadline=deadline)
     worktree, excluded_directories = _worktree_paths(
         root,
         directory,
         scope,
         reject_nested=request.scan_policy.reject_nested_repositories,
         exclude_generated_state=request.scan_policy.exclude_generated_state,
+        gitlinks=gitlinks,
         deadline=deadline,
     )
     ignored = _ignored_paths(root, scope, deadline=deadline)
@@ -1373,7 +1513,10 @@ def scan_prompt_directory_detailed(
             path,
             exclude_generated_state=request.scan_policy.exclude_generated_state,
         )
-        reason = "workflow_output_path" if path in output_exclusions else default_reason
+        if _is_gitlink_path(path, gitlinks):
+            reason = "nested_gitlink"
+        else:
+            reason = "workflow_output_path" if path in output_exclusions else default_reason
         if not reason and request.scan_policy.exclude_credentials:
             reason = _credential_reason(path)
         if not reason and _matches(path, request.scan_policy.exclude_patterns):
@@ -1396,7 +1539,9 @@ def scan_prompt_directory_detailed(
                 path,
                 "excluded",
                 reason,
-                ("content_not_read",) if reason == "credential_or_key_material" else (),
+                ("content_not_read",)
+                if reason in {"credential_or_key_material", "nested_gitlink"}
+                else (),
             )
         else:
             candidates.append(path)
@@ -1404,6 +1549,8 @@ def scan_prompt_directory_detailed(
     included: list[str] = []
     admitted_digests: set[str] = set()
     admitted_bytes = 0
+    included_digest_sizes: dict[str, dict[str, int]] = {}
+    digest_users: dict[str, int] = {}
     inspected_bytes = 0
     git_blob_cache: dict[str, bytes] = {}
     git_blob_sizes: dict[str, int] = {}
@@ -1480,7 +1627,14 @@ def scan_prompt_directory_detailed(
                 ) from exc
             if stat.S_ISLNK(file_stat.st_mode):
                 if request.scan_policy.reject_symlinks:
-                    raise ScanSymlinkError(f"selected symlink is forbidden: {path!r}")
+                    # Do not follow the link and do not abort the rest of the scan.
+                    decisions[path] = _Decision(
+                        path,
+                        "excluded",
+                        "symlink_not_admitted",
+                        ("content_not_read",),
+                    )
+                    continue
                 resolved = absolute.resolve(strict=False)
                 try:
                     if Path(os.path.commonpath((str(root), str(resolved)))) != root:
@@ -1524,10 +1678,22 @@ def scan_prompt_directory_detailed(
             decisions[path] = _Decision(path, "excluded", "binary_content_default")
             continue
         if any(_contains_secret(data) for data in variants):
-            raise SecretLeakageError(f"secret-like material detected in admitted path {path!r}")
+            # Keep the bytes out of admitted evidence. One example token must
+            # not abort the rest of the repository scan.
+            for entry in git_entries:
+                git_blob_cache.pop(entry.object_id, None)
+            decisions[path] = _Decision(
+                path,
+                "excluded",
+                "credential_or_key_material",
+                ("content_not_read",),
+            )
+            continue
         new_digests: dict[str, int] = {}
+        path_digests: dict[str, int] = {}
         for data in variants:
             digest = "sha256:" + hashlib.sha256(data).hexdigest()
+            path_digests.setdefault(digest, len(data))
             if digest not in admitted_digests:
                 new_digests[digest] = len(data)
         additional = sum(new_digests.values())
@@ -1538,6 +1704,9 @@ def scan_prompt_directory_detailed(
         admitted_digests.update(new_digests)
         admitted_bytes += additional
         included.append(path)
+        included_digest_sizes[path] = path_digests
+        for digest in path_digests:
+            digest_users[digest] = digest_users.get(digest, 0) + 1
         decisions[path] = _Decision(
             path,
             "included",
@@ -1545,10 +1714,17 @@ def scan_prompt_directory_detailed(
             ("source_body_content_addressed",),
         )
 
-    excluded_paths = tuple(
-        sorted({item.path for item in decisions.values() if item.disposition == "excluded"})
-    )
+    for path in gitlinks:
+        decisions[path] = _Decision(
+            path,
+            "excluded",
+            "nested_gitlink",
+            ("content_not_read",),
+        )
+
+    from ..core.conflict_graph import build_python_ast_blob_record
     from ..core.program_behavior import (
+        DEFAULT_MAX_MANIFEST_BYTES,
         ProgramBehaviorError,
         RepositoryRaceError,
         RequiredInputTooLargeError,
@@ -1561,30 +1737,120 @@ def scan_prompt_directory_detailed(
         1_000_000,
         max(256, budget.max_symbols * 16, budget.max_files * 4),
     )
-    try:
-        behavior = build_program_behavior(
-            root,
-            scopes=(scope,),
-            excluded_paths=excluded_paths,
-            bounds=SnapshotBounds(
-                max_file_bytes=budget.max_file_bytes,
-                max_total_bytes=budget.max_scan_bytes,
-                max_files=budget.max_files,
-                max_observations=observation_bound,
-            ),
-            artifact_store=artifact_store,
-            previous=previous.program_behavior if previous is not None else None,
+    manifest_limit = min(int(budget.max_scan_bytes), int(DEFAULT_MAX_MANIFEST_BYTES))
+    margin = min(65_536, max(1_024, manifest_limit // 8))
+    ast_room = manifest_limit - margin
+    obs_room = manifest_limit - margin
+
+    def release_included_path(path: str) -> None:
+        nonlocal admitted_bytes
+        included.remove(path)
+        for digest, size in included_digest_sizes.pop(path, {}).items():
+            users = digest_users.get(digest, 0) - 1
+            if users <= 0:
+                digest_users.pop(digest, None)
+                if digest in admitted_digests:
+                    admitted_digests.discard(digest)
+                    admitted_bytes -= size
+            else:
+                digest_users[digest] = users
+        decisions[path] = _Decision(path, "excluded", "program_behavior_bound")
+
+    def admitted_python_source(path: str) -> str | None:
+        if path in worktree:
+            absolute = root.joinpath(*PurePosixPath(path).parts)
+            data = _stable_file_bytes(absolute, path, budget.max_file_bytes)
+        else:
+            entry = head.get(path) or index.get(path)
+            if entry is None:
+                return None
+            data = git_blob(entry)
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
+    # The file and byte budgets can still admit more Python than the behavior
+    # manifest can index. Keep a deterministic prefix and leave the rest out
+    # of the snapshot so one oversized tree does not reject the prompt.
+    ast_bytes = 0
+    obs_count = 0
+    obs_bytes = 0
+    for path in list(included):
+        if not path.endswith(".py"):
+            continue
+        source = admitted_python_source(path)
+        if source is None:
+            release_included_path(path)
+            continue
+        weight_count, record_bytes, observation_bytes = _python_behavior_weight(
+            path, build_python_ast_blob_record(source)
         )
-    except RepositoryRaceError as exc:
-        raise UnstableDirectoryScanError("admitted repository bytes changed during scan") from exc
-    except SymlinkEscapeError as exc:
-        raise ScanSymlinkError("selected symlink escapes the admitted scan closure") from exc
-    except RequiredInputTooLargeError as exc:
-        raise ScanBudgetError("exact program-behavior scan exceeded a declared bound") from exc
-    except ProgramBehaviorError as exc:
-        raise PromptDirectoryScanError(
-            f"exact program-behavior scan failed ({_safe_reason(type(exc).__name__)})"
-        ) from exc
+        next_ast = record_bytes + len(path.encode("utf-8")) + 96
+        if (
+            weight_count > observation_bound
+            or next_ast > ast_room
+            or observation_bytes > obs_room
+            or ast_bytes + next_ast > ast_room
+            or obs_count + weight_count > observation_bound
+            or obs_bytes + observation_bytes > obs_room
+        ):
+            release_included_path(path)
+            continue
+        ast_bytes += next_ast
+        obs_count += weight_count
+        obs_bytes += observation_bytes
+
+    behavior = None
+    behavior_error: RequiredInputTooLargeError | None = None
+    for _attempt in range(4):
+        excluded_paths = tuple(
+            sorted(
+                item.path
+                for item in decisions.values()
+                if item.disposition == "excluded"
+            )
+        )
+        try:
+            behavior = build_program_behavior(
+                root,
+                scopes=(scope,),
+                excluded_paths=excluded_paths,
+                bounds=SnapshotBounds(
+                    max_file_bytes=budget.max_file_bytes,
+                    max_total_bytes=budget.max_scan_bytes,
+                    max_files=budget.max_files,
+                    max_observations=observation_bound,
+                ),
+                artifact_store=artifact_store,
+                previous=previous.program_behavior if previous is not None else None,
+            )
+            break
+        except RepositoryRaceError as exc:
+            raise UnstableDirectoryScanError(
+                "admitted repository bytes changed during scan"
+            ) from exc
+        except SymlinkEscapeError as exc:
+            raise ScanSymlinkError(
+                "selected symlink escapes the admitted scan closure"
+            ) from exc
+        except RequiredInputTooLargeError as exc:
+            behavior_error = exc
+            python_left = [path for path in included if path.endswith(".py")]
+            if _attempt == 3 or not python_left:
+                break
+            drop = python_left[len(python_left) // 2 :] or python_left
+            for path in drop:
+                release_included_path(path)
+        except ProgramBehaviorError as exc:
+            raise PromptDirectoryScanError(
+                f"exact program-behavior scan failed ({_safe_reason(type(exc).__name__)})"
+            ) from exc
+    if behavior is None:
+        detail = _safe_reason(behavior_error) if behavior_error is not None else "unknown"
+        raise ScanBudgetError(
+            "exact program-behavior scan exceeded a declared bound: " + detail
+        ) from behavior_error
 
     actual_paths = tuple(item.path for item in behavior.repository.entries)
     if actual_paths != tuple(sorted(included)):
@@ -1612,6 +1878,59 @@ def scan_prompt_directory_detailed(
         }
     )
 
+    return _ScanPrelude(
+        allowlist=allowlist,
+        budget=budget,
+        started_at_ms=started_at_ms,
+        deadline=deadline,
+        root=root,
+        directory=directory,
+        scope=scope,
+        witness=witness,
+        output_exclusions=output_exclusions,
+        decisions=decisions,
+        included=included,
+        inspected_bytes=inspected_bytes,
+        behavior=behavior,
+        actual_paths=actual_paths,
+        dirty_worktree_root=dirty_worktree_root,
+        program_root=program_root,
+        ast_root=ast_root,
+        tracked=tracked,
+        artifact_store=artifact_store,
+    )
+
+
+def _emit_scan_details(
+    prelude: _ScanPrelude,
+    request: PromptWorkflowRequest,
+    *,
+    optional_analysis: OptionalAnalysisAdapter
+    | Callable[[OptionalAnalysisContext], Any]
+    | None = None,
+    clock_ms: Callable[[], int] | None = None,
+) -> DirectoryScanDetails:
+    """Seal a receipt for one request against an already built prelude."""
+
+    allowlist = prelude.allowlist
+    budget = prelude.budget
+    started_at_ms = prelude.started_at_ms
+    deadline = prelude.deadline
+    root = prelude.root
+    directory = prelude.directory
+    scope = prelude.scope
+    witness = prelude.witness
+    output_exclusions = prelude.output_exclusions
+    decisions = prelude.decisions
+    included = prelude.included
+    inspected_bytes = prelude.inspected_bytes
+    behavior = prelude.behavior
+    actual_paths = prelude.actual_paths
+    dirty_worktree_root = prelude.dirty_worktree_root
+    program_root = prelude.program_root
+    ast_root = prelude.ast_root
+    tracked = prelude.tracked
+    artifact_store = prelude.artifact_store
     configuration = {
         "schema": SCAN_CONFIGURATION_SCHEMA,
         "scanner_version": PROMPT_DIRECTORY_SCANNER_VERSION,
@@ -1881,6 +2200,7 @@ def scan_prompt_directory_detailed(
             "max_files_budget",
             "max_scan_bytes_budget",
             "max_scan_bytes_inspection_budget",
+            "program_behavior_bound",
         }
         for item in excluded_decisions
     ):
@@ -1951,6 +2271,102 @@ def scan_prompt_directory_detailed(
             "final_rehash",
         ),
         optional_analysis_status=optional_status,
+    )
+
+
+
+def bind_prompt_request_to_scanner(
+    request: PromptWorkflowRequest,
+    repository_allowlist: RepositoryAllowlist | Sequence[str | os.PathLike[str]],
+    *,
+    artifact_store: "BoundedArtifactStore | None" = None,
+    previous: DirectoryScanDetails | None = None,
+    clock_ms: Callable[[], int] | None = None,
+) -> PromptWorkflowRequest:
+    """Return the request the next scan of this allowlist will accept.
+
+    Observation digests are a different namespace from the scanner's
+    allowlist, repository-root, and program-root identities. Replacing the
+    program root changes ``request_cid``, so the behavior snapshot is kept
+    for the following scan instead of hashing the tree twice. This does not
+    admit the workflow, grant execution, or rewrite a mismatched scan.
+    """
+
+    if not isinstance(request, PromptWorkflowRequest):
+        raise TypeError("request must be PromptWorkflowRequest")
+    allowlist = _coerce_allowlist(repository_allowlist)
+    bound = replace(
+        request,
+        repository_root_cid=repository_root_cid(request.repository_root),
+        allowlist_cid=allowlist.allowlist_cid,
+    )
+    prelude = _build_scan_prelude(
+        bound,
+        repository_allowlist=allowlist,
+        artifact_store=artifact_store,
+        previous=previous,
+        clock_ms=clock_ms,
+    )
+    if bound.program_root != prelude.program_root:
+        bound = replace(bound, program_root=prelude.program_root)
+    _store_scan_prelude(
+        bound,
+        prelude,
+        allowlist=allowlist,
+        artifact_store=artifact_store,
+        previous=previous,
+    )
+    return bound
+
+
+def scan_prompt_directory_detailed(
+    request: PromptWorkflowRequest,
+    *,
+    repository_allowlist: RepositoryAllowlist | Sequence[str | os.PathLike[str]],
+    artifact_store: "BoundedArtifactStore | None" = None,
+    optional_analysis: OptionalAnalysisAdapter
+    | Callable[[OptionalAnalysisContext], Any]
+    | None = None,
+    previous: DirectoryScanDetails | None = None,
+    clock_ms: Callable[[], int] | None = None,
+) -> DirectoryScanDetails:
+    """Build a stable receipt plus local body-free evidence manifests.
+
+    ``previous`` enables the existing program-behavior AST reuse path.  It is
+    only a performance hint: every current byte and every returned root is
+    still verified.
+    """
+
+    if not isinstance(request, PromptWorkflowRequest):
+        raise TypeError("request must be PromptWorkflowRequest")
+    allowlist = _coerce_allowlist(repository_allowlist)
+    prelude = _take_bound_scan_prelude(
+        request,
+        allowlist=allowlist,
+        artifact_store=artifact_store,
+        previous=previous,
+    )
+    if prelude is None:
+        prelude = _build_scan_prelude(
+            request,
+            repository_allowlist=allowlist,
+            artifact_store=artifact_store,
+            previous=previous,
+            clock_ms=clock_ms,
+        )
+        if request.program_root != prelude.program_root:
+            _store_scan_prelude(
+                request,
+                prelude,
+                allowlist=allowlist,
+                artifact_store=artifact_store,
+                previous=previous,
+            )
+    return _emit_scan_details(
+        prelude,
+        request,
+        optional_analysis=optional_analysis,
+        clock_ms=clock_ms,
     )
 
 
@@ -2084,6 +2500,7 @@ __all__ = [
     "ScanSymlinkError",
     "SecretLeakageError",
     "UnstableDirectoryScanError",
+    "bind_prompt_request_to_scanner",
     "build_directory_scan_receipt",
     "build_prompt_scanner_with_planning_factory",
     "build_repository_allowlist",

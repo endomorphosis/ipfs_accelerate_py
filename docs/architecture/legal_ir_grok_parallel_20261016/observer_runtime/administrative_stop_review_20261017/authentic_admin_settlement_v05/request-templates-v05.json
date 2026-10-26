@@ -1,0 +1,368 @@
+{
+  "derivative_base_v04_templates_pin": {
+    "bytes": 13505,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/request-templates-v04.json",
+    "sha256": "caab9f1fbcf0847963f6f3d0977e0e961e9a485c49e02bca754419a461b9221c"
+  },
+  "executable_request": false,
+  "fixture_only": true,
+  "parent_source_pin": {
+    "bytes": 44005,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+    "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+  },
+  "requirements": [
+    "First qualify fresh exact producer544b/resource-loaderc385 expanded Python+six-SQL sources and genuine A/B wrappers on the frozen chosen HEAD. A prior successful/failed preflight with another loader or source catalog is not this gate.",
+    "Run actual retained native parents serially; wait for genuine F07 capacity without stopping/clearing foreign owners.",
+    "Control directories must be NEW private short disjoint paths under actual F07 roots and socket encoded path<=107bytes.",
+    "Freeze HEAD/source/helper/request bytes for entire authentic trace.",
+    "All actual runtime admissions/DB operations/process signals are performed only by root-appointed exact native jobs; no production R06 task/WAL/provider path is an input.",
+    "Use freshly rendered exact v03 parent requests for C and every D stage; frozen v02 parent has a known child deadline starvation issue and must not be used for this new trace.",
+    "Global full checks occur before sealing/spawn or after actual child reap. Preserve actual immediate full=False registration, all local native guards and unchanged finite resource envelopes.",
+    "The authentic fullproducer preflight and A/B originals remain runtime gates. A failed or missing genuine preflight cannot be replaced by these metadata templates.",
+    "Metadata compilation must pin new ADMINv05 and unchanged settlementv04, plus actual successful exact-source producer/resource-loader A/B receipts. All C/D native requests retain exact parentv03. Conventional PermissionError still denies Git dispatch; resources return only real pinned native SQL bytes, not a migration/schema bypass or protected source-seal qualification.",
+    "Fresh A/B request construction must replace frozen renderer defaults with exact loaderc385/producer544b pins before request hashing. Dynamic wrapper/producer/compiler/ADMIN/settlement equality checks retain the same expanded2810-Python+6SQL map throughout; no source-catalog substitution after launch."
+  ],
+  "resource_loader_compatibility": {
+    "SQL_source_closure_pin": {
+      "bytes": 6403,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/SQL-source-closure-v01.json",
+      "sha256": "02ee0d87b7558acd84af076ddc4bd79e830032045db4c8c7f2b5430744886e37"
+    },
+    "authentic_runtime_qualified": false,
+    "expanded_closure": "All actual Python sources plus exactly six native task_sources/sql files, equality checked using the pinned loader; unchanged4096-file and256MiB aggregate source limits.",
+    "loader_independent_static_review_pin": {
+      "bytes": 8371,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-loader-independent-static-review-v01.json",
+      "sha256": "6130f51e4d8113b7fcada526d87e11533f45203450d6c63c238e9087597bfac8"
+    },
+    "loader_pin": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "old_loader_pin_historical": {
+      "bytes": 43192,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py",
+      "sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
+    },
+    "old_nonadmitting_serve_admin_seam": "Not invoked or enabled by authentic A/B/C/D; old copied-store fixture behavior remains unqualified.",
+    "producer_pin": {
+      "bytes": 32519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+      "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+    },
+    "resource_API_runtime_qualified": false
+  },
+  "runtime_qualified": false,
+  "schema": "authentic-native-parent-runtime-request-templates@5",
+  "source_contract_pin": {
+    "bytes": 16085,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/native-parent-settlement-contract-v05.json",
+    "sha256": "2c486e246937710374d358399ce85c781a1bfd40f118a056546be5daa91a4e3b"
+  },
+  "steps": [
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/compile_authentic_admin_inputs_v01.py",
+        "--preparation-result",
+        "ACTUAL_A_PREPARATION_RESULT",
+        "--maintenance-result",
+        "ACTUAL_B_MAINTENANCE_RESULT",
+        "--admin-worker-source",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+        "--settlement-worker-source",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+        "--output",
+        "NEW_PRIVATE_UNBOUND_INPUT_JSON"
+      ],
+      "operation": "metadata_compile"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--render",
+        "--unbound-input",
+        "ACTUAL_UNBOUND_INPUT_JSON",
+        "--operation",
+        "admin",
+        "--admin-exit-mode",
+        "crash",
+        "--attempt",
+        "NEW_C_ATTEMPT",
+        "--control-scope",
+        "NEW_SHORT_C_CONTROL",
+        "--output",
+        "NEW_C_REQUEST_JSON"
+      ],
+      "operation": "render_C"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--request",
+        "ACTUAL_C_REQUEST_JSON",
+        "--request-sha256",
+        "ACTUAL_C_REQUEST_SHA"
+      ],
+      "native_parent": "Run DIRECTLY, not under another owner. Root waits genuine F07 availability; qualify actual child/parent exits and reservation finalization.",
+      "operation": "run_C"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--render",
+        "--unbound-input",
+        "ACTUAL_UNBOUND_INPUT_JSON",
+        "--operation",
+        "settle",
+        "--stage",
+        "failed",
+        "--admin-parent-result",
+        "ACTUAL_C_ATTEMPT/parent-result.json",
+        "--attempt",
+        "NEW_D1_ATTEMPT",
+        "--control-scope",
+        "NEW_SHORT_D1_CONTROL",
+        "--output",
+        "NEW_D1_REQUEST_JSON"
+      ],
+      "operation": "render_D1",
+      "stage": "failed"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--request",
+        "ACTUAL_D1_REQUEST_JSON",
+        "--request-sha256",
+        "ACTUAL_D1_REQUEST_SHA"
+      ],
+      "gate": "Actual old parent/creator/previous stage child generations absent; exact prior result/source/input joins; root observes actual outer exit and native reservation finalization before continuing.",
+      "operation": "run_D1",
+      "stage": "failed"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--render",
+        "--unbound-input",
+        "ACTUAL_UNBOUND_INPUT_JSON",
+        "--operation",
+        "settle",
+        "--stage",
+        "coordination",
+        "--admin-parent-result",
+        "ACTUAL_C_ATTEMPT/parent-result.json",
+        "--attempt",
+        "NEW_D2_ATTEMPT",
+        "--control-scope",
+        "NEW_SHORT_D2_CONTROL",
+        "--output",
+        "NEW_D2_REQUEST_JSON",
+        "--prior-stage-parent-result",
+        "ACTUAL_D1_ATTEMPT/parent-result.json"
+      ],
+      "operation": "render_D2",
+      "stage": "coordination"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--request",
+        "ACTUAL_D2_REQUEST_JSON",
+        "--request-sha256",
+        "ACTUAL_D2_REQUEST_SHA"
+      ],
+      "gate": "Actual old parent/creator/previous stage child generations absent; exact prior result/source/input joins; root observes actual outer exit and native reservation finalization before continuing.",
+      "operation": "run_D2",
+      "stage": "coordination"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--render",
+        "--unbound-input",
+        "ACTUAL_UNBOUND_INPUT_JSON",
+        "--operation",
+        "settle",
+        "--stage",
+        "blocked",
+        "--admin-parent-result",
+        "ACTUAL_C_ATTEMPT/parent-result.json",
+        "--attempt",
+        "NEW_D3_ATTEMPT",
+        "--control-scope",
+        "NEW_SHORT_D3_CONTROL",
+        "--output",
+        "NEW_D3_REQUEST_JSON",
+        "--prior-stage-parent-result",
+        "ACTUAL_D2_ATTEMPT/parent-result.json"
+      ],
+      "operation": "render_D3",
+      "stage": "blocked"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--request",
+        "ACTUAL_D3_REQUEST_JSON",
+        "--request-sha256",
+        "ACTUAL_D3_REQUEST_SHA"
+      ],
+      "gate": "Actual old parent/creator/previous stage child generations absent; exact prior result/source/input joins; root observes actual outer exit and native reservation finalization before continuing.",
+      "operation": "run_D3",
+      "stage": "blocked"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--render",
+        "--unbound-input",
+        "ACTUAL_UNBOUND_INPUT_JSON",
+        "--operation",
+        "settle",
+        "--stage",
+        "terminal_event",
+        "--admin-parent-result",
+        "ACTUAL_C_ATTEMPT/parent-result.json",
+        "--attempt",
+        "NEW_D4_ATTEMPT",
+        "--control-scope",
+        "NEW_SHORT_D4_CONTROL",
+        "--output",
+        "NEW_D4_REQUEST_JSON",
+        "--prior-stage-parent-result",
+        "ACTUAL_D3_ATTEMPT/parent-result.json"
+      ],
+      "operation": "render_D4",
+      "stage": "terminal_event"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--request",
+        "ACTUAL_D4_REQUEST_JSON",
+        "--request-sha256",
+        "ACTUAL_D4_REQUEST_SHA"
+      ],
+      "gate": "Actual old parent/creator/previous stage child generations absent; exact prior result/source/input joins; root observes actual outer exit and native reservation finalization before continuing.",
+      "operation": "run_D4",
+      "stage": "terminal_event"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--render",
+        "--unbound-input",
+        "ACTUAL_UNBOUND_INPUT_JSON",
+        "--operation",
+        "settle",
+        "--stage",
+        "complete",
+        "--admin-parent-result",
+        "ACTUAL_C_ATTEMPT/parent-result.json",
+        "--attempt",
+        "NEW_D5_ATTEMPT",
+        "--control-scope",
+        "NEW_SHORT_D5_CONTROL",
+        "--output",
+        "NEW_D5_REQUEST_JSON",
+        "--prior-stage-parent-result",
+        "ACTUAL_D4_ATTEMPT/parent-result.json"
+      ],
+      "operation": "render_D5",
+      "stage": "complete"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--request",
+        "ACTUAL_D5_REQUEST_JSON",
+        "--request-sha256",
+        "ACTUAL_D5_REQUEST_SHA"
+      ],
+      "gate": "Actual old parent/creator/previous stage child generations absent; exact prior result/source/input joins; root observes actual outer exit and native reservation finalization before continuing.",
+      "operation": "run_D5",
+      "stage": "complete"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--render",
+        "--unbound-input",
+        "ACTUAL_UNBOUND_INPUT_JSON",
+        "--operation",
+        "settle",
+        "--stage",
+        "replay",
+        "--admin-parent-result",
+        "ACTUAL_C_ATTEMPT/parent-result.json",
+        "--attempt",
+        "NEW_D6_ATTEMPT",
+        "--control-scope",
+        "NEW_SHORT_D6_CONTROL",
+        "--output",
+        "NEW_D6_REQUEST_JSON",
+        "--prior-stage-parent-result",
+        "ACTUAL_D5_ATTEMPT/parent-result.json"
+      ],
+      "operation": "render_D6",
+      "stage": "replay"
+    },
+    {
+      "argv": [
+        "PINNED_PYTHON",
+        "-B",
+        "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+        "--request",
+        "ACTUAL_D6_REQUEST_JSON",
+        "--request-sha256",
+        "ACTUAL_D6_REQUEST_SHA"
+      ],
+      "gate": "Actual old parent/creator/previous stage child generations absent; exact prior result/source/input joins; root observes actual outer exit and native reservation finalization before continuing.",
+      "operation": "run_D6",
+      "stage": "replay"
+    }
+  ],
+  "worker_source_pins": {
+    "admin": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "settlement": {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    }
+  }
+}

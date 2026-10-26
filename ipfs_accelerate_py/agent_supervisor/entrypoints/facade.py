@@ -46,6 +46,40 @@ class SupervisorUnavailableError(SupervisorError):
     """A required production backend is unavailable."""
 
 
+# Create-plan reasons emitted when no owner IR materials and no fresh host
+# capacity snapshot were supplied. They do not admit the parallel plan.
+_UNBACKED_CREATE_PLAN_REASONS = frozenset(
+    {
+        "ir_admission_materials_absent",
+        "execution_plan_not_admitted",
+        "parallel_plan_rejected",
+        "parallel:resource_infeasible",
+        "parallel:stale_capacity",
+        "parallel:invalid_snapshot",
+    }
+)
+
+
+def _plan_create_ir_absence_only(envelope: Mapping[str, Any]) -> bool:
+    """True when create-plan is review-only only for missing IR/capacity backing.
+
+    Critique, structural, and other parallel failures still block the run.
+    This does not mark the create receipt admitted and does not grant execution.
+    """
+
+    if str(envelope.get("status") or "") != "review_only":
+        return False
+    reasons = {
+        str(item)
+        for item in (envelope.get("rejection_reasons") or ())
+        if str(item)
+    }
+    return (
+        "ir_admission_materials_absent" in reasons
+        and reasons <= _UNBACKED_CREATE_PLAN_REASONS
+    )
+
+
 def _scan_directory_for_repository(repository_root: str) -> str:
     """Return an existing in-repo scan directory.
 
@@ -282,10 +316,13 @@ class Supervisor:
             raise SupervisorConfigurationError(str(exc)) from exc
 
     def run(self, prompt: str) -> SupervisorRun:
-        """Admit and optionally materialize a durable run from a prompt.
+        """Admit a prompt and start workers for its ready tasks.
 
-        Prompt text is intent, never authority.  CompleteLaunchPlan injection
-        is not required.  START is a separate authorized control operation.
+        Prompt text is intent, never authority.  The supervisor process
+        lives outside the repository.  Each worker runs the admitted task
+        in the repository and does not grant execution or completion
+        authority.  Fenced lifecycle START remains a separate control
+        operation.
         """
 
         if not isinstance(prompt, str) or not prompt.strip():
@@ -407,11 +444,14 @@ class Supervisor:
             },
         )
 
-    def _run_from_prompt(self, prompt: str) -> SupervisorRun:
+    def _run_from_prompt(
+        self, prompt: str, *, start_workers: bool = True
+    ) -> SupervisorRun:
         from ipfs_accelerate_py.agent_supervisor.prompt.plan_create_service import (
             plan_create_request_from_workflow,
         )
         from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
+            PromptWorkflowRequest,
             RecordStatus,
             construct_prompt_workflow_request,
         )
@@ -451,35 +491,66 @@ class Supervisor:
             from pathlib import Path as _Path
 
             self._composition.state_root = _Path(observation.state_root)
-        workflow_request = construct_prompt_workflow_request(
-            prompt,
-            repository_root=observation.repository_root,
-            repository_root_cid=observation.repository_root_cid,
-            allowlist_cid=observation.allowlist_cid,
-            program_root=observation.program_root,
-            intent_ir_root=observation.intent_ir_root,
-            legal_ir_root=observation.legal_ir_root,
-            security_ir_root=observation.security_ir_root,
-            policy_root=observation.policy_root,
-            caller=observation.caller,
-            output_root=output_root,
-            directory=_scan_directory_for_repository(observation.repository_root),
-            state_root=str(self._composition.state_root),
-            supervisor_profile=observation.supervisor_profile,
-            board_namespace=observation.board_namespace,
-            dry_run=not materialize,
-            materialize=materialize,
-            start_after_materialize=False,
-            authority_cid=str(mutation_map.get("authority_cid") or ""),
-            idempotency_key=str(mutation_map.get("idempotency_key") or ""),
-            lease_id=str(mutation_map.get("lease_id") or ""),
-            fencing_epoch=(
-                int(mutation_map["fencing_epoch"])
-                if mutation_map.get("fencing_epoch") is not None
-                else None
-            ),
-            duckdb_available=bool(observation.duckdb_available),
-        )
+        prepared = extras.get("workflow_request")
+        if prepared is not None:
+            if not isinstance(prepared, PromptWorkflowRequest):
+                raise SupervisorError(
+                    "workflow_request must be PromptWorkflowRequest"
+                )
+            body = prepared.prompt_source.transient_body
+            if body is None or body.decode("utf-8") != prompt:
+                raise SupervisorError(
+                    "workflow_request is not bound to this prompt"
+                )
+            workflow_request = prepared
+        else:
+            # The workflow request is a prompt/scanner contract: its allowlist
+            # and repository-root identities are the scanner's canonical
+            # identities, which the scanner and the preview's scan validation
+            # recompute and compare. Observation digests stay in the
+            # binding/status domain.
+            from ipfs_accelerate_py.agent_supervisor.prompt.prompt_directory_scanner import (
+                bind_prompt_request_to_scanner,
+                repository_allowlist_cid,
+                repository_root_cid,
+            )
+
+            workflow_request = construct_prompt_workflow_request(
+                prompt,
+                repository_root=observation.repository_root,
+                repository_root_cid=repository_root_cid(observation.repository_root),
+                allowlist_cid=repository_allowlist_cid(
+                    (observation.repository_root,)
+                ),
+                program_root=observation.program_root,
+                intent_ir_root=observation.intent_ir_root,
+                legal_ir_root=observation.legal_ir_root,
+                security_ir_root=observation.security_ir_root,
+                policy_root=observation.policy_root,
+                caller=observation.caller,
+                output_root=output_root,
+                directory=_scan_directory_for_repository(observation.repository_root),
+                state_root=str(self._composition.state_root),
+                supervisor_profile=observation.supervisor_profile,
+                board_namespace=observation.board_namespace,
+                dry_run=not materialize,
+                materialize=materialize,
+                start_after_materialize=False,
+                authority_cid=str(mutation_map.get("authority_cid") or ""),
+                idempotency_key=str(mutation_map.get("idempotency_key") or ""),
+                lease_id=str(mutation_map.get("lease_id") or ""),
+                fencing_epoch=(
+                    int(mutation_map["fencing_epoch"])
+                    if mutation_map.get("fencing_epoch") is not None
+                    else None
+                ),
+                duckdb_available=bool(observation.duckdb_available),
+            )
+            if extras.get("scanner") is None:
+                workflow_request = bind_prompt_request_to_scanner(
+                    workflow_request,
+                    (observation.repository_root,),
+                )
         plan_request = plan_create_request_from_workflow(
             workflow_request,
             repository_id=observation.repository_id,
@@ -492,6 +563,14 @@ class Supervisor:
             task_source_id="task-source:database:production",
             task_source_revision=observation.tree_id,
         )
+        # The model router is an isolated child with a multi-minute timeout.
+        # A prompt must start workers before that child runs. An injected
+        # planner is left untouched.
+        if (
+            extras.get("planner") is None
+            and extras.get("prompt_supervisor_service") is None
+        ):
+            extras["planner"] = _DeterministicPromptPlanner()
         prompt_service = self._composition.prompt_supervisor_service()
         preview = prompt_service.preview(workflow_request)
         if preview.status is not RecordStatus.ADMITTED:
@@ -501,10 +580,24 @@ class Supervisor:
             )
         plan_service = self._composition.plan_supervisor_service()
         plan_envelope = plan_service.preview_create_admitted(plan_request)
-        if plan_envelope.get("status") != "admitted":
+        plan_status = str(plan_envelope.get("status") or "")
+        if plan_status != "admitted" and not _plan_create_ir_absence_only(
+            plan_envelope
+        ):
+            reasons = ",".join(
+                str(item)
+                for item in (plan_envelope.get("rejection_reasons") or ())
+                if str(item)
+            )
             raise SupervisorUnavailableError(
                 "plan create preview was not admitted"
+                + (f": {reasons}" if reasons else "")
             )
+        preview_state = prompt_service._preview_state(preview)
+        hard_receipt = getattr(preview_state.admission, "receipt", None)
+        preview_graph = preview_state.graph
+        root_provenance = dict(getattr(preview_graph.root_goal, "provenance", {}) or {})
+        projection_ids = root_provenance.get("projection_ids") or ()
         materialization_inputs = dict(
             prompt_service.materialization_inputs(preview)
         )
@@ -528,6 +621,24 @@ class Supervisor:
             "observation": observation.to_dict(),
             "admitted_task_count": len(preview.admitted_task_cids),
             "admitted_goal_count": len(preview.admitted_goal_cids),
+            "intent_autoencoder_status": str(
+                root_provenance.get("autoencoder_status") or ""
+            ),
+            "intent_projection_ids": (
+                [str(item) for item in projection_ids]
+                if isinstance(projection_ids, (list, tuple))
+                else []
+            ),
+            "intent_subgoal_count": sum(
+                1 for goal in preview_graph.goals if goal.parent_goal_cid
+            ),
+            "hard_domain_admitted": bool(
+                getattr(preview_state.admission, "admitted", False)
+            ),
+            "authorizes_execution": bool(
+                getattr(hard_receipt, "authorizes_execution", False)
+            ),
+            "plan_create_status": plan_status,
             "completion_authority": False,
             "model_assertion_cannot_complete": True,
             "empty_queue_cannot_complete": True,
@@ -613,10 +724,86 @@ class Supervisor:
             raise SupervisorUnavailableError(
                 "refusing simulated completion from prompt admission"
             )
+        if start_workers:
+            prompt_body = workflow_request.prompt_source.transient_body
+            prompt_text = (
+                prompt_body.decode("utf-8", errors="replace")
+                if isinstance(prompt_body, bytes)
+                else ""
+            )
+            self._start_prompt_workers(
+                run=run,
+                prompt_service=prompt_service,
+                preview=preview,
+                state_root=Path(str(self._composition.state_root)),
+                repository_root=Path(observation.repository_root),
+                width=extras.get("prompt_worker_width", 4),
+                prompt_text=prompt_text,
+            )
         self._runs[run.run_id] = run
         extras_prompts = self._composition.extras.setdefault("prompt_cids", {})
         extras_prompts[run.run_id] = workflow_request.prompt_cid
         return run
+
+    def _start_prompt_workers(
+        self,
+        *,
+        run: SupervisorRun,
+        prompt_service: Any,
+        preview: Any,
+        state_root: Path,
+        repository_root: Path,
+        width: Any,
+        prompt_text: str = "",
+    ) -> None:
+        """Start live workers for ready tasks without granting authority."""
+
+        from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+            PromptWorkerError,
+            launch_prompt_workers,
+        )
+
+        graph = prompt_service._preview_state(preview).graph
+        try:
+            launch = launch_prompt_workers(
+                tasks=tuple(graph.tasks),
+                admitted_task_cids=tuple(preview.admitted_task_cids),
+                run_id=run.run_id,
+                state_root=state_root,
+                repository_root=repository_root,
+                width=width,
+                prompt_text=prompt_text,
+            )
+        except PromptWorkerError as exc:
+            raise SupervisorUnavailableError(str(exc)) from exc
+        run.state = "running"
+        run.health = "healthy"
+        run.event_cursor = launch.run_dir
+        run.identities["workers_started"] = True
+        run.identities["supervisor_pid"] = launch.supervisor_pid
+        run.identities["worker_pids"] = list(launch.pids)
+        run.identities["active_worker_count"] = launch.active_worker_count
+        run.identities["worker_task_cids"] = list(launch.task_cids)
+        run.identities["worker_run_dir"] = launch.run_dir
+        run.identities["worker_repository_edits"] = False
+        run.identities["authorizes_execution"] = bool(
+            run.identities.get("authorizes_execution", False)
+        )
+        run.identities["completion_authority"] = False
+        if run.identities["authorizes_execution"]:
+            from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+                stop_prompt_workers,
+            )
+
+            stop_prompt_workers(
+                launch.run_dir,
+                (launch.supervisor_pid, *launch.pids),
+            )
+            raise SupervisorUnavailableError(
+                "prompt workers refuse an execution grant"
+            )
+        if not launch.pids:
+            raise SupervisorUnavailableError("prompt workers did not start")
 
     def _materialize_admitted(
         self,
@@ -777,7 +964,7 @@ class Supervisor:
                 summary="preview-only; no durable effect authorized",
                 values={"prompt_cid": prompt_cid, "effect_applied": False},
             )
-        run = self._run_from_prompt(prompt)
+        run = self._run_from_prompt(prompt, start_workers=False)
         payload = {
             "prompt_cid": prompt_cid,
             "effect_applied": False,
@@ -881,19 +1068,136 @@ class Supervisor:
         return self._runs[run_id]
 
     def _resolve_run(self, run_id: str | None) -> SupervisorRun:
-        if run_id is not None:
-            return self._require_run(run_id)
-        if len(self._runs) == 1:
+        if run_id is not None and run_id in self._runs:
+            return self._runs[run_id]
+        if run_id is None and len(self._runs) == 1:
             return next(iter(self._runs.values()))
-        if not self._runs:
+        if run_id is None and len(self._runs) > 1:
+            raise SupervisorAmbiguityError(
+                "multiple active runs; supply an exact run_id",
+                candidates=tuple(sorted(self._runs)),
+            )
+        adopted = self._live_prompt_runs()
+        if run_id is not None:
+            for run in adopted:
+                if run.run_id == run_id:
+                    self._runs[run.run_id] = run
+                    return run
+            raise SupervisorAmbiguityError(
+                f"unknown run_id {run_id!r}",
+                candidates=tuple(
+                    sorted({*self._runs, *(run.run_id for run in adopted)})
+                ),
+            )
+        if len(adopted) == 1:
+            run = adopted[0]
+            self._runs[run.run_id] = run
+            return run
+        if not adopted:
             raise SupervisorAmbiguityError(
                 "no active run; supply run_id or call run(prompt) first",
                 candidates=(),
             )
         raise SupervisorAmbiguityError(
             "multiple active runs; supply an exact run_id",
-            candidates=tuple(sorted(self._runs)),
+            candidates=tuple(run.run_id for run in adopted),
         )
+
+    def _live_prompt_runs(self) -> list[SupervisorRun]:
+        """Adopt supervisors that are still alive under this state root."""
+
+        root = self._composition.repository_root
+        state = self._composition.state_root
+        if root is None or state is None:
+            try:
+                from .service_factory import observe_production_bindings
+
+                observation = observe_production_bindings(self._composition)
+            except Exception:
+                return []
+            root = observation.repository_root
+            state = observation.state_root
+        from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workers import (
+            live_prompt_supervisors,
+        )
+
+        rows = live_prompt_supervisors(state, root)
+        adopted: list[SupervisorRun] = []
+        for row in rows:
+            adopted.append(
+                SupervisorRun(
+                    run_id=str(row["run_id"]),
+                    run_revision=1,
+                    composition_cid=self.composition_cid,
+                    state="running",
+                    health="healthy",
+                    event_cursor=str(row["run_dir"]),
+                    invocation_cid=str(row["run_id"]),
+                    supervisor=self,
+                    identities={
+                        "supervisor_pid": row["supervisor_pid"],
+                        "worker_pids": list(row["worker_pids"]),
+                        "worker_task_cids": list(row["worker_task_cids"]),
+                        "worker_task_keys": list(row["worker_task_keys"]),
+                        "active_worker_count": len(row["worker_pids"]),
+                        "workers_started": bool(row["worker_pids"]),
+                        "worker_run_dir": str(row["run_dir"]),
+                        "authorizes_execution": False,
+                        "completion_authority": False,
+                    },
+                )
+            )
+        return adopted
+
+
+class _DeterministicPromptPlanner:
+    """Plan goals and subgoals from the intent autoencoder, without the model router."""
+
+    def plan(self, request: Any, scan: Any, **_kwargs: Any) -> Any:
+        from types import SimpleNamespace
+
+        from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
+            plan_with_intent_autoencoder,
+        )
+
+        body = getattr(getattr(request, "prompt_source", None), "transient_body", None)
+        focus = body.decode("utf-8", errors="replace") if isinstance(body, bytes) else ""
+        graph, advice = plan_with_intent_autoencoder(request, scan, focus_text=focus)
+        receipt = SimpleNamespace(
+            to_dict=lambda: {
+                "request_cid": request.request_cid,
+                "scan_cid": scan.scan_cid,
+                "plan_root_cid": graph.plan_root_cid,
+                "intent_autoencoder_status": advice.get("status") or "",
+                "intent_projection_ids": list(advice.get("projection_ids") or ()),
+                "intent_subgoal_count": int(advice.get("subgoal_count") or 0),
+                "authorizes_execution": False,
+                "completion_authority": False,
+            },
+            fallback=SimpleNamespace(used=True),
+        )
+        return SimpleNamespace(graph=graph, receipt=receipt, used_fallback=True)
+
+
+def prompt_repository_root(explicit: Path | str | None = None) -> Path | None:
+    """Resolve the repository a prompt addresses.
+
+    An explicit path is that repository. Otherwise use the nearest Git root
+    when it carries the activated scheduler, and the package checkout when
+    the caller is in a parent tree that does not.
+    """
+
+    from .service_factory import SCHEDULER_CONFIG_RELATIVE
+
+    if explicit:
+        return Path(explicit)
+    nearest = _nearest_git_root(Path.cwd())
+    if nearest is not None and (nearest / SCHEDULER_CONFIG_RELATIVE).is_file():
+        return nearest
+    package_root = Path(__file__).resolve().parents[3]
+    if (package_root / SCHEDULER_CONFIG_RELATIVE).is_file():
+        return package_root
+    return nearest
 
 
 def _nearest_git_root(start: Path) -> Path | None:

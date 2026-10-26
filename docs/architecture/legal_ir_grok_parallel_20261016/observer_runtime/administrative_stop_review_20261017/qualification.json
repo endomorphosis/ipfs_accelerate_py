@@ -1,0 +1,238 @@
+{
+  "api_product_identical_to_234_case_run": true,
+  "api_qualified_source_head": "75345af6679ed3706ffc52a20e23242047099102",
+  "authentic_custody_fixture": {
+    "authentic_admin_settlement_gate_remaining": true,
+    "bundle_version": "v01",
+    "full_producer_preflight_required": true,
+    "original_A_and_child_C_sources_separately_bound": true,
+    "original_finite_owner_required": true,
+    "status": "STATIC_REVIEWED_NATIVE_UNQUALIFIED"
+  },
+  "copy_limit": "Review copies preserve bytes. Frozen runtime authority remains bound to original local request/source paths; copied files do not confer native admission or production authorization.",
+  "generated_at_utc": "2026-10-17T06:03:22.402459+00:00",
+  "grok_probe": {
+    "ancillary_title_observed": {
+      "model": "grok-4.6",
+      "temperature": 1.0
+    },
+    "exact_native_parser_refusal_correction_statically_reviewed": true,
+    "external_fixture_budget_bytes": 134217728,
+    "fresh_external_fixture_root": "/tmp/pytest-of-barberb/grk17f",
+    "native_executed": false,
+    "post_owner_quiescent_inventory_required": true,
+    "predicate_examples": 15,
+    "primary_requests_observed": {
+      "model": "grok-4.7",
+      "temperature": 0.0
+    },
+    "prior_positive_read_and_default_controls_passed": true,
+    "production_configuration_qualified": false,
+    "real_remote_model_calls": false,
+    "version": "v09"
+  },
+  "hosted_ci": {
+    "check_run_id": 117318679837,
+    "conclusion": "failure",
+    "documentation_run_id": 39006061390,
+    "reason": "Account locked due to a billing issue",
+    "status_forged_or_policy_changed": false,
+    "steps_executed": false
+  },
+  "last_observed_production_task": {
+    "attempt_ordinal": 2,
+    "canonical_status": "in_progress",
+    "observation_kind": "retained read-only inspection, not a fresh production read this publication",
+    "raw_unknown_outcomes": 2,
+    "revision": 12,
+    "task_alias": "LIR-9001"
+  },
+  "native_integration": {
+    "aged_audit_reached_actual_closeout": true,
+    "constructor_claim_previously_passed": true,
+    "full_suite_passed": false,
+    "last_executed_failure": "Native row slicing in preservation helper; corrected to exact named fields, full rerun pending",
+    "last_owner_session": 93203,
+    "last_request": "planning-unknown-administrative-controls-request-v06.json",
+    "last_result": "F07 admission timeout before child launch; no tests executed",
+    "live_own_native_job": false,
+    "total_primary_cases": 14
+  },
+  "official_main_merged": "d98f1fbab4d6869fdd55f9a92e3bc67e84e60499",
+  "passed_scopes": [
+    {
+      "overall_request_status": "failed because remaining14 integration cases used invalid fixture lease",
+      "per_case_evidence_retained": true,
+      "primary_cases": 234,
+      "scope": "148 existing native owner/gateway/namespace and86 API/birth checks"
+    },
+    {
+      "overall_request_status": "failed because additionally selected legacy Codex suite has preexisting main contract drift",
+      "per_case_evidence_retained": true,
+      "primary_cases": 28,
+      "scope": "ordinary/protected worker image and Grok command routes"
+    }
+  ],
+  "product_head": "c1fd0d8c435ce8c5b16975ce762f83e3f84db314",
+  "production_actions": {
+    "WAL_maintenance": false,
+    "administrative_stop": false,
+    "productive_grok_dispatch": false,
+    "provider_outcome_rewrite": false,
+    "rearm": false,
+    "semantic_acceptance": false,
+    "successor": false,
+    "training": false
+  },
+  "qualification_evidence_pins": [
+    {
+      "bytes": 634,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-02/receipt.json",
+      "sha256": "e8762e97f195ff4dba65ec7a2c22af5cbd0a0c500e42313415254fd508fd1237"
+    },
+    {
+      "bytes": 176316,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-02/administrative-controls-result.json",
+      "sha256": "ac1e037b17cda6c094cc134cd05736117925e0ab83030a5185115b02baac1f93"
+    },
+    {
+      "bytes": 158491,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-02/pytest.junit.xml",
+      "sha256": "b29e248b0a97c723c6009d6dc3feddbdde8f75460e39430f5072ed1be3afe637"
+    },
+    {
+      "bytes": 634,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-03/receipt.json",
+      "sha256": "af56698c031bd8686a4663fc303587fc8c2ca639fd29ef9ed75027ea142ee4fb"
+    },
+    {
+      "bytes": 87014,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-03/administrative-controls-result.json",
+      "sha256": "d9efebcf7a1a44636527cb35847897e96e167f053cc4673b03392e7ea309c033"
+    },
+    {
+      "bytes": 67993,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-03/pytest.junit.xml",
+      "sha256": "1b6d7fc35ef511048d35a3ef379f0a6bddc85cc869e1fbf252eb3cf9b23ad829"
+    },
+    {
+      "bytes": 633,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-04/receipt.json",
+      "sha256": "349bcdb49e6b49b8793fffc1bf4e17ad10fde4d0e1bb884dcda319932d34ffcd"
+    },
+    {
+      "bytes": 41917,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-04/administrative-controls-result.json",
+      "sha256": "3d6e6e7f1895195fca62fb2c59361a929eda5c149027e1cb31fc231f70806ade"
+    },
+    {
+      "bytes": 1437,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-04/pytest.junit.xml",
+      "sha256": "f55a4db0aa010fa477da692dbd65389febfc1d59b3dfdb5e004e7fc394810777"
+    },
+    {
+      "bytes": 634,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-05/receipt.json",
+      "sha256": "b3b8d62c443b7e8bbbfa1b283d6b09acb8dc81c311591565895c7c3df72ecf44"
+    },
+    {
+      "bytes": 50598,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-05/administrative-controls-result.json",
+      "sha256": "fd8b8274464625a6efd362d126735a77f3c19a4f68e6db6c49a5c7b14d695dc1"
+    },
+    {
+      "bytes": 5595,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-05/pytest.junit.xml",
+      "sha256": "d97cd4eb984d04366d803bd2ed303b45b6e2990d30e7bf582013a000dc470a21"
+    }
+  ],
+  "resource_wait": {
+    "configured_total_child_slots": 16,
+    "foreign_processes_or_reservations_modified": false,
+    "foreign_request_id": "legal-ir-ordinary-handoff-nonmodel-gate-v01",
+    "policy_bypassed": false,
+    "reserved_child_slots": 16
+  },
+  "review_copies": [
+    {
+      "bytes": 44914,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/authentic_fixture_owner_v01.py",
+      "sha256": "a5263c6ab4a0db17cec22a9d857326a40d5909983fc5647930d68696e03efae1",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/authentic_fixture_owner_v01.py"
+    },
+    {
+      "bytes": 10622,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/render_authentic_fixture_request_v01.py",
+      "sha256": "bda7d904fc820976a6ac285aeb9cca70a5a54de4024c53460b85c2bf3fdeb2ff",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/render_authentic_fixture_request_v01.py"
+    },
+    {
+      "bytes": 28496,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/produce_authentic_unknown_master_v01.py",
+      "sha256": "d11e0221419b2736366dfb5a9d1031c8050a95209f4f3378e1718d489f6f1e1a",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/produce_authentic_unknown_master_v01.py"
+    },
+    {
+      "bytes": 8165,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/request-templates-v01.json",
+      "sha256": "e697de83b161e5c06088be1323bd6041e1711dd922575521603ab230734852c2",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/request-templates-v01.json"
+    },
+    {
+      "bytes": 6773,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/producer-contract-v01.json",
+      "sha256": "3df6fa7e1aed5a15270b1ae8d3b349fc243af90c6c7f7093dedabb4127bf87a5",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/producer-contract-v01.json"
+    },
+    {
+      "bytes": 4290,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/owner-wrapper-independent-review-v01.json",
+      "sha256": "7130104f75144d86461feafd273ecc5ae29e76381daefd90701d4456037795a2",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/owner-wrapper-independent-review-v01.json"
+    },
+    {
+      "bytes": 5282,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/producer-independent-review-v01.json",
+      "sha256": "9c1aa9204c0fae049f66d7ecef8e4428e421c7d6ab47ad6940fca3ca41069d45",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/producer-independent-review-v01.json"
+    },
+    {
+      "bytes": 7357,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/authentic_fixture_v01/manifest-v01.json",
+      "sha256": "244016f11f23d14788da81456825dfb900dc2dc2cd1bb8461ab9ba2e7d28ad31",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/manifest-v01.json"
+    },
+    {
+      "bytes": 54447,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/qualify_grok_planning_toolset_loopback_v09.py",
+      "sha256": "6d30dd0c9b973801becba924c3ca424a308b1de4e667736d149d68955de9e3d5",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/qualify_grok_planning_toolset_loopback_v09.py"
+    },
+    {
+      "bytes": 5321,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/qualify_grok_rootlesskit_loopback_v09.py",
+      "sha256": "3d067bfc79db2ef08fba159a92e07f687e57ee814e3d529a2326254d460752d4",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/qualify_grok_rootlesskit_loopback_v09.py"
+    },
+    {
+      "bytes": 1824,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/grok-charged-fixture-inventory-independent-review-v09.json",
+      "sha256": "70750d64bffb9cc742bc37da163704b2903ff0f1a8a7ff2ee4bdacc1065f319d",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-charged-fixture-inventory-independent-review-v09.json"
+    },
+    {
+      "bytes": 20369,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/legacy-direct-codex-isolation-compatibility-gap-v01.json",
+      "sha256": "edf5f1bb0c51fe0c22736a663961a58b0ed6ebc52a9abe63fc21ef5d8f5eceb2",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/legacy-direct-codex-isolation-compatibility-gap-v01.json"
+    },
+    {
+      "bytes": 7318,
+      "repository_path": "docs/architecture/legal_ir_grok_parallel_20261016/observer_runtime/administrative_stop_review_20261017/parallel-ordinary-handoff-nonmodel-survey-v01.json",
+      "sha256": "d034ce31f28d08ff20f0df1ea533297345c66a2ca90b97e99b7eaa11fd79cb14",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/parallel-ordinary-handoff-nonmodel-survey-v01.json"
+    }
+  ],
+  "schema": "planning-unknown-administrative-stop-review@1",
+  "status": "DRAFT_NATIVE_QUALIFICATION_PENDING"
+}

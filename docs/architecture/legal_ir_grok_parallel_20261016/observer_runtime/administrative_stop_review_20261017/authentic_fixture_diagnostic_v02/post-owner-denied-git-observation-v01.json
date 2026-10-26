@@ -1,0 +1,256 @@
+{
+  "actual_child_exit_code": 2,
+  "actual_disk_reservation_id": "b1a83c6c3e374f56b4c37ce9127a547e",
+  "actual_tool_exit_code": 1,
+  "actual_tool_session": 14385,
+  "authentic_custody_qualified": false,
+  "child_pid_observed_absent": 2280727,
+  "dispatch_diagnostic": {
+    "blocked_event_count": 1,
+    "first_blocked_event": {
+      "audit_arguments_exported": false,
+      "blocked_event_ordinal": 1,
+      "dispatch_authorized": false,
+      "environment_exported": false,
+      "event": "subprocess.Popen",
+      "frames": [
+        {
+          "filename": "subprocess.py",
+          "filename_sha256": "b76d1825ff40df29760a0061b4d2cbb0af3a03f475ab040e1b450920fafef732",
+          "function": "_execute_child",
+          "line": 1823,
+          "source_root": "python_stdlib"
+        },
+        {
+          "filename": "subprocess.py",
+          "filename_sha256": "b76d1825ff40df29760a0061b4d2cbb0af3a03f475ab040e1b450920fafef732",
+          "function": "__init__",
+          "line": 1026,
+          "source_root": "python_stdlib"
+        },
+        {
+          "filename": "subprocess.py",
+          "filename_sha256": "b76d1825ff40df29760a0061b4d2cbb0af3a03f475ab040e1b450920fafef732",
+          "function": "run",
+          "line": 548,
+          "source_root": "python_stdlib"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_implementation_route.py",
+          "filename_sha256": "601c084866cac3593cec5d6f4296a7315275e68bc6e195309a9cce5d4a51aa34",
+          "function": "_agent_git_output",
+          "line": 7620,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_implementation_route.py",
+          "filename_sha256": "601c084866cac3593cec5d6f4296a7315275e68bc6e195309a9cce5d4a51aa34",
+          "function": "agent_implementation_control_plane_source_generation",
+          "line": 7937,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "filename_sha256": "35f979b5df640be9bd83609b49a23391d7a1c579899c62532522b44b0738b74e",
+          "function": "_capture_imported_control_plane_generation",
+          "line": 79168,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "filename_sha256": "35f979b5df640be9bd83609b49a23391d7a1c579899c62532522b44b0738b74e",
+          "function": "<module>",
+          "line": 79202,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": null,
+          "filename_sha256": "843f6ed2e5e45a231a8d8b4bb91308d12eb6e846cdba9b5b1813c40149e55be5",
+          "function": "exec_module",
+          "line": 225,
+          "source_root": "outside_known_source_roots"
+        },
+        {
+          "filename": "<frozen importlib._bootstrap>",
+          "filename_sha256": "ed75c6fe51a038015b4362689e88a26087a656cc06e693258d03a54b76cdc7e8",
+          "function": "_load_unlocked",
+          "line": 935,
+          "source_root": "python_pseudo_filename"
+        },
+        {
+          "filename": "<frozen importlib._bootstrap>",
+          "filename_sha256": "ed75c6fe51a038015b4362689e88a26087a656cc06e693258d03a54b76cdc7e8",
+          "function": "_find_and_load_unlocked",
+          "line": 1331,
+          "source_root": "python_pseudo_filename"
+        },
+        {
+          "filename": "<frozen importlib._bootstrap>",
+          "filename_sha256": "ed75c6fe51a038015b4362689e88a26087a656cc06e693258d03a54b76cdc7e8",
+          "function": "_find_and_load",
+          "line": 1360,
+          "source_root": "python_pseudo_filename"
+        },
+        {
+          "filename": "produce_authentic_unknown_master_diagnostic_v02.py",
+          "filename_sha256": "68d985780281102c72b3904914b6ee93d2465eaae14b8dba928c765bfa5a3d41",
+          "function": "produce",
+          "line": 340,
+          "source_root": "diagnostic_producer"
+        },
+        {
+          "filename": "produce_authentic_unknown_master_diagnostic_v02.py",
+          "filename_sha256": "68d985780281102c72b3904914b6ee93d2465eaae14b8dba928c765bfa5a3d41",
+          "function": "main",
+          "line": 543,
+          "source_root": "diagnostic_producer"
+        },
+        {
+          "filename": "produce_authentic_unknown_master_diagnostic_v02.py",
+          "filename_sha256": "68d985780281102c72b3904914b6ee93d2465eaae14b8dba928c765bfa5a3d41",
+          "function": "<module>",
+          "line": 556,
+          "source_root": "diagnostic_producer"
+        }
+      ],
+      "frames_truncated": false,
+      "local_variables_exported": false,
+      "schema": "authentic-fixture-denied-dispatch-observation@2",
+      "stage": "import_native_product_classes"
+    },
+    "historical_unknown_resolved": false,
+    "last_blocked_event": {
+      "audit_arguments_exported": false,
+      "blocked_event_ordinal": 1,
+      "dispatch_authorized": false,
+      "environment_exported": false,
+      "event": "subprocess.Popen",
+      "frames": [
+        {
+          "filename": "subprocess.py",
+          "filename_sha256": "b76d1825ff40df29760a0061b4d2cbb0af3a03f475ab040e1b450920fafef732",
+          "function": "_execute_child",
+          "line": 1823,
+          "source_root": "python_stdlib"
+        },
+        {
+          "filename": "subprocess.py",
+          "filename_sha256": "b76d1825ff40df29760a0061b4d2cbb0af3a03f475ab040e1b450920fafef732",
+          "function": "__init__",
+          "line": 1026,
+          "source_root": "python_stdlib"
+        },
+        {
+          "filename": "subprocess.py",
+          "filename_sha256": "b76d1825ff40df29760a0061b4d2cbb0af3a03f475ab040e1b450920fafef732",
+          "function": "run",
+          "line": 548,
+          "source_root": "python_stdlib"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_implementation_route.py",
+          "filename_sha256": "601c084866cac3593cec5d6f4296a7315275e68bc6e195309a9cce5d4a51aa34",
+          "function": "_agent_git_output",
+          "line": 7620,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_implementation_route.py",
+          "filename_sha256": "601c084866cac3593cec5d6f4296a7315275e68bc6e195309a9cce5d4a51aa34",
+          "function": "agent_implementation_control_plane_source_generation",
+          "line": 7937,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "filename_sha256": "35f979b5df640be9bd83609b49a23391d7a1c579899c62532522b44b0738b74e",
+          "function": "_capture_imported_control_plane_generation",
+          "line": 79168,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "filename_sha256": "35f979b5df640be9bd83609b49a23391d7a1c579899c62532522b44b0738b74e",
+          "function": "<module>",
+          "line": 79202,
+          "source_root": "qualified_product"
+        },
+        {
+          "filename": null,
+          "filename_sha256": "843f6ed2e5e45a231a8d8b4bb91308d12eb6e846cdba9b5b1813c40149e55be5",
+          "function": "exec_module",
+          "line": 225,
+          "source_root": "outside_known_source_roots"
+        },
+        {
+          "filename": "<frozen importlib._bootstrap>",
+          "filename_sha256": "ed75c6fe51a038015b4362689e88a26087a656cc06e693258d03a54b76cdc7e8",
+          "function": "_load_unlocked",
+          "line": 935,
+          "source_root": "python_pseudo_filename"
+        },
+        {
+          "filename": "<frozen importlib._bootstrap>",
+          "filename_sha256": "ed75c6fe51a038015b4362689e88a26087a656cc06e693258d03a54b76cdc7e8",
+          "function": "_find_and_load_unlocked",
+          "line": 1331,
+          "source_root": "python_pseudo_filename"
+        },
+        {
+          "filename": "<frozen importlib._bootstrap>",
+          "filename_sha256": "ed75c6fe51a038015b4362689e88a26087a656cc06e693258d03a54b76cdc7e8",
+          "function": "_find_and_load",
+          "line": 1360,
+          "source_root": "python_pseudo_filename"
+        },
+        {
+          "filename": "produce_authentic_unknown_master_diagnostic_v02.py",
+          "filename_sha256": "68d985780281102c72b3904914b6ee93d2465eaae14b8dba928c765bfa5a3d41",
+          "function": "produce",
+          "line": 340,
+          "source_root": "diagnostic_producer"
+        },
+        {
+          "filename": "produce_authentic_unknown_master_diagnostic_v02.py",
+          "filename_sha256": "68d985780281102c72b3904914b6ee93d2465eaae14b8dba928c765bfa5a3d41",
+          "function": "main",
+          "line": 543,
+          "source_root": "diagnostic_producer"
+        },
+        {
+          "filename": "produce_authentic_unknown_master_diagnostic_v02.py",
+          "filename_sha256": "68d985780281102c72b3904914b6ee93d2465eaae14b8dba928c765bfa5a3d41",
+          "function": "<module>",
+          "line": 556,
+          "source_root": "diagnostic_producer"
+        }
+      ],
+      "frames_truncated": false,
+      "local_variables_exported": false,
+      "schema": "authentic-fixture-denied-dispatch-observation@2",
+      "stage": "import_native_product_classes"
+    },
+    "observation_only": true,
+    "propagated_error_is_last_blocked_event": true
+  },
+  "interpretation": "Actual import-time source-provenance Git subprocess denied. RuntimeError propagated because native importer catches OSError/ValueError/SubprocessError. Conventional PermissionError denial proposed; no subprocess allowlist or fake Git outputs.",
+  "native_resource_ack_created": false,
+  "observation_only": true,
+  "observed_reservation_status": "released",
+  "original_owned_live_group_observed_absent": true,
+  "original_result_preserved": "failed",
+  "original_supervisor_launch_started": false,
+  "owner_pid_observed_absent": 2263369,
+  "production_actions_performed": false,
+  "root_phase_native_lease_ids_observed_absent": [
+    "01a3c52643894ab39ce3e71d5c094243",
+    "f3279cdc6ec240caa586c2a568bd7073",
+    "cd19733498b0433cab134207e01de698"
+  ],
+  "sanitized_log_sha256": "d303161eb4ca08725d2704f892c776261fad5ffa2d3c11e8c12b748e4b2cdb1e",
+  "schema": "authentic-producer-diagnostic-post-owner-observation@1",
+  "source_file_content_sha256": {
+    "ipfs_accelerate_py/agent_implementation_route.py": "1a3ab9f87f8e14a2bfb2b2dec0306a2007510bfb031aa9cbeef2dd5e949c6c9f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "8bd4c4a1aaef11140b2e2301bd203ce3159121f16fb821045e3ac2e0767783b5"
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "actual_child_exit_witness_pin": {
+    "bytes": 410,
+    "path": "/tmp/pytest-of-barberb/pls17b/settlement-exit-witness.json",
+    "sha256": "7e0489a991fe4e479cace6974baad4dc377053ca8314e19786f20b251e8879e0"
+  },
+  "actual_parent_result_pin": {
+    "bytes": 2469,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-settle-20261017-01/parent-result.json",
+    "sha256": "59c7d89db04a8af3e9a8184959eeaed3186ed857a81cca58a722224737bdcff3"
+  },
+  "actual_post_owner_observation_pin": {
+    "bytes": 1261,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-settlement-attempt01-post-owner-v01.json",
+    "sha256": "0f7ef136b40bb400faf49aa281404727b67c9b8889e2fc693d4331f3d42d3c04"
+  },
+  "actual_request_pin": {
+    "bytes": 3070,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-settle-request-v03.json",
+    "sha256": "ab1a937c30525a60ea6fc96d7238d3d0c40e2bebe8c8a6b6a23186fb7b54add2"
+  },
+  "attribution": {
+    "independent": "Exact retained JSON and reviewed source pins, typed canonical objects, old ADMIN/context/audit/request/creator/parent/worker joins, reconstructed full failure receipt, failure digest and settlement CID.",
+    "limits": "Administrative local closeout is complete for this exact attempt only. Provider outcomes remain unknown and possible external effects unverified. No callback closure, remote cancellation, model nonreachability, successful legal reconstruction, automatic retry, rearm, successor attempt, or semantic/completion authority is established.",
+    "native": "FAILED/coordination/BLOCKED/terminal durable mutations, one audit and one exact terminal event, native same-owner exact replay, unchanged current raw UNKNOWN, historical UNKNOWN store bytes, complete ordinal/fence history and other63 normalized task contracts/DAG preservation are genuine native validator/worker assertions. Reviewer did not read any DB or WAL or independently execute SQL.",
+    "outer": "Actual tool exit0, released reservation, three ancestry lease absences and owner PID absence are retained root post-owner observations. Its group observation is null; independent live process-group inspection is not claimed."
+  },
+  "automatic_retry_rearm_successor_admitted": false,
+  "checks": {
+    "actual_settlement_worker_exit_and_reap_crosswalk": true,
+    "current_UNKNOWN_comparison_and_historical_store_preservation_attributed_to_native_code": true,
+    "exact_approved_production_task_attempt_ordinal_fences_cap_and_store_map": true,
+    "exact_completed_request_outer_release_result_crosswalk": true,
+    "execute_full_without_crash_hooks_or_fake_prior_D_stage": true,
+    "failure_payload_digest_independently_recomputed": true,
+    "full_failure_receipt_and_settlement_CID_independently_recomputed": true,
+    "native_final_attempt_FAILED_revision_3": true,
+    "native_final_canonical_BLOCKED_revision_13": true,
+    "native_final_coordination_attempt_failed_and_claim_lease_released": true,
+    "native_final_terminal_count_one": true,
+    "old_durable_audit_context_and_actual_retired_creator_witness_joined": true,
+    "other_63_normalized_contract_and_DAG_preservation_attributed_to_native_code": true,
+    "same_actual_ADMIN_parent_source_and_unbound_input": true,
+    "same_owner_exact_replay_check_attributed_to_native_code": true,
+    "typed_bool_integer_distinctions_checked": true
+  },
+  "checks_passed": true,
+  "completion_authority": false,
+  "current_UNKNOWN_outcome": "unknown",
+  "helper_independent_static_review_pin": {
+    "bytes": 3646,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/immutable-review-helper-independent-static-review-v03.json",
+    "sha256": "efdb5d559f0c5f46588242619d8efb9f6bed165c6a7c9c5bf1a8bbae0cd9c3f6"
+  },
+  "helper_pin": {
+    "bytes": 25958,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/review_production_local_stop_immutable_v03.py",
+    "sha256": "3eedad548781bd06bba2b837a567e8a71f866969f880bb80af2074755942c2ef"
+  },
+  "historical_UNKNOWN_outcome": "unknown",
+  "independent_recomputation": {
+    "failure_payload_digest": "sha256:2211a48715e9de671c620a0f69ef9d2ace6e6260a9ec2a3cc55f8a0ad6a754f7",
+    "failure_receipt_exact_canonical_bytes": 877,
+    "settlement_id": "baguqeeranf2qron5ds745a2gintcgofxggrjutbpqdt3qsgf4bdhv3mmaxna",
+    "whole_native_result_canonical_sha256": "33594120b755f62e4993e03fc58681cd055cbcf268c1c8f48ef7f72279a688b8"
+  },
+  "possible_external_effects": "unverified",
+  "prior_ADMIN_review_pin": {
+    "bytes": 6409,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-admin-retained-evidence-independent-review-v01.json",
+    "sha256": "c97ead1b64ffef37fa94b74e09f2d1027fa724c0773dbcab75345aa757e0026d"
+  },
+  "retained_native_final_state": {
+    "attempt_id": "attempt:e1ddbe57f2a0408bacf841b2ba471a1f",
+    "attempt_number": 2,
+    "audit_event_id": "baguqeerardmcesukpunpfg3olrc2toyawz3i3gliqeqfm5pq4z6lrvhmtooa",
+    "audit_evidence_id": "baguqeerakv6ctbkews2hpby75mgv3hrbsn2sohvwssbqvqqhkb2u7zkbuv4q",
+    "claim_state": "released",
+    "committed_phase": "failed",
+    "control_revision": 13,
+    "control_status": "blocked",
+    "coordination_attempt_status": "failed",
+    "execution_revision": 3,
+    "execution_status": "failed",
+    "fence_epoch": 2,
+    "fencing_token": 2,
+    "lease_state": "released",
+    "task_alias": "LIR-9001",
+    "task_cid": "baguqeeraqk2ln7d3plwfonnyycsxkr5tjrpo7e5uq4p7rhe6vi6btpxsaeyq",
+    "terminal_count": 1
+  },
+  "review_helper_execution": {
+    "checks_passed": true,
+    "exit_code": 0,
+    "flags": [
+      "-I",
+      "-S",
+      "-B"
+    ],
+    "interpreter": "/usr/bin/python3.12",
+    "operation": "settle"
+  },
+  "reviewer": "/root/grok_confinement_review",
+  "reviewer_access": {
+    "credentials_or_admin_token_reads_or_hashes": false,
+    "database_or_WAL_reads_opens_or_hashes": false,
+    "existing_sources_or_artifacts_rewritten": false,
+    "native_jobs": false,
+    "native_process_resource_or_ledger_API_queries": false,
+    "product_or_native_backend_imports": false
+  },
+  "root_reported_actual_tool_exit": 0,
+  "root_reported_actual_tool_session": 86759,
+  "runtime_parent_source_pin": {
+    "bytes": 53242,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v03.py",
+    "sha256": "3332b8a3d77c944177878957fda2709c75a20ba046f5c9bb41daee2e146afff4"
+  },
+  "runtime_settlement_worker_source_pin": {
+    "bytes": 26188,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+    "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+  },
+  "runtime_source_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "schema": "production-local-stop-settlement-retained-evidence-independent-review@1",
+  "scope": "Completed actual same-attempt production execute_full settlement; immutable retained JSON and exact reviewed source only.",
+  "worker_result_pin": {
+    "bytes": 12019,
+    "path": "/tmp/pytest-of-barberb/pls17b/settlement-result.json",
+    "sha256": "65881839d5fa467af6248a6a0ee667b468537f0690d8eb50d48544e997b978a7"
+  }
+}

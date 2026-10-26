@@ -1,0 +1,57 @@
+{
+  "DB_WAL_or_credential_bytes_read": false,
+  "author_import_or_execution_performed": false,
+  "authorization_pin": {
+    "bytes": 5700,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-exact-attempt-operator-authorization-v01.json",
+    "sha256": "d6df3754af090df44a4b5c6a99d06a23e2d1f15ba59ea126bb877e6d7bdb670c"
+  },
+  "checked_contracts": [
+    "Unbound input@2/authority context@2 exact six artifacts; historical utility manifest is source provenance only. No fixture custody receipt or verifier seam is used.",
+    "Exact operator authorization and full native snapshot constrain original task CID, ordinal2, claim/lease/owner/fences2/2, latest original running/context preimage and one historical UNKNOWN/ordinal1. No cap increase or new claim.",
+    "ADMIN runs stopped_processes_v2 with actual pinned original receipt and genuine verify_custody before canonical write connect, then full genuine load_context with actual gateway/creator kernel identities.",
+    "Real typed peer grant has singleton ADMIN operation/task scope; credential is separate private file. Native audit RPC and same-live replay are genuine; parent does not discard response or inject transport faults.",
+    "ADMIN actual graceful gateway/connection close, real child exit/reap/group absence and later native parent retirement precede separate fresh native settlement.",
+    "Actual native daemon owns its real canonical/coordinator/execution adapters, strict shard3/index2/prefixlir_lane_2. It authenticates durable old audit/event/context and exact logical stages; complete settlement preserves raw UNKNOWN rows and ordinal/fence history.",
+    "No generic reconciler, provider/model request, injected stage crash, task rearm, successor or resource-policy change appears in the production flow.",
+    "Parent carries genuine512MiB F07 ownership and separate charged short socket scope; exact distributed coordination DB/WAL/policy/serialized locks stay within64MiB and original foreign retained reservation is not released.",
+    "Private allocation/META-index paths and external-dispatch denial remain effective in actual worker import boundaries.",
+    "Only actual close/exit success yields witnesses/results; lexical finalization after result publication remains a separate root-observed gate."
+  ],
+  "controller_head": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "limitations": [
+    "Static source/AST review only; actual production native Status/ADMIN/settlement gates remain pending.",
+    "Original A protocol leaf was not historical launch-pinned. Current protocol corroboration and exact original v08 declared import are separate bd73/4ba repair evidence, not a historical leaf byte attestation.",
+    "Kernel/group census is bounded/cooperative and not an atomic adversarial process namespace proof. Leader-dead surviving descendants retain custody pending authenticated fence rather than fabricate bounded cleanup.",
+    "Possible external effects, provider cancellation, callback closure, nonreachability and successful task completion are unproved."
+  ],
+  "native_resource_api_requeried": false,
+  "outcome": "no_concrete_static_blocker",
+  "production_mutation_performed": false,
+  "remaining_static_blockers": [],
+  "reviewer": "unknown_event_forensics",
+  "schema": "production-exact-unknown-local-stop-adapters-independent-static-review@1",
+  "scope": "Only approved LIR-9001 ordinal2 task/attempt/claim/lease/owner/fences, revision12 and cap2; UNKNOWN external effects remain unverified.",
+  "source_comparisons": {
+    "ADMIN": "Qualified1ade worker:15 utility/security/environment functions AST-identical; only run changes plus exact-production-input validator.",
+    "parent": "Qualifiedd774: actual Popen assignment-before-FD-close, immediate registration, child birth/group binding, source-only fullguard timing, actual reap/close and commit marker functions preserved. Changes are explicit approved scopes/flags, exact coordination64MiB census, graceful ADMIN only and full native settlement.",
+    "settlement": "Qualifieda30 worker: dispatch denial, utility/source loader, read helpers and error-exit routing preserved. Artificial stage hooks and generic reconciliation removed; actual native settle plus same-owner exact replay remain."
+  },
+  "source_pins": [
+    {
+      "bytes": 31245,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01.py",
+      "sha256": "4fd503c0632ee880503acb70bf6c7b689cba39f8e3be57034c5e8d16956e438b"
+    },
+    {
+      "bytes": 51717,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v01.py",
+      "sha256": "160184262e4f0008ab1b25e30164f97e6e601a6704df05c87470e4ed5ea540f8"
+    },
+    {
+      "bytes": 26188,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+      "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "JSON_parsed": true,
+  "change": "Protocol only: actual AF_UNIX bind starts0700 under umask077 before native chmod600. Parent may observe only that exact live-owned pre-ready inode0700, one-way transition to0600; READY/grant/handshake still require/pin0600. No ADMIN source change.",
+  "native_execution": false,
+  "prior_frozen_review_pin": {
+    "bytes": 4399,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/admin-worker-independent-review-v02.json",
+    "sha256": "df88070b27b5ff4197b95d6aa2815fb93886ab0e824e28e6e7c8962953727a83"
+  },
+  "product_imports": false,
+  "protocol_pin": {
+    "bytes": 6783,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic-admin-worker-protocol-v02.json",
+    "sha256": "6e282788fb14866e3cf5e7071e4f21a3e7a5fb12ec021e589f9b780ef1d6cdfe"
+  },
+  "remaining_static_blocker": false,
+  "reviewer": "/root/unknown_event_forensics",
+  "runtime_qualified": false,
+  "schema": "authentic-admin-protocol-independent-followup@2",
+  "source_AST_parsed": true,
+  "source_pin": {
+    "bytes": 24720,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v02/authentic_unknown_admin_worker_v02.py",
+    "sha256": "b4bffedec72f1f8be083ac7ba83bd42fc7eb02ba9c1546a5034ac0d62fd77e86"
+  }
+}

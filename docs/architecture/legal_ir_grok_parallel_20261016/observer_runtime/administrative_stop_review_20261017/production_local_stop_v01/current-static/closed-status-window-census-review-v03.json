@@ -1,0 +1,76 @@
+{
+  "AST_existing_top_level_functions_changed": [
+    "native_job",
+    "request_data",
+    "status_action"
+  ],
+  "AST_existing_top_level_functions_unchanged": [
+    "canonical",
+    "close_native",
+    "close_policy_fd",
+    "closed_file_census",
+    "decode",
+    "fixed_pin",
+    "forbid_external",
+    "local_git_head",
+    "main",
+    "module_bytes",
+    "need",
+    "pin",
+    "read",
+    "read_pin",
+    "validate_raw"
+  ],
+  "actual_prepared_request_pin": {
+    "bytes": 1344646,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-closed-status-request-v03.json",
+    "sha256": "bf766688224e3e4a53674bdf08ee918deeb80e197d9802c7045890082f290804"
+  },
+  "baseline_pin": {
+    "bytes": 42267,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-current-protocol-v02/production_unknown_closed_status_owner_v01.py",
+    "sha256": "bd73cc7fba06a670e6ca26693fe73815718df1949445c6ab30ba848d610e79e7"
+  },
+  "checks": [
+    "Exact helper5d00 and metadata3bb are fixed-pinned and rehashed in actual sourceguard; receipt.source_pins registers both for native context.",
+    "R06 alone uses strict fixed production helper; canonical/coordination/history censes retain old own scopes and byte caps.",
+    "All4 genuine account_external_bytes/global admissions finish before9nonadmitting controls; all synthetic specials cleanup before next actual strictnativeguard.",
+    "Unchanged120second status-driver deadline is sealed after charges and controls; nativeStatus30seconds, F07policy/resource/reservation420seconds and actual heartbeat/full guard semantics unchanged.",
+    "Actual NativeStatus read-only open/observe/close plus policy shared-lock release retain unchanged close loops and native handles checks.",
+    "Progress within native open/observe try remains covered by actual nativeclose finally; no progress marker bypasses operation or supplies a success/exit witness.",
+    "Private progress has fixed14stage names, 4charge indexes, private600O_NOFOLLOW file identity,64KiB total bound, complete fsync writes; no arbitrary args/credentials/SQL exported.",
+    "Failure diagnostic has exactsource whitelist,16frame/64scan limits, bounded string argument SHA, only fixed authored reason plaintext,8KiB primary stderr and no new native/process/resource queries.",
+    "Receipt exact45keys unchanged; result adds only controls/helper/metadata pins; currentA corroboration and historicalunattested leaf flags unchanged.",
+    "Actual new requestbf766... pins this exact actor and a NEW statusattempt02."
+  ],
+  "helper_pin": {
+    "bytes": 15403,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+    "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+  },
+  "helper_review_pin": {
+    "bytes": 3987,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/runtime-tree-census-independent-review-v01.json",
+    "sha256": "865f21da9c34f03b179855db3ed6e4796ea1cb588d5fc472ccc3b3261d9f0d36"
+  },
+  "historical_failure_scope": "The old76683 retained ValueError has no exact line/reason. Observed log links and old deadline positioning are concrete source blockers, not retrospectively proved sole causes. Original failed artifacts remain unchanged.",
+  "limitations": [
+    "Helper census remains cooperative/non-atomic; absolute queued directory opens and generation checks do not fully exclude concurrent ancestor replacement races. No universal confinement or continuous filesystem custody is claimed.",
+    "All9controls and genuine production status read/close/physical-byte preservation are runtime pending at this static freeze.",
+    "Receipt/result writes occur inside active F07 custody; root must independently observe actual final owner exit, all native ancestry release and owner retirement before ADMIN.",
+    "No provider/Grok/remote outcome/callback closure, completion, rearm or successor is authorized by this source review."
+  ],
+  "method": "Source AST and actual immutable prepared request JSON only; no imports, native jobs/controls, production filesystem stat/readlink, DB/WAL/log content or C edits.",
+  "resolved_source_findings": [
+    "Old generic strict fixture census cannot accept the three independently observed retained native log links. The shared helper admits only the exact pinned links and rejects every other static alias/special.",
+    "Four global census charges previously consumed the status-driver window. They now complete before sealing the unchanged120second driver window."
+  ],
+  "schema": "production-closed-status-window-census-diagnostic-independent-review@3",
+  "source_pin": {
+    "bytes": 50588,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/production_unknown_closed_status_owner_v01.py",
+    "sha256": "c0a7494b8de54641ae759c1754110c548a52f6be647c26a3329d75d3a972eee3"
+  },
+  "status": "static_clear_actual_status_and_controls_pending",
+  "unresolved_static_blockers": []
+}

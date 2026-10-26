@@ -5058,6 +5058,19 @@ class MergeTrain:
                     preflight_receipt=preflight_receipt,
                     callback_owned_integration=True,
                 )
+            if callback_result.get("completion_only_pending") is True:
+                # The native callback has retained the exact integration and
+                # may retry only completion publication under this same row.
+                # No provider/merge failure budget is consumed by that wait.
+                return self._finish_deferral(request,
+                    reason=str(callback_result.get("reason") or "completion_continuation_pending"),
+                    details={"merge_result": callback_result,
+                        "integrated": callback_result.get("integrated") is True,
+                        "accepted": False, "acceptance_pending": True,
+                        "completion_authoritative": False,
+                        "completion_only_pending": True,
+                        "completion_continuation_id": callback_result.get("completion_continuation_id", "")},
+                    started_at=started_at)
             callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
             try:
                 lock_owner_pid = int(callback_result.get("lock_owner_pid") or 0)
@@ -6655,7 +6668,7 @@ class MergeTrain:
         details: Mapping[str, Any],
         started_at: float,
     ) -> dict[str, Any]:
-        """Persist non-attempted external contention without burning retries."""
+        """Persist mutation contention or completion-only waits without retries."""
 
         result: dict[str, Any] = {
             "status": "deferred",
@@ -6708,6 +6721,8 @@ class MergeTrain:
                     )
                     if isinstance(merge_details, Mapping)
                     else reason,
+                    "completion_only_pending": details.get("completion_only_pending") is True,
+                    "completion_continuation_id": str(details.get("completion_continuation_id") or ""),
                 },
             )
         except MergeQueueFenceError as exc:

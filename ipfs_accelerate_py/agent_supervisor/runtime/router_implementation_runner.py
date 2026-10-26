@@ -809,6 +809,8 @@ def _refuse_candidate_preparation(prompt):
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
+        resume_session_id: str | None = None,
+        grok_named_session_request=None,
         semantic_repository: Path | None = None,
         source_formalization_handoff: Path | None = None,
         source_formalization_handoff_sha256: str | None = None,
@@ -828,6 +830,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         tool_output_policy: str = "legacy",
         source_view_advisory_policy: str = "legacy",
         repository_source_policy: str = "legacy",
+        repository_source_parent_lease=None,
+        repository_source_scheduler_policy_sha256: str | None = None,
+        repository_source_deadline_monotonic: float | None = None,
+        repository_source_owner_descriptor: Path | None = None,
+        repository_source_owner_descriptor_sha256: str | None = None,
         source_input_policy: str = "legacy",
         query_reference_policy: str = "legacy",
         census_only: bool = False,
@@ -852,12 +859,47 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     from ipfs_accelerate_py.router_deps import RouterDeps
 
     failure_phase = "argument_validation"
+    repository_resources = (repository_source_parent_lease,
+        repository_source_scheduler_policy_sha256, repository_source_deadline_monotonic)
+    repository_owner_selected = any(value is not None for value in (
+        repository_source_owner_descriptor, repository_source_owner_descriptor_sha256))
+    if repository_owner_selected:
+        if (repository_source_owner_descriptor is None or not repository_source_owner_descriptor_sha256
+                or repository_source_policy == "legacy" or purpose != "coding" or provider != "codex_cli"
+                or census_only or any(value is not None for value in repository_resources)):
+            raise ValueError("exact repository owner descriptor requires its exclusive Codex coding route")
+    if any(value is not None for value in repository_resources):
+        if (any(value is None for value in repository_resources) or repository_source_policy == "legacy"
+                or purpose != "coding" or provider != "codex_cli"):
+            raise ValueError("explicit repository source parent, policy and deadline require its Codex coding route")
+        from .repository_source_resource_handoff import validate_owner_resources
+        validate_owner_resources(parent_lease=repository_source_parent_lease,
+            expected_policy_sha256=repository_source_scheduler_policy_sha256,
+            deadline_monotonic=repository_source_deadline_monotonic)
     if type(codex_cli_literal_response) is not bool:
         raise ValueError("Codex literal response must be an explicit Boolean")
     if codex_cli_literal_response and provider != "codex_cli":
         raise ValueError("Codex literal response requires the Codex CLI provider")
     if receipt_observer is not None and not callable(receipt_observer):
         raise ValueError("explicit receipt observer callback required")
+    if grok_named_session_request is not None:
+        from ipfs_accelerate_py.cli_runtime.grok_named_session import validate_preparation_option
+        if (purpose != "planning" or provider != "grok_cli" or model != "grok-4.7"
+                or resume_session_id is not None):
+            raise ValueError("automatic named session requires its exclusive Grok planning route")
+        validate_preparation_option(provider, grok_named_session_request, {})
+        # Preserve the caller's integer contract; the provider applies the
+        # precise remaining deadline only when headless actually starts.
+        grok_named_session_request.remaining_seconds(timeout)
+    if resume_session_id is not None:
+        if provider != "grok_cli" or type(resume_session_id) is not str:
+            raise ValueError("explicit native resume requires the Grok CLI provider and a canonical session UUID")
+        try:
+            canonical_session_id = str(uuid.UUID(resume_session_id))
+        except (ValueError, AttributeError):
+            raise ValueError("explicit native resume requires a canonical session UUID") from None
+        if canonical_session_id != resume_session_id:
+            raise ValueError("explicit native resume requires a canonical session UUID")
     if world_packet_audit_directory is not None and world_task_packet is None:
         raise ValueError("world packet audit capture requires a prepared world packet")
     if world_task_packet is not None:
@@ -1191,7 +1233,22 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         required_suffix += source_lookup_guidance
     failure_phase = "model_prompt"
     repository_source_binding = None
-    if repository_source_policy != "legacy":
+    if repository_owner_selected:
+        from .repository_source_owner_binding import create_binding as create_owner_binding
+        repository_source_binding = create_owner_binding(workspace=root,
+            requested_policy=repository_source_policy, descriptor_path=repository_source_owner_descriptor,
+            descriptor_sha256=repository_source_owner_descriptor_sha256)
+        if container_boundary is not None:
+            descriptor = repository_source_binding["descriptor"]
+            # A public manifest digest alone does not identify its nominated
+            # owner. Bind the live descriptor to the identities returned by
+            # the existing boundary verifier, without rereading its artifact.
+            if (type(boundary) is not dict
+                    or descriptor["boundary_manifest_sha256"] != container_boundary_sha256
+                    or any(type(boundary.get(key)) is not int or descriptor[key] != boundary[key]
+                           for key in ("owner_uid", "worker_uid"))):
+                raise ValueError("repository owner differs from the selected container boundary")
+    elif repository_source_policy != "legacy":
         from .repository_source_policy import create_binding as create_repository_binding
         repository_source_binding = create_repository_binding(workspace=root, requested_policy=repository_source_policy,
             **({"tokenizer": {"artifact": tokenizer_source["descriptor_path"],
@@ -1441,6 +1498,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     instance = get_llm_provider(provider, deps=deps, use_cache=False)
     set_last_cli_observation(provider, {})
     invocation = uuid.uuid4().hex
+    if grok_named_session_request is not None and invocation == grok_named_session_request.allocation_session_id:
+        raise ValueError("automatic allocation and fresh invocation identities must differ")
     started = time.monotonic()
     previous = os.environ.get("ipfs_accelerate_py_CODEX_SANDBOX")
     previous_bytecode = os.environ.get("PYTHONDONTWRITEBYTECODE")
@@ -1566,6 +1625,21 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "disallowed_tools": provider_options["grok_disallowed_tools"].split(","),
             "effective_toolset_verified": False,
         }
+        if grok_named_session_request is not None:
+            provider_options["grok_named_session_request"] = grok_named_session_request
+            provider_options["grok_cli_cmd"] = [str(grok_named_session_request.binary.path)]
+            receipt["provider_invocation_policy"]["owned_named_session_requested"] = True
+            receipt["provider_invocation_policy"]["allocation_session_id"] = grok_named_session_request.allocation_session_id
+            receipt["provider_invocation_policy"]["named_session_binary_sha256"] = grok_named_session_request.binary.sha256
+            receipt["provider_invocation_policy"]["production_configuration_qualified"] = False
+        if resume_session_id is not None:
+            # An owner may resume a genuinely created and independently
+            # attested native session. Explicit kwargs keep allocation routing
+            # from creating a different chat session. This does not create,
+            # inspect or qualify the supplied session's content or toolset.
+            provider_options["resume_session_id"] = resume_session_id
+            receipt["provider_invocation_policy"]["native_resume_session_id"] = resume_session_id
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = False
         if purpose == "coding":
             provider_options.update(grok_stream_progress=True,
                                     grok_progress_callback=_grok_progress_emitter(invocation))
@@ -1594,12 +1668,47 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     tool_output_store_identity = None
     source_view_store_identity = None
     repository_store_identity = None
+    worker_forwarding_outbox = None
+    worker_forwarding_fallback = None
+    worker_forwarding_interruption = None
     pending_provider_error = None
     try:
-        if repository_source_binding is not None:
+        if repository_owner_selected:
+            failure_phase = "repository_source_worker_forwarding"
+            try:
+                from . import repository_source_worker_receipts as worker_receipts
+                from .repository_source_owner_binding import with_worker_forwarding
+                worker_forwarding_fallback = worker_receipts.unavailable_capture(
+                    session_id=repository_source_binding["session_id"],
+                    descriptor_sha256=repository_source_binding["descriptor_sha256"],
+                    invocation_id=invocation, reason="capture_unavailable")
+                receipt["repository_source_worker_forwarding"] = {
+                    **worker_forwarding_fallback, "receipts": []}
+                worker_forwarding_outbox = worker_receipts.create_outbox(workspace=root,
+                    session_id=repository_source_binding["session_id"],
+                    descriptor_sha256=repository_source_binding["descriptor_sha256"],
+                    invocation_id=invocation)
+                observed_binding = with_worker_forwarding(
+                    repository_source_binding, worker_forwarding_outbox.target)
+            except Exception:
+                # Optional worker accounting cannot prevent a source/provider
+                # invocation. Any created outbox still belongs to this finally.
+                pass
+            else:
+                repository_source_binding = observed_binding
+                receipt["repository_source_policy"] = observed_binding
+                provider_options["codex_repository_source_binding"] = observed_binding
+            failure_phase = "provider_invocation"
+        if repository_source_binding is not None and not repository_owner_selected:
             failure_phase = "repository_source_store"
             from .repository_source_policy import create_runtime_store
             repository_store_identity = create_runtime_store(repository_source_binding)
+            if repository_source_parent_lease is not None:
+                from .repository_source_resource_handoff import install_repository_source_resources
+                install_repository_source_resources(repository_source_binding,
+                    parent_lease=repository_source_parent_lease,
+                    expected_policy_sha256=repository_source_scheduler_policy_sha256,
+                    deadline_monotonic=repository_source_deadline_monotonic)
             failure_phase = "provider_invocation"
         if source_view_binding is not None:
             failure_phase = "source_view_store"
@@ -1679,6 +1788,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
                                                       source_lookup_descriptor_sha256):
+            if repository_source_parent_lease is not None:
+                failure_phase = "repository_source_resources"
+                validate_owner_resources(parent_lease=repository_source_parent_lease,
+                    expected_policy_sha256=repository_source_scheduler_policy_sha256,
+                    deadline_monotonic=repository_source_deadline_monotonic)
+            if repository_owner_selected:
+                failure_phase = "repository_source_owner_currentness"
+                from .repository_source_owner_binding import validate_binding as validate_owner_binding
+                validate_owner_binding(repository_source_binding, workspace=root, materialized=True)
             if scoped_instruction:
                 # Initialization, descriptor checks and working-set preflight
                 # may run caller code. Close the complete signed source replay
@@ -1711,13 +1829,30 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 # Both purposes launch a workspace-capable agent and require a fresh
                 # native receipt. Cached response text cannot replay those effects.
                 side_effecting=True,
-                task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
+                task_kind="coding", allocation_path="cli",
+                allocation_session_id=(grok_named_session_request.allocation_session_id
+                    if grok_named_session_request is not None else invocation),
                 codex_cli_literal_response=codex_cli_literal_response,
-                **({"temperature": 0} if provider == "codex_cli" else {}),
+                temperature=0,
                 **provider_options,
             )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
+        if grok_named_session_request is not None:
+            named_receipt = grok_named_session_request.receipt()
+            native_id = grok_named_session_request.completed_session_id
+            if (not native_id or observation.get("session_id") != native_id
+                    or named_receipt.get("bootstrap_successful") is not True
+                    or named_receipt.get("lifetime_closed") is not True
+                    or named_receipt.get("response_accepted") is not True):
+                raise RuntimeError("owned named session lifecycle or native observation differs")
+            receipt["provider_invocation_policy"]["owned_named_session"] = named_receipt
+            receipt["provider_invocation_policy"]["native_resume_session_id"] = native_id
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = True
+        if resume_session_id is not None:
+            if observation.get("session_id") != resume_session_id:
+                raise RuntimeError("observed Grok native resume session differs from the explicit request")
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = True
         if repository_source_binding is not None and (
                 observation.get("codex_repository_source_config_sha256") != repository_source_binding["config_sha256"]
                 or observation.get("codex_repository_source_configured") is not True):
@@ -1780,7 +1915,23 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise
     finally:
         try:
-            if repository_source_binding is not None:
+            if worker_forwarding_outbox is not None:
+                try:
+                    receipt["repository_source_worker_forwarding"] = worker_forwarding_outbox.collect_and_close()
+                except BaseException as capture_error:
+                    # Setup established this closed snapshot before allocating
+                    # the outbox. Reuse it without another fallible metadata
+                    # callback or mutable binding lookup during finalization.
+                    receipt["repository_source_worker_forwarding"] = {
+                        **worker_forwarding_fallback, "reason": "capture_failed", "receipts": []}
+                    # Preserve an existing provider failure. A fresh control-flow
+                    # interruption propagates after ordinary receipt publication.
+                    if not isinstance(capture_error, Exception) and pending_provider_error is None:
+                        worker_forwarding_interruption = capture_error
+            if repository_owner_selected and repository_source_binding is not None:
+                from .repository_source_owner_binding import unavailable_usage
+                repository_source_binding["usage"] = unavailable_usage()
+            elif repository_source_binding is not None:
                 from .repository_source_policy import finish_runtime_store
                 repository_source_binding["usage"] = finish_runtime_store(repository_source_binding,
                     expected_identity=repository_store_identity)
@@ -1882,11 +2033,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 receipt_observer(json.loads(json.dumps(receipt)))
             except BaseException as observer_error:
                 receipt["receipt_observer_error_type"] = type(observer_error).__name__
-                # Diagnostic callbacks cannot replace a pending provider failure.
+                # Diagnostic callbacks cannot replace a pending provider failure
+                # or the first deferred capture interruption.
                 # A fresh interruption still propagates after environment cleanup.
-                if not isinstance(observer_error, Exception) and pending_provider_error is None:
+                if (not isinstance(observer_error, Exception) and pending_provider_error is None
+                        and worker_forwarding_interruption is None):
                     raise
         print(json.dumps(receipt, sort_keys=True), flush=True)
+        if worker_forwarding_interruption is not None:
+            raise worker_forwarding_interruption
 
 
 def main():
@@ -1927,6 +2082,8 @@ def main():
     parser.add_argument("--source-view-advisory-policy", default="legacy", choices=SOURCE_VIEW_POLICIES)
     from .repository_source_policy import POLICIES as REPOSITORY_SOURCE_POLICIES
     parser.add_argument("--repository-source-policy", default="legacy", choices=REPOSITORY_SOURCE_POLICIES)
+    parser.add_argument("--repository-source-owner-descriptor", type=Path)
+    parser.add_argument("--repository-source-owner-descriptor-sha256")
     from .source_input_policy import POLICIES as SOURCE_INPUT_POLICIES
     parser.add_argument("--source-input-policy", default="legacy", choices=SOURCE_INPUT_POLICIES)
     from .query_reference_policy import POLICIES as QUERY_REFERENCE_POLICIES
@@ -1973,6 +2130,8 @@ def main():
                         tool_output_policy=args.tool_output_policy,
                         source_view_advisory_policy=args.source_view_advisory_policy,
                         repository_source_policy=args.repository_source_policy,
+                        repository_source_owner_descriptor=args.repository_source_owner_descriptor,
+                        repository_source_owner_descriptor_sha256=args.repository_source_owner_descriptor_sha256,
                         source_input_policy=args.source_input_policy,
                         query_reference_policy=args.query_reference_policy,
                         census_only=args.semantic_metadata_census_only,

@@ -1,0 +1,50 @@
+{
+  "AST_parsed": true,
+  "exact_unified_diff_verified": true,
+  "imports_jobs_DB_signals_or_production_access": false,
+  "limitations": [
+    "No helper/product/backend import, native execution/admission, database open, network/provider call, process signal or C/A-B edit was performed. This source review does not qualify runtime behavior.",
+    "Observed owner62976 child2 failure is retained. Only request/backend-binding files existed before canonical creation; the exact old denied event/callsite remains unknown until genuine new diagnostic preflight.",
+    "First/last observations are bounded and intermediate blocked events may be omitted. An application can catch/refuse an event; the explicit exception identity flag must be honored. A diagnostic is not proof of full model nonreachability or callback closure.",
+    "The inherited outer error_message serializer is unchanged and limited to4096bytes. New diagnostic fields do not copy audit args or exception repr. Paths/functions are source metadata, not arbitrary local variable payloads.",
+    "Root must pin this new source and run exact full controller_preparation preflight in a NEW disposable root/attempt under actual finite-owner custody, retain actual exits/finalization and aggregate census, and never use the failed original preflight to admit supervisor_launch.",
+    "Frozen A/B v01 remains unchanged. This diagnostic source is not automatically substituted into its pinned manifest; any later authentic runtime bundle must explicitly pin its reviewed source and successful exact-source preflight."
+  ],
+  "new_dispatch_permission": false,
+  "pins": {
+    "base": {
+      "bytes": 28496,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-v01/produce_authentic_unknown_master_v01.py",
+      "sha256": "d11e0221419b2736366dfb5a9d1031c8050a95209f4f3378e1718d489f6f1e1a"
+    },
+    "diagnostic_producer": {
+      "bytes": 32130,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/produce_authentic_unknown_master_diagnostic_v02.py",
+      "sha256": "5385eca75dcce2b7058bd915814b4cedc10969ec74b14fa3d9a421940b7e5c04"
+    },
+    "manifest": {
+      "bytes": 3118,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/manifest-v02.json",
+      "sha256": "ae030e4728b47142ec95f18926b82a93a6fdab8a96f1edc617dca5bc7da502c0"
+    },
+    "patch": {
+      "bytes": 6853,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-fixture-diagnostic-v02/producer-diagnostic-v02.patch",
+      "sha256": "d5f29dfee5fe4be7a40f324599b565b80ec06bf74135bac587a65899fdd5b84b"
+    }
+  },
+  "production_authority": false,
+  "remaining_static_blockers": [],
+  "review_scope": "Exact bytes/unified diff, AST structural comparison and full new diagnostic path source read only.",
+  "reviewer": "unknown_event_forensics",
+  "runtime_qualified": false,
+  "schema": "authentic-producer-diagnostic-independent-source-review@2",
+  "source_findings": [
+    "Existing forbidden-event membership and socket family predicate are byte-equivalent AST tests. All blocked routes still raise RuntimeError; no allowlist, retry, subprocess, model/provider, network or native receipt permission was added.",
+    "Existing produce body becomes exactly the frozen original AST after removing only diagnostic global/stage assignments. Native store/claim/bridge/history/master/output/exit calls are unchanged. prepare_imports and every other existing function/class except hook/main/produce remain AST-identical.",
+    "New diagnostic_frame/refused_dispatch export first and last fixed event name/stage, ordinal and at most24 source frames each. Filename/function lengths and printable ASCII are bounded; external paths are omitted and joined only by SHA256. Frame objects are released and arguments/environment/locals/source text/address/commands are never inspected or serialized.",
+    "The exact RuntimeError instance raised by the last refusal is retained and compared by object identity to main's caught error. A true join identifies propagation of that recorded refusal; false or swallowed earlier refusal cannot be presented as the final cause.",
+    "The audit hook performs no filesystem writes and only hashes/reads frame code metadata. sys._getframe/object.__getattr__ audit events do not match its unchanged deny predicates. Bounded observations flow through the existing failure stderr handler; failure exit remains2.",
+    "Request keyset, self-pin checks, source/HEAD/environment/backend checks and all genuine custody/native terminal prerequisites are unchanged. No synthetic native master, owner, fence, status, WAL maintenance or audit artifact was added."
+  ]
+}

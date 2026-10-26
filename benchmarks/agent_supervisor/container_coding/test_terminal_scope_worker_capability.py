@@ -55,14 +55,17 @@ def packaged_scope(tmp_path_factory):
     return archive, manifest, dataset
 
 
-def reject_before_harbor(packaged_scope, manifest, tmp_path, monkeypatch):
+def reject_before_harbor(packaged_scope, manifest, tmp_path, monkeypatch, *, changed_source=None):
     archive = tmp_path / "changed-archive"
     archive.mkdir()
     shutil.copyfile(packaged_scope[0] / "runtime.tar.gz", archive / "runtime.tar.gz")
     (archive / "manifest.json").write_text(json.dumps(manifest))
     monkeypatch.setattr(benchmark.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected Harbor call"))
     output = tmp_path / "trial"
-    with pytest.raises(ValueError, match="matching worker archive capability"):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if changed_source == "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+        else "matching worker archive capability")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=packaged_scope[2], output=output, archive=archive, arm="no-index")
     assert not output.exists()
 
@@ -100,7 +103,7 @@ def test_scope_owner_pins_cannot_be_missing_stale_or_relabelled_before_harbor(
     assert capability.worker_capability_for_inventory(manifest["files"]) is None
     with pytest.raises(ValueError, match="rebuild runtime archive"):
         capability.require_worker_capability(manifest, None)
-    reject_before_harbor(packaged_scope, manifest, tmp_path, monkeypatch)
+    reject_before_harbor(packaged_scope, manifest, tmp_path, monkeypatch, changed_source=name)
 
 
 @pytest.mark.parametrize("damage", [

@@ -12,6 +12,10 @@ from benchmarks.agent_supervisor.container_coding.benchmark_comparison import (
 
 
 def _receipt(tmp_path, name, schema, trials, arm=None):
+    # These synthetic complete populations explicitly account for every attempt.
+    for trial in trials:
+        if isinstance(trial.get("supervisor"), dict):
+            trial["supervisor"].setdefault("unreceipted_provider_attempt", False)
     value = {
         "schema": schema,
         "task": "fix-code-vulnerability",
@@ -57,10 +61,15 @@ def _invocation(identity="call"):
     return {
         "invocation_id": identity,
         "provider": "codex_cli",
+        "model": "pinned-model",
         "phase": "planning",
         "status": "provider_returned",
         "native_rollout_usage": {
             "schema": "native-codex-cumulative-usage@1",
+            "thread_id": hashlib.sha256(identity.encode()).hexdigest(),
+            "rollout_sha256": hashlib.sha256((identity + "-rollout").encode()).hexdigest(),
+            "observed_token_count_records": 1,
+            "usage_available": True,
             "cache_included_in_input": True,
             "task_complete_observed": True,
             "usage": {
@@ -78,7 +87,10 @@ def _invocation(identity="call"):
 def _grok_invocation(identity="grok-call", complete=None):
     return {
         "invocation_id": identity, "phase": "coding", "provider": "grok_cli", "status": "provider_returned",
+        "model": "pinned-model",
         "native_rollout_usage": {
+            "usage_observation_sha256": hashlib.sha256(identity.encode()).hexdigest(),
+            "observed_final_usage_records": 1,
             "schema": "native-grok-final-usage@1", "usage_available": True,
             "usage_complete_observed": complete, "task_complete_observed": True,
             "totals_scope": "native_final_envelope", "cache_included_in_input": False,
@@ -122,7 +134,7 @@ def test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts(
     ("zero_passes", "no_official_passes", "no_official_passes"),
     ("partial_reward", "no_official_passes", "no_official_passes"),
     ("incomplete_session", "incomplete_native_token_usage", "incomplete_reported_provider_cost"),
-    ("missing_total", "incomplete_native_token_usage", None),
+    ("missing_total", "incomplete_native_token_usage", "incomplete_reported_provider_cost"),
     ("unreceipted_attempt", "incomplete_native_token_usage", "incomplete_reported_provider_cost"),
     ("missing_cost", None, "incomplete_reported_provider_cost"),
 ])
@@ -267,8 +279,10 @@ def test_grok_counter_or_completeness_contract_gaps_do_not_create_totals(tmp_pat
     result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
     row = result["rows"][1]
     assert all(value is None for value in row["tokens"].values())
-    assert row["native_usage_complete_observed"] is None
-    assert row["known_token_subtotals"]["input_tokens"] == 10
+    assert row["native_usage_complete_observed"] is not True
+    # Invalid populations retain raw counters on the invocation, not as a
+    # trusted additive subtotal for the trial.
+    assert row["invocations"][0]["known_token_subtotals"]["input_tokens"] == 10
     assert all(f"≥ {value} (observed)" not in markdown(result) for value in (10, 30, 2, 42, 43))
 
 
@@ -300,7 +314,8 @@ def test_unidentified_legacy_receipt_does_not_inherit_codex_contract(tmp_path):
     row = collect(baseline=_baseline(tmp_path), supervisors=[receipt])["rows"][1]
     assert row["native_usage_complete_observed"] is None
     assert row["tokens"]["total_tokens"] is None
-    assert row["known_token_subtotals"]["total_tokens"] == 22
+    assert row["known_token_subtotals"]["total_tokens"] is None
+    assert row["invocations"][0]["known_token_subtotals"]["total_tokens"] == 22
 
 
 def test_stream_progress_survives_comparison_without_becoming_usage_or_completion():
@@ -446,6 +461,7 @@ def test_interrupted_or_legacy_usage_is_only_an_observed_subtotal(tmp_path, comp
     coding = _invocation("interrupted-coding")
     coding.update(phase="coding", status="failed", error_type="TimeoutExpired", timeout_seconds=45)
     coding["native_rollout_usage"]["usage"]["total_tokens"] = 244688
+    coding["native_rollout_usage"]["usage"]["input_tokens"] = 244686
     coding["native_rollout_usage"]["dollar_cost"] = 0.75
     if completion is None:
         coding["native_rollout_usage"].pop("task_complete_observed")
@@ -453,6 +469,7 @@ def test_interrupted_or_legacy_usage_is_only_an_observed_subtotal(tmp_path, comp
         coding["native_rollout_usage"]["task_complete_observed"] = completion
     planning = _invocation("planning")
     planning["native_rollout_usage"]["usage"]["total_tokens"] = 21244
+    planning["native_rollout_usage"]["usage"]["input_tokens"] = 21242
     planning["native_rollout_usage"]["dollar_cost"] = 0.25
     receipt = _receipt(tmp_path, "interrupted.json", SUPERVISOR, [{
         "trial": "interrupted", "reward": {"reward": 0},
@@ -631,7 +648,7 @@ def test_full_lifecycle_costs_and_actual_input_observations_are_separate(tmp_pat
     assert row["tokens"]["total_tokens"] == 22  # neither byte counts nor embeddings are text tokens
     assert not result["benchmark_advantage_claimed"]
     serialized = json.dumps(result)
-    assert "MUST NOT APPEAR" not in serialized and "9999" not in serialized
+    assert "MUST NOT APPEAR" not in serialized and "nested_helper_seconds" not in serialized
     rendered = markdown(result)
     assert "Cold initial context s" in rendered and "| full | 1 | 12 | 8 | 3 | 2 | 4 |" in rendered
     assert "not token savings" in rendered
@@ -826,8 +843,24 @@ def test_absent_metadata_preserves_existing_input_observation_shape():
     assert set(observed) == {"native_prompt_bytes", "router_prompt_bytes", "model_prompt_bytes",
         "workspace_advisory_bytes", "native_prompt_sha256", "router_prompt_sha256", "model_prompt_sha256",
         "workspace_advisory_sha256", "semantic_translation", "doctor_residual_context",
-        "measurements_are_token_savings", "input_reconstruction_verified_by_receipt_presence"}
+        "measurements_are_token_savings", "input_reconstruction_verified_by_receipt_presence", "request_exposure"}
     assert "semantic_metadata_view" not in observed
+
+
+@pytest.mark.parametrize("mismatch", [None, "hash", "bytes"])
+def test_metadata_selection_is_bound_to_rendered_prompt_without_changing_native_usage(tmp_path, mismatch):
+    metadata = _metadata_selection()
+    invocation = dict(_invocation(), semantic_metadata_view=metadata,
+        model_prompt_sha256="d" * 64 if mismatch == "hash" else metadata["selected_complete_sha256"],
+        model_prompt_bytes=801 if mismatch == "bytes" else metadata["selected_complete_bytes"])
+    path = _receipt(tmp_path, "bound-prompt.json", SUPERVISOR, [{"trial": "bound",
+        "supervisor": {"provider_invocations": [invocation]}}], "full")
+    row = collect(baseline=_baseline(tmp_path), supervisors=[path])["rows"][1]
+    exposure = row["invocations"][0]["input_observation"]["request_exposure"]
+    assert exposure["selected_metadata_binding"] == ("mismatched" if mismatch else "matched")
+    assert exposure["provider_request_tokens"] is None
+    assert (exposure["local_prompt_count"] is None) is bool(mismatch)
+    assert row["tokens"]["total_tokens"] == 22
 
 
 @pytest.mark.parametrize("schema, qualification", [

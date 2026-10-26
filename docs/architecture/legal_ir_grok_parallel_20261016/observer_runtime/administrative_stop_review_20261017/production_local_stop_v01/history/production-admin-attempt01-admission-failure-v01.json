@@ -1,0 +1,24 @@
+{
+  "actual_stderr_error_type": "LeaseTimeoutError",
+  "actual_tool_exit": 2,
+  "actual_tool_session": 19813,
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-admin-20261017-01",
+  "attempt_is_empty": true,
+  "control_scope_not_created": true,
+  "disk_reservation_not_created": true,
+  "exact_scheduler_request_and_descendants_absent": true,
+  "failed_request_and_empty_attempt_preserved": true,
+  "failure_before_native_worker_or_ADMIN_by_fixed_source_order": true,
+  "native_ACK_or_receipt_created": false,
+  "native_audit_or_settlement_claimed": false,
+  "observed_at_epoch": 1792243118.9862874,
+  "production_database_opened_by_observer": false,
+  "provider_attempt_retry_or_cap_increase": false,
+  "request_pin": {
+    "bytes": 2733,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-admin-request-v03.json",
+    "sha256": "5919ee85b9f73f899ec61cc225e79194aea39e04b8425f071b471db5a01ec592"
+  },
+  "schema": "production-admin-resource-admission-failure-observation@1",
+  "unchanged_approved_subject_task_attempt": 2
+}

@@ -225,14 +225,52 @@ def _ducklake_root(target: str | None = None) -> Path | None:
     return Path(target).expanduser().resolve().parent / "ducklake"
 
 
-def _connect(target: str):
+def _validate_existing_relations(connection: Any, *, board: bool) -> None:
+    """Check required read projections without DDL or scanning state bodies.
+
+    Extra columns remain compatible with these explicit projections. Schema
+    creation and constraints belong to the normal writable catalog owner;
+    a Quack client's read-only attachment cannot initialize them.
+    """
+    if board:
+        relations = {
+            "artefact_generic": (
+                ("board_namespace", "VARCHAR"), ("kind", "VARCHAR"),
+                ("artefact_id", "VARCHAR"), ("payload_json", "VARCHAR"),
+                ("updated_at_ms", "BIGINT"),
+            ),
+        }
+    else:
+        fields = (("body_json", "VARCHAR"), ("revision", "BIGINT"),
+                  ("completion_authority", "BOOLEAN"), ("updated_at", "VARCHAR"))
+        relations = {TABLE: (("lane_key", "VARCHAR"), *fields),
+                     HANDOFF_TABLE: (("record_key", "VARCHAR"), *fields)}
+    for relation, expected in relations.items():
+        projection = ", ".join(name for name, _kind in expected)
+        try:
+            rows = connection.execute(f"DESCRIBE SELECT {projection} FROM {relation}").fetchall()
+            actual = tuple((str(row[0]), str(row[1]).upper()) for row in rows)
+        except Exception as exc:
+            raise PortalTaskStateControlPlaneError(
+                f"task state control plane schema unavailable: {relation}"
+            ) from exc
+        if actual != expected:
+            raise PortalTaskStateControlPlaneError(
+                f"task state control plane schema differs: {relation}"
+            )
+
+
+def _connect(target: str, *, initialize: bool = True):
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         is_quack_transport_target,
         open_duckdb_connection,
     )
 
+    if type(initialize) is not bool:
+        raise TypeError("task state catalog initialization must be a boolean")
+    quack = is_quack_transport_target(target)
     bound = target in _BOUND_STATE_TARGETS.values()
-    if not is_quack_transport_target(target):
+    if not quack:
         path = Path(target)
         if (
             path.name == "control.duckdb"
@@ -242,14 +280,19 @@ def _connect(target: str):
             raise PortalTaskStateControlPlaneError(
                 "portal task state refuses the exclusive extra-gate control.duckdb name"
             )
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if initialize:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        elif not path.is_file():
+            raise PortalTaskStateControlPlaneError("task state read requires an existing catalog")
     connection = open_duckdb_connection(
         target,
-        prefer_quack=is_quack_transport_target(target),
+        prefer_quack=quack,
     )
-    if _is_board_control_database(target):
-        connection.execute(
-            """
+    try:
+        if initialize and not quack:
+            if _is_board_control_database(target):
+                connection.execute(
+                    """
             CREATE TABLE IF NOT EXISTS artefact_generic (
                 board_namespace VARCHAR,
                 kind VARCHAR,
@@ -258,12 +301,16 @@ def _connect(target: str):
                 updated_at_ms BIGINT,
                 PRIMARY KEY (board_namespace, kind, artefact_id)
             )
-            """
-        )
-    else:
-        connection.execute(DDL)
-        connection.execute(HANDOFF_DDL)
-    return connection
+                    """
+                )
+            else:
+                connection.execute(DDL)
+                connection.execute(HANDOFF_DDL)
+        _validate_existing_relations(connection, board=_is_board_control_database(target))
+        return connection
+    except BaseException:
+        connection.close()
+        raise
 
 
 def _project_ducklake(
@@ -503,7 +550,7 @@ def _save_board_task_state(
 def _load_board_task_state(target: str, key: str, *, create: bool) -> dict[str, Any]:
     if not create and not Path(target).is_file():
         return {}
-    connection = _connect(target)
+    connection = _connect(target, initialize=create)
     try:
         row = connection.execute(
             """
@@ -585,6 +632,113 @@ def save_portal_task_state(
     }
 
 
+def read_portal_task_state_snapshot(state_path: Path | str) -> dict[str, Any] | None:
+    """Read an existing authoritative body and revision without initializing it."""
+
+    path = Path(state_path)
+    target, _source = resolve_control_plane(path)
+    if target is None:
+        return None
+    connection = _connect(target, initialize=False)
+    try:
+        if _is_board_control_database(target):
+            row = connection.execute(
+                """SELECT payload_json, updated_at_ms FROM artefact_generic
+                    WHERE board_namespace = ? AND kind = ? AND artefact_id = ?""",
+                [_BOARD_NAMESPACE, _BOARD_KIND, path.stem],
+            ).fetchone()
+        else:
+            row = connection.execute(
+                f"SELECT body_json, revision FROM {TABLE} WHERE lane_key = ?", [path.stem],
+            ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        return None
+    body = json.loads(str(row[0]))
+    if not isinstance(body, dict):
+        raise PortalTaskStateControlPlaneError("stored task state is not an object")
+    return {"body": body, "revision": int(row[1])}
+
+
+def compare_and_save_portal_task_state(
+    lane_key: str,
+    body: Mapping[str, Any],
+    *,
+    expected: Mapping[str, Any],
+    expected_revision: int,
+    state_path: Path | str,
+) -> dict[str, Any]:
+    """Replace an existing lane only while its entire observed body matches.
+
+    Stale recovery must never upsert over a newer dispatch or hold.  The
+    comparison belongs in the authoritative UPDATE, including for the board
+    store; a Python read followed by ``save_portal_task_state`` is not a CAS.
+    Missing rows and missing authority are refusals, never insert authority.
+    """
+
+    if (not isinstance(body, Mapping) or not isinstance(expected, Mapping) or not expected
+            or type(expected_revision) is not int or expected_revision < 1):
+        raise PortalTaskStateControlPlaneError("task-state CAS requires a nonempty expected object")
+    target, source = resolve_control_plane(state_path)
+    if target is None:
+        raise PortalTaskStateControlPlaneError("task-state CAS requires existing authority")
+    payload, observed = dict(body), dict(expected)
+    if payload.get("completion_authority") is True or observed.get("completion_authority") is True:
+        raise PortalTaskStateControlPlaneError("task-state CAS cannot grant completion authority")
+    payload["completion_authority"] = observed["completion_authority"] = False
+    body_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    expected_json = json.dumps(observed, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    key = str(lane_key or "").strip() or "default"
+    updated_at = datetime.now(UTC).isoformat()
+    board = _is_board_control_database(target)
+    connection = _connect(target, initialize=False)
+    try:
+        if board:
+            row = connection.execute(
+                """UPDATE artefact_generic SET payload_json = ?,
+                    updated_at_ms = greatest(updated_at_ms + 1, ?)
+                    WHERE board_namespace = ? AND kind = ? AND artefact_id = ?
+                    AND payload_json = ? AND updated_at_ms = ?
+                    RETURNING payload_json, updated_at_ms""",
+                [body_json, int(datetime.now(UTC).timestamp() * 1000),
+                 _BOARD_NAMESPACE, _BOARD_KIND, key, expected_json, expected_revision],
+            ).fetchone()
+            current = row or connection.execute(
+                """SELECT payload_json, updated_at_ms FROM artefact_generic
+                    WHERE board_namespace = ? AND kind = ? AND artefact_id = ?""",
+                [_BOARD_NAMESPACE, _BOARD_KIND, key],
+            ).fetchone()
+        else:
+            row = connection.execute(
+                f"""UPDATE {TABLE} SET body_json = ?, revision = revision + 1,
+                    completion_authority = FALSE, updated_at = ?
+                    WHERE lane_key = ? AND body_json = ? AND revision = ?
+                    RETURNING body_json, revision""",
+                [body_json, updated_at, key, expected_json, expected_revision],
+            ).fetchone()
+            current = row or connection.execute(
+                f"SELECT body_json, revision FROM {TABLE} WHERE lane_key = ?", [key],
+            ).fetchone()
+    finally:
+        connection.close()
+    result = {
+        "matched": row is not None,
+        "changed": row is not None and body_json != expected_json,
+        "lane_key": key,
+        "revision": int(current[1]) if current else None,
+        "current": json.loads(str(current[0])) if current else None,
+        "completion_authority": False,
+        "json_authority": False,
+        "source": source,
+    }
+    if row is not None:
+        result["ducklake"] = _project_ducklake(
+            key, body_json, int(row[1]), updated_at, target=target,
+        )
+    return result
+
+
 def load_portal_task_state(
     lane_key: str,
     *,
@@ -606,7 +760,7 @@ def load_portal_task_state(
     key = str(lane_key or "").strip() or "default"
     if _is_board_control_database(target):
         return _load_board_task_state(target, key, create=create)
-    connection = _connect(target)
+    connection = _connect(target, initialize=create)
     try:
         row = connection.execute(
             f"SELECT body_json FROM {TABLE} WHERE lane_key = ?",
@@ -706,7 +860,12 @@ def load_merge_handoff(
     key = str(record_key or "").strip()
     if not key:
         return {}
-    connection = _connect(selected)
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        is_quack_transport_target,
+    )
+    if not is_quack_transport_target(selected) and not Path(selected).is_file():
+        return {}
+    connection = _connect(selected, initialize=False)
     try:
         row = connection.execute(
             f"SELECT body_json FROM {HANDOFF_TABLE} WHERE record_key = ?",

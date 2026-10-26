@@ -1,0 +1,206 @@
+{
+  "actual_sql_resource_pins": {
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql": {
+      "bytes": 46509,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+      "sha256": "bace5842b431da39ac25d550338481ff4d68a2fc36327c8128280115adeaba36"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql": {
+      "bytes": 75535,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql",
+      "sha256": "9253504546b6bdad0ad9c1d00842016bfb474c40c2650d6d024919126589949c"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql": {
+      "bytes": 439,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_tasks_index_repair.sql",
+      "sha256": "e5ff06f3e3bc0bc64ff20487589ba88ef6adca7d9eff0fd8cd572f5829cfeeb2"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql": {
+      "bytes": 513,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql",
+      "sha256": "21b423d3aaf280cbbe1b066611bdfeaf94128ab994cc429cc7ed44f125b50fdc"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql": {
+      "bytes": 672,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+      "sha256": "21e54254564d1cc7fc0bb667fcaae77e08e70dbe9d40fc03dbdd7e0bfa6750a2"
+    },
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql": {
+      "bytes": 590,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
+      "sha256": "5cd6bc0dece24daa65a7c4123b347f1ffbce9e8200bafe2bc5ad2c56b225320a"
+    }
+  },
+  "authentic_custody_qualified": false,
+  "case_count": 22,
+  "cases": [
+    {
+      "case": "candidate-real-stdlib-files-enumerates-exact-six",
+      "passed": true
+    },
+    {
+      "case": "candidate-reads-all-six-exact-pinned-bytes",
+      "passed": true
+    },
+    {
+      "case": "previous-plain-loader-lacks-sql-resource-directory",
+      "passed": true
+    },
+    {
+      "case": "sql-only-namespace-cannot-bypass-closed-reader",
+      "passed": true
+    },
+    {
+      "case": "reader-wrong-package-name",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "resource-path-filesystem-fallback",
+      "passed": true,
+      "refusal_type": "FileNotFoundError"
+    },
+    {
+      "case": "binary-resource-buffer-is-readonly",
+      "passed": true
+    },
+    {
+      "case": "binary-resource-write",
+      "passed": true,
+      "refusal_type": "UnsupportedOperation"
+    },
+    {
+      "case": "binary-resource-truncate",
+      "passed": true,
+      "refusal_type": "UnsupportedOperation"
+    },
+    {
+      "case": "binary-resource-writelines",
+      "passed": true,
+      "refusal_type": "UnsupportedOperation"
+    },
+    {
+      "case": "unregistered-file",
+      "passed": true,
+      "refusal_type": "FileNotFoundError"
+    },
+    {
+      "case": "parent-path-escape",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "absolute-path",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "embedded-parent-path-escape",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "directory-open",
+      "passed": true,
+      "refusal_type": "IsADirectoryError"
+    },
+    {
+      "case": "write-mode-w",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "write-mode-wb",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "write-mode-a",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "write-mode-x",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "write-mode-r+",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "copied-sql-pin-hash-mismatch",
+      "passed": true,
+      "refusal_type": "ValueError"
+    },
+    {
+      "case": "copied-initializer-pin-hash-mismatch",
+      "passed": true,
+      "refusal_type": "ValueError"
+    }
+  ],
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "database_opened": false,
+  "driver_pin": {
+    "bytes": 18699,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/test_pinned_product_resources_v01.py",
+    "sha256": "d94fd06d831e4a5720e2917a94a0605b15afcd50fba5f63300b7fc0501502aef"
+  },
+  "fixture_only": true,
+  "historical_unknown_resolved": false,
+  "limitations": [
+    "Package views are explicitly constructed metadata test doubles, not real package imports.",
+    "This finite resource API test does not qualify genuine schema installation, A/B custody, ADMIN or settlement.",
+    "Native catalog remains unexecuted; required-five migration names are a pinned source AST observation."
+  ],
+  "loader_pin": {
+    "bytes": 55889,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+    "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+  },
+  "native_catalog_source_pin": {
+    "bytes": 61483,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+    "sha256": "8299b019f7b55612da209ca719126d8fa3f7198d03e4c258257c9f161fbaa5f6"
+  },
+  "native_migration_catalog_executed": false,
+  "native_required_migration_names_from_literal_AST": [
+    "0001_control_plane.sql",
+    "0002_causal_event_federation_core.sql",
+    "0003_state_server_restart_identity.sql",
+    "0004_hash_observations.sql",
+    "0005_tasks_index_repair.sql"
+  ],
+  "native_resource_ack_created": false,
+  "native_schema_installed": false,
+  "original_launch_receipt_created": false,
+  "passed": true,
+  "physical_sql_files": [
+    "0001_control_plane.sql",
+    "0002_causal_event_federation_core.sql",
+    "0002_tasks_index_repair.sql",
+    "0003_state_server_restart_identity.sql",
+    "0004_hash_observations.sql",
+    "0005_tasks_index_repair.sql"
+  ],
+  "previous_loader_pin": {
+    "bytes": 43192,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-implementation-v01/integration-v01/native_unknown_admin_owner_fixture.py",
+    "sha256": "fba59b05efa225cad9619c8de369c4220671ecb411fc7da4c04e57498016255f"
+  },
+  "process_network_provider_or_model_dispatched": false,
+  "product_backend_or_verifier_imported": false,
+  "production_qualified": false,
+  "request_pin": {
+    "bytes": 5530,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/native-resource-api-driver-request-v01.json",
+    "sha256": "2a8ad1353354d7e211fa6051140c6059cab39f4604de8637191438a2c4d219ad"
+  },
+  "resource_api_fixture_qualified": true,
+  "schema": "pinned-product-sql-resource-api-qualification-result@1",
+  "source_hashes_unchanged": true,
+  "symlink_fixture_created": false,
+  "test_package_view_only": true,
+  "test_view_package_initializer_executed": false
+}

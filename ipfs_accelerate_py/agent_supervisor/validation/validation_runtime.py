@@ -164,6 +164,7 @@ VALIDATION_ENVIRONMENT_ALLOWLIST = frozenset(
     {
         "CARGO_NET_OFFLINE",
         "CI",
+        "COMMON_CRAWL_AUTO_CLONE_SOURCE",
         "HF_DATASETS_OFFLINE",
         "HF_HUB_OFFLINE",
         "IPFS_ACCEL_SKIP_CORE",
@@ -2062,6 +2063,10 @@ def build_validation_environment(
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
         if key in source and source[key] is not None
     }
+    if result.get("COMMON_CRAWL_AUTO_CLONE_SOURCE", "0") != "0":
+        raise ValidationRuntimeError(
+            "COMMON_CRAWL_AUTO_CLONE_SOURCE may only disable dependency cloning"
+        )
     result.update(
         {
             _CHILD_PYTHON_ENV: python_executable,
@@ -2163,12 +2168,61 @@ def build_validation_environment(
     return result
 
 
+def _validation_python_launcher_exec(*, no_site: bool, argv0: str) -> str:
+    """Return the final interpreter exec, preserving a verified venv argv0.
+
+    An empty argv0 keeps the historical line byte-for-byte. A venv path is
+    baked into this sealed script. The task environment cannot replace it,
+    and ``exec -a`` applies it to the approved inode rather than to the
+    shebang wrapper, which would discard argv0.
+    """
+
+    site_flag = "-S" if no_site else "-s"
+    if not argv0:
+        return f'exec "$executable" {site_flag} "$@"\n'
+    return (
+        f"readonly validation_argv0={shlex.quote(argv0)}\n"
+        'if ! argv0_resolved=$(readlink -f -- "$validation_argv0"); then\n'
+        "    exit 75\n"
+        "fi\n"
+        'if [[ "$argv0_resolved" != "$executable" ]]; then\n'
+        "    exit 75\n"
+        "fi\n"
+        'argv0_venv_root="$(dirname "$(dirname "$validation_argv0")")"\n'
+        'if [[ ! -f "$argv0_venv_root/pyvenv.cfg" ]]; then\n'
+        "    exit 75\n"
+        "fi\n"
+        # The guarded shell appends the system interpreter's site-packages
+        # so a bare launcher can still import pinned tools. In front of a
+        # virtualenv those entries outrank the venv and a stale system copy
+        # of the same package hides the venv's modules. Keep only the
+        # command's own workspace path; site.py adds the venv.
+        'venv_pythonpath="${PYTHONPATH-}"\n'
+        'if [[ -n "$approved" ]]; then\n'
+        '    suffix=":$approved"\n'
+        '    while [[ "$venv_pythonpath" == *"$suffix" ]]; do\n'
+        '        venv_pythonpath="${venv_pythonpath%"$suffix"}"\n'
+        "    done\n"
+        '    if [[ "$venv_pythonpath" == "$approved" ]]; then\n'
+        '        venv_pythonpath=""\n'
+        "    fi\n"
+        "fi\n"
+        'if [[ -n "$venv_pythonpath" ]]; then\n'
+        '    export PYTHONPATH="$venv_pythonpath"\n'
+        "else\n"
+        "    unset PYTHONPATH\n"
+        "fi\n"
+        f'exec -a "$validation_argv0" "$executable" {site_flag} "$@"\n'
+    )
+
+
 def _validation_python_launcher_source(
     *,
     executable: str,
     approved_pythonpath: str,
     ruff_sha256: str,
     no_site: bool,
+    argv0: str = "",
 ) -> bytes:
     """Render a launcher that discovers Ruff beside its sealed parent FD."""
 
@@ -2286,7 +2340,7 @@ def _validation_python_launcher_source(
         '        export PYTHONPATH="$approved"\n'
         "    fi\n"
         "fi\n"
-        f'exec "$executable" {"-S" if no_site else "-s"} "$@"\n'
+        f"{_validation_python_launcher_exec(no_site=no_site, argv0=argv0)}"
     ).encode()
 
 
@@ -2393,6 +2447,8 @@ def _sealed_executable_memfd(
 @contextmanager
 def validation_python_launcher_environment(
     environment: Mapping[str, str],
+    *,
+    argv0: str = "",
 ) -> Iterator[tuple[dict[str, str], ValidationPythonLauncherReceipt]]:
     """Yield an environment that pins nested Python to approved packages.
 
@@ -2557,14 +2613,38 @@ def validation_python_launcher_environment(
             "sealed validation Python launcher is unavailable on Linux"
         ) from exc
 
-    identity_payload = _validation_python_launcher_source(
+    admitted_argv0 = _admit_validation_argv0(
+        argv0,
+        approved=resolved_executable,
+    )
+    ruff_sha256 = ruff_snapshot[1] if ruff_snapshot is not None else ""
+    base_payload = _validation_python_launcher_source(
         executable=rendered_executable,
         approved_pythonpath=approved_pythonpath,
-        ruff_sha256=(ruff_snapshot[1] if ruff_snapshot is not None else ""),
+        ruff_sha256=ruff_sha256,
         no_site=no_site,
     )
-    content_sha256 = hashlib.sha256(identity_payload).hexdigest()
-    if recorded_content_sha256 != content_sha256:
+    identity_payload = (
+        _validation_python_launcher_source(
+            executable=rendered_executable,
+            approved_pythonpath=approved_pythonpath,
+            ruff_sha256=ruff_sha256,
+            no_site=no_site,
+            argv0=admitted_argv0,
+        )
+        if admitted_argv0
+        else base_payload
+    )
+    base_sha256 = hashlib.sha256(base_payload).hexdigest()
+    extended_sha256 = hashlib.sha256(identity_payload).hexdigest()
+    # The scheduler precommits the no-argv0 launcher. A verified venv argv0
+    # is an appendix the task cannot choose. Reporting the precommitted
+    # digest keeps that receipt check intact.
+    if recorded_content_sha256 == base_sha256:
+        content_sha256 = base_sha256
+    elif recorded_content_sha256 == extended_sha256:
+        content_sha256 = extended_sha256
+    else:
         raise ValidationRuntimeError(
             "validation Python launcher content identity mismatch"
         )
@@ -2740,6 +2820,212 @@ def _shell_command_segments(
     return tuple(segments)
 
 
+def _render_shell_tokens(tokens: Sequence[str]) -> str:
+    """Quote reviewed argv without quoting bare environment assignments."""
+
+    rendered: list[str] = []
+    for token in tokens:
+        if (
+            _SHELL_ASSIGNMENT.fullmatch(token)
+            and not token.startswith("-")
+            and not any(character in token for character in " \t\n\"'")
+        ):
+            rendered.append(token)
+        else:
+            rendered.append(shlex.quote(token))
+    return " ".join(rendered)
+
+
+def _approved_validation_interpreter() -> Path | None:
+    """Return the resolved approved interpreter, or None when it is unavailable."""
+
+    try:
+        return Path(validation_python_executable()).resolve(strict=True)
+    except (OSError, ValidationRuntimeError):
+        return None
+
+
+def _venv_argv0_for_launcher(launcher: Path) -> str:
+    """Return a venv interpreter path whose symlink target is already approved.
+
+    Python discovers ``pyvenv.cfg`` from argv0. The sealed child still execs
+    the resolved approved inode, so a replaced symlink cannot select another
+    binary. An empty result means the bare sealed launcher is enough.
+    """
+
+    if any(character in str(launcher) for character in "$`\n\r\0'\"\\"):
+        return ""
+    venv_root = launcher.parent.parent
+    if not (venv_root / "pyvenv.cfg").is_file():
+        return ""
+    return str(launcher)
+
+
+def _admit_validation_argv0(argv0: str, *, approved: Path) -> str:
+    """Return a venv argv0 whose symlink target is the approved interpreter.
+
+    An empty value stays empty. Any other value must be the interpreter path
+    beside a ``pyvenv.cfg``, and resolving it must yield ``approved``. The
+    sealed launcher then execs that approved inode with this argv0, so Python
+    can discover the virtualenv without the task selecting a binary.
+    """
+
+    bound = str(argv0 or "")
+    if not bound:
+        return ""
+    if bound != _venv_argv0_for_launcher(Path(bound)):
+        raise ValidationRuntimeError(
+            "validation argv0 is not a verified virtualenv interpreter"
+        )
+    try:
+        resolved = Path(bound).resolve(strict=True)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "validation argv0 is unavailable"
+        ) from exc
+    if resolved != approved:
+        raise ValidationRuntimeError(
+            "validation argv0 does not resolve to the approved interpreter"
+        )
+    return bound
+
+
+def sealed_validation_launcher_argv0_environment(
+    environment: Mapping[str, str],
+    argv0: str,
+) -> dict[str, str]:
+    """Bind a verified venv argv0 into the sealed launcher content hash.
+
+    An empty argv0 returns a copy and leaves the recorded hash untouched.
+    A non-empty argv0 is rejected unless it is the virtualenv interpreter
+    whose symlink target is already the approved validation Python. The path
+    is not copied into the child environment.
+    """
+
+    result = {str(key): str(value) for key, value in environment.items()}
+    if not str(argv0 or ""):
+        return result
+    executable_text = str(result.get(_CHILD_PYTHON_ENV) or "").strip()
+    if not executable_text:
+        raise ValidationRuntimeError(
+            "validation environment is missing its canonical Python"
+        )
+    try:
+        approved = Path(executable_text).resolve(strict=True)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "validation Python is unavailable"
+        ) from exc
+    admitted = _admit_validation_argv0(argv0, approved=approved)
+    no_site = validation_python_profile(result) == "raw-no-site"
+    approved_pythonpath = str(result.get("PYTHONPATH") or "")
+    ruff_snapshot = _active_ruff_executable_snapshot(
+        approved_pythonpath=approved_pythonpath
+    )
+    payload = _validation_python_launcher_source(
+        executable=str(approved),
+        approved_pythonpath=approved_pythonpath,
+        ruff_sha256=(ruff_snapshot[1] if ruff_snapshot is not None else ""),
+        no_site=no_site,
+        argv0=admitted,
+    )
+    result[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV] = hashlib.sha256(
+        payload
+    ).hexdigest()
+    return result
+
+
+def _pytest_shebang_launcher(executable: str, approved: Path) -> str | None:
+    """Return the venv argv0 for a pytest script, or empty when already sealed.
+
+    ``None`` means the script is not an approved-interpreter console script
+    and the caller must leave the command for the fail-closed name check.
+    """
+
+    script = Path(executable)
+    try:
+        first = script.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return None
+    if not first.startswith("#!"):
+        return None
+    shebang_parts = first[2:].strip().split()
+    if not shebang_parts:
+        return None
+    if Path(shebang_parts[0]).name == "env":
+        if len(shebang_parts) != 2:
+            return None
+        launcher = Path(shebang_parts[1])
+    else:
+        launcher = Path(shebang_parts[0])
+    if not launcher.is_absolute() or not _is_python_executable_token(launcher.name):
+        return None
+    try:
+        if launcher.resolve(strict=True) != approved:
+            return None
+    except OSError:
+        return None
+    return _venv_argv0_for_launcher(launcher)
+
+
+def _retarget_absolute_approved_launcher(
+    tokens: Sequence[str],
+) -> tuple[list[str], str]:
+    """Rewrite one absolute approved interpreter to the sealed bare name.
+
+    A different interpreter, a compound shell, or an ``env`` flag stays
+    unchanged so the existing name check still rejects it. The returned
+    argv0 is only the verified venv symlink, never a task-chosen binary.
+    """
+
+    words = list(tokens)
+    if not words or any(_SHELL_CONTROL_TOKEN.fullmatch(token) for token in words):
+        return words, ""
+    approved = _approved_validation_interpreter()
+    if approved is None:
+        return words, ""
+    index = 0
+    if Path(words[0]).name == "env":
+        index = 1
+        while index < len(words) and _SHELL_ASSIGNMENT.fullmatch(words[index]):
+            name, _separator, value = words[index].partition("=")
+            if (
+                not name.isidentifier()
+                or any(character in value for character in "$`\n\r\0")
+            ):
+                return words, ""
+            index += 1
+        if index >= len(words) or words[index].startswith("-"):
+            return words, ""
+        prefix = words[1:index]
+    else:
+        while index < len(words) and _SHELL_ASSIGNMENT.fullmatch(words[index]):
+            index += 1
+        prefix = words[:index]
+    if index >= len(words):
+        return words, ""
+    executable = words[index]
+    if not executable.startswith("/"):
+        return words, ""
+    executable_name = Path(executable).name
+    rest = words[index + 1 :]
+    if _is_python_executable_token(executable_name):
+        try:
+            resolved = Path(executable).resolve(strict=True)
+        except OSError:
+            return words, ""
+        if resolved != approved:
+            return words, ""
+        argv0 = _venv_argv0_for_launcher(Path(executable))
+        return [*prefix, "python", *rest], argv0
+    if _is_pytest_executable_token(executable_name):
+        argv0 = _pytest_shebang_launcher(executable, approved)
+        if argv0 is None:
+            return words, ""
+        return [*prefix, "pytest", *rest], argv0
+    return words, ""
+
+
 def validation_shell_command(command: str) -> list[str]:
     """Return a non-login, non-interactive Bash invocation for reviewed text."""
 
@@ -2831,6 +3117,12 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "validation command has invalid shell quoting"
         ) from exc
+    retargeted, validation_argv0 = _retarget_absolute_approved_launcher(leading)
+    if retargeted != leading:
+        leading = retargeted
+        text = _render_shell_tokens(retargeted)
+    else:
+        validation_argv0 = ""
     if any(Path(token).name in {"bash", "sh"} for token in leading):
         raise ValidationRuntimeError(
             "nested validation shells are not permitted; provide the inner "
@@ -2953,7 +3245,12 @@ def validation_shell_command(command: str) -> list[str]:
         for name in versioned_python_names
     )
     readonly_python_names = " ".join(
-        ("_ipfs_accelerate_validation_python", *sorted(canonical_python_names), "pytest")
+        (
+            "_ipfs_accelerate_validation_exec",
+            "_ipfs_accelerate_validation_python",
+            *sorted(canonical_python_names),
+            "pytest",
+        )
     )
     guarded = (
         f"readonly {_CHILD_PYTHON_ENV}; "
@@ -2965,6 +3262,17 @@ def validation_shell_command(command: str) -> list[str]:
         "then _IPFS_ACCELERATE_VALIDATION_NO_SITE=1; "
         "else _IPFS_ACCELERATE_VALIDATION_NO_SITE=0; fi; "
         "readonly _IPFS_ACCELERATE_VALIDATION_NO_SITE; "
+        "_IPFS_ACCELERATE_VALIDATION_ARGV0="
+        f"{shlex.quote(validation_argv0)}; "
+        "readonly _IPFS_ACCELERATE_VALIDATION_ARGV0; "
+        "_ipfs_accelerate_validation_exec() { "
+        'if [[ -n "${_IPFS_ACCELERATE_VALIDATION_ARGV0}" ]]; then '
+        'exec -a "${_IPFS_ACCELERATE_VALIDATION_ARGV0}" '
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "$@"; '
+        "else "
+        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "$@"; '
+        "fi; "
+        "}; "
         "_ipfs_accelerate_validation_python() { "
         'local requested="${PYTHONPATH-}"; '
         'local approved="${_IPFS_ACCELERATE_APPROVED_PYTHONPATH}"; '
@@ -2981,13 +3289,13 @@ def validation_shell_command(command: str) -> list[str]:
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then '
         'if [[ -n "$requested" ]]; then '
         'PYTHONPATH="$requested:$approved" '
-        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
+        '_ipfs_accelerate_validation_exec "${prefix[@]}" "$@"; '
         "else "
         'PYTHONPATH="$approved" '
-        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
+        '_ipfs_accelerate_validation_exec "${prefix[@]}" "$@"; '
         "fi; "
         "else "
-        '"${_IPFS_ACCELERATE_SEALED_PYTHON}" "${prefix[@]}" "$@"; '
+        '_ipfs_accelerate_validation_exec "${prefix[@]}" "$@"; '
         "fi; "
         "}; "
         'python() { _ipfs_accelerate_validation_python "$@"; }; '
@@ -2998,6 +3306,37 @@ def validation_shell_command(command: str) -> list[str]:
         f"{text}"
     )
     return ["/bin/bash", "--noprofile", "--norc", "-c", guarded]
+
+
+def validation_command_launcher_argv0(command: str) -> str:
+    """Return the venv argv0 baked into one guarded validation command.
+
+    The value comes from the same retarget pass as ``validation_shell_command``.
+    An absolute system interpreter yields an empty string. A verified
+    virtualenv interpreter yields that interpreter path.
+    """
+
+    script = validation_shell_command(command)[-1]
+    marker = "_IPFS_ACCELERATE_VALIDATION_ARGV0="
+    readonly = "; readonly _IPFS_ACCELERATE_VALIDATION_ARGV0;"
+    start = script.find(marker)
+    end = script.find(readonly, start if start >= 0 else 0)
+    if start < 0 or end < 0:
+        raise ValidationRuntimeError(
+            "validation launcher argv0 binding is missing"
+        )
+    token = script[start + len(marker) : end]
+    try:
+        parsed = shlex.split(token)
+    except ValueError as exc:
+        raise ValidationRuntimeError(
+            "validation launcher argv0 binding is invalid"
+        ) from exc
+    if len(parsed) != 1:
+        raise ValidationRuntimeError(
+            "validation launcher argv0 binding is invalid"
+        )
+    return parsed[0]
 
 
 def validation_argv_command(

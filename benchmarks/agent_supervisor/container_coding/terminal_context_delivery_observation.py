@@ -182,7 +182,150 @@ def _source_sessions(report, invocations, raw_invocations):
     return result
 
 
-def _repository_mcp(invocations, raw_invocations):
+def _inline_source_overlap_base(invocation):
+    return {
+        "schema": "terminal-inline-source-read-overlap@1",
+        "status": "not_observed", "reason": "initial_inline_sources_not_recorded",
+        "scope": "declared_initial_source_carrier_vs_prepared_original_file_reads",
+        "initial_source_carrier_scope": None, "initial_source_observation_schema": None,
+        "logical_byte_scope": "decoded_utf8_source_text",
+        "invocation_id_sha256": invocation["invocation_id_sha256"],
+        "model_prompt_sha256": invocation["model_prompt"]["sha256"],
+        "model_prompt_bytes": invocation["model_prompt"]["bytes"],
+        "known_matched_reads": None, "known_matched_logical_bytes": None,
+        "matched_reads": None, "matched_logical_bytes": None,
+        "comparable_reads": None, "unclassified_reads": None, "comparison_complete": None,
+        "inline_overlap_bytes": None, "provider_tokens": None, "token_savings": None,
+        "provider_ingestion_observed": None, "full_prompt_source_coverage": None,
+        "retained_input_audit_joined": False, "audit_reread_here": False,
+        "journal_closure_verified": False, "native_usage_modified": False,
+        "raw_content_exported": False, "proof_authority": False, "completion_authority": False,
+    }
+
+
+def _inline_source_overlap_checked(report, invocations, invocation, repository_row):
+    """Join declared initial source slots to prepared reads, never token usage."""
+    result = _inline_source_overlap_base(invocation)
+
+    def unavailable(reason):
+        return {**result, "status": "unavailable", "reason": reason}
+
+    if sum(row["invocation_id"] == invocation["invocation_id"] for row in invocations) != 1:
+        return unavailable("ambiguous_invocation_population")
+    if repository_row["status"] == "unavailable" or repository_row.get("read_observation_valid") is False:
+        return unavailable("repository_read_observation_unavailable")
+    read_summary = repository_row.get("read_observation")
+    if read_summary is None:
+        return {**result, "reason": "repository_read_observation_not_recorded"}
+    audit = report.get("context_input_audit")
+    if audit is None:
+        return result
+    if (type(audit) is not dict or audit.get("schema") != "terminal-final-context-audit@1"
+            or type(audit.get("status")) is not str
+            or audit.get("status") not in {"verified_all_observed_model_inputs", "verified_some_observed_model_inputs"}
+            or audit.get("any_model_input_verified") is not True
+            or any(audit.get(key) is not False for key in ("proof_authority", "execution_authority",
+                "completion_authority", "raw_prompts_exported"))
+            or type(audit.get("provider_calls")) is not int or audit["provider_calls"] != 0):
+        return unavailable("invalid_context_input_audit")
+    census = audit.get("rendered_input_census")
+    if census is None:
+        return result
+    if (type(census) is not dict or census.get("schema") != "terminal-rendered-input-census@1"
+            or type(census.get("status")) is not str
+            or census.get("status") not in {"complete_for_verified_inputs", "partial_for_verified_inputs"}
+            or census.get("raw_content_exported") is not False
+            or census.get("token_savings_established") is not False
+            or type(census.get("provider_calls")) is not int or census["provider_calls"] != 0):
+        return unavailable("invalid_rendered_input_census")
+    populations = (audit.get("invocations"), audit.get("matches"), census.get("observations"))
+    if any(type(rows) is not list or len(rows) > limit or any(type(row) is not dict for row in rows)
+           for rows, limit in zip(populations, (16, 512, 16))):
+        return unavailable("invalid_input_join_population")
+    audited, matches, observations = populations
+    absent = census.get("unavailable")
+    if (type(absent) is not list or len(absent) > 16
+            or any(type(row) is not dict or not _sha(row.get("invocation_id_sha256")) for row in absent)):
+        return unavailable("invalid_rendered_input_census")
+    if (type(census.get("observed_invocation_count")) is not int
+            or census["observed_invocation_count"] != len(observations)
+            or type(census.get("verified_invocation_count")) is not int
+            or not len(observations) <= census["verified_invocation_count"] <= 16
+            or (census["status"] == "complete_for_verified_inputs"
+                and len(observations) != census["verified_invocation_count"])):
+        return unavailable("invalid_rendered_input_census")
+    audited = [row for row in audited if row.get("invocation_id") == invocation["invocation_id"]]
+    matches = [row for row in matches if row.get("invocation_id") == invocation["invocation_id"]]
+    observations = [row for row in observations if row.get("invocation_id_sha256") == invocation["invocation_id_sha256"]]
+    if observations and any(row["invocation_id_sha256"] == invocation["invocation_id_sha256"] for row in absent):
+        return unavailable("contradictory_census_observation")
+    if any(len(rows) > 1 for rows in (audited, matches, observations)):
+        return unavailable("ambiguous_exact_input_join")
+    if any(len(rows) != 1 for rows in (audited, matches, observations)):
+        return unavailable("missing_exact_input_join")
+    audited, match, observation = audited[0], matches[0], observations[0]
+    if "inline_sources" not in observation:
+        return result
+    checks = match.get("model_input_checks")
+    if (audited.get("status") != "verified_exact_model_input"
+            or audited.get("model_input_verified") is not True
+            or audited.get("native_input_verified") is not True
+            or match.get("model_input_verified") is not True
+            or type(checks) is not dict or not 2 <= len(checks) <= 256
+            or checks.get("model_prompt_sha256") is not True
+            or checks.get("model_prompt_bytes") is not True
+            or any(value is not True for value in checks.values())
+            or observation.get("schema") != "supervisor-rendered-input-census@1"
+            or observation.get("raw_content_exported") is not False):
+        return unavailable("unverified_exact_input_join")
+    prompt = invocation["model_prompt"]
+    if (not _sha(prompt["sha256"]) or type(prompt["bytes"]) is not int
+            or not 0 < prompt["bytes"] <= 256_000
+            or any(row.get("model_prompt_sha256") != prompt["sha256"]
+                   or type(row.get("model_prompt_bytes")) is not int
+                   or row["model_prompt_bytes"] != prompt["bytes"] for row in (match, observation))):
+        return unavailable("final_prompt_binding_mismatch")
+    from ipfs_accelerate_py.agent_supervisor.runtime.inline_source_observation import validate_inline_sources
+    try:
+        inline = validate_inline_sources(observation["inline_sources"],
+            model_prompt_sha256=prompt["sha256"], model_prompt_bytes=prompt["bytes"],
+            invocation_id_sha256=invocation["invocation_id_sha256"])
+    except (ValueError, TypeError, KeyError):
+        return unavailable("invalid_inline_sources")
+    if inline["status"] != "observed":
+        return unavailable("inline_sources_" + inline["reason"])
+    entries = {(entry["source_identity_sha256"], entry["content_sha256"], entry["content_bytes"])
+               for entry in inline["entries"]}
+    comparable = matched = logical_bytes = 0
+    for group in read_summary["groups"]:
+        if (group["scope"], group["representation"], group["encoding"]) != ("file", "original", "utf-8"):
+            continue
+        comparable += group["read_count"]
+        if (group["source_identity_sha256"], group["content_sha256"], group["content_bytes"]) in entries:
+            matched += group["read_count"]
+            logical_bytes += group["read_count"] * group["content_bytes"]
+    unclassified = read_summary["successful_reads"] - comparable
+    complete = read_summary["complete"] is True and unclassified == 0
+    return {**result, "status": "observed" if complete else "partial",
+        "reason": "all_prepared_original_file_reads_classified" if complete else "partially_classified_prepared_reads",
+        "known_matched_reads": matched, "known_matched_logical_bytes": logical_bytes,
+        "matched_reads": matched if complete else None, "matched_logical_bytes": logical_bytes if complete else None,
+        "comparable_reads": comparable, "unclassified_reads": unclassified, "comparison_complete": complete,
+        "initial_source_carrier_scope": inline["scope"], "initial_source_observation_schema": inline["schema"],
+        "retained_input_audit_joined": True}
+
+
+def _inline_source_overlap(report, invocations, invocation, repository_row):
+    try:
+        return _inline_source_overlap_checked(report, invocations, invocation, repository_row)
+    except Exception:
+        # Optional diagnostics cannot invalidate independently valid counts or
+        # disclose exception text. Native usage is composed separately.
+        return {**_inline_source_overlap_base(invocation), "status": "unavailable",
+                "reason": "inline_source_diagnostic_failure"}
+
+
+def _repository_mcp(invocations, raw_invocations, report):
     from .terminal_repository_source_policy import _usage_observation
 
     rows = []
@@ -197,15 +340,20 @@ def _repository_mcp(invocations, raw_invocations):
             and invocation["provider"] == "codex_cli" and invocation["purpose"] == "coding")
         usage = binding.get("usage") if type(binding) is dict else None
         fields = {"status", *MCP_COUNTS, "store_cleanup_complete", "artifacts_retained_after_invocation",
-                  "store_cleanup_error"}
+                  "store_cleanup_error", "read_observation"}
         usage = {key: usage[key] for key in fields if key in usage} if type(usage) is dict else None
         observed = _usage_observation(usage)
         valid = valid and observed["server_audit_valid"]
-        rows.append({"invocation_id_sha256": invocation["invocation_id_sha256"],
+        row = {"invocation_id_sha256": invocation["invocation_id_sha256"],
             "status": observed["server_audit_status"] if valid else "unavailable",
             "requested_policy": binding["requested_policy"] if valid else None,
             "prepared_counts": {key: observed[key] if valid else None for key in MCP_COUNTS},
-            "store_cleanup_complete": observed["store_cleanup_complete"] if valid else None})
+            "store_cleanup_complete": observed["store_cleanup_complete"] if valid else None,
+            **({"read_observation_valid": bool(valid and observed["read_observation_valid"]),
+                "read_observation": observed["read_observation"] if valid and observed["read_observation_valid"] else None}
+               if "read_observation_valid" in observed else {})}
+        row["inline_source_overlap"] = _inline_source_overlap(report, invocations, invocation, row)
+        rows.append(row)
     return {
         "status": "not_selected" if not rows else "observed" if all(row["status"] == "observed" for row in rows) else "partial",
         "observations": rows, "selected_invocation_count": len(rows),
@@ -234,7 +382,7 @@ def collect(*, report: dict) -> dict:
     normalized = True if type(marker) is dict else marker if marker is None or type(marker) is bool else None
     summary = core.summarize_invocations(observations, unreceipted_provider_attempt=normalized)
     sources = _source_sessions(report, observations, raw)
-    repository = _repository_mcp(observations, raw)
+    repository = _repository_mcp(observations, raw, report)
     result = {
         "schema": SCHEMA, "status": "observed", "native_invocations": summary,
         "supplied_invocation_count": len(raw),
@@ -265,6 +413,12 @@ def collect(*, report: dict) -> dict:
         "settlement_authority": False, "completion_authority": False,
     }
     encoded = json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    if len(encoded) > MAX_OBSERVATION_BYTES:
+        # Optional source-overlap enrichment yields the existing output budget
+        # before independently valid base context and native measurements.
+        for row in repository["observations"]:
+            row.pop("inline_source_overlap", None)
+        encoded = json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
     _need(len(encoded) <= MAX_OBSERVATION_BYTES, "terminal context observation exceeds output bound")
     return result
 

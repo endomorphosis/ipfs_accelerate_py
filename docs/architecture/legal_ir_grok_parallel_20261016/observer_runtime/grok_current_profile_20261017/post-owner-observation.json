@@ -1,0 +1,31 @@
+{
+  "actual_disk_reservation_id": "d209cebf97044007acfbd39238d6876c",
+  "actual_lease_ids_observed_absent": [
+    "c9c2b10f045d42f9bf6f6e7487e68468",
+    "1ea9ae747a4d4844b2080d78c52a4dbb",
+    "df069e340f9240be8b61746c412abf81"
+  ],
+  "actual_pids_observed_absent": [
+    145288,
+    156662
+  ],
+  "child_live_group_observed_absent": true,
+  "database_opened": false,
+  "native_ACK_or_receipt_created": false,
+  "native_custody_fields_selected_from": "top_level_result",
+  "observation_only": true,
+  "observed_at_epoch": 1792255089.1146636,
+  "observed_reservation_status": "released",
+  "original_result_rewritten": false,
+  "production_actions_performed": false,
+  "result_pin": {
+    "bytes": 634,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/receipt.json",
+    "sha256": "69818f4c23acacf3bdfe234e1ee492fda8ab02426cad705f86468f7cae1f1199"
+  },
+  "root_reported_actual_tool_exit": 0,
+  "root_reported_actual_tool_session": 97538,
+  "schema": "finalized-fixture-owner-readonly-observation@1",
+  "semantic_or_operator_authority_asserted": false,
+  "source_result_schema": "legal-ir-native-orchestration-receipt@1"
+}

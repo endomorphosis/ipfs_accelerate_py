@@ -1,0 +1,20 @@
+{
+  "apparmor_label": "rootlesskit (unconfined)",
+  "fallback_to_host_network": false,
+  "gid_map": "         0       1000          1\n         1     100000      65536\n",
+  "home": "/home/barberb",
+  "host_policy_changed": false,
+  "interfaces": [
+    "lo"
+  ],
+  "ipv4_routes": [],
+  "network_namespace": "net:[4026532991]",
+  "outer_network_namespace": "net:[4026531833]",
+  "outer_user_namespace": "user:[4026531837]",
+  "production_configuration_qualified": false,
+  "real_model_calls": false,
+  "schema": "grok-rootlesskit-isolation-observation/v1",
+  "state_directory": "/tmp/pytest-of-barberb/grk17f/rootlesskit",
+  "uid_map": "         0       1000          1\n         1     100000      65536\n",
+  "user_namespace": "user:[4026532988]"
+}

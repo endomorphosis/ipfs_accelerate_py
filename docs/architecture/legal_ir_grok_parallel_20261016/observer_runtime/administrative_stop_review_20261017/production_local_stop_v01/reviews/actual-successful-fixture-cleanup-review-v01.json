@@ -1,0 +1,121 @@
+{
+  "conclusion": "No concrete blocker in the three completed cleanup metadata chains.",
+  "limits": [
+    "The manifests include synthetic symlinks/socket/FIFO entries; no-follow anchored unlinking is root-reported. This review does not falsely classify all entries as regular files or follow any link target.",
+    "The s17b cleanup has no separate historical outer tool observation; that absence is retained. Its current reservation release and owner/child/group/three-lease absence are attributed to fresh root cleanup observations, not fabricated historical evidence.",
+    "Prior retention report2ca remains an immutable earlier ledger observation. It is not a new after-cleanup live ledger snapshot or a claim of historical equality for all other foreign reservations.",
+    "No native/source/runtime qualification or reclaimed-filesystem-block measurement is granted by these metadata comparisons; apparent-byte totals are manifest observations."
+  ],
+  "per_root_metadata_crosschecks": [
+    {
+      "apparent_bytes": 1442794396,
+      "entry_types": {
+        "FIFOs": 0,
+        "directories": 140,
+        "regular_files": 613,
+        "sockets": 1,
+        "symlinks": 16
+      },
+      "historical_outer_observation_available": true,
+      "metadata_entries": 770,
+      "path": "/tmp/pytest-of-barberb/pa17j",
+      "root_device": 66306,
+      "root_inode": 6309487
+    },
+    {
+      "apparent_bytes": 1297896843,
+      "entry_types": {
+        "FIFOs": 0,
+        "directories": 99,
+        "regular_files": 368,
+        "sockets": 1,
+        "symlinks": 5
+      },
+      "historical_outer_observation_available": true,
+      "metadata_entries": 473,
+      "path": "/tmp/pytest-of-barberb/pa17i",
+      "root_device": 66306,
+      "root_inode": 6313253
+    },
+    {
+      "apparent_bytes": 1139919104,
+      "entry_types": {
+        "FIFOs": 3,
+        "directories": 265,
+        "regular_files": 463,
+        "sockets": 0,
+        "symlinks": 68
+      },
+      "historical_outer_observation_available": false,
+      "metadata_entries": 799,
+      "path": "/tmp/pytest-of-barberb/s17b",
+      "root_device": 66306,
+      "root_inode": 6303161
+    }
+  ],
+  "pins": {
+    "pa17i": {
+      "cleanup_result": {
+        "bytes": 2268,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-pa17i-cleanup-result-v01.json",
+        "sha256": "f870ccadfb3ba40536249dac4c4d7ad0e929daa20c55dc0a9e86453825de5c47"
+      },
+      "precleanup_manifest": {
+        "bytes": 101731,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-pa17i-pre-cleanup-manifest-v01.json",
+        "sha256": "68a5cd1961a42be5b3aa06abed0b17f11cc76ba49b52747fcb1a025a7cf4467c"
+      }
+    },
+    "pa17j": {
+      "cleanup_result": {
+        "bytes": 1916,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-pa17j-cleanup-result-v01.json",
+        "sha256": "fcd6b5c1de82c689f0b5ab7696653c3693389b330ecf00e637ec4ec7b019b1e1"
+      },
+      "precleanup_manifest": {
+        "bytes": 159594,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-pa17j-pre-cleanup-manifest-v01.json",
+        "sha256": "f70adb5b5dd3d175a2623d4e237f508b203cfdb646b38547f4f4b7d69c716725"
+      }
+    },
+    "s17b": {
+      "cleanup_result": {
+        "bytes": 1803,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-s17b-cleanup-result-v01.json",
+        "sha256": "c5b82dc2f488784e48b63fb8f35bac873a7dd1679f052842fac83df55ff04695"
+      },
+      "precleanup_manifest": {
+        "bytes": 159055,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-s17b-pre-cleanup-manifest-v01.json",
+        "sha256": "c2b720fb5dfb87b3bbe582eaaa94fe5da105ce9ab8407e07d184f0147d51b914"
+      }
+    }
+  },
+  "prior_production_chain_review_pin": {
+    "bytes": 7673,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-final-chain-and-retention-independent-review-v01.json",
+    "sha256": "329c0973dd526d3a98a2e2d4311961db3968a4f2a16030afb67be410da588275"
+  },
+  "prior_retention_report_pin": {
+    "bytes": 3654,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-final-retention-comparison-v01.json",
+    "sha256": "2ca710202b5fd75b5ad0b5051694fd4e6e2a28758ca64e527f991b8b182253c6"
+  },
+  "removed_metadata_totals": {
+    "apparent_bytes": 3880610343,
+    "entries": 2042
+  },
+  "reviewer": "unknown_event_forensics",
+  "reviewer_actions": {
+    "cleanup_or_native_jobs_or_C_mutations": false,
+    "deleted_tree_DB_WAL_credential_live_ledger_process_or_resource_queries": false,
+    "immutable_metadata_and_pinned_source_only": true
+  },
+  "schema": "completed-disposable-pytest-cleanup-chain-independent-metadata-review@1",
+  "verified_scope": [
+    "All three result/manifest pins rehashed; root path/device/inode, unique bounded relative entries, owner1000/device66306 and exact byte/count totals reconcile.",
+    "Root cleanup reports no DB payload reads, ledger mutations/reservation releases, production/failed/retained/foreign/model-asset removal, or changes to other pytest roots.",
+    "Retained referenced report/receipt/JUnit/event-forensics pins rehash exactly. Actual cleanup is root-attributed; the reviewer did not independently query deleted paths.",
+    "Historical v09 scope remains12 selected cases with exclusions; it is not promoted to full92 or14. Original523 production closeout/retention proofs remain distinct from fixture cleanup."
+  ]
+}

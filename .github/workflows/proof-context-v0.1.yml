@@ -44,11 +44,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/release-contract.json
       PCCE_JOB_ID: release-contract
-      PCCE_REQUIRED_JOB_MANIFEST: ${{ runner.temp }}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/release-contract.json" \
+            "PCCE_REQUIRED_JOB_MANIFEST=${RUNNER_TEMP}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,11 +129,17 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
-      PCCE_CLEAN_INSTALL_REPORT: ${{ runner.temp }}/proof-context-clean-install.json
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/clean-install.json
       PCCE_JOB_ID: clean-install
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_CLEAN_INSTALL_REPORT=${RUNNER_TEMP}/proof-context-clean-install.json" \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/clean-install.json" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -193,11 +205,17 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/unit-integration.json
       PCCE_JOB_ID: unit-integration
-      PCCE_VENV: ${{ runner.temp }}/proof-context-venv
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/unit-integration.json" \
+            "PCCE_VENV=${RUNNER_TEMP}/proof-context-venv" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -274,12 +292,18 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/security.json
       PCCE_JOB_ID: security
-      PCCE_VENV: ${{ runner.temp }}/proof-context-venv
       PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/_pcce_external/ipfs_datasets:${{ github.workspace }}/_pcce_external/ipfs_kit
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/security.json" \
+            "PCCE_VENV=${RUNNER_TEMP}/proof-context-venv" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -376,12 +400,18 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/benchmark-smoke.json
       PCCE_JOB_ID: benchmark-smoke
-      PCCE_VENV: ${{ runner.temp }}/proof-context-venv
       PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/_pcce_external/ipfs_datasets
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/benchmark-smoke.json" \
+            "PCCE_VENV=${RUNNER_TEMP}/proof-context-venv" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -466,11 +496,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/receipt-seal.json
       PCCE_JOB_ID: receipt-seal
-      PCCE_REQUIRED_JOB_MANIFEST: ${{ runner.temp }}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/receipt-seal.json" \
+            "PCCE_REQUIRED_JOB_MANIFEST=${RUNNER_TEMP}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -535,12 +571,18 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
-      PCCE_CONTAINER_IID: ${{ runner.temp }}/proof-context-container.iid
-      PCCE_CONTAINER_LOG: ${{ runner.temp }}/proof-context-container.log
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/container.json
       PCCE_JOB_ID: container
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_CONTAINER_IID=${RUNNER_TEMP}/proof-context-container.iid" \
+            "PCCE_CONTAINER_LOG=${RUNNER_TEMP}/proof-context-container.log" \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/container.json" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -614,11 +656,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      PCCE_EVIDENCE_ROOT: ${{ runner.temp }}/proof-context-evidence
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/dependency-license.json
       PCCE_JOB_ID: dependency-license
-      PCCE_REQUIRED_JOB_MANIFEST: ${{ runner.temp }}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_EVIDENCE_ROOT=${RUNNER_TEMP}/proof-context-evidence" \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/dependency-license.json" \
+            "PCCE_REQUIRED_JOB_MANIFEST=${RUNNER_TEMP}/proof-context-evidence/artifacts/proof_carrying_context_engine/ci/required_jobs.json" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -693,10 +741,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      PCCE_JOB_EVIDENCE: ${{ runner.temp }}/proof-context-job-evidence/release-gate.json
       PCCE_JOB_ID: release-gate
       PCCE_NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
+      - name: Initialize runner-local paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "PCCE_JOB_EVIDENCE=${RUNNER_TEMP}/proof-context-job-evidence/release-gate.json" \
+            >> "$GITHUB_ENV"
       - name: Check out the exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

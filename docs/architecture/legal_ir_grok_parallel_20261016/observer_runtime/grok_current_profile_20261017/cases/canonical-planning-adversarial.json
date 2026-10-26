@@ -1,0 +1,2194 @@
+{
+  "all_primary_requests_model_pinned": true,
+  "all_primary_requests_temperature_zero": true,
+  "all_request_classes_known": true,
+  "all_requests_credential_fixture": true,
+  "all_wire_requests_primary_model": false,
+  "all_wire_requests_temperature_zero": false,
+  "assistant_tool_calls": [
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "read_file"
+      },
+      "id": "call-forbidden-read_file",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"command\": \"printf 'fixture-only-forbidden-terminal'\"}",
+        "name": "run_terminal_command"
+      },
+      "id": "call-forbidden-run_terminal_command",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "search_tool"
+      },
+      "id": "call-forbidden-search_tool",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+        "name": "use_tool"
+      },
+      "id": "call-forbidden-use_tool",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+        "name": "CallMcpTool"
+      },
+      "id": "call-forbidden-CallMcpTool",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "FetchMcpResource"
+      },
+      "id": "call-forbidden-FetchMcpResource",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "ListMcpResources"
+      },
+      "id": "call-forbidden-ListMcpResources",
+      "type": "function"
+    },
+    {
+      "function": {
+        "arguments": "{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+        "name": "spawn_subagent"
+      },
+      "id": "call-forbidden-spawn_subagent",
+      "type": "function"
+    }
+  ],
+  "auxiliary_feature_toggles": "stock unchanged; all auxiliary calls recorded separately",
+  "case": "canonical-planning-adversarial",
+  "charged_case_root": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial",
+  "charged_fixture_root": "/tmp/pytest-of-barberb/gc17a",
+  "error": null,
+  "exact_injected_call_set": true,
+  "explicit_native_parse_stage_refusals": {
+    "CallMcpTool": true,
+    "FetchMcpResource": true,
+    "ListMcpResources": true,
+    "read_file": true,
+    "run_terminal_command": true,
+    "search_tool": true,
+    "spawn_subagent": true,
+    "use_tool": true
+  },
+  "fixture_config_pin": {
+    "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/config.toml",
+    "sha256": "178469278f69731ea37f7d62951e91aa527b8d14a81d49aabbc6d0db09d58b37",
+    "size_bytes": 665
+  },
+  "legacy_function_names": [
+    [],
+    []
+  ],
+  "loaded_current_product_origins": {
+    "ipfs_accelerate_py": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/__init__.py",
+        "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+        "size_bytes": 40208
+      }
+    },
+    "ipfs_accelerate_py.agent_implementation_route": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+        "sha256": "1a3ab9f87f8e14a2bfb2b2dec0306a2007510bfb031aa9cbeef2dd5e949c6c9f",
+        "size_bytes": 343482
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "sha256": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436",
+        "size_bytes": 188967
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.context": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/context/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/context/__init__.py",
+        "sha256": "8a720c24bac156b6a11b29642e42ab982cd7ee4c2a556f18f092858cde2517b7",
+        "size_bytes": 103
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.context.context_compiler": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+        "sha256": "a8928c0e227dcbb0f7b31f877713c0fdeeb37699d110404cfc638ac4a1995b90",
+        "size_bytes": 294621
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.context.context_contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+        "sha256": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e",
+        "size_bytes": 48931
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.control": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/__init__.py",
+        "sha256": "3149e832facdcebf525dbbe990f81a8f9fa79cb4b4295280cfe97124bc8a2e27",
+        "size_bytes": 2730
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.control.control_contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+        "sha256": "b1a402d74f28584c26133e1b800f3010f69a0e643375037e693856a95ae8e1ca",
+        "size_bytes": 328110
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.control.control_plane": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+        "sha256": "1229e506a1bf624b4ddddbd443c484cc2e7ef396cc242208a7c27c8f8931334e",
+        "size_bytes": 344345
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+        "sha256": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767",
+        "size_bytes": 78798
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.core": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+        "sha256": "8f63664c0f36cffc31902ee60919f14280ef47c81d8c5a67fd18c13476a32f7a",
+        "size_bytes": 2381
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.core.conflict_graph": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+        "sha256": "a768ee1814dad942259202994f68d0b628dcf74e04bdb3829d788c677daac075",
+        "size_bytes": 129360
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.core.multiformats_identity": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "sha256": "e7cf2aa7b6f7fb39df630d6c804e13ffb5d58cf9588178fcc57416eb2fc68550",
+        "size_bytes": 46166
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.core.wrapper_utils": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/wrapper_utils.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/core/wrapper_utils.py",
+        "sha256": "33d187418663f20e5eaf06da1a5baff4891c19d82133553a743f1b1330a76faa",
+        "size_bytes": 51524
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.git_environment": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/git_environment.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/git_environment.py",
+        "sha256": "b0d7d3f37d411d02391fb876ee6b3f9d92da1d896121d05e3218f7ef362dee87",
+        "size_bytes": 1311
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.merge": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/__init__.py",
+        "sha256": "e69b0078b66d97d7b489f97523477871c94853569eefdcad0256380d19051a5b",
+        "size_bytes": 2219
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.merge.checkout_lock": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+        "sha256": "8e0820ac71147059c76a81e1c0281e932e2c800838169f8392a89522c40ed87f",
+        "size_bytes": 53673
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/quarantine_validation.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/quarantine_validation.py",
+        "sha256": "02b73107eb6f11749ddc62bab91c31ccb23148c7e715c4a37813452b86e72a22",
+        "size_bytes": 874
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.merge.workspace_quarantine": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/workspace_quarantine.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/workspace_quarantine.py",
+        "sha256": "5a470ee8265f8d7b18daa44d2f0075569aaca287ff194a046823d6f576860b03",
+        "size_bytes": 24338
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+        "sha256": "b7f8508b4b4b50d5bc259c186b55c4c6f87e938d99689a913383a8a35130249f",
+        "size_bytes": 126044
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.objectives": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/objectives/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/objectives/__init__.py",
+        "sha256": "61b58d42ede1324024a280e35c0772263496c42d917deeb82991455964db0c15",
+        "size_bytes": 2872
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.objectives.goal_completion": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/objectives/goal_completion.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/objectives/goal_completion.py",
+        "sha256": "906ae66f40556740e07c5d9d4e5ffe0003ab4dbf3509d2d95684e45ce07ba1d2",
+        "size_bytes": 211720
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.prompt": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/prompt/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/prompt/__init__.py",
+        "sha256": "769f7f939206593882af4bc689c005f0eb61d8e7456cb7ccb873b300927299db",
+        "size_bytes": 101
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+        "sha256": "35a946eeffc7048c4498e671045106f664707fb14774e6c7ffeee89f31bb939a",
+        "size_bytes": 118989
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+        "sha256": "884a7f5c83bb3214f4df9e4c40b54553b3ee69d38d5c71ec029de1df269188f9",
+        "size_bytes": 240435
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.proof": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/__init__.py",
+        "sha256": "ae0ac8ba4b29666a7d527d7153b77869fd9a96b9e66b7a76e44273d663353b22",
+        "size_bytes": 99
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
+        "sha256": "94f7b397681abc3428dd112b8e2bf9e4d7379baf0d6c274d36f62e88c229afb2",
+        "size_bytes": 268563
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+        "sha256": "3b42f38d1c7b5c9841d4f0b845098f11a55858779e9b814d8ecd455904bfb321",
+        "size_bytes": 110715
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+        "sha256": "6ec69abe16142c0bf6ab3d66cd52d78f943465dd240d0d6640580bc7e38396b3",
+        "size_bytes": 96612
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+        "sha256": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd",
+        "size_bytes": 83470
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.proof.proof_attestation": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+        "sha256": "14070ff04a71dd0eaee00f26e769043dcb0e88e8ef88cca9776983ae1bc8539f",
+        "size_bytes": 116710
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.proof.proof_obligation_templates": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/proof_obligation_templates.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/proof/proof_obligation_templates.py",
+        "sha256": "c3136cad6b37b1ccbc6f2e62c10d4772203bddbc5cc25a83cbdbaa95963e6c4e",
+        "size_bytes": 44135
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/__init__.py",
+        "sha256": "9e528fb4611c1c0d25646b85f751046c7de73ba5547e6a996572abe37ded0a64",
+        "size_bytes": 2437
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.benchmark_budget_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py",
+        "sha256": "39946783b55bc2fcc0fb37ea3e7e9f158f17aed3f555096f3feaa85a299fab09",
+        "size_bytes": 1220
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/coding_reply_contract.py",
+        "sha256": "d05159db79c2fa984770f39bfd5ede17614d4781ea35d4727ee15b5759f0d2a0",
+        "size_bytes": 5423
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_cache": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_cache.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_cache.py",
+        "sha256": "30eb6e5cce5e759f9cf1bd63ad0c45687a358c9375c77e1fba03c795ca2af9f3",
+        "size_bytes": 5730
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py",
+        "sha256": "1ad67d3f10708310aaba666473c6d3c2bb4dcadad35cd7dd1917b32c30b526b6",
+        "size_bytes": 41189
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_live_capsule": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/configured_board_live_capsule.py",
+        "sha256": "90c07c0a0225ae4d112e89b21ec3ff3df27abebe78095ca7c36a1624b316347f",
+        "size_bytes": 71229
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.context_delivery_accounting": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/context_delivery_accounting.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/context_delivery_accounting.py",
+        "sha256": "a8799d104bbf0d3468434ef74470aeea357b6492245e3584fc53665a9a0389cb",
+        "size_bytes": 32937
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.doctor_candidate_runner": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/doctor_candidate_runner.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/doctor_candidate_runner.py",
+        "sha256": "72dad0c763067785d30315057ddc44f245a7be934be08ac6db96d480a0f19b83",
+        "size_bytes": 10885
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.durable_cleanup_observer": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/durable_cleanup_observer.py",
+        "sha256": "9770617d5d953b83f0132bbe856f27f0ad6d7352c30e27de6e8d319ed7f5177e",
+        "size_bytes": 33640
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.event_log": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+        "sha256": "25c3f517ab96b5297d57a0b4744bb0f3b3d469be3086728a04ecba81d09e099b",
+        "size_bytes": 75576
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/grok_coding_budget.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/grok_coding_budget.py",
+        "sha256": "f31d2596ad1b74ace36ef963f0fc19e6e935d532e71fea9db9b98c71793fd09c",
+        "size_bytes": 5301
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "sha256": "d1682f52318e52076f4eecf12f32d5a4d6a93376511f02021d76bc4f18b8f6e6",
+        "size_bytes": 603872
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_client": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
+        "sha256": "c0df1ff3034024d2fff37dc51ef1947946964f2a7ebfce30c53e1e95741a1ea7",
+        "size_bytes": 20382
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.query_reference_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/query_reference_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/query_reference_policy.py",
+        "sha256": "2097ae31ce48eeb4ea6051b356e3547905b16a1d12d4b9784131fbb750ffc263",
+        "size_bytes": 1743
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py",
+        "sha256": "f4c6cad4e1c1cd3498bfaa79bc7f421035152caca494ea8b86fdf7884166146f",
+        "size_bytes": 18085
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.reversible_source_view": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/reversible_source_view.py",
+        "sha256": "6b904ab7c606c2c034a017b385e1e9c96b3bd0b033948cfc27e1629bc5c6d011",
+        "size_bytes": 13539
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+        "sha256": "62f0f0f50e28d2685632714c1e2f1b59d06420b42adc4aad93a0af7851f6f88b",
+        "size_bytes": 136311
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py",
+        "sha256": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+        "size_bytes": 24340
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+        "sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef",
+        "size_bytes": 20874
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.source_input_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/source_input_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/source_input_policy.py",
+        "sha256": "17b25015333bef3f256ca2ac9d8f9356e9d0fb593949af34d466246c2fb7a838",
+        "size_bytes": 2493
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/source_view_policy.py",
+        "sha256": "fdee12b247932ace24f2694ce2f42581c812b4beb21050c467e208f466c46b21",
+        "size_bytes": 17115
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+        "sha256": "161d6c9859950300b4b4ea63e2804888a86bb3fcdb6429d2a19094e41d2997b9",
+        "size_bytes": 53490
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+        "sha256": "133b253df6a08865e7f16f1ad923b2ca481a674c79adbf160542a4a9ec3f01d4",
+        "size_bytes": 23989
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.terminal_planner_contract": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/terminal_planner_contract.py",
+        "sha256": "3d6bf9ba8b0f5009aa7084b2bbb84c1717b122b835b951bccb54fe6764089cfa",
+        "size_bytes": 10417
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.tool_output_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/tool_output_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/tool_output_policy.py",
+        "sha256": "54f64767c0eb53c052f47127b584ffc2f0691d0162ec100beef69a96a8d8bca8",
+        "size_bytes": 7498
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py",
+        "sha256": "ad2e47300e8f0738a19b821cf14dcc1717b7a36bc0a3b74b33df52df9c6dac2b",
+        "size_bytes": 33259
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.self_improvement": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/self_improvement/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/self_improvement/__init__.py",
+        "sha256": "7096b272db0aee285a2e3c08197a00e4fd61827171e8f0ee57569f655529668e",
+        "size_bytes": 1558
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_completion": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py",
+        "sha256": "4dcd01c5d444baa22a7e9589e2395b5970bbf7fd030ef6b94af101f3bb923947",
+        "size_bytes": 15846
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py",
+        "sha256": "bfee62bc924026e448603386405ffc6525976e533cfded06068e33cd77a5942e",
+        "size_bytes": 92148
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py",
+        "sha256": "0b3260f1b5e43b13f203642352ec4ec8b750ac84df2340cbe90ee961a4e93883",
+        "size_bytes": 4593
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
+        "sha256": "6e035e86cb2a8697397779d3c35d4c206e55f6a464559ec49b4bb24a276d56c9",
+        "size_bytes": 26476
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py",
+        "sha256": "d0d6a5a30900ed044d16be9f5581c0c31f325949fedf1e314e437ef6893b5db5",
+        "size_bytes": 51750
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.durable_state": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/durable_state.py",
+        "sha256": "5ab20365939963a4a2984e9e73b003fd5a563f2acdf225565c2ad9fa76e8d5cb",
+        "size_bytes": 24113
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.harness": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py",
+        "sha256": "ca8d05ebcbbb154d5bcf59a1684eb67db59829fa5b1ba80c943051502abf33b9",
+        "size_bytes": 94678
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.program_world_database": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/program_world_database.py",
+        "sha256": "17c8657257e93b03a36fce807d5a7d698d1cf038f65da15245535b3d0a6aacb7",
+        "size_bytes": 13502
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.providers": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/providers.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/providers.py",
+        "sha256": "3f9b9368d88f07395a7217f7bafa16f5e5c38490712bfaa7b605108a8c940a6d",
+        "size_bytes": 39710
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.receipts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/receipts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/receipts.py",
+        "sha256": "b6ccaa8b1566801c28113b704f483edd5cd92f58d8637f2892a6ea7b566e853e",
+        "size_bytes": 48851
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.routing": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/routing.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/routing.py",
+        "sha256": "7694a8b67b9498685fa809693eeabf68c168009d30b4874a3c71c0fc0456e85b",
+        "size_bytes": 57907
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.scheduling_contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/scheduling_contracts.py",
+        "sha256": "275a9b1bb53acf802d82541024fb85f522e6d05ee07729a0e05aba2d6262f5e9",
+        "size_bytes": 36860
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.selection_execution": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/selection_execution.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/selection_execution.py",
+        "sha256": "162af6756e23a5afbc66fef677c61f4f6ab5df2a715253e84e10fcee2902c2c2",
+        "size_bytes": 57302
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.verification": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/verification.py",
+        "sha256": "f117de54086539e7b5a3f19dc2b6f1a5f16def6267309876ffc9f4adee580cf0",
+        "size_bytes": 56319
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.wire": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/wire.py",
+        "sha256": "fc96c96b33748da3428ef13b11c0c70a0a0c771001866fb0f6f3fc1e3f5ca25d",
+        "size_bytes": 7956
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.semantic_state.worktree": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/semantic_state/worktree.py",
+        "sha256": "5c42865e9785b3d394cd3fd0ad2d3cdbad140f1ced6a38908a43c9efe8135f4f",
+        "size_bytes": 68073
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+        "sha256": "247e63849d1bf589825fcf965b6c6d20cc95de4e147f6121cd6fe6fd7cf06deb",
+        "size_bytes": 3212
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+        "sha256": "ac1ea77073b7a8f8e009722e1c42dbe3e3ffe277cf01252413ca9a57ca724543",
+        "size_bytes": 58758
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+        "sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983",
+        "size_bytes": 90990
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_command": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_command.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_command.py",
+        "sha256": "d4a7b0ac706e9ab18b36dc2cbde190a104b07b962bf99093da83d08a183a89f5",
+        "size_bytes": 31568
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py",
+        "sha256": "ae75f139b95951a5f9f015ac8e913a89dad7350c8cc99147aceae477902bce61",
+        "size_bytes": 70750
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.task_sources.task_identity": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py",
+        "sha256": "4168c617ba079ca8fbeb2346931d4c7fcfb6516a09e5ddc7079434fb3541654e",
+        "size_bytes": 13703
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py",
+        "sha256": "1ecefe081ff5a74d55fcf44a268cf4f690eb88364e627211e80f24d2a5fe4317",
+        "size_bytes": 27390
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.app": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/app.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/app.py",
+        "sha256": "0b42261fc05b96a49d0633dea6dffc76ab494262b7222d9e3691b9de81cedbf1",
+        "size_bytes": 6871
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.artifacts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/artifacts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/artifacts.py",
+        "sha256": "dc155777f3cc8aafa02b41c3035beddc7c9bf79fdd535594bc56d12bcddfc3ab",
+        "size_bytes": 20230
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.auto_commit": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py",
+        "sha256": "5a1403d68b4def1a2e41d2cb01b3753d70b280d207b8367d2d71a23dfbb2f853",
+        "size_bytes": 8446
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.cli": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/cli.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/cli.py",
+        "sha256": "bbed0729d1ac3f42220c94627f012e6863ccb708c76d9029b918a05f4db86806",
+        "size_bytes": 8840
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.context": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/context.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/context.py",
+        "sha256": "1730598f1066142afa781ac562156fba1fb2732e9900404762ba7592715a59e6",
+        "size_bytes": 4771
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.core": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+        "sha256": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+        "size_bytes": 55921
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.deterministic_fallback": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_fallback.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_fallback.py",
+        "sha256": "ee551a2ebd6cc2ca2367d48d5ace4fbc1e34108c65e56e754072e649f86caf64",
+        "size_bytes": 5431
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/diagnostics.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/diagnostics.py",
+        "sha256": "100a532edb293c3f4eafc9b12b06fc8b8841ab5644b99f76bde67b95020fe8a5",
+        "size_bytes": 38183
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.engine": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+        "sha256": "e46f54d8c3ba7a38e13daaf837a11a649194a1134a6086889967d6a8fcb7993b",
+        "size_bytes": 41441
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.file_replacement": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/file_replacement.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/file_replacement.py",
+        "sha256": "60b298934a5c5ac74b35cd98251ff0fe8ca2d4d1ddf2656964bff688fa8664c5",
+        "size_bytes": 31571
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.git_utils": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/git_utils.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/git_utils.py",
+        "sha256": "3f5cccfc0f3d9792c1b4c9468fd111d32a30ef68d3ced71cfc9cabdc433777cc",
+        "size_bytes": 21142
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.history": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/history.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/history.py",
+        "sha256": "4e5095db6453de8d7c30bec1fcbd44fc85353251c391605521287546b8db9b1d",
+        "size_bytes": 8215
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.lifecycle_wrapper": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/lifecycle_wrapper.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/lifecycle_wrapper.py",
+        "sha256": "28416d1d1d14a33b930613747fb8296a988ab92ca42433bca741910bd0af6183",
+        "size_bytes": 11805
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
+        "sha256": "4d26183081e8ed0397da4c19f23e4905a29d2b58afc1e9b4445120071f661fb3",
+        "size_bytes": 45685
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm_defaults": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/llm_defaults.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/llm_defaults.py",
+        "sha256": "be8a55f21bcce275e680a86ccf30c3746446cafa61523af7c0e112356ef4f795",
+        "size_bytes": 986
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.plans": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/plans.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/plans.py",
+        "sha256": "47ea8d281d1764746d2fc573bb49014abaee059c377fb54471ce8bbb7fc16542",
+        "size_bytes": 10645
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.registry": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py",
+        "sha256": "9149bf4dd6bac00fff46c19cc1ba32096f31bff54e898968d1e5d8e44cb89d80",
+        "size_bytes": 3463
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.runner": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/runner.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/runner.py",
+        "sha256": "ea45d74ef0883c8542fc48fd06eb07e87c7667496eaad0aab07ceec567638183",
+        "size_bytes": 12737
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.specs": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/specs.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/specs.py",
+        "sha256": "59f16dca18393d91dc9a5157fbad4029eab0f88335bbdb29b19aa0c5d8b921fd",
+        "size_bytes": 2665
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.status": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py",
+        "sha256": "8e62923ee28cab765e4243b2924c7849a05552e8a20f9e2fcdc827863a59c577",
+        "size_bytes": 7150
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
+        "sha256": "05079ae7b0a2de96ae709bd6f71df0f3aabbf365dd06d40b753dd7c46cf63673",
+        "size_bytes": 39950
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+        "sha256": "f162054ffc62d6784dca1407c7c2ff67b7c6e681a645594824f3d96ea569966f",
+        "size_bytes": 38040
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+        "sha256": "71c3099e6981d605ce3a6e98ff25298731cc2a295b86a89e9aa55698913894d5",
+        "size_bytes": 90512
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.task_board": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/task_board.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/task_board.py",
+        "sha256": "b68b256834397a6de667999a0ef6b6f0d547883d13d0259a4b2dead5790616c1",
+        "size_bytes": 8423
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.typescript": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/typescript.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/typescript.py",
+        "sha256": "d0638c9ff134da1147f91decb756294530c488dd41e3c5e24a45647d5f8fd397",
+        "size_bytes": 9933
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+        "sha256": "bbd2c82edbd7f1127a2cb4c79d32e2bc4e16238975a9d054bcaf614e0493ac9e",
+        "size_bytes": 75914
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.wrapper": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/wrapper.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/wrapper.py",
+        "sha256": "ceadcb203f6aecff9d8a51175de56c3c6d84efe865a1722604a06f479cf71dd3",
+        "size_bytes": 5826
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.validation": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
+        "sha256": "180c80111b96e994927a652feb56cb1afed046eb83130ed0d7fcbdd6cf455779",
+        "size_bytes": 1871
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.validation.proposal_validation": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+        "sha256": "5f457e3a95329c4bcfee3b35209c566c9ae070344bc3c987cf27c4edd89a2a2c",
+        "size_bytes": 203668
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.validation.validation_commands": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py",
+        "sha256": "8c5d7316c0e706dd469422f69f157f990a356c361af0039bdc75b2d591f7ec3b",
+        "size_bytes": 50545
+      }
+    },
+    "ipfs_accelerate_py.agent_supervisor.validation.validation_runtime": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+        "sha256": "a5c0bd01ba08f8abd6bf257cc8cdc77a04ef8c2a2e4c11886032df28bb90cb01",
+        "size_bytes": 141908
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/__init__.py",
+        "sha256": "68b8ad687f72dbd3067fb59cb0cf5f7f726c6defc9ea0ccb04a18678a9ff5b53",
+        "size_bytes": 2703
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.cli_metadata": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/cli_metadata.py",
+        "sha256": "36e58f1cee4f69e7258402a0a9c7472faff101f9a542e39cb723692adcdc4dc0",
+        "size_bytes": 8429
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.contracts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/contracts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/contracts.py",
+        "sha256": "b222294e65c069b6b88f7eda5f122fd91985d55e58fe55650d3b373bea1152ea",
+        "size_bytes": 45581
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.errors": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/errors.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/errors.py",
+        "sha256": "694e3c1c47261ce78dc10d4a0aa7aed65e6b20565134fb0b2951a04c01550447",
+        "size_bytes": 11140
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.grok_native_usage": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_native_usage.py",
+        "sha256": "941015be6c9601bdbbfd37a4dcc7a576a542bec826d22ef4a915193d5c20f021",
+        "size_bytes": 10914
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.grok_structured_output": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_structured_output.py",
+        "sha256": "417e3a9afa75056aed15e2958dbc193a5ebebcef5359ac070741927b6f2fccf5",
+        "size_bytes": 13799
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.grok_turn_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_turn_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/grok_turn_policy.py",
+        "sha256": "4349fd8dcaef980993291e38307ac3e68d2631695730b7d176bebaef6e2f1ba6",
+        "size_bytes": 3200
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.installers": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/__init__.py",
+        "sha256": "50a61b1e677b5b3b911f03433f568db15907bf508ac90680e4d562099c0d0982",
+        "size_bytes": 2414
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.installers.catalog": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/catalog.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/catalog.py",
+        "sha256": "d1f1522b23620259692b4a88bf84923754492be15cf5a01ed8c63dcbbfa56088",
+        "size_bytes": 13334
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.installers.goose": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/goose.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/goose.py",
+        "sha256": "d738cff096ad54197a5bcf28063cc2ad393c04dec8219a4170d38cf6558b99fa",
+        "size_bytes": 42025
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.installers.muse": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/muse.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/installers/muse.py",
+        "sha256": "0e23de2c17c58b84084c6d6d7217c327e6a4c7a0509d63a77d14c22fc6368dc2",
+        "size_bytes": 18531
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.process_runner": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/process_runner.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/process_runner.py",
+        "sha256": "e29be147e21c1428460920bcd335fb87248701e03948ba87321623db98a11759",
+        "size_bytes": 49054
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.providers": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/providers/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/providers/__init__.py",
+        "sha256": "8b5bbb48e9c155d2e3bd6e7c7334098ff43555ccf0693bc97bc6bfbc6663cfb2",
+        "size_bytes": 3692
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.providers.goose": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/providers/goose.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/providers/goose.py",
+        "sha256": "5f8d392ef213bc8d3c2d736029834fd77ef7806515a04804c6628f875bf53975",
+        "size_bytes": 83432
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.providers.muse": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/providers/muse.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/providers/muse.py",
+        "sha256": "76efa4ce595a64224be6483f6ef4c7425095d98ebf533bdcb3a47357fad8acd8",
+        "size_bytes": 45715
+      }
+    },
+    "ipfs_accelerate_py.cli_runtime.registry": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/registry.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/cli_runtime/registry.py",
+        "sha256": "c05ee8ad49b6cd941e971a82b957eac7ed57b1d3b1d160a35b9d9eec913b7c0f",
+        "size_bytes": 12520
+      }
+    },
+    "ipfs_accelerate_py.common": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/common/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/common/__init__.py",
+        "sha256": "c11d3563a34a1a40c00a33dd2eba9ffea214a957048690a254f8b3711d704365",
+        "size_bytes": 312
+      }
+    },
+    "ipfs_accelerate_py.common.meta_model_api": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/common/meta_model_api.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/common/meta_model_api.py",
+        "sha256": "4dbeac5ceec657c0b6d4d97f172067c40e4fe91bbd394c44998ca1ce3f7ab7d5",
+        "size_bytes": 23276
+      }
+    },
+    "ipfs_accelerate_py.common.storage_wrapper": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/common/storage_wrapper.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/common/storage_wrapper.py",
+        "sha256": "8af8612be23398583a4cea2e42c2e0dd15193f69cff7e60960803f0e9b358af3",
+        "size_bytes": 10914
+      }
+    },
+    "ipfs_accelerate_py.endpoint_usage": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/endpoint_usage/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/endpoint_usage/__init__.py",
+        "sha256": "80df1e81c2f5d9dc5973f9dc9b30887f3271d097cec9c012287d2c7c2d75b11e",
+        "size_bytes": 3466
+      }
+    },
+    "ipfs_accelerate_py.endpoint_usage.identity": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/endpoint_usage/identity.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/endpoint_usage/identity.py",
+        "sha256": "755cbc05b63fa5cb96229b0aa0d1a245dc16ee5bde709294f3fd2eb445441736",
+        "size_bytes": 21666
+      }
+    },
+    "ipfs_accelerate_py.endpoint_usage.schema": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/endpoint_usage/schema.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/endpoint_usage/schema.py",
+        "sha256": "8ddfb7df4ce0d18b982f0b9f0d3364d44180df59c4fe0027cc3d8f176e9a9e89",
+        "size_bytes": 81851
+      }
+    },
+    "ipfs_accelerate_py.github_cli": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/github_cli/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/github_cli/__init__.py",
+        "sha256": "607964f4e6cd53b510608cef6cef57e648df69a71d2c7a74c99088aa212a02f1",
+        "size_bytes": 1392
+      }
+    },
+    "ipfs_accelerate_py.github_cli.p2p_bootstrap_helper": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/github_cli/p2p_bootstrap_helper.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/github_cli/p2p_bootstrap_helper.py",
+        "sha256": "c42af07d92949a75a811fd95875bd051e39ce71cf9559b5496bc19a6275e2eec",
+        "size_bytes": 12400
+      }
+    },
+    "ipfs_accelerate_py.github_cli.p2p_peer_registry": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/github_cli/p2p_peer_registry.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/github_cli/p2p_peer_registry.py",
+        "sha256": "e4efc98b8986205a31f7179348fbed4cb74f87c6445e9b11876d7766b697192a",
+        "size_bytes": 18425
+      }
+    },
+    "ipfs_accelerate_py.ipfs_kit_integration": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/ipfs_kit_integration.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/ipfs_kit_integration.py",
+        "sha256": "b5b8191eb7fea609366c9af833be4b1156d3bfa3b537210da455f96db1e2076f",
+        "size_bytes": 39762
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/__init__.py",
+        "sha256": "d4fe0611fcafb62c782e8100f78cc520ec15e91b6751e078548c8dc1f4028e5f",
+        "size_bytes": 3618
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.allocator": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/allocator.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/allocator.py",
+        "sha256": "29e5252c91f6d05339b849c7e7b6aa6b8f5fb244dfb73ecde6b038ebddd12834",
+        "size_bytes": 4635
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.api_key_slots": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/api_key_slots.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/api_key_slots.py",
+        "sha256": "0f69974b49684d0fb211ab326150f2c7d8a1fc82c9f634f5108c33885589c43c",
+        "size_bytes": 6347
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.api_status": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/api_status.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/api_status.py",
+        "sha256": "2d214f072d2a3f4191b729279683c7431adfadc19fd44d5e5e7cca47223a753c",
+        "size_bytes": 5200
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.cli_status": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/cli_status.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/cli_status.py",
+        "sha256": "4f06ad4eb27a72397be329a6a94f50d791770e6c208667756724ff6ed8beefa2",
+        "size_bytes": 8150
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.duckdb_store": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/duckdb_store.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/duckdb_store.py",
+        "sha256": "af59a71c8562bab211203efaaf82f210ec071badbf627fc1ef9966f3d5ca44f9",
+        "size_bytes": 62334
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.intelligence_index": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/intelligence_index.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/intelligence_index.py",
+        "sha256": "7cb21b07b3db60389e81a378c1e93817230eb52257254c29eba46b751d657138",
+        "size_bytes": 24447
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.limits": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/limits.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/limits.py",
+        "sha256": "00daef2b29d6e71aa27c4eb21b5f35141569ef3febfb1849b8a24566435f0f21",
+        "size_bytes": 4138
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.model_manager_sync": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/model_manager_sync.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/model_manager_sync.py",
+        "sha256": "0ed9a331c91643233efa34d9a4b9f7ecee2f40534aa8dd35d3f4ac393ee155d1",
+        "size_bytes": 20501
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.observations": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/observations.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/observations.py",
+        "sha256": "4f1495ee1aaea71da37ab88c6940602b4c13e16cb4f922cebfaa49fd1c28519d",
+        "size_bytes": 9296
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.paths": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/paths.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/paths.py",
+        "sha256": "5d40f764ec7b484fadd48ede6b8c72e9bbc50d46b847a43a20a23c429f694166",
+        "size_bytes": 10282
+      }
+    },
+    "ipfs_accelerate_py.llm_allocation.session_route": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/session_route.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_allocation/session_route.py",
+        "sha256": "9be9c8e37c670f80b020c8380d454547f8548c6f752471b4df9514d185cbb355",
+        "size_bytes": 7256
+      }
+    },
+    "ipfs_accelerate_py.llm_router": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_router.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/llm_router.py",
+        "sha256": "9dc93f0fe1bd6fc873fd362902a8d62703ddb546b0e1dbd03dd997522560ad34",
+        "size_bytes": 581483
+      }
+    },
+    "ipfs_accelerate_py.mcp_server": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/__init__.py",
+        "sha256": "67c2ba3493a4e6d473d6b15f3ac93c3508c91a42eff54f620dd3d82435d2a0ee",
+        "size_bytes": 7390
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.compatibility": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/compatibility.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/compatibility.py",
+        "sha256": "6d71c2cd2ff91b94d5a0c5ed21612cff7b67b419ed9a5679929de7426eeec4c0",
+        "size_bytes": 5837
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/__init__.py",
+        "sha256": "317085eb2005f6693bfe05ee00e5a9caea14982a9a19ff2e96ca33919e2231c9",
+        "size_bytes": 4360
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.artifacts": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py",
+        "sha256": "a05f5018e26dca7bb08f390ae59dc9a9cc10b5a22feb604525792f05ebb51495",
+        "size_bytes": 9785
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.delegation": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py",
+        "sha256": "a4ab3a38b9d9b27ce4d4afb0726b3e6f7affe2d8b833867f78560cfeeb68e265",
+        "size_bytes": 26355
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.event_dag": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py",
+        "sha256": "9f0399b5a739ab92f9ba29ab0e8781304207de871014bba1576e3d16814527d4",
+        "size_bytes": 6826
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.idl_registry": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py",
+        "sha256": "6e76f2d2bf7b5ac0fd6609ff744769e2620b84bafaac8f6127b74a7d5b5be8cf",
+        "size_bytes": 88398
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.kubo_cid": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/kubo_cid.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/kubo_cid.py",
+        "sha256": "c2b6bf12b11a08c0c993e9fd7ef0dbb9b65f22db37e8eab45113012be1206ea5",
+        "size_bytes": 422
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.p2p_framing": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/p2p_framing.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/p2p_framing.py",
+        "sha256": "77cd889ec9ea6ba7cec480dc7f02b82a1b9868f680e914b4af5a47f7e4e67ef6",
+        "size_bytes": 3467
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.peer_bootstrap": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_bootstrap.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_bootstrap.py",
+        "sha256": "3a3234a79498c11770a4790dbb7d17300f195a657dea64884de871257b8179f8",
+        "size_bytes": 4774
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.peer_discovery": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_discovery.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_discovery.py",
+        "sha256": "72cd34a6bae61a4a5343644fefe30e3fe22f7a230a672f017776d03c3ea60db2",
+        "size_bytes": 4019
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.peer_registry": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_registry.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_registry.py",
+        "sha256": "285008b2a319d2f1d67ac5ed434b84e7bc3f138a045fd95972a72ae295f75e9d",
+        "size_bytes": 4893
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.peer_services": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_services.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/peer_services.py",
+        "sha256": "b6d1aa14aba62a1575b69fa445170ef01737870de15de3a9e623c45f4d0e201b",
+        "size_bytes": 1408
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.policy_engine": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py",
+        "sha256": "2c2a434e1b3d43bcede4998d3fab2cdb7d644895bdc7301859af18d21ef522f3",
+        "size_bytes": 14269
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.profile_g_transport": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/profile_g_transport.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/profile_g_transport.py",
+        "sha256": "4e025bc128cd15974d2500b84998277ec6ee298e26ae960d20b696a848f4bc0a",
+        "size_bytes": 5836
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.result_cache": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/result_cache.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/result_cache.py",
+        "sha256": "794377554d29b65f2cedcac78546ed998b816c95298b23878bb6d9870a804015",
+        "size_bytes": 10931
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.risk_scheduler": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py",
+        "sha256": "a4eb107629335ab28178447dc0981bd2659e005304023569bf119ef6e39246dc",
+        "size_bytes": 6397
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.task_queue": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/task_queue.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/task_queue.py",
+        "sha256": "6f0c1548d64c94512f963f81161659083d2daef9ebd1185fb16c17ecd026dcb0",
+        "size_bytes": 10097
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.workflow_dag": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/workflow_dag.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/workflow_dag.py",
+        "sha256": "70dbcdf2fe8dececdcb509b43c784001a03f90ebead36765ba946975d32dd0bd",
+        "size_bytes": 11423
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.workflow_engine": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/workflow_engine.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/workflow_engine.py",
+        "sha256": "c4d891ed4673051c71daee470a06ff1fae888a1207a383e4af65a6518b968b1a",
+        "size_bytes": 11049
+      }
+    },
+    "ipfs_accelerate_py.mcp_server.mcplusplus.workflow_scheduler": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/workflow_scheduler.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcp_server/mcplusplus/workflow_scheduler.py",
+        "sha256": "ba2dd5c3d888b1f0f609aaf4d41a4f2e02f2f4fc712033957d56707d9dd1cc82",
+        "size_bytes": 4688
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/__init__.py",
+        "sha256": "f1774c3980346fe14f75d3672ee8e441fa85ff10d018a7a72a5c90f4f91a0340",
+        "size_bytes": 7650
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.cid_ucan": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/cid_ucan.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/cid_ucan.py",
+        "sha256": "7732b58712e5d63fc6f840893550081e402c0b875ec88d0e496446c4e48966e9",
+        "size_bytes": 32022
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.dag_compaction": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/dag_compaction.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/dag_compaction.py",
+        "sha256": "92ce85a5ca5a42910e546ccb6d623e7062521bc93bab25db008dca9aaf8bd225",
+        "size_bytes": 28376
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.interface_descriptor": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/interface_descriptor.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/interface_descriptor.py",
+        "sha256": "c20f4b214a81b330de7da7cd1a8bdda6098fec8d4e833f1021b7698410947e54",
+        "size_bytes": 14227
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.leanstral_topology": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/leanstral_topology.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/leanstral_topology.py",
+        "sha256": "a621b3b6d83b2ddd1a567852267535a91fab1f86c8dd5594040178a79927e30a",
+        "size_bytes": 34729
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.p2p": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/__init__.py",
+        "sha256": "839c6ef740f6672338504fb854d0c80c71290eac0f4d81cbf37c9c22a8e0d135",
+        "size_bytes": 6947
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.p2p.bootstrap": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/bootstrap.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/bootstrap.py",
+        "sha256": "87dbf18310e2a61983005f5f12b17bcdf4c6749bdfda576ca2e5ada166ce9e45",
+        "size_bytes": 12047
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.p2p.connectivity": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/connectivity.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/connectivity.py",
+        "sha256": "98f4078b2d528b75690e72d138269ea9a220f1f0ba126eafd9bd84c4c2051eae",
+        "size_bytes": 36818
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/libp2p_runtime.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/libp2p_runtime.py",
+        "sha256": "ba2a4c38d7017dd0239c2f7d438cdbe74e1b3c2b79aae799e64756d34c6013b7",
+        "size_bytes": 29790
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.p2p.peer_registry": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/peer_registry.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/peer_registry.py",
+        "sha256": "768992fafbdbdc21cacb433674bdc3b636373d988df2057fe2bee376d59bcf5a",
+        "size_bytes": 17582
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.p2p.workflow": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/workflow.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p/workflow.py",
+        "sha256": "f998dc03ff421c5d25f8d1cf7346bf1277ea079b0088479f7fca78cba7ae9cd4",
+        "size_bytes": 2356
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.p2p_transport": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p_transport.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/p2p_transport.py",
+        "sha256": "940fd0cbda3340940943bc9e4df9dcfd06931048ab2f2d4dfdfcdf3191d49ba4",
+        "size_bytes": 47223
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.temporal_policy": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/temporal_policy.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/temporal_policy.py",
+        "sha256": "2a7649552f17c52970bbdcbd6f860a9076db156db9df4f7807646176972b60bf",
+        "size_bytes": 20091
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.trio": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/__init__.py",
+        "sha256": "6827cc9251aba8e2beb809ed4d666791de65f16e5e3cce1e23d6c05ffb78fd3d",
+        "size_bytes": 1828
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.trio.bridge": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/bridge.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/bridge.py",
+        "sha256": "0125702a3af16d2ed39ccfab2b7f8a04e5a73070b803fdb7b1d494f956282147",
+        "size_bytes": 4194
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.trio.client": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/client.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/client.py",
+        "sha256": "70808353dab47b039c1dd4d021103f80ae2d3563e81fc845136afa64385aa77d",
+        "size_bytes": 9588
+      }
+    },
+    "ipfs_accelerate_py.mcplusplus_module.trio.server": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/server.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/mcplusplus_module/trio/server.py",
+        "sha256": "6d884420e6f3457cc68090e6e0f98377d117346578dc6cee8ec5344a9506ee7f",
+        "size_bytes": 96238
+      }
+    },
+    "ipfs_accelerate_py.model_catalog": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/model_catalog/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/model_catalog/__init__.py",
+        "sha256": "ecd4d6099e267ee2b65284691a298285f44d5443da4a1142e8bb260ae530ffd0",
+        "size_bytes": 1596
+      }
+    },
+    "ipfs_accelerate_py.model_catalog.identity": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/model_catalog/identity.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/model_catalog/identity.py",
+        "sha256": "fbaf013ad8dd3035cfe04e9bfbb841aa72f8581ed04eb6a543abcd3d579caf44",
+        "size_bytes": 8918
+      }
+    },
+    "ipfs_accelerate_py.model_catalog.schema": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/model_catalog/schema.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/model_catalog/schema.py",
+        "sha256": "e1fa8ec5f8e9f856f626b40aa896df0bde490055978bddea0e4b8a9885b89f49",
+        "size_bytes": 36178
+      }
+    },
+    "ipfs_accelerate_py.p2p_tasks": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/__init__.py",
+        "sha256": "66e6e993b9f733ade2a321aaa0f0cdbff1c9a3516c0cf7f90e0b5ab6eb2de8f7",
+        "size_bytes": 3536
+      }
+    },
+    "ipfs_accelerate_py.p2p_tasks.client": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/client.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/client.py",
+        "sha256": "ad3046540a43f5df7d26938fbd0ef3ef8db09c2686d2e6b701a8a8aea43776d3",
+        "size_bytes": 175848
+      }
+    },
+    "ipfs_accelerate_py.p2p_tasks.mcp_p2p": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/mcp_p2p.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/mcp_p2p.py",
+        "sha256": "691076cf779a84c63cf31c5e1e7b5bbc449ed3fab68d2676a01952e4369f454d",
+        "size_bytes": 27503
+      }
+    },
+    "ipfs_accelerate_py.p2p_tasks.mcp_p2p_client": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/mcp_p2p_client.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/mcp_p2p_client.py",
+        "sha256": "d2aafd5f0cde4c2b47fa272a71ab422381df66015feed02b007307c672379b02",
+        "size_bytes": 8336
+      }
+    },
+    "ipfs_accelerate_py.p2p_tasks.mcp_p2p_protocol": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/mcp_p2p_protocol.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/mcp_p2p_protocol.py",
+        "sha256": "300fe817bbd4487a74c99ed4ac9d629a22c272be2d54357feca474ac0c7d82ef",
+        "size_bytes": 418
+      }
+    },
+    "ipfs_accelerate_py.p2p_tasks.peer_trust": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/peer_trust.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/peer_trust.py",
+        "sha256": "fdb17d5838daf06075da4f5cdf105295a6f58ce2d013b0393efd7c08d4ee846d",
+        "size_bytes": 5731
+      }
+    },
+    "ipfs_accelerate_py.p2p_tasks.protocol": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/protocol.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_tasks/protocol.py",
+        "sha256": "d9408fd9065d076f2a74a6f0fc0ea007b8b83e4b0b7e4234bb7fe1cf43cebd84",
+        "size_bytes": 7165
+      }
+    },
+    "ipfs_accelerate_py.p2p_workflow_scheduler": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_workflow_scheduler.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/p2p_workflow_scheduler.py",
+        "sha256": "bf5c66abc2030db73ea4f49d00073286af2c438c4205906b5a0fde685884b2b1",
+        "size_bytes": 20451
+      }
+    },
+    "ipfs_accelerate_py.router_deps": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/router_deps.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/router_deps.py",
+        "sha256": "79e400fc5fdb03bad6a9e6f9102721c0080318c26c88f6d914ac9e3ff3a110ab",
+        "size_bytes": 8046
+      }
+    },
+    "ipfs_accelerate_py.utils": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/utils/__init__.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/utils/__init__.py",
+        "sha256": "07c143316f3fb9d40d5ee1d0f6c584948ba49438b059bcdb6d868e0f81e3d3e3",
+        "size_bytes": 357
+      }
+    },
+    "ipfs_accelerate_py.utils.cid_utils": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/utils/cid_utils.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/utils/cid_utils.py",
+        "sha256": "e7f6e94532c19ae22781fef967715f28c6825ffe4721bf52a52b647dce55e139",
+        "size_bytes": 13206
+      }
+    },
+    "ipfs_accelerate_py.utils.mistral_vibe": {
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/utils/mistral_vibe.py",
+      "source_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/utils/mistral_vibe.py",
+        "sha256": "4c3bb7ef67053f2c14d592c4d0f1f706f6a815fa0605f527187d5d3a2e7498c7",
+        "size_bytes": 9475
+      }
+    }
+  },
+  "native_allocation_database": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/fixture-allocation.duckdb",
+  "native_command_profile_verified": true,
+  "native_process_observations": [
+    {
+      "all_symlink_targets_inside_charged_fixture_root": true,
+      "argv": [
+        "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/native/grok",
+        "--max-turns",
+        "2",
+        "--model",
+        "grok-4.7",
+        "--output-format",
+        "json",
+        "--no-plan",
+        "--no-subagents",
+        "--disable-web-search",
+        "--no-memory",
+        "--verbatim",
+        "--permission-mode",
+        "dontAsk",
+        "--tools",
+        "read_file",
+        "--disallowed-tools",
+        "read_file,search_tool,use_tool",
+        "--reasoning-effort",
+        "high",
+        "--session-id",
+        "ffc8d263aa9a4452969c026b0fb2cfab",
+        "--prompt-file",
+        "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/temporary/llm-router-grok-prompt-4x_pm93x.txt"
+      ],
+      "charged_fixture_root": "/tmp/pytest-of-barberb/gc17a",
+      "config_pin": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/temporary/llm-router-grok-sampling-668h83l6/config.toml",
+        "sha256": "6bdb85fed22bb6637e4b16e8dbd345767a8f00b1c2b099ccf2de032771284554",
+        "size_bytes": 672
+      },
+      "cwd": "None",
+      "environment_home_unchanged": true,
+      "fixture_credential_only": true,
+      "leader_disabled": true,
+      "owned_allocation_database_preserved": true,
+      "owned_temporary_environment": true,
+      "prelaunch_inventory_pin": {
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/fixture-inventory-prelaunch-01.json",
+        "sha256": "565f451ba32da3caa781c520c5bc294bd71dfd92ef30cb2f1bb88b9ff53eac60",
+        "size_bytes": 59011
+      },
+      "safe_import_limits_preserved": true,
+      "sampling_config_under_owned_temporary_directory": true,
+      "sampling_temperature_zero": true,
+      "selected_model_completion_cap_configured": true,
+      "synthetic_sampling_backings": {
+        "ambient_config_or_credentials_copied": false,
+        "config_is_separate_regular_file": true,
+        "continuous_mutability_excluded": false,
+        "exact_nonconfig_backing_links": {
+          "AGENTS.md": {
+            "device": 66306,
+            "inode": 6586723,
+            "link_target": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/AGENTS.md",
+            "lstat_bytes": 85,
+            "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/temporary/llm-router-grok-sampling-668h83l6/AGENTS.md",
+            "target_pin": {
+              "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/AGENTS.md",
+              "sha256": "5dd79c495d0b43a6193881b13fdd2c4e2647f04ab90817777ed53e5613b8f55d",
+              "size_bytes": 119
+            }
+          },
+          "auth.json": {
+            "device": 66306,
+            "inode": 6586727,
+            "link_target": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/auth.json",
+            "lstat_bytes": 85,
+            "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/temporary/llm-router-grok-sampling-668h83l6/auth.json",
+            "target_pin": {
+              "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/auth.json",
+              "sha256": "8f9d983dcaf2821663ff0490b3008139406a0e8b35498d7db34e9fc3d1db8e68",
+              "size_bytes": 99
+            }
+          },
+          "requirements.toml": {
+            "device": 66306,
+            "inode": 6586724,
+            "link_target": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/requirements.toml",
+            "lstat_bytes": 93,
+            "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/temporary/llm-router-grok-sampling-668h83l6/requirements.toml",
+            "target_pin": {
+              "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/requirements.toml",
+              "sha256": "e19cfde723ae5c60be007b46fb0a88b3f91862dd278012f283f0057749688981",
+              "size_bytes": 62
+            }
+          }
+        },
+        "original_home": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home",
+        "point_in_time_observation_only": true,
+        "real_credentials_present": false,
+        "sampling_config_pin": {
+          "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/temporary/llm-router-grok-sampling-668h83l6/config.toml",
+          "sha256": "6bdb85fed22bb6637e4b16e8dbd345767a8f00b1c2b099ccf2de032771284554",
+          "size_bytes": 672
+        },
+        "sampling_home": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/temporary/llm-router-grok-sampling-668h83l6",
+        "schema": "grok-synthetic-sampling-home-observation@1",
+        "source_backing_pins": {
+          "AGENTS.md": {
+            "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/AGENTS.md",
+            "sha256": "5dd79c495d0b43a6193881b13fdd2c4e2647f04ab90817777ed53e5613b8f55d",
+            "size_bytes": 119
+          },
+          "auth.json": {
+            "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/auth.json",
+            "sha256": "8f9d983dcaf2821663ff0490b3008139406a0e8b35498d7db34e9fc3d1db8e68",
+            "size_bytes": 99
+          },
+          "config.toml": {
+            "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/config.toml",
+            "sha256": "178469278f69731ea37f7d62951e91aa527b8d14a81d49aabbc6d0db09d58b37",
+            "size_bytes": 665
+          },
+          "requirements.toml": {
+            "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/requirements.toml",
+            "sha256": "e19cfde723ae5c60be007b46fb0a88b3f91862dd278012f283f0057749688981",
+            "size_bytes": 62
+          }
+        }
+      }
+    }
+  ],
+  "observed_wire_calls": [
+    {
+      "class": "auxiliary_session_title",
+      "completion_budget": {
+        "fields": {
+          "max_output_tokens": 100
+        },
+        "matches_selected_model_4096": false,
+        "real_provider_hard_cap_or_spend_enforcement_proved": false
+      },
+      "model": "grok-4.6",
+      "path": "/v1/responses",
+      "temperature": 1.0
+    },
+    {
+      "class": "primary_agent",
+      "completion_budget": {
+        "fields": {
+          "max_tokens": 4096
+        },
+        "matches_selected_model_4096": true,
+        "real_provider_hard_cap_or_spend_enforcement_proved": false
+      },
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    },
+    {
+      "class": "primary_agent",
+      "completion_budget": {
+        "fields": {
+          "max_tokens": 4096
+        },
+        "matches_selected_model_4096": true,
+        "real_provider_hard_cap_or_spend_enforcement_proved": false
+      },
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    },
+    {
+      "class": "auxiliary_dashboard_summary",
+      "completion_budget": {
+        "fields": {
+          "max_tokens": 4096
+        },
+        "matches_selected_model_4096": true,
+        "real_provider_hard_cap_or_spend_enforcement_proved": false
+      },
+      "model": "grok-4.7",
+      "path": "/v1/chat/completions",
+      "temperature": 0.0
+    }
+  ],
+  "offered_tool_names": [
+    [],
+    []
+  ],
+  "output": "QUALIFICATION_DONE",
+  "passed": true,
+  "positive_sentinel_returned": false,
+  "post_native_agent_exit_inventory_pin": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/fixture-inventory-after-agent-exit.json",
+    "sha256": "7ac1c4605a3724ead4d322cb4a01cbdd747e6712d7a0584e398805408d17cff7",
+    "size_bytes": 55035
+  },
+  "primary_requests": 2,
+  "primary_wire_selected_model_completion_budget_verified": true,
+  "real_provider_output_cap_or_spend_enforcement_verified": false,
+  "refusal_registry_identity_established": false,
+  "requests": 4,
+  "runtime_invocation": {
+    "allocation_catalog": "aa-intelligence-index-v4.3",
+    "completion_authority": false,
+    "context_delivery_observation": {
+      "billing_total_verified": false,
+      "completion_authority": false,
+      "error_type": null,
+      "invocation_id": "ffc8d263aa9a4452969c026b0fb2cfab",
+      "invocation_id_sha256": "84e1b66e537a99aad926ca0913da95d72218019c8b2065b76657f3d9db395b2f",
+      "model": "grok-4.7",
+      "model_prompt": {
+        "bytes": 60,
+        "count_scope": "rendered_user_prompt_only",
+        "sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0"
+      },
+      "native_context_delivery": {
+        "counts": null,
+        "coverage": null,
+        "interaction_telemetry_sha256": null,
+        "ledger_schema": null,
+        "ledger_sha256": null,
+        "payload_measurements": null,
+        "source_ledger_sha256": null,
+        "status": "unavailable",
+        "telemetry_binding_verified": false
+      },
+      "native_usage": {
+        "artifact_sha256": "54ccb8ba3ee6fc81a47099a678a6e344b0b309b5c09f8b163a232a6817d8ad29",
+        "complete": null,
+        "counts": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 2,
+          "output_tokens": 2,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 4
+        },
+        "identity_kind": "invocation_final_envelope",
+        "normalized_counts": {
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 0,
+          "fresh_input_tokens": 2,
+          "input_tokens_including_cache": 2,
+          "output_tokens": 2,
+          "reasoning_output_tokens": 0,
+          "total_tokens": 4
+        },
+        "observed_records": 1,
+        "reasons": [
+          "native_usage_completeness_unknown"
+        ],
+        "schema": "native-grok-final-usage@1",
+        "scope": "native_final_envelope",
+        "session_id_sha256": null,
+        "status": "unknown_complete_usage"
+      },
+      "observation_only": true,
+      "observation_sha256": "3a6fe302548b897f43e282f5d98059f47a6d45c4363b7bce9b825cd27a56cab8",
+      "phase": null,
+      "provider": "grok_cli",
+      "provider_delivery_verified": false,
+      "provider_ingestion_verified": false,
+      "purpose": "planning",
+      "raw_content_exported": false,
+      "receipt_sha256": "87766812ff1442398e5587d6cb584d28ec1a4d684a3f0f6a7141eb8fdb6cfd55",
+      "schema": "supervisor-context-delivery-invocation@1",
+      "status": "provider_returned",
+      "token_savings_established": false,
+      "total_token_savings_measured": false,
+      "workspace_binding_sha256": "9c1a1536674d76cb870eb03bf472c76f2a4a0e137ab186263e88c49d1c283f01"
+    },
+    "doctor_residual_context": null,
+    "external_container_boundary": null,
+    "invocation_id": "ffc8d263aa9a4452969c026b0fb2cfab",
+    "model": "grok-4.7",
+    "model_prompt_bytes": 60,
+    "model_prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "native_prompt_bytes": 60,
+    "native_prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "native_provider_outcome": {
+      "classification_source": "stop_reason",
+      "completion_authority": false,
+      "envelope_observed": true,
+      "error_observed": false,
+      "error_subtype": "unknown",
+      "process_outcome": "returned",
+      "raw_provider_data_exported": false,
+      "reason_code": "end_turn",
+      "schema": "native-grok-outcome@1",
+      "stop_reason": "end_turn"
+    },
+    "native_rollout_usage": {
+      "billing_total_verified": false,
+      "cache_included_in_input": false,
+      "dollar_cost": null,
+      "observed_final_usage_records": 1,
+      "raw_provider_data_exported": false,
+      "schema": "native-grok-final-usage@1",
+      "task_complete_observed": true,
+      "totals_scope": "native_final_envelope",
+      "usage": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 0,
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 4
+      },
+      "usage_available": true,
+      "usage_complete_observed": null,
+      "usage_observation_sha256": "54ccb8ba3ee6fc81a47099a678a6e344b0b309b5c09f8b163a232a6817d8ad29"
+    },
+    "prompt_bytes": 60,
+    "prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "provider": "grok_cli",
+    "provider_invocation_policy": {
+      "disallowed_tools": [
+        "read_file",
+        "search_tool",
+        "use_tool"
+      ],
+      "effective_toolset_verified": false,
+      "max_turns": 2,
+      "native_tool_allowlist": [
+        "read_file"
+      ],
+      "native_tool_denylist": [
+        "read_file",
+        "search_tool",
+        "use_tool"
+      ],
+      "permission_mode": "dontAsk",
+      "tools_profile": "none"
+    },
+    "provider_output_token_cap_enforced": false,
+    "public_instruction": null,
+    "purpose": "planning",
+    "reasoning_effort": "high",
+    "requested_output_tokens": 4096,
+    "router_calls": 1,
+    "router_prompt_bytes": 60,
+    "router_prompt_sha256": "864511987e2b0c7e987ad4f83f9be8a0fab9bb5305cd0ef7638ccd9e441ee2a0",
+    "schema": "router-implementation-invocation@1",
+    "seconds": 0.8448209720663726,
+    "semantic_translation": null,
+    "status": "provider_returned",
+    "timeout_seconds": 40,
+    "usage": {
+      "completion_tokens": 2,
+      "exit_code": 0,
+      "model_id": "grok-4.7",
+      "num_turns": 2,
+      "prompt_tokens": 2,
+      "reasoning_tokens": 0,
+      "session_id": "ffc8d263aa9a4452969c026b0fb2cfab",
+      "stop_reason": "end_turn"
+    },
+    "workspace": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace",
+    "workspace_advisory_bytes": 0,
+    "workspace_advisory_sha256": null
+  },
+  "synthetic_home_profile": {
+    "AGENTS_context_marker": "SYNTHETIC_OWNED_GROK_CONTEXT_CANONICAL_PLANNING_ADVERSARIAL",
+    "auth_scope": "synthetic file backing; selected fake model key, not browser auth or refresh",
+    "backing_pins_after": {
+      "AGENTS.md": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/AGENTS.md",
+        "sha256": "5dd79c495d0b43a6193881b13fdd2c4e2647f04ab90817777ed53e5613b8f55d",
+        "size_bytes": 119
+      },
+      "auth.json": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/auth.json",
+        "sha256": "8f9d983dcaf2821663ff0490b3008139406a0e8b35498d7db34e9fc3d1db8e68",
+        "size_bytes": 99
+      },
+      "config.toml": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/config.toml",
+        "sha256": "178469278f69731ea37f7d62951e91aa527b8d14a81d49aabbc6d0db09d58b37",
+        "size_bytes": 665
+      },
+      "requirements.toml": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/requirements.toml",
+        "sha256": "e19cfde723ae5c60be007b46fb0a88b3f91862dd278012f283f0057749688981",
+        "size_bytes": 62
+      }
+    },
+    "backing_pins_before": {
+      "AGENTS.md": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/AGENTS.md",
+        "sha256": "5dd79c495d0b43a6193881b13fdd2c4e2647f04ab90817777ed53e5613b8f55d",
+        "size_bytes": 119
+      },
+      "auth.json": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/auth.json",
+        "sha256": "8f9d983dcaf2821663ff0490b3008139406a0e8b35498d7db34e9fc3d1db8e68",
+        "size_bytes": 99
+      },
+      "config.toml": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/config.toml",
+        "sha256": "178469278f69731ea37f7d62951e91aa527b8d14a81d49aabbc6d0db09d58b37",
+        "size_bytes": 665
+      },
+      "requirements.toml": {
+        "path": "/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/grok-home/requirements.toml",
+        "sha256": "e19cfde723ae5c60be007b46fb0a88b3f91862dd278012f283f0057749688981",
+        "size_bytes": 62
+      }
+    },
+    "context_marker_observed_in_all_primary_requests": true,
+    "requirements_scope": "unsigned harmless use_leader=false and selected-model temperature=0"
+  },
+  "tool_responses": [
+    {
+      "content": "Failed to parse arguments for tool `read_file`: Tool not found: read_file\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-read_file"
+    },
+    {
+      "content": "Failed to parse arguments for tool `run_terminal_command`: Tool not found: run_terminal_command\n\nYour original arguments:\n{\"command\": \"printf 'fixture-only-forbidden-terminal'\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-run_terminal_command"
+    },
+    {
+      "content": "Failed to parse arguments for tool `search_tool`: Tool not found: search_tool\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-search_tool"
+    },
+    {
+      "content": "Failed to parse arguments for tool `use_tool`: Tool not found: use_tool\n\nYour original arguments:\n{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-use_tool"
+    },
+    {
+      "content": "Failed to parse arguments for tool `CallMcpTool`: Tool not found: CallMcpTool\n\nYour original arguments:\n{\"name\": \"fixture__sentinel\", \"toolName\": \"fixture__sentinel\", \"arguments\": {}}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-CallMcpTool"
+    },
+    {
+      "content": "Failed to parse arguments for tool `FetchMcpResource`: Tool not found: FetchMcpResource\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-FetchMcpResource"
+    },
+    {
+      "content": "Failed to parse arguments for tool `ListMcpResources`: Tool not found: ListMcpResources\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-ListMcpResources"
+    },
+    {
+      "content": "Failed to parse arguments for tool `spawn_subagent`: Tool not found: spawn_subagent\n\nYour original arguments:\n{\"target_file\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\", \"path\": \"/tmp/pytest-of-barberb/gc17a/cases/canonical-planning-adversarial/workspace/sentinel.txt\"}",
+      "role": "tool",
+      "tool_call_id": "call-forbidden-spawn_subagent"
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "F07_limit_or_admission_rules_changed": false,
+  "candidate": {
+    "du_measurement_scope": "du -s --apparent-size --block-size=1 exact successful-owned base only; includes directory metadata, does not read DB file payload or prove current final size",
+    "earlier_readonly_apparent_du_bytes": 1135401216,
+    "event_report_is_not_a_pytest_tally": true,
+    "exact_disposable_pytest_base": "/tmp/pytest-of-barberb/s17b",
+    "fresh_resource_release_observation_performed_by_this_scout": false,
+    "historical_event_forensics_output_pin_PRESERVE": {
+      "bytes": 13928,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-status-and-event-controls-20261017-02/launch06-event-forensics.json",
+      "sha256": "ceb6149c55f7693520e9c4084a5220e04a4686af22fa6245c3f3d10e04454662"
+    },
+    "historical_test_source_bindings": [
+      {
+        "bytes": 31946,
+        "historical_git_HEAD": "d6390e6cd8f4b5f44395038ec7bd1dcdbb1cb3d0",
+        "matches_original_request_source_sha256": true,
+        "path": "test/api/test_native_execution_status_owner.py",
+        "sha256": "32d245bceb8aefb5ae5f5b64c5ad1a5d3d9b85960b6ce7871c732d7a57bf3a47"
+      },
+      {
+        "bytes": 18897,
+        "historical_git_HEAD": "d6390e6cd8f4b5f44395038ec7bd1dcdbb1cb3d0",
+        "matches_original_request_source_sha256": true,
+        "path": "test/api/test_native_execution_status_gateway.py",
+        "sha256": "2ead61b2d7bed5a48687eccd9dc8c6baa32ef8f87f8e80e2aa36ab8688bc7c96"
+      },
+      {
+        "bytes": 18385,
+        "historical_git_HEAD": "d6390e6cd8f4b5f44395038ec7bd1dcdbb1cb3d0",
+        "matches_original_request_source_sha256": true,
+        "path": "tests/test_namespace_guard_admin_gateway.py",
+        "sha256": "2e590dea743aabf7329c0f0a2936fbadeacd118a2bbae9b83ff5b5c193635c41"
+      },
+      {
+        "bytes": 18729,
+        "historical_git_HEAD": "d6390e6cd8f4b5f44395038ec7bd1dcdbb1cb3d0",
+        "matches_original_request_source_sha256": true,
+        "path": "test/api/test_grok_planning_temperature_zero.py",
+        "sha256": "c52a6a09b7997f82800fae74a5f0c17595b9b419f87cd6eb14ada326c3556497"
+      },
+      {
+        "bytes": 4130,
+        "historical_git_HEAD": "d6390e6cd8f4b5f44395038ec7bd1dcdbb1cb3d0",
+        "matches_original_request_source_sha256": true,
+        "path": "test/api/test_quack_status_publisher_readonly.py",
+        "sha256": "469e1625f0bcb06a7748d423367467c4a4f23b1110211c7a7d8241518cd5180b"
+      }
+    ],
+    "observed_root_identity": {
+      "device": 66306,
+      "inode": 6303161,
+      "mode": "0700",
+      "uid": 1000
+    },
+    "original_completed_receipt_owned_group_quiescent": true,
+    "original_completed_receipt_pin": {
+      "bytes": 634,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-status-and-event-controls-20261017-02/receipt.json",
+      "sha256": "679b270c6f76f849d900b62a8132e77a1db5a2da35c8143c14e0c51e56856a62"
+    },
+    "original_native_resource_fields": {
+      "child_pgid": 466689,
+      "child_pid": 466689,
+      "disk_reservation_id": "48470996fb8948cda3c9b032ca82bc80",
+      "owner_pid": 444554,
+      "phase_lease_id": "edc88d309fff4deaabdf1a542e997859",
+      "root_lease_id": "6a9e6d7e45074a37ad25e86623ee02af"
+    },
+    "pinned_driver_source": {
+      "bytes": 1419,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/run_native_status_and_event_controls_v02.py",
+      "sha256": "eecefa288ddd7c759c99288bb3c4bae5938295033a11b09ad9de921bb2cf23d3"
+    },
+    "pytest_summary_scope": "Exact bounded terminal summary line only; no new tests executed. No JUnit configured in this original request.",
+    "request_pin": {
+      "bytes": 12437,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/native-status-and-event-controls-request-v02.json",
+      "sha256": "6deabb820c4b2662d7e61e7e152fc86ef2407f4b2e5ec597f1e60e2b5f1cb881"
+    },
+    "retained_console_summary_seconds": 64.24,
+    "retained_primary_pytest_passes": 170,
+    "retained_unittest_subtest_passes": 13,
+    "root_fresh_checks_required_before_cleanup": [
+      "Exact reservation48470996fb8948cda3c9b032ca82bc80 currently released; matching original root/phase/native ancestry absent.",
+      "Original ownerPID444554/childPID466689 and original owned group466689 quiescent/absent; do not signal any reused or foreign process.",
+      "Exact base path/root device66306/inode6303161/UID1000 and descriptor-relative nonalias ownership still match; refuse root replacement or external traversal.",
+      "Keep the entire OWNED attempt, original request/receipt/console/event-forensic source evidence, historic failed bases and every authentic proof store unchanged."
+    ],
+    "separate_named_historical_post_owner_file_found": false,
+    "separate_retained_pytest_console_summary_pin": {
+      "bytes": 79725,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-status-and-event-controls-20261017-02/child.sanitized.log",
+      "sha256": "ba141b6ab93e05338be788c9f46a5a522baba5d3f6cc3bf2bd42d41ddaa9cdd9"
+    }
+  },
+  "cleanup_performed": false,
+  "excluded": [
+    "pa17i already assigned and root reports cleaned after exact post-release checks",
+    "pa17j root reports already cleaned after its exact completed qualification/post-release",
+    "failed pa17b/pa17c/pa17d/pa17e/pa17h and failed merged c17m remain untouched",
+    "unrun/admission-refused pa17a/pa17f/pa17g/pa17k/pa17l/pa17m are not successful cleanup candidates",
+    "all Grok charged roots/authentic traces07/production stores/foreign retained scopes and proof artifacts are excluded"
+  ],
+  "method": {
+    "DB_WAL_payloads_opened_read_hashed_or_queried": false,
+    "current_resource_ledger_scheduler_process_API_queries": false,
+    "deletions_permissions_root_policy_reservation_source_or_C_changes": false,
+    "exact_successful_owned_base_du_and_root_lstat_only": true,
+    "native_jobs_product_test_imports_or_provider_calls": false,
+    "request_result_receipt_source_AST_and_bounded_test_console_summary_metadata_only": true
+  },
+  "native_operator_or_completion_authority": false,
+  "observed_at_utc": "2026-10-17T14:02:33.726597+00:00",
+  "other_completed_base_triage": "Other measured completed-owned candidates outside pa17i/pa17j and retained-foreign scopes total about193MB, each less than300MB. They were not granted cleanup authority or promoted without their own provenance/release checks.",
+  "schema": "successful-owned-disposable-pytest-cleanup-metadata-scout@1",
+  "status": "one_large_conditional_candidate_no_deletion_or_current_resource_authority",
+  "synthetic_scope_review": [
+    "The exact historical pinned driver sends only the five selected pytest files to --basetemp=/tmp/pytest-of-barberb/s17b and asserts pytest return0 before execing the separate immutable event-forensic observer.",
+    "Historical native-status store(tmp_path) creates only a fixture.execution... database under tmp_path/lane-2 with fixture task/claim/lease/owner IDs. Its autouse no_processes fixture refuses provider/Docker/subprocess dispatch.",
+    "Historical namespace fixture uses tmp_path_factory.mktemp and explicit fixture IDs/policy seam; teardown closes clients,gateway,source,connection and removes its own fixture root. This is ordinary synthetic test data, not the actual original production UNKNOWN store.",
+    "Remaining selected Grok-temperature/publisher tests are source/import mocks and local unittest/tempfile fixtures. No selected source has a production absolute path literal. This is bounded source scoping, not universal filesystem/process confinement."
+  ]
+}

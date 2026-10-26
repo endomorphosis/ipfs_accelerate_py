@@ -1,0 +1,26 @@
+{
+  "files": {
+    "retained_source_audit": {
+      "bytes": 7050,
+      "name": "retained-source-audit.json",
+      "sha256": "8b889d9402184d3bc38b61cc7f828a860e4424103d9d81a3d4cd9cb366a147f7"
+    },
+    "source_bindings": {
+      "bytes": 20660,
+      "name": "source-bindings.json",
+      "sha256": "85b43639bf55c974360ff8b7ba2ff7b0d63b4f4f9f2d89264a5635fd6bbe9b3a"
+    },
+    "task_manifest": {
+      "bytes": 212195,
+      "name": "tasks.json",
+      "sha256": "147a33589b41df0cda3c0248f6803c36b073d8a36a928ab268f63656426ee90a"
+    }
+  },
+  "router_runtime": {
+    "bytes": 127170,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "sha256": "9ae28cd52298f5b9d1202e6e4c56ce3891f67fbab6b66dad6387b6980b4d3799"
+  },
+  "schema": "legal-ir-grok-planning-inputs/v1",
+  "task_id": "LIR-9001"
+}

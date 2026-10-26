@@ -6,14 +6,54 @@ fingerprints, session bindings, and per-slot cost/token/latency stats.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import os
+import re
 from typing import Any, Mapping, Optional
 
 from .duckdb_store import AllocationStore, get_allocation_store
 from .paths import path_for_provider
 
 _SECRET_PREFIX = "api_key"
+
+
+
+@dataclass(frozen=True)
+class RequiredApiKeyBinding:
+    """Immutable non-secret selection constraint; it grants no credential."""
+    backend: str
+    session_id: str
+    slot_id: str
+    key_fingerprint: str
+
+    def __post_init__(self):
+        fields = ((self.backend, r"[a-z][a-z0-9_]{0,63}"),
+                  (self.session_id, r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}"),
+                  (self.slot_id, r"[A-Za-z0-9_.-]{1,64}"),
+                  (self.key_fingerprint, r"[0-9a-f]{16}"))
+        if any(type(value) is not str or re.fullmatch(pattern, value) is None
+               for value, pattern in fields):
+            raise ValueError("required_api_key_binding_invalid")
+
+
+def _required_binding_snapshot(active, binding):
+    """Read security metadata only; never repair or rank a strict binding."""
+    bound = active.get_session_api_key(binding.session_id, binding.backend)
+    if (type(bound) is not dict or bound.get("session_id") != binding.session_id
+            or bound.get("backend") != binding.backend or bound.get("slot_id") != binding.slot_id):
+        raise ValueError("required_api_key_session_binding_mismatch")
+    rows = active.list_api_key_slots(binding.backend)
+    selected = [row for row in rows if type(row) is dict and row.get("slot_id") == binding.slot_id]
+    if len(selected) != 1:
+        raise ValueError("required_api_key_slot_missing_or_ambiguous")
+    chosen = selected[0]
+    if (chosen.get("backend") != binding.backend or chosen.get("enabled") is not True
+            or chosen.get("key_fingerprint") != binding.key_fingerprint):
+        raise ValueError("required_api_key_slot_metadata_mismatch")
+    snapshot = ((bound["session_id"], bound["backend"], bound["slot_id"]),
+                (chosen["backend"], chosen["slot_id"], chosen["enabled"], chosen["key_fingerprint"]))
+    return chosen, snapshot
 
 
 def fingerprint_api_key(secret: str) -> str:
@@ -125,12 +165,37 @@ def select_api_key(
     store: Optional[AllocationStore] = None,
     secrets: Any = None,
     bind: bool = True,
+    required_binding: Optional[RequiredApiKeyBinding] = None,
 ) -> dict[str, Any]:
     """Return slot + secret for a backend.
 
     Session bindings stick. Unbound sessions get the healthiest enabled slot
     (skip billing/auth, prefer remaining headroom / low spend).
+
+    An explicit required binding reads an already selected enabled slot only.
+    It never ranks/rebinds and resolves the secret through the same manager.
+    Its readbacks are selection-time checks, not a continuous credential lease.
     """
+    if required_binding is not None:
+        if (type(required_binding) is not RequiredApiKeyBinding
+                or type(backend) is not str or backend != required_binding.backend
+                or type(session_id) is not str or session_id != required_binding.session_id):
+            raise ValueError("required_api_key_selection_identity_mismatch")
+        name = required_binding.backend
+        active = store or get_allocation_store()
+        chosen, before = _required_binding_snapshot(active, required_binding)
+        secret_name = secret_name_for(name, required_binding.slot_id)
+        secret = _secrets(secrets).get_credential(secret_name)
+        if (type(secret) is not str or not secret.strip()
+                or fingerprint_api_key(secret) != required_binding.key_fingerprint):
+            raise ValueError("required_api_key_secret_mismatch")
+        _current, after = _required_binding_snapshot(active, required_binding)
+        if before != after:
+            raise ValueError("required_api_key_selection_metadata_changed")
+        return {"backend": name, "slot_id": required_binding.slot_id,
+                "key_fingerprint": required_binding.key_fingerprint,
+                "label": str(chosen.get("label") or required_binding.slot_id),
+                "secret": secret, "secret_name": secret_name, "bound": True}
     name = str(backend or "").strip().lower()
     if not name:
         return {}
@@ -176,8 +241,18 @@ def apply_api_key_to_kwargs(
     session_id: str = "",
     store: Optional[AllocationStore] = None,
     secrets: Any = None,
+    required_binding: Optional[RequiredApiKeyBinding] = None,
 ) -> dict[str, Any]:
     """Inject ``api_key`` for API backends when a slot is available. Never logs it."""
+    if required_binding is not None:
+        if any(name in kwargs for name in ("api_key", "_api_key_slot", "_api_key_fingerprint")):
+            raise ValueError("required_api_key_inline_override")
+        selected = select_api_key(provider, session_id=session_id, store=store, secrets=secrets,
+                                  required_binding=required_binding)
+        kwargs["api_key"] = selected["secret"]
+        kwargs["_api_key_slot"] = selected["slot_id"]
+        kwargs["_api_key_fingerprint"] = selected["key_fingerprint"]
+        return kwargs
     if str(kwargs.get("api_key") or "").strip():
         return kwargs
     if path_for_provider(provider) != "api" and provider not in {
@@ -201,6 +276,7 @@ def apply_api_key_to_kwargs(
 
 
 __all__ = [
+    "RequiredApiKeyBinding",
     "apply_api_key_to_kwargs",
     "bind_session_api_key",
     "fingerprint_api_key",

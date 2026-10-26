@@ -1,0 +1,26 @@
+{
+  "checks": [
+    "Exact d0f5 actor/raw3c4145/snapshot20dd/authd6df and actual v08 original custody pins are closed and rechecked.",
+    "Actual expected current HEAD is required; full product Python and exact6 SQL source bytes are pinned, with no package import or AST execution.",
+    "Original child birth and boot come from two independently joined pinned original launch-operation entries; master positive ticks come from actual native fence.",
+    "Original owner remains explicitly unrecorded; preparation only declares current PID absence/tagged current boot, and actual native actor must revalidate it before handles.",
+    "Native request exactly matches actor KEYS via inert literal AST inspection.",
+    "External charges preserve exact R06/canonical/coordination/history scopes and512MiB envelope.",
+    "Metadata read refuses .duckdb/.wal suffixes; no native database or WAL byte reads occur.",
+    "Only NEW private metadata request/report outputs are created; native/policy/authority flags stay false."
+  ],
+  "limitations": [
+    "Root must qualify policy tests and execute genuine read-only status actor separately. This source review does not establish process absence, resource admission, native close or finalized owner release.",
+    "Compiler full source scan is metadata preparation, not an atomic or continuous filesystem snapshot; actual actor revalidates closure and physical custody.",
+    "Expected post-policy HEAD must be523ec3fd2abd74cac543925aa58ae356123e024b for current adapter set."
+  ],
+  "method": "Source and AST only; no imports, helper execution, DB/WAL reads, native jobs or process/resource queries.",
+  "schema": "production-closed-status-request-preparer-independent-static-review@1",
+  "source_pin": {
+    "bytes": 17438,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/prepare_production_closed_status_request_v01.py",
+    "sha256": "40e582b9411ee90f0b68319098e3a4722cfcaf9fa4e4797ca261bdd4ec407cba"
+  },
+  "status": "static_review_clear_runtime_pending",
+  "unresolved_static_blockers": []
+}

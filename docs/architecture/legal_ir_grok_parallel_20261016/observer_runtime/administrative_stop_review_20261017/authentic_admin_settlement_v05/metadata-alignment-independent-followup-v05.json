@@ -1,0 +1,71 @@
+{
+  "AST_JSON_only": true,
+  "authentic_runtime_qualified": false,
+  "concrete_static_blockers": [],
+  "findings": [
+    "Protocol/current worker/contract/template pins agree on exact ADMINv051ade, unchanged parentv030ab548 and unchanged settlementv04ed72. Actual ADMIN LOADER_SHA is exactly the reviewed resource helperc385.",
+    "Metadata compiler argv selects new ADMINv05 plus unchanged settlementv04. Every subsequent C/D render/run step is value-identical to v04, pinning actual parentv03. Driver requests remain nonexecutable placeholder templates and require new genuine A/B/unbound inputs.",
+    "Native ADMIN,parent,settlement request/result wire schemas remain @2. Resource loaderc385/producerv04544b and entire allPython+sixSQL catalog are propagated by existing dynamic owner/compiler/parent/settlement code; strict ADMIN loader hash remains enforced.",
+    "Every exact declared path/bytes/SHA pin in reviewed metadata was rechecked. Resource bundlea482 and v05manifestc2c5 references are noncircular because resource bundle pins only v05 worker/review, not v05 manifest.",
+    "Frozen manifests honestly retain their preparation-time runtime-pending fields. Separately retained real API22 evidenceab1cd7f can advance only resourceAPI/package-view qualification without rewriting them; genuine catalog/schema/full producer/A-B/C-D remains pending."
+  ],
+  "imports_jobs_DB_opens_edits": false,
+  "limitations": [
+    "No product/worker/backend import, API execution, native job, DB open, signals, C or frozen-file changes.",
+    "This metadata alignment review grants no authentic custody, protected-source-seal, production UNKNOWN recovery or productive LegalIR authority."
+  ],
+  "metadata_pins": {
+    "authentic-admin-worker-protocol-v05.json": {
+      "bytes": 13821,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic-admin-worker-protocol-v05.json",
+      "sha256": "4f97e7dc553ac533ae162040d446e2a2f32df48d9462e19f13855148ba0522e9"
+    },
+    "crossworker-resource-closure-source-review-v05.json": {
+      "bytes": 5881,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/crossworker-resource-closure-source-review-v05.json",
+      "sha256": "65f56fe47cb954742e9c7e1df839d342ae231169fd6401b571e02953cdc61bf3"
+    },
+    "manifest-v05.json": {
+      "bytes": 12400,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/manifest-v05.json",
+      "sha256": "c2c5a1240e664027674490459ced53292d75c8745d69d2e862a0e97d51bb960c"
+    },
+    "native-parent-settlement-contract-v05.json": {
+      "bytes": 16085,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/native-parent-settlement-contract-v05.json",
+      "sha256": "2c486e246937710374d358399ce85c781a1bfd40f118a056546be5daa91a4e3b"
+    },
+    "request-templates-v05.json": {
+      "bytes": 16451,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/request-templates-v05.json",
+      "sha256": "37bacbcf0d8b7a7e8d4b0d2173808a33be4482dfb3492bf71d01af77b62ad350"
+    }
+  },
+  "production_authority": false,
+  "retained_resource_API_evidence_review_pin": {
+    "bytes": 19278,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/native-resource-api-retained-evidence-independent-review-v01.json",
+    "sha256": "ab1cd7f2701ed4fe48773869cb18054dba69f3ebb2a814fb4abf4c6889ee08c2"
+  },
+  "review_scope": "Read-only exact JSON/source hash, recursive declared-pin checks, AST LOADER_SHA and source/argv/wire alignment; not runtime.",
+  "reviewer": "unknown_event_forensics",
+  "schema": "authentic-ADMIN-resource-bundle-metadata-independent-followup@5",
+  "source_pins": {
+    "ADMIN": {
+      "bytes": 24726,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+      "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+    },
+    "parent": {
+      "bytes": 44005,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v03/authentic_unknown_native_parent_v03.py",
+      "sha256": "0ab548b2bd05451a1f4bad2a7c60428cd7c42f70014ae43711e8038277edf2a2"
+    },
+    "settlement": {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    }
+  },
+  "verified_unique_declared_pin_paths": 35
+}

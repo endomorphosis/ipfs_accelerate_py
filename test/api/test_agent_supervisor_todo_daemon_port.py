@@ -17357,6 +17357,7 @@ def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_childr
 ):
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
         implementation_supervisor as implementation_supervisor_module,
+        supervisor as supervisor_helpers,
     )
 
     repo = tmp_path / "repo"
@@ -17374,7 +17375,7 @@ def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_childr
     )
     monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 1234)
     monkeypatch.setattr(
-        implementation_supervisor_module,
+        supervisor_helpers,
         "descendant_processes",
         lambda _pid: [
             {
@@ -30920,33 +30921,15 @@ def test_implementation_supervisor_keeps_failed_recovered_candidate_unmerged(
 
 def test_validation_command_runner_classifies_playwright_host_preflight_failure(
     tmp_path,
-    monkeypatch,
 ):
     output = (
         "Playwright host dependency preflight failed on Linux.\n"
         "browser bundle is not installed under /var/cache/ms-playwright\n"
     )
-    calls = []
-
-    def fake_run(*args, **_kwargs):
-        calls.append(args[0])
-        if len(calls) == 1:
-            return subprocess.CompletedProcess(
-                args=args[0],
-                returncode=0,
-                stdout="",
-            )
-        return subprocess.CompletedProcess(
-            args=args[0],
-            returncode=1,
-            stdout=output,
-        )
-
-    monkeypatch.setattr(
-        implementation_daemon_module.subprocess,
-        "run",
-        fake_run,
-    )
+    # Exercise the real sealed command/custody boundary without invoking npx
+    # or requiring an installed browser. These are the actual failure markers
+    # the public runner classifies, emitted by an ordinary local command.
+    command = "python -c " + shlex.quote("print(" + repr(output) + "); raise SystemExit(1)")
     environment = validation_environment_for_runner(
         build_validation_environment(),
         TodoImplementationDaemon._validation_command_runner,
@@ -30954,7 +30937,7 @@ def test_validation_command_runner_classifies_playwright_host_preflight_failure(
 
     result = TodoImplementationDaemon._validation_command_runner(
         spec=SimpleNamespace(
-            command="npx playwright test",
+            command=command,
             raw_command="npx playwright test",
         ),
         workspace_path=tmp_path,
@@ -30962,7 +30945,6 @@ def test_validation_command_runner_classifies_playwright_host_preflight_failure(
         environment=environment,
     )
 
-    assert len(calls) == 2
     assert result["returncode"] == 1
     assert result["infrastructure_failure"] is True
     assert (

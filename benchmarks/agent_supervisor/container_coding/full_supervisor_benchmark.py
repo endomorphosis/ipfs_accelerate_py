@@ -139,6 +139,8 @@ DECISION_RUNTIME_SOURCE_NAMES = (
 )
 DECISION_RUNTIME_ARCHIVE_PREFIX = "source/ipfs_accelerate_py/agent_supervisor/runtime/"
 DECISION_BENCHMARK_SOURCE_NAMES = (
+    "terminal_decision_policy.py", "benchmark_controls.py", "full_supervisor_benchmark.py",
+    "terminal_decision_usage_projection.py",
     "terminal_doctor_dispatch.py", "terminal_context_audit.py", "terminal_context_evidence.py",
     "semantic_decision_input_audit.py", "automatic_tokenizer_audit.py",
     "semantic_decision_nomination_delivery.py", "full_supervisor_harbor_agent.py",
@@ -266,6 +268,101 @@ def _require_current_timeout_runtime(
     if observed != expected.keys():
         raise ValueError(failure)
     return {name: digest for name, (_, digest) in expected.items()}
+
+
+
+_DECISION_FIELDS = ('semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens')
+_DECISION_ROUTE_DEFAULTS = {'planning_mode': 'model', 'semantic_transport_schema': 'supervisor-semantic-router-input@1', 'coding_reply_mode': 'legacy', 'tool_output_policy': 'legacy', 'source_view_advisory_policy': 'legacy', 'repository_source_policy': 'legacy', 'source_input_policy': 'legacy', 'query_reference_policy': 'legacy', 'semantic_metadata_view': 'legacy', 'semantic_working_set': 'legacy', 'source_view_profile': 'disabled', 'source_edit_mode': 'disabled', 'semantic_context_profile': 'legacy-bounded@1', 'capsule_selection': 'lexical-query-symbol-name@1', 'capsule_budget': 'legacy', 'numerical_formalization_profile': None, 'metadata_census_only': False, 'resource_profile': None, 'task_profile': None, 'intent_requirement_contract': None, 'source384_config': None, 'numerical_selection_config': None, 'source_view_policy': None, 'grok_coding_max_turns': 128}
+
+def _decision_options(options, *, arm, provider):
+    """Validate one additive decision group while ordinary shapes stay intact."""
+    from .terminal_decision_policy import decision_selection, validate_decision_route
+    selected = decision_selection(**{key:options[key] for key in _DECISION_FIELDS if key in options})
+    validate_decision_route(selected, arm=arm, provider=provider,
+        **{key:options.get(key, default) for key,default in _DECISION_ROUTE_DEFAULTS.items()})
+    return selected
+
+def _decision_dispatch_observation(report, selected):
+    """Bind the requested route to original retained rows; never repair them."""
+    from .terminal_decision_usage_projection import measured_decision_usage
+    problems = []
+    value = report if type(report) is dict else {}
+    if type(report) is not dict:
+        problems.append("decision_report_unavailable")
+    if value.get("semantic_decision_dialogue_expected") is not True:
+        problems.append("decision_dialogue_expectation_missing")
+    nomination = any(key in selected for key in (
+        "semantic_decision_nomination_source", "semantic_decision_nomination_artifact"))
+    dialogues = value.get("semantic_decision_dialogues")
+    bounded_dialogues = type(dialogues) is list and 0 < len(dialogues) <= 4096
+    if not bounded_dialogues or any(type(item) is not dict for item in dialogues):
+        problems.append("decision_dialogue_population_unavailable")
+        dialogues = []
+    if nomination:
+        if value.get("semantic_decision_owner_binding_expected") is not True:
+            problems.append("decision_owner_expectation_missing")
+        if value.get("semantic_decision_nomination_sha256") != selected["semantic_decision_nomination_sha256"]:
+            problems.append("decision_nomination_pin_mismatch")
+        typed = value.get("semantic_decision_typed_nomination_expected")
+        if type(typed) is not bool or typed != (not selected.get("disable_semantic_typed_nomination", False)):
+            problems.append("decision_typed_expectation_mismatch")
+    else:
+        for dialogue in dialogues:
+            launch = dialogue.get("worker_launch")
+            if (type(launch) is not dict
+                    or launch.get("launch_policy_artifact") != selected["semantic_decision_policy_artifact"]
+                    or launch.get("launch_policy_sha256") != selected["semantic_decision_policy_sha256"]):
+                problems.append("decision_launch_policy_mismatch")
+                break
+    if selected.get("semantic_retrieval_query_reference"):
+        from ipfs_accelerate_py.agent_supervisor.runtime.semantic_retrieval_query_reference import SemanticRetrievalQueryBinding
+        for dialogue in dialogues:
+            launch = dialogue.get("worker_launch")
+            held = dialogue.get("retrieval_query_reference")
+            try:
+                if type(launch) is not dict or type(held) is not dict:
+                    raise ValueError("query_reference_unavailable")
+                binding = SemanticRetrievalQueryBinding.from_dict(launch.get("retrieval_query_binding"))
+                if (held.get("binding") != binding.to_dict()
+                        or binding.task_id != value.get("semantic_decision_expected_task_id")
+                        or any(type(held.get(key)) is not str or re.fullmatch("[0-9a-f]{64}", held[key]) is None
+                            for key in ("native_context_sha256", "view_sha256", "native_reference_records_sha256"))):
+                    raise ValueError("query_reference_mismatch")
+            except (TypeError, ValueError):
+                problems.append("decision_query_reference_binding_unavailable_or_mismatched")
+                break
+    usage = None
+    error_type = None
+    try:
+        usage = measured_decision_usage(value)
+    except Exception as error:
+        error_type = type(error).__name__[:128]
+        problems.append("decision_usage_projection_unavailable")
+    coverage = usage.get("semantic_decision_coverage", {}) if type(usage) is dict else {}
+    authoritative = coverage.get("authoritative_usage_coverage_complete") is True
+    owner_complete = coverage.get("owner_binding_coverage_complete") is True if nomination else None
+    native_complete = (type(usage) is dict
+        and usage.get("native_scoped_usage_complete_observed") is True
+        and usage.get("harbor_usage_exportable") is True
+        and type(usage.get("total_tokens")) is int and usage["total_tokens"] >= 0)
+    if not authoritative:
+        problems.append("decision_authoritative_usage_coverage_incomplete")
+    if nomination and not owner_complete:
+        problems.append("decision_owner_binding_coverage_incomplete")
+    if not native_complete:
+        problems.append("decision_native_usage_incomplete")
+    return {"schema": "terminal-semantic-decision-dispatch-observation@1",
+        "requested_selection": dict(selected), "verified": not problems,
+        "authoritative_usage_coverage_complete": authoritative,
+        "owner_binding_coverage_complete": owner_complete,
+        "native_usage_complete": native_complete, "problems": problems,
+        **({"usage_projection_error_type": error_type} if error_type is not None else {}),
+        "retained_receipt_usage_recomputed": True, "stored_usage_summary_trusted": False,
+        "verification_scope": "frozen_requested_bindings_and_retained_native_usage_only",
+        "actual_packet_ingestion_independently_verified": None,
+        "source_freshness_verified": False,
+        "source_audit_rerun": False, "completion_authority": False,
+        "production_token_savings_established": False}
 
 def _prompt_options(arm: str, *,
                     prompt_tokenizer_artifact: str | Path | None = None,
@@ -665,6 +762,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_decision_max_total_input_tokens: int | None = None,
                doctor_dispatch_policy: str = "auto",
                model_revision: str = "") -> dict:
+    _decision_options(locals(), arm=arm,
+        provider=resolve_provider_profile(provider_profile)["provider"])
     doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
     options = _prompt_options(arm, prompt_tokenizer_artifact=prompt_tokenizer_artifact,
         prompt_tokenizer_sha256=prompt_tokenizer_sha256, max_input_tokens=max_input_tokens,
@@ -846,6 +945,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_decision_max_total_input_tokens: int | None = None,
             doctor_dispatch_policy: str = "auto",
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
+    _decision_options(locals(), arm=arm,
+        provider=resolve_provider_profile(provider_profile)["provider"])
     doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
     options = _prompt_options(arm, prompt_tokenizer_artifact=prompt_tokenizer_artifact,
         prompt_tokenizer_sha256=prompt_tokenizer_sha256, max_input_tokens=max_input_tokens,
@@ -981,6 +1082,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     verify_source384_archive(archive / "runtime.tar.gz", manifest)
     from .terminal_numerical_selection_deployment import verify_numerical_selection_archive
     selected_numerical = verify_numerical_selection_archive(archive / "runtime.tar.gz", manifest)
+    _decision_options({**locals(), "source384_config": selected_source384,
+        "numerical_selection_config": selected_numerical}, arm=arm,
+        provider=selected_provider["provider"])
     if setup_cache_policy is not None and manifest.get("numerical_selection_384") is not None:
         raise ValueError("setup cache is not qualified for learned numerical selection")
     if source384_config is not None:
@@ -1245,6 +1349,15 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
     prompt_observation = _prompt_option_observation(prepared, config["agents"][0].get("kwargs"))
+    decision = _decision_options(config["agents"][0].get("kwargs", {}), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    held_options = prepared.get("prompt_comparison_options")
+    held_decision = _decision_options(held_options if type(held_options) is dict else {},
+        arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    if (decision != held_decision or decision and (
+            prompt_observation["prompt_comparison_options_valid"] is not True
+            or prompt_observation["prompt_comparison_config_unchanged"] is not True)):
+        raise ValueError("prepared semantic decision selection changed")
     doctor_observation = _doctor_policy_observation(prepared, config["agents"][0].get("kwargs"))
     planning_mode = validate_planning_mode(prepared.get("planning_mode", DEFAULT_PLANNING_MODE),
         intent_requirement_contract=config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"),
@@ -1382,6 +1495,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                        "durations_seconds": durations, "agent_context": native.get("agent_result"),
                        "native_agent_execution_started": bool((native.get("agent_execution") or {}).get("started_at")),
                        "supervisor": report,
+                       **({"semantic_decision_dispatch": _decision_dispatch_observation(report, decision)}
+                          if decision else {}),
                        **({"provider_stop": provider_stop} if provider_stop is not None else {}),
                        **({"source_input_dispatch": source_input_dispatch_observation(report, source_input)}
                           if source_input != DEFAULT_SOURCE_INPUT_POLICY else {}),
@@ -1499,6 +1614,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   prepared, config, current_task_hashes=_task_hashes(task)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
               "complete_single_trial_receipt": unchanged and len(trials) == 1
+                  and (not decision or trials[0]["semantic_decision_dispatch"]["verified"] is True)
                   and prompt_observation["prompt_comparison_options_valid"] is True
                   and prompt_observation["prompt_comparison_config_unchanged"] is not False
                   and doctor_observation["doctor_dispatch_policy_valid"] is True
@@ -1546,6 +1662,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "source384": prepared.get("source384"), "source384_enabled": prepared.get("source384_enabled", False),
               "resource_profile": prepared.get("resource_profile"),
               "intent_selection_config_unchanged": configured_selection == selection}
+    if decision:
+        result.update(semantic_decision_selection=decision, semantic_decision_config_unchanged=True,
+            semantic_decision_verification_scope="frozen_requested_bindings_and_retained_native_usage_only",
+            semantic_decision_runtime_verified=bool(trials) and all(
+                trial["semantic_decision_dispatch"]["verified"] is True for trial in trials))
     _json(output / "receipt.json", result)
     return result
 
@@ -1559,6 +1680,8 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared configuration changed")
     agent = config["agents"][0]
+    decision = _decision_options(agent.get("kwargs", {}), arm=prepared["arm"],
+        provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
     prompt_observation = _prompt_option_observation(prepared, agent.get("kwargs"))
     if (prompt_observation["prompt_comparison_options_valid"] is not True
             or prompt_observation["prompt_comparison_config_unchanged"] is False
@@ -1737,6 +1860,12 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     if _hash(Path(prepared["archive"]) / "manifest.json") != prepared["manifest_sha256"]:
         raise ValueError("runtime dependency manifest changed")
     current_manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
+    if decision:
+        from .terminal_deployment import validate_source384_binding
+        _decision_options({**agent.get("kwargs", {}),
+            "source384_config": validate_source384_binding(current_manifest),
+            "numerical_selection_config": current_manifest.get("numerical_selection_384")},
+            arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
     if decision_selected or native_selected:
         # Selected capabilities are replayed even for externally retained
         # preparation records; an internally consistent archive is insufficient.

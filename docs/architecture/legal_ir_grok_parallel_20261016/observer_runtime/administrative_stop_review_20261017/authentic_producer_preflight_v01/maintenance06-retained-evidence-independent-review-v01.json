@@ -1,0 +1,135 @@
+{
+  "authority_limits": {
+    "automatic_retry_admitted": false,
+    "current_C_or_D_runtime_qualified_by_this_review": false,
+    "failed_B05_receipt_reconstructed_or_operation_replayed": false,
+    "model_or_provider_nonreachability_proved": false,
+    "native_component_control_or_coordination_join_claimed": false,
+    "native_current_identity_is_historical_inode_attestation": false,
+    "original_owner_result_alone_proves_finalization": false,
+    "production_R06_UNKNOWN_changed": false,
+    "provider_callback_closed": false,
+    "qualification_scope": "Authentic disposable A06/B06 physical maintenance and current read-only status/custody crosswalk only; actual ADMIN audit and fresh settlement stages require separate genuine receipts.",
+    "remote_cancellation_proved": false,
+    "root_outer_exit_reservation_observation_required": true,
+    "task_completion_authority": false
+  },
+  "controller_head_bound_by_requests": "592d07580fca33894f37723dea4f84630a957f37",
+  "database_WAL_bytes_read_or_hashed": false,
+  "fixture_only": true,
+  "independently_verified": {
+    "A_custody": "Original launch-request SHA joins actual owner receipt; exact owner/child/master birth joins; genuine direct child==master fallback; independent ACTIVE/terminal content identities and actual A proof pin reconcile.",
+    "C_preimage_crosswalk": "Exactly seven custody artifact slots join original A and native B records; revision5/logical store ID match B binding; twelve authority source pins join configured C source map; post-B execution pin has receipt-selected path/size; canonical and coordination pins retain A values; B actual owner birth appended to stopped_processes.",
+    "configured_product_sources_rehashed": {
+      "SQL": 6,
+      "python": 2810,
+      "total": 2816
+    },
+    "content_identities": {
+      "maintenance_binding_cid": "sha256:11818b9d7caec74c69dde38262c90af77f877f0aa0689d8f669851a3afe275c1",
+      "maintenance_receipt_cid": "sha256:27e2a36d8a7845e991f7ae65ee0eac532a9c42df1224452b73658bb25d150a34",
+      "post_B_status_binding_cid": "sha256:f4b966aefc7e18e3830ccfbc1434be6273581b3789979ae9bbe859ae59b27927",
+      "recomputed_from_native_canonical_JSON_protocol": true
+    },
+    "current_attempt_and_UNKNOWN": "Published native status attempt/body/identity, complete phase history, decoded provider record including exact invocation/key/owner/fences, and all metadata equal immutable A06 preimage/producer metadata; empty effect list agrees.",
+    "distinct_immutable_JSON_source_files_rehashed": 2847,
+    "finalization_observation": "Rehashed root post-owner observation reports tool94396 actual exit0, released disk reservation, all three exact lease IDs and B PID absent. These values join owner-result IDs. This reviewer did not requery live scheduler/kernel state.",
+    "history": "Immutable preimage retains distinct original UNKNOWN rows for ordinals/fences [1,2], correct owner/claim/lease joins, original callback intent schemas and unknown_may_have_started states. No fabricated or rewritten provider result.",
+    "physical_binding_crosswalk": "Pre-B execution and WAL identities join A producer; post-B execution identity joins native receipt, refreshed status binding and status observation. Backup hash/size records equal A execution/WAL pin values. Physical bytes themselves were not reread.",
+    "sealed_B_request_and_result": "operation=maintenance; wrapper8d51 self-pin, loaderc385, exact C source map; fixture-only/no production flag; genuine A06 artifact pins agree with owner result.",
+    "unbound_context_scope": "Compiler output still explicitly authority_context_sealed=false and policy_verified=false; this review does not treat metadata-only preimage as ADMIN authority."
+  },
+  "native_or_resource_jobs_run": false,
+  "native_runtime_report_attribution": {
+    "guard_fix_outcome": "Fresh B06 completed with narrowed monitor(False,True)->actual_guard(False,False) and preserved explicit full host guards. This does not retrospectively prove B05 exact failure cause or a uniform local callback latency bound.",
+    "historical_database_preservation": "Successful pinned wrapper checks historical closed-store byte pins after maintenance. Reviewer independently verified its source and immutable historical row/pin records, not historical DB bytes.",
+    "native_logical_bytes": 6110,
+    "native_logical_sha256": "cf6255b105040e87e1168cf532d5421a3c6d5c34989873ec3102b7bdd1237fc1",
+    "native_table_row_counts": {
+      "attempt_phases": 2,
+      "daemon_execution_events": 2,
+      "daemon_execution_metadata": 13,
+      "database_task_attempts": 1,
+      "effect_claims": 0,
+      "provider_invocations": 1
+    },
+    "reported_by_genuine_native_receipt": [
+      "checkpoint executed",
+      "current execution full logical rows preserved",
+      "all metadata preserved",
+      "UNKNOWN not settled",
+      "connection close verified",
+      "original locks released",
+      "WAL absent",
+      "retained original database/WAL backups verified"
+    ],
+    "whole_root_128MiB_bound": "Pinned live native wrapper retains bounded external census at actual guard boundaries. No fresh whole-root census was performed during active C06."
+  },
+  "pins": {
+    "A_native_preimage": {
+      "bytes": 81032,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-06/native-preimage.json",
+      "sha256": "ad9d846b57d5afb0dc336344c7d7a18f5ea08196b304cd82767db74f446c52a0"
+    },
+    "B_owner_result": {
+      "bytes": 4141,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-maintenance-20261017-06/owner-result.json",
+      "sha256": "cb2820a6c52609ab10a0a2827d4f6dc75acdf3aa8546dce48b6395999777413d"
+    },
+    "B_wrapper": {
+      "bytes": 48240,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-maintenance-wrapper-v02/authentic_fixture_maintenance_owner_v02.py",
+      "sha256": "8d51b1ecfc1a8831d3f7e557c6b86fd9cda3e6912eb61c8b7d4341e142f6b591"
+    },
+    "actual_A_proof": {
+      "bytes": 83470,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "sha256": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd"
+    },
+    "loader": {
+      "bytes": 55889,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+      "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+    },
+    "maintenance_binding": {
+      "bytes": 3008,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-maintenance-20261017-06/maintenance-binding.json",
+      "sha256": "79c318e578efca587f62f5984f86e1d15b6c698208df0e3b4632552048e24f6c"
+    },
+    "maintenance_receipt": {
+      "bytes": 1913,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-maintenance-20261017-06/maintenance-receipt.json",
+      "sha256": "2f6870ad9e3b9adb359d71d8cedf79546cd7be9b9363b908ddfd8e86700a6438"
+    },
+    "root_post_owner_observation": {
+      "bytes": 1115,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/maintenance06-post-owner-observation-v01.json",
+      "sha256": "f0896c1ec29c3783a9d5b40a74b53ee6e196c57f1cde0149876a1a4855cb44ec"
+    },
+    "sealed_B_request": {
+      "bytes": 1469551,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/maintenance-request-v06.json",
+      "sha256": "08b92a6d00f7b7551ef919ba7d32918ad7e54cb3f983eca190a4b6cfb8818d6a"
+    },
+    "status_binding": {
+      "bytes": 2402,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-maintenance-20261017-06/status-binding.json",
+      "sha256": "76cce1bb89cbefa062a49a7f17f38152873eded042a15412eb3edf6b9f4379d1"
+    },
+    "status_observation": {
+      "bytes": 5289,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-maintenance-20261017-06/status-observation.json",
+      "sha256": "61a66dd8ef7a4a5dd45c94a5a10b54ddb0a5bdd7eaed69bac87f78c4219184dc"
+    },
+    "unbound_C_input": {
+      "bytes": 1355672,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/unbound-admin-input-v06.json",
+      "sha256": "eb71d6d0d0acbf1fcaac4ac6e9db34d9cbda219d55b8528bd1f33435c6c2e0f8"
+    }
+  },
+  "production_access": false,
+  "review_method": "Read-only standard-library SHA256/JSON/AST/source review; no target/backend imports, database/WAL reads or hashes, process/resource queries, tests or native jobs.",
+  "review_result": "No concrete retained JSON/source evidence blocker found for completed fresh B06 maintenance/status scope.",
+  "schema": "authentic-native-maintenance-retained-evidence-independent-review@1",
+  "source_or_C_HEAD_edited": false
+}

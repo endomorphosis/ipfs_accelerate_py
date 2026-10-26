@@ -1,0 +1,16 @@
+{
+  "completion_or_semantic_authority": false,
+  "initial_worktree_only_check_refused_sparse_excluded_paths": true,
+  "materialized_upstream_bytes_preserved_exactly": true,
+  "materialized_upstream_paths": 71,
+  "native_jobs_active": false,
+  "pending_source_integration_qualification": true,
+  "production_runtime_qualified_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "qualified_policy_0a09_preserved_exactly": true,
+  "reviewed_upstream_HEAD": "2fe4b218e1de10c70ae842bdcc29457975d49477",
+  "schema": "post-closeout-main-source-integration-index-review@1",
+  "sparse_excluded_paths_verified_by_index_objects": true,
+  "unresolved_paths": 0,
+  "upstream103_index_blobs_preserved_exactly": true,
+  "upstream_changed_paths": 103
+}

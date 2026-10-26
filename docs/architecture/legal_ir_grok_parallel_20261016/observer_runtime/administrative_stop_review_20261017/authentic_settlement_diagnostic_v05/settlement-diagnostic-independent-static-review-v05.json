@@ -1,0 +1,52 @@
+{
+  "AST_and_source_checks": {
+    "only_existing_function_changed": "main",
+    "only_new_definition": "settlement_failure_observation",
+    "run_source_bytes_identical": true,
+    "unified_patch_exact": true,
+    "whole_module_AST_restored_with_old_main_and_no_helper": true
+  },
+  "diagnostic_scope": {
+    "argument": "One exactstr argument <=512characters/2048strictUTF8bytes contributes only SHA256 and bytecount. No plaintext argument or exception repr.",
+    "output": "One allow_nanFalse compactASCIIJSON line <=8192UTF8bytes, best-effort stderr write/flush. Diagnostic failure is caught; same os._exit(2) follows.",
+    "side_effects": "No request/artifact/database reads, source compilation, process query/poll/reap, native operation/close/replay, exit/commit witness or resource ACK added. Path(__file__) is lexical only.",
+    "stage": "Intentionally omitted rather than reading unverified request data or unchanged run() locals.",
+    "traceback": "At most64links inspected,16frames retained; only exact __file__ worker-source filename, positive native traceback line and <=96ASCIIfunctionname. Source path appears once and is <=512characters. No f_locals or other frame data."
+  },
+  "limits": [
+    "Diagnostic captures future errors only, without reconstructing prior missing failure details.",
+    "UTF8encoding/serialization/stderr failure can suppress the best-effort diagnostic while preserving exit2.",
+    "No success, recovered custody, resource release, UNKNOWN resolution, production permission or universal deadline guarantee follows from this source review.",
+    "Prior D1-D6 source review remains applicable because run() bytes are identical; real authenticated store/runtime gates remain necessary."
+  ],
+  "native_runtime_qualified": false,
+  "preserved_native_behavior": [
+    "imports and dispatchdenial unchanged",
+    "all run() code source-byte exact, including genuine unmodified verifier/code identities and exact audit lookup",
+    "all source/parent/deadline/control guards unchanged",
+    "native daemon open/inspect/staged mutations and four actual postcommit os._exit(73) fault hooks unchanged",
+    "actual successful close and result path unchanged",
+    "failure still exits2 without native-handle-close claim or exit witness"
+  ],
+  "production_action_authorized": false,
+  "reviewed_files": {
+    "baseline": {
+      "bytes": 19483,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_settlement_worker_v04.py",
+      "sha256": "ed72d2e190f6d7f1925712a6cd5180a0b53877d8fb73df608154286924b0c595"
+    },
+    "candidate": {
+      "bytes": 21633,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/authentic_unknown_settlement_worker_v05.py",
+      "sha256": "a30a3081b72502e1bc95380fe435421b5b3281b40c6915a2e21abc0027b519d6"
+    },
+    "exact_patch": {
+      "bytes": 3271,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-settlement-diagnostic-v05/bounded-settlement-error-diagnostic-v05.patch",
+      "sha256": "ae74aad44bd2c8a0b0e642110b69c5e05d5dc48084646565d97d0d746b2ee585"
+    }
+  },
+  "schema": "authentic-settlement-diagnostic-independent-static-review@5",
+  "scope": "Offline exact source/AST and byte-pin review only; no imports, test/native execution, DB access, resource/process queries, or frozen/source edits.",
+  "verdict": "No concrete static blocker for this diagnostic-only derivative. Genuine authenticated D1-D6 qualification remains pending."
+}

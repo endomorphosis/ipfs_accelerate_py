@@ -1,0 +1,162 @@
+{
+  "actual_completed_production_local_stop": true,
+  "attempt_id": "attempt:e1ddbe57f2a0408bacf841b2ba471a1f",
+  "completion_or_semantic_authority": false,
+  "current_protocol_corroboration_only": true,
+  "current_static_runtime_source_profile": {
+    "current_source_pins_at_static_freeze": {
+      "admin": {
+        "bytes": 31245,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_admin_worker_v01.py",
+        "sha256": "4fd503c0632ee880503acb70bf6c7b689cba39f8e3be57034c5e8d16956e438b"
+      },
+      "parent": {
+        "bytes": 53242,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v03.py",
+        "sha256": "3332b8a3d77c944177878957fda2709c75a20ba046f5c9bb41daee2e146afff4"
+      },
+      "runtime_tree_census_helper": {
+        "bytes": 15403,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_runtime_tree_census_v01.py",
+        "sha256": "5d00a43b2bcd35f361e4b0608432341331ce2d2e471d37e7142f8d1db0348f51"
+      },
+      "settlement": {
+        "bytes": 26188,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_settlement_worker_v01.py",
+        "sha256": "e2c9fc6774183a52f02ddd99cb72a457fef117f2ec5d374c7b722ff13d7a5ec5"
+      },
+      "status_actor": {
+        "bytes": 50588,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-charges-and-log-census-v03/production_unknown_closed_status_owner_v01.py",
+        "sha256": "c0a7494b8de54641ae759c1754110c548a52f6be647c26a3329d75d3a972eee3"
+      },
+      "unbound_compiler": {
+        "bytes": 27483,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compile_production_admin_inputs_v03.py",
+        "sha256": "ceaf84d615aba7bbb5ae5bacaaa31b04269c8a35cb5d966f9355872c91ede532"
+      }
+    },
+    "current_static_review_pins": {
+      "census": {
+        "bytes": 3987,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/runtime-tree-census-independent-review-v01.json",
+        "sha256": "865f21da9c34f03b179855db3ed6e4796ea1cb588d5fc472ccc3b3261d9f0d36"
+      },
+      "compiler": {
+        "bytes": 6328,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/compiler-census-independent-review-v03.json",
+        "sha256": "e5d2f095ab5214eb948336200aa2bf6c40839818d2cb85da085b9a2d5d275748"
+      },
+      "parent": {
+        "bytes": 4466,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-parent-retained-log-census-independent-review-v03.json",
+        "sha256": "bc00e4ebb184afc7739f35c3a086bc0774688e2eca21e7c99454108ad6c9f303"
+      },
+      "status_actor": {
+        "bytes": 5314,
+        "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-window-census-diagnostic-independent-review-v03.json",
+        "sha256": "8b386d94a2f07b7df43981d68eb64db287a744acbf0c01da9a007ff19a59534f"
+      }
+    },
+    "e922_current_refers_to_protocol_correction_scope_not_latest_actor_source_version": true,
+    "failed_status_attempt01_retained_not_finalized_or_qualified": true,
+    "pending_fields_inside_frozen_source_contracts_and_reviews_are_historical_at_freeze": true,
+    "runtime_qualification_not_granted_by_these_static_artifacts": true,
+    "source_bundle_manifest_pin": {
+      "bytes": 9887,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-adapters-and-unbound-compiler-manifest-v03.json",
+      "sha256": "816f66413346b6a3c3605d72f370a262760630a35b4cd4dc8ccc829f796a9513"
+    },
+    "source_bundle_v02_retained_historical": true
+  },
+  "final_native_state": {
+    "audit_event_id": "baguqeerardmcesukpunpfg3olrc2toyawz3i3gliqeqfm5pq4z6lrvhmtooa",
+    "audit_evidence_id": "baguqeerakv6ctbkews2hpby75mgv3hrbsn2sohvwssbqvqqhkb2u7zkbuv4q",
+    "claim_state": "released",
+    "control_revision": 13,
+    "control_status": "blocked",
+    "coordination_attempt_status": "failed",
+    "lease_state": "released",
+    "terminal_count": 1
+  },
+  "first_and_replay_audit_identifiers": {
+    "audit_event_id": "baguqeerardmcesukpunpfg3olrc2toyawz3i3gliqeqfm5pq4z6lrvhmtooa",
+    "audit_evidence_id": "baguqeerakv6ctbkews2hpby75mgv3hrbsn2sohvwssbqvqqhkb2u7zkbuv4q",
+    "context_cid": "baguqeerafgczsse6dedcehtjumnqp4lyihexmldoan3oa3xvb7agaanc5yjq",
+    "replayed": false
+  },
+  "first_audit_response_pin_NOT_COPIED": {
+    "bytes": 40478,
+    "path": "/tmp/pytest-of-barberb/pls17c/audit-first-response.json",
+    "sha256": "9f2afc244af84cf7ec6617a4c107e7ee8a7fb93556c75cab1f23214b005e7a3d"
+  },
+  "full92_case_qualification_pin": {
+    "bytes": 70574,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-10/administrative-controls-result.json",
+    "sha256": "a7e6fa368fa5faedb0048d47e24b610a3b267ae2ee8476b3ef15b16d2ca56a0f"
+  },
+  "historical_A_protocol_leaf_exact_bytes_attested": false,
+  "later_documentation_HEAD_is_distinct_and_not_rebased_into_runtime_pins": true,
+  "native_claims_attributed_to_genuine_results_not_reviewer_DB_queries": true,
+  "native_or_operator_authority_granted_by_publication": false,
+  "possible_external_effects": "unverified",
+  "post_owner_observer_v03_schema_labels": {
+    "closed_status": "finalized-production-closed-status-owner-readonly-observation@1",
+    "generic_parent_schema_name_does_not_change_production_scope": true,
+    "parent": "finalized-fixture-owner-readonly-observation@1"
+  },
+  "provider_outcome": "unknown",
+  "qualified_runtime_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "raw_UNKNOWN_rows_preserved": true,
+  "remote_cancellation_callback_closure_or_nonreachability_proved": false,
+  "replay_audit_response_pin_NOT_COPIED": {
+    "bytes": 40477,
+    "path": "/tmp/pytest-of-barberb/pls17c/audit-response.json",
+    "sha256": "1553723a9396eb5ab401c880d26f047defee4131737e9c10e037c50c1f2f6f95"
+  },
+  "retry_rearm_successor_or_cap_increase_authorized": false,
+  "root_facts_pin": {
+    "bytes": 3671,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-local-stop-publication-root-facts-v01.json",
+    "sha256": "228c6d321f2fe0daa6add6501622606acc5cbd9a0917d63cf44ddca2e3c81b28"
+  },
+  "schema": "production-local-stop-qualified-review-summary@1",
+  "settlement_worker_result_pin_NOT_COPIED": {
+    "bytes": 12019,
+    "path": "/tmp/pytest-of-barberb/pls17b/settlement-result.json",
+    "sha256": "65881839d5fa467af6248a6a0ee667b468537f0690d8eb50d48544e997b978a7"
+  },
+  "source_review_corrections_and_supersession": {
+    "current_protocol_validation_is_corroboration_only": true,
+    "current_static_review_pin": {
+      "bytes": 4925,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-current-protocol-independent-review-v02.json",
+      "sha256": "e9228ac41cc9f93f6d2c6c1069e7612ad77e5d9144d19becedd543b3c4fba821"
+    },
+    "current_static_review_scope": "Corrected current-protocol corroboration and genuine lifecycle source review only; historical protocol leaf was absent from original launch source inventory.",
+    "earlier_reviews_preserved_and_partial_clearances_explicitly_superseded": [
+      {
+        "pin": {
+          "bytes": 2115,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-request-preparer-independent-review-v01.json",
+          "sha256": "275cb992e10b7bae7bbe75f6a8d171afcfc71db053228504c71788142a323747"
+        },
+        "status": "preserved_historical_partial_clearance",
+        "superseded_scope": "False assertion that original launch pinned the historical protocol leaf. Earlier reviews missed this source-inventory lookup; the focused inert-unit-test scope remains separately limited."
+      },
+      {
+        "pin": {
+          "bytes": 6354,
+          "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/closed-status-owner-and-policy-tests-independent-review-v01.json",
+          "sha256": "817aaa177cd247ba9b67c66623a086093f3ad41f0d5bdf546b577d1cf5926d49"
+        },
+        "status": "preserved_historical_partial_clearance",
+        "superseded_scope": "False assertion that original launch pinned the historical protocol leaf. Earlier reviews missed this source-inventory lookup; the focused inert-unit-test scope remains separately limited."
+      }
+    ],
+    "historical_protocol_leaf_bytes_attested": false,
+    "independent_final_status_and_settlement_reviews_not_invented": true,
+    "static_review_does_not_qualify_native_execution_or_finalization": true
+  },
+  "task_cid": "baguqeeraqk2ln7d3plwfonnyycsxkr5tjrpo7e5uq4p7rhe6vi6btpxsaeyq"
+}

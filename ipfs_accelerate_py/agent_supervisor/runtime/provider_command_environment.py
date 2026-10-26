@@ -53,6 +53,7 @@ PROVIDER_COMMAND_REQUIRED_COMMANDS_ENV = (
 # provider credentials, signing material, registry configuration, and cloud
 # variables must never be serialized into the launcher or its receipt.
 APPROVED_PROVIDER_COMMAND_ENVIRONMENT_NAMES = (
+    "COMMON_CRAWL_AUTO_CLONE_SOURCE",
     FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
     "IPFS_ACCELERATE_AGENT_VALIDATION_PATH",
     "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON",
@@ -179,6 +180,10 @@ def project_provider_command_environment(
             continue
         else:
             value = _safe_text(name, source[name])
+        if name == "COMMON_CRAWL_AUTO_CLONE_SOURCE" and value != "0":
+            raise ProviderCommandEnvironmentError(
+                "COMMON_CRAWL_AUTO_CLONE_SOURCE may only disable dependency cloning"
+            )
         if not value:
             continue
         if name in _PATH_LIST_NAMES:

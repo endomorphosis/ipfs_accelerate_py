@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import semantic_router_translation as codec
 from .local_prompt_tokenizer import _local_path, _sha
@@ -27,8 +28,13 @@ from .semantic_typed_source_context import (
     project_worker_source_bound_typed_links,
 )
 
+if TYPE_CHECKING:
+    from .semantic_retrieval_query_reference import SemanticRetrievalQueryBinding
+
 SCHEMA = "supervisor-semantic-typed-owner-nomination@1"
+RETRIEVAL_SCHEMA = "supervisor-semantic-typed-owner-nomination@2"
 RECEIPT_SCHEMA = "supervisor-semantic-typed-owner-policy-receipt@1"
+RETRIEVAL_RECEIPT_SCHEMA = "supervisor-semantic-typed-owner-policy-receipt@2"
 MAX_REPORT_BYTES = 2_000_000
 _TASK_GRAPH_ENV = "IPFS_ACCELERATE_TYPED_TASK_GRAPH"
 
@@ -87,6 +93,7 @@ def build_typed_owner_decision_nomination(
     graph_root_id: str, max_selected_symbols: int = 32,
     max_graph_nodes: int = 2048, max_graph_edges: int = 8192,
     max_report_bytes: int = MAX_REPORT_BYTES,
+    retrieval_query_binding: SemanticRetrievalQueryBinding | None = None,
 ) -> TypedOwnerNomination:
     """Retain known optional dependencies without reclassifying the partition.
 
@@ -114,6 +121,11 @@ def build_typed_owner_decision_nomination(
         if type(value) is not int or not 1 <= value <= maximum:
             raise ValueError("typed owner nomination has invalid " + name)
     _bounded_text(task_id, "owner task key", 512)
+    if retrieval_query_binding is not None:
+        from .semantic_retrieval_query_reference import SemanticRetrievalQueryBinding
+        if (type(retrieval_query_binding) is not SemanticRetrievalQueryBinding
+                or retrieval_query_binding.task_id != task_id):
+            raise ValueError("independently bound typed retrieval parent and task required")
     _bounded_text(expected_semantic_root_cid, "semantic root CID", 8192)
     _bounded_text(graph_root_id, "graph root identity", 4096)
     _sha(expected_parent_sha256, "typed owner semantic parent")
@@ -133,6 +145,8 @@ def build_typed_owner_decision_nomination(
     )
     if type(original_policy) is not SemanticDecisionPolicy:
         raise ValueError("independent typed semantic owner policy required")
+    if retrieval_query_binding is not None and original_policy.task_text_source_path is None:
+        raise ValueError("typed retrieval nomination requires its nominated required task text source")
     if not original_policy.required_capsule_ids:
         raise ValueError("typed owner nomination requires nonempty explicit required capsule seeds")
     if len(original_policy.required_capsule_ids) > max_selected_symbols:
@@ -272,6 +286,7 @@ def build_typed_owner_decision_nomination(
     nomination = build_decision_nomination(policy)
     launch_policy = build_decision_launch_policy(
         native_prompt=native_prompt, policy=policy, repository=root,
+        **({"retrieval_query_binding": retrieval_query_binding} if retrieval_query_binding is not None else {}),
     )
     if (launch_policy.get("task_id") != task_id
             or launch_policy.get("parent_artifact") != artifact
@@ -292,8 +307,13 @@ def build_typed_owner_decision_nomination(
     if final_owner != original_policy:
         raise ValueError("independent owner declaration changed during policy construction")
 
+    if retrieval_query_binding is not None:
+        closing = build_decision_launch_policy(native_prompt=native_prompt, policy=policy,
+            repository=root, retrieval_query_binding=retrieval_query_binding)
+        if closing != launch_policy:
+            raise ValueError("typed retrieval parents changed during policy construction")
     receipt = {
-        "schema": RECEIPT_SCHEMA, "task_id": task_id,
+        "schema": RETRIEVAL_RECEIPT_SCHEMA if retrieval_query_binding is not None else RECEIPT_SCHEMA, "task_id": task_id,
         "nomination_artifact": str(nomination_path), "nomination_sha256": nomination_sha256,
         "original_policy_sha256": _digest(original_policy.to_dict()),
         "selected_policy_sha256": _digest(policy.to_dict()),
@@ -318,7 +338,10 @@ def build_typed_owner_decision_nomination(
         "deployment_ready": False, "runtime_activation": False,
         "descriptor_published": False, "provider_called": False,
     }
-    value = {"schema": SCHEMA, "nomination": nomination, "launch_policy": launch_policy,
+    if retrieval_query_binding is not None:
+        receipt["retrieval_query_binding"] = retrieval_query_binding.to_dict()
+    value = {"schema": RETRIEVAL_SCHEMA if retrieval_query_binding is not None else SCHEMA,
+        "nomination": nomination, "launch_policy": launch_policy,
         "policy": policy.to_dict(), "receipt": receipt}
     result_json = codec._json(value)
     if len(result_json.encode("utf-8")) > max_report_bytes:

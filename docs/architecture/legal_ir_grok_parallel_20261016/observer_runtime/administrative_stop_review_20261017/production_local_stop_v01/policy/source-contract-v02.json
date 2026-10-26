@@ -1,0 +1,65 @@
+{
+  "C_source_modified": false,
+  "absence_record": {
+    "observation": "pid_absent_unrecorded_birth",
+    "observed_boot_id": "Actual current boot, matched during native validation",
+    "pid": "Exact positive original native_owner_receipt.owner_pid"
+  },
+  "absence_rules": [
+    "Default helper remains strict three-key positive birth records.",
+    "Explicit original_owner_receipt keyword / stopped_processes_v2 adapter accepts exactly one tagged original owner only if genuine stopped receipt contains no recorded owner-birth fields.",
+    "Any /proc/PID presence, including zombie or reused PID, refuses; no birth/reuse inference and no invented original boot/ticks.",
+    "Positive original child/master birth records and original launch/request/terminal/content-ID crosswalk remain unchanged."
+  ],
+  "baseline_source": {
+    "bytes": 32448,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+    "sha256": "2c41ec13d6493da394d3285686e662e5fa36e88439eb840271260ce1605e60e7"
+  },
+  "candidate_source": {
+    "bytes": 50619,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/planning_unknown_abandonment.py",
+    "sha256": "0a090a6ac961cdb5e0e14514f00eb280feeb858b24332d0f9956d524585dfdda"
+  },
+  "closed_status_rules": [
+    "Read-only genuine NativeExecutionStatusOwner observe/actual close and released original locks, before/after exact bytes/full identities, selected WAL absence.",
+    "Distinct closed report requires explicit physical_maintenance_performed=False, logical_write_performed=False and backup_created=False; a NativeWAL receipt cannot be relabeled.",
+    "Exact actor/report keysets AST-compared equal; snapshot pin and raw selected store path/bytes/identity/WAL absence/unique13metadata join the immutable native status to original preimage.",
+    "Registered actual adapter/native reader/connector source pins and retired status owner positive birth row are mandatory.",
+    "Current file bytes/stat/WAL dereference occurs only check_current_file=True before audit; immutable report/raw/snapshot/source pins remain checked during D recovery."
+  ],
+  "native_authority_schema_v1_preserved": "planning-unknown-abandonment-authority-context@1",
+  "native_or_production_authority_created_by_contract": false,
+  "new_explicit_authority_schema": "planning-unknown-abandonment-authority-context@2",
+  "new_report_schema": "planning-unknown-closed-store-status-receipt@1",
+  "no_new_behavior": [
+    "No provider/Grok call, callback closure, remote cancellation, nonreachability, successor/rearm/cap increase or semantic completion.",
+    "No lease renewal or owner impersonation. Existing fail_task_claim atomically handles elapsed but still ACCEPTED exact-scope deadline via _expire_scope; durable EXPIRED initial preimage remains governed by existing verifier."
+  ],
+  "planned_focused_cases": "24 core parametrized cases; exact AST collection count will accompany frozen test source.",
+  "planned_test_path": "tests/test_planning_unknown_closed_status_custody.py",
+  "product_patch": {
+    "bytes": 21305,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-policy-v02/planning-unknown-closed-status-and-owner-absence-v02.patch",
+    "sha256": "95290f5664f7c5f22161fa8c9e0bfad536a7ad34027315011e6f0de67b98a650"
+  },
+  "required_qualification": [
+    "All focused new tests + existing policy suites + native integration14 under one original F07 owner after reviewed product patch.",
+    "Real production already-closed StatusOwner read/close/bytes-preservation qualification before any audited canonical write.",
+    "Production ADMIN pre-open stopped-v2 and native verify_custody, actual new gateway/registered creator/peer grant, graceful close/reap, then genuine same-attempt execute_full settlement."
+  ],
+  "schema": "planning-unknown-closed-status-and-owner-absence-source-contract@2",
+  "source_candidate_applied": false,
+  "status": "Source candidate; no imports/execution/native qualification/production writes performed.",
+  "tests_owner": "/root/unknown_event_forensics",
+  "top_level_CONTEXT_KEYS_unchanged": true,
+  "v1_default_regression": "Original positive-birth stopped-process and seven-artifact WAL-maintenance bodies are AST-identical after private helper rename. load_context v1 still calls stopped_processes(rows) without new keyword; unsupported context schemas still refuse.",
+  "v2_exact_artifact_names": [
+    "launch_request",
+    "native_owner_receipt",
+    "master_terminal",
+    "status_binding",
+    "status_observation",
+    "closed_store_status_receipt"
+  ]
+}

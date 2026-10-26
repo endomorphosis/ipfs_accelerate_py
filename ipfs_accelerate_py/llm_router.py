@@ -133,6 +133,7 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -8228,6 +8229,230 @@ def _get_mistral_vibe_provider(*, auto_install: bool = False) -> Optional[LLMPro
     return _MistralVibeProvider()
 
 
+_GROK_SAMPLING_MAX_CONFIG_BYTES = 1_048_576
+_GROK_SAMPLING_MAX_HOME_ENTRIES = 256
+
+
+def _validate_grok_zero_temperature(value: object) -> None:
+    if (type(value) not in (int, float) or not math.isfinite(value)
+            or float(value) != 0.0):
+        raise ValueError("Grok CLI explicit temperature must be zero")
+
+
+def _validate_grok_sampling_model_command(command, model: str) -> None:
+    if (not command or Path(str(command[0])).name not in {"grok", "agent"}
+            or not isinstance(model, str) or not model or len(model) > 256
+            or any(ord(char) < 32 for char in model)):
+        raise ValueError("Grok zero sampling requires a native CLI and explicit model")
+    selected = []
+    for index, token in enumerate(command):
+        if token in {"--model", "-m"}:
+            selected.append(command[index + 1] if index + 1 < len(command) else None)
+        elif token.startswith(("--model=", "-m=")):
+            selected.append(token.split("=", 1)[1])
+        elif token.startswith("-m") and not token.startswith("--"):
+            raise ValueError("Grok sampling cannot bind an ambiguous model option")
+    if selected != [model]:
+        raise ValueError("Grok sampling model differs from the native CLI command")
+
+
+def _grok_sampling_config_text(path: Path) -> str:
+    """Read a bounded stable regular config; never inspect credential files."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return ""
+    try:
+        before = os.fstat(descriptor)
+        if (not stat_module.S_ISREG(before.st_mode) or before.st_size > _GROK_SAMPLING_MAX_CONFIG_BYTES
+                or before.st_uid not in {0, os.geteuid()} or before.st_mode & 0o022):
+            raise ValueError("Grok sampling config is not a bounded trusted regular file")
+        raw = bytearray()
+        while len(raw) <= _GROK_SAMPLING_MAX_CONFIG_BYTES:
+            block = os.read(descriptor, min(65_536, _GROK_SAMPLING_MAX_CONFIG_BYTES + 1 - len(raw)))
+            if not block:
+                break
+            raw.extend(block)
+        def identity(value):
+            return tuple(getattr(value, field) for field in (
+                "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink",
+                "st_size", "st_mtime_ns", "st_ctime_ns"))
+        if (len(raw) > _GROK_SAMPLING_MAX_CONFIG_BYTES or len(raw) != before.st_size
+                or identity(before) != identity(os.fstat(descriptor))
+                or identity(before) != identity(path.stat(follow_symlinks=False))):
+            raise ValueError("Grok sampling config changed during bounded read")
+        return raw.decode("utf-8")
+    finally:
+        os.close(descriptor)
+
+
+def _grok_sampling_config(text: str, *, label: str = "config") -> dict:
+    # toml is already a declared runtime dependency. No package is installed.
+    import toml
+    try:
+        original = toml.loads(text)
+    except ValueError:
+        raise ValueError(f"Grok sampling {label} is malformed") from None
+    if any(original.get(key) for key in ("experiments", "version_overrides", "campaigns")):
+        raise ValueError(f"Grok sampling requires qualification of {label} patches")
+    return original
+
+
+def _validate_grok_output_token_budget(value) -> int:
+    if type(value) is not int or not 1 <= value <= 2**63 - 1:
+        raise ValueError("Grok output token budget must be a positive TOML integer")
+    return value
+
+
+def _grok_output_token_budget(kwargs) -> Optional[int]:
+    values = [_validate_grok_output_token_budget(kwargs.pop(key))
+              for key in ("max_tokens", "max_new_tokens", "max_completion_tokens") if key in kwargs]
+    if values and any(value != values[0] for value in values):
+        raise ValueError("Grok output token budget aliases conflict")
+    return values[0] if values else None
+
+
+def _grok_config_token_budgets(config: dict, model: str) -> list[int]:
+    models = config.get("model", {})
+    defaults = config.get("models", {})
+    if not isinstance(models, dict) or not isinstance(defaults, dict):
+        raise ValueError("Grok token budget configuration tables are invalid")
+    selected = models.get(model, {})
+    if not isinstance(selected, dict):
+        raise ValueError("Grok selected model configuration is not a table")
+    return [_validate_grok_output_token_budget(table["max_completion_tokens"])
+            for table in (defaults, selected) if "max_completion_tokens" in table]
+
+
+def _grok_request_config(original: dict, model: str, *, zero_temperature: bool,
+                         output_token_budget: Optional[int]) -> str:
+    import toml
+    from copy import deepcopy
+    expected = deepcopy(original)
+    models = expected.setdefault("model", {})
+    cli = expected.setdefault("cli", {})
+    if not isinstance(models, dict) or not isinstance(cli, dict):
+        raise ValueError("Grok sampling configuration tables are invalid")
+    table = models.setdefault(model, {})
+    if not isinstance(table, dict):
+        raise ValueError("Grok selected model configuration is not a table")
+    if zero_temperature:
+        table["temperature"] = 0.0
+    if output_token_budget is not None:
+        table["max_completion_tokens"] = output_token_budget
+    # A leader can outlive the invocation or retain earlier sampling settings.
+    cli["use_leader"] = False
+    rendered = toml.dumps(expected)
+    if len(rendered.encode("utf-8")) > _GROK_SAMPLING_MAX_CONFIG_BYTES or toml.loads(rendered) != expected:
+        raise ValueError("Grok private sampling config cannot preserve original settings")
+    return rendered
+
+
+def _grok_zero_temperature_config(text: str, model: str) -> str:
+    return _grok_request_config(_grok_sampling_config(text, label="user config"), model,
+                               zero_temperature=True, output_token_budget=None)
+
+
+def _grok_request_requirements(path: Path, model: str, *, zero_temperature: bool) -> dict:
+    policy = _grok_sampling_config(_grok_sampling_config_text(path), label="requirements config")
+    cli = policy.get("cli", {})
+    models = policy.get("model", {})
+    if not isinstance(cli, dict) or not isinstance(models, dict):
+        raise ValueError("Grok sampling requirements tables are invalid")
+    if cli.get("use_leader") is True:
+        raise ValueError("Grok private sampling cannot require a leader")
+    selected = models.get(model, {})
+    if not isinstance(selected, dict):
+        raise ValueError("Grok selected model requirements are not a table")
+    if zero_temperature and "temperature" in selected:
+        _validate_grok_zero_temperature(selected["temperature"])
+    return policy
+
+
+def _grok_requirements_allow_zero(path: Path, model: str) -> None:
+    """Preserve zero-temperature callers through the current requirements parser."""
+    _grok_request_requirements(path, model, zero_temperature=True)
+
+
+@contextmanager
+def _grok_zero_temperature_environment(environment, *, model: str, command,
+                                     zero_temperature: bool = True,
+                                     output_token_budget: Optional[int] = None):
+    """Yield private request settings, preserving original context and auth.
+
+    HOME and all other environment values are retained. Other immediate Grok
+    home entries are referenced without opening or copying their contents.
+    Those references retain existing mutability if the CLI writes through them;
+    this helper does not promise immutable credential or cache backing files.
+    Both user and system requirements remain enforced; a known conflict fails
+    before any provider process. Native effective-config validation remains a
+    separate requirement for qualification.
+    Token budgets configure a per-response request field only. They do not
+    establish server enforcement or a ceiling on auxiliary calls or spend.
+    """
+    _validate_grok_sampling_model_command(command, model)
+    inherited = dict(environment)
+    if output_token_budget is not None:
+        _validate_grok_output_token_budget(output_token_budget)
+        # Overlay merging and arbitrary config flags have not been qualified
+        # for this binding. Never silently bypass a stricter external setting.
+        if any(str(inherited.get(key) or "").strip() for key in ("GROK_CONFIG", "GROK_CONFIG_PATH")):
+            raise ValueError("Grok output token budget requires qualification of config overlays")
+        if "--" in command or any(str(token).startswith("--config") for token in command):
+            raise ValueError("Grok output token budget conflicts with custom config options")
+    home_value = inherited.get("GROK_HOME")
+    if home_value:
+        source = Path(home_value).expanduser()
+    else:
+        source = Path(inherited.get("HOME") or Path.home()) / ".grok"
+    source = Path(os.path.abspath(source))
+    if source.exists() and (not source.is_dir() or source.resolve(strict=True) != source):
+        raise ValueError("Grok sampling home must be an exact directory")
+    entries = []
+    if source.exists():
+        with os.scandir(source) as listing:
+            for entry in listing:
+                if len(entries) >= _GROK_SAMPLING_MAX_HOME_ENTRIES:
+                    raise ValueError("Grok sampling home exceeds its metadata bound")
+                entries.append(source / entry.name)
+    original = _grok_sampling_config(_grok_sampling_config_text(source / "config.toml"), label="user config")
+    requirements = [_grok_request_requirements(path, model, zero_temperature=zero_temperature)
+                    for path in (source / "requirements.toml", Path("/etc/grok/requirements.toml"))]
+    if output_token_budget is not None:
+        managed = [_grok_sampling_config(_grok_sampling_config_text(path), label="managed config")
+                   for path in (Path("/etc/grok/managed_config.toml"), source / "managed_config.toml")]
+        limits = [output_token_budget]
+        for layer in (original, *managed, *requirements):
+            limits.extend(_grok_config_token_budgets(layer, model))
+        output_token_budget = min(limits)
+        for policy in requirements:
+            defaults = policy.get("models", {})
+            if "default" in defaults and defaults["default"] != model:
+                raise ValueError("Grok requirements select a different model for the output token budget")
+            selected = policy.get("model", {}).get(model, {})
+            if selected.get("max_completion_tokens", output_token_budget) > output_token_budget:
+                raise ValueError("Grok requirements conflict with the stricter output token budget")
+    config = _grok_request_config(original, model, zero_temperature=zero_temperature,
+                                  output_token_budget=output_token_budget)
+    with tempfile.TemporaryDirectory(prefix="llm-router-grok-sampling-") as directory:
+        root = Path(directory)
+        root.chmod(0o700)
+        for entry in entries:
+            if entry.name != "config.toml":
+                (root / entry.name).symlink_to(entry)
+        target = root / "config.toml"
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(config)
+                stream.flush()
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
+        inherited["GROK_HOME"] = str(root)
+        yield inherited
+
+
 def _get_grok_cli_provider() -> Optional[LLMProvider]:
     """Return the official Grok CLI provider when its binary is available."""
 
@@ -8264,6 +8489,39 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 base_parts = shlex.split(command_text)
                 executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
                 structured_cli = executable_name in {"grok", "agent"}
+
+            named_request = kwargs.pop("grok_named_session_request", None)
+            named_base_parts = None
+            if named_request is not None:
+                from .cli_runtime.grok_named_session import validate_preparation_option
+                validate_preparation_option("grok_cli", named_request, kwargs)
+                if (not structured_cli or "temperature" not in kwargs
+                        or model != "grok-4.7" or Path.cwd() != named_request.workspace):
+                    raise ValueError("named planning session requires its exact zero-temperature workspace route")
+                # Preserve and validate the bare bootstrap command before
+                # headless max-turn/schema bindings amend base_parts.
+                if base_parts != [str(named_request.binary.path)]:
+                    raise ValueError("named bootstrap requires its exact binary-only base command")
+                named_base_parts = tuple(base_parts)
+            temperature_supplied = "temperature" in kwargs
+            if temperature_supplied:
+                _validate_grok_zero_temperature(kwargs.pop("temperature"))
+                if not structured_cli:
+                    raise ValueError("Grok zero temperature requires a structured native CLI")
+
+            output_token_budget = _grok_output_token_budget(kwargs)
+            if output_token_budget is not None and not structured_cli:
+                raise ValueError("Grok output token budget requires a structured native CLI")
+
+            explicit_max_turns = "grok_max_turns" in kwargs
+            if explicit_max_turns:
+                from .cli_runtime.grok_turn_policy import (
+                    bind_explicit_grok_max_turns, validate_grok_max_turns,
+                )
+                requested_max_turns = validate_grok_max_turns(kwargs["grok_max_turns"])
+                if not structured_cli:
+                    raise ValueError("explicit grok_max_turns requires a structured Grok CLI command")
+                base_parts = bind_explicit_grok_max_turns(base_parts, requested_max_turns)
 
             response_format = kwargs.pop("response_format", None)
             stream_progress = kwargs.pop("grok_stream_progress", False)
@@ -8365,7 +8623,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     )
                 ),
             )
-            if "--max-turns" not in cmd:
+            if not explicit_max_turns and "--max-turns" not in cmd:
                 cmd.extend(["--max-turns", str(max_turns)])
 
             permission_mode = str(
@@ -8443,6 +8701,9 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
 
             prompt_path = ""
             stream_observation = None
+            named_lifetime = None
+            def accept_named_response(value):
+                return named_request.accept_response(value) if named_request is not None else value
             try:
                 with tempfile.NamedTemporaryFile(
                     mode="w",
@@ -8459,42 +8720,66 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 for key, value in extra_env.items():
                     if value is not None:
                         env[key] = value
-                try:
-                    if stream_progress:
-                        from .cli_runtime.grok_stream_capture import capture_grok_stream
-                        proc = capture_grok_stream(cmd, env=env, timeout=timeout,
-                            progress_callback=progress_callback)
-                        stream_observation = proc.progress
-                        if proc.timed_out:
-                            raise subprocess.TimeoutExpired(cmd, timeout,
-                                output=proc.stdout, stderr="")
-                    else:
-                        proc = subprocess.run(
-                            cmd,
-                            text=True,
-                            capture_output=True,
-                            check=False,
-                            timeout=timeout,
-                            env=env,
-                        )
-                except FileNotFoundError as exc:
-                    raise LLMRouterError("Grok CLI not found on PATH") from exc
-                except subprocess.TimeoutExpired as exc:
-                    from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
-                    from .cli_runtime.grok_native_usage import native_grok_observation
-                    partial_stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
-                    partial_stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
-                    observed = remember_cli_run("grok_cli", partial_stdout, partial_stderr,
-                        extra={"model_id": model, "timed_out": True})
-                    observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
-                    observed.update(native_grok_observation(_grok_cli_json_payload(partial_stdout), exit_code=None, timed_out=True))
-                    if stream_observation is not None:
-                        # Stream diagnostics describe the transport only. A final
-                        # event never overrides process timeout or grants retry.
-                        observed.update(native_grok_observation(proc.final_payload, exit_code=None, timed_out=True))
-                        observed["native_grok_progress"] = stream_observation
-                    set_last_cli_observation("grok_cli", observed)
-                    raise
+                from contextlib import ExitStack
+                with ExitStack() as sampling_scope:
+                    if named_request is not None:
+                        from .cli_runtime.grok_named_session import NamedSessionLifetime, validate_allocation_session
+                        validate_allocation_session(named_request, _allocation_context()[0])
+                        # The allocation-selected key is injected before backend
+                        # dispatch. Share it and one charged native home across
+                        # ACP and headless; ambient credentials are not a substitute.
+                        _grok_requirements_allow_zero(Path("/etc/grok/requirements.toml"), model)
+                        named_lifetime = sampling_scope.enter_context(NamedSessionLifetime(
+                            named_request, env, model=model, base_command=named_base_parts,
+                            selected_api_key=kwargs.pop("api_key", None),
+                            selected_slot=getattr(_API_KEY_CONTEXT, "slot", ""),
+                            selected_fingerprint=getattr(_API_KEY_CONTEXT, "fingerprint", "")))
+                        resume_session_id = named_lifetime.session_id
+                        cmd.extend(["--resume", resume_session_id])
+                        env = named_lifetime.environment
+                        timeout = named_lifetime.headless_timeout(timeout)
+                    elif temperature_supplied:
+                        env = sampling_scope.enter_context(_grok_zero_temperature_environment(
+                            env, model=model, command=cmd, zero_temperature=temperature_supplied,
+                            output_token_budget=output_token_budget))
+                    try:
+                        if stream_progress:
+                            from .cli_runtime.grok_stream_capture import capture_grok_stream
+                            from .cli_runtime.grok_invocation_observation import begin_native_grok_dispatch
+                            observation_dispatch_token = begin_native_grok_dispatch()
+                            proc = capture_grok_stream(cmd, env=env, timeout=timeout,
+                                progress_callback=progress_callback)
+                            stream_observation = proc.progress
+                            if proc.timed_out:
+                                raise subprocess.TimeoutExpired(cmd, timeout,
+                                    output=proc.stdout, stderr="")
+                        else:
+                            proc = subprocess.run(
+                                cmd,
+                                text=True,
+                                capture_output=True,
+                                check=False,
+                                timeout=timeout,
+                                env=env,
+                            )
+                    except FileNotFoundError as exc:
+                        raise LLMRouterError("Grok CLI not found on PATH") from exc
+                    except subprocess.TimeoutExpired as exc:
+                        from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
+                        from .cli_runtime.grok_native_usage import native_grok_observation
+                        partial_stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
+                        partial_stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
+                        observed = remember_cli_run("grok_cli", partial_stdout, partial_stderr,
+                            extra={"model_id": model, "timed_out": True})
+                        observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
+                        observed.update(native_grok_observation(_grok_cli_json_payload(partial_stdout), exit_code=None, timed_out=True))
+                        if stream_observation is not None:
+                            # Stream diagnostics describe the transport only. A final
+                            # event never overrides process timeout or grants retry.
+                            observed.update(native_grok_observation(proc.final_payload, exit_code=None, timed_out=True))
+                            observed["native_grok_progress"] = stream_observation
+                        set_last_cli_observation("grok_cli", observed)
+                        raise
             finally:
                 if prompt_path:
                     try:
@@ -8503,6 +8788,10 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         pass
 
             payload = proc.final_payload if stream_progress else _grok_cli_json_payload(proc.stdout or "")
+            if stream_progress:
+                from .cli_runtime.grok_invocation_observation import record_native_grok_result
+                record_native_grok_result(payload, model=model, returncode=proc.returncode,
+                                          progress=stream_observation, dispatch_token=observation_dispatch_token)
             try:
                 from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
 
@@ -8511,6 +8800,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     "exit_code": proc.returncode,
                     "session_id": resume_session_id or chat_session_id,
                 }
+                if named_request is not None:
+                    extra["grok_owned_named_session"] = named_request.receipt()
                 if isinstance(payload, dict):
                     extra.update(
                         {
@@ -8599,25 +8890,25 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             if response_validator is not None:
                 from .cli_runtime.grok_structured_output import decode_response
                 try:
-                    return decode_response(proc.stdout or "", response_validator, additional_validator=wire_validator)
+                    return accept_named_response(decode_response(proc.stdout or "", response_validator, additional_validator=wire_validator))
                 except (ValueError, TypeError, RecursionError) as exc:
                     raise LLMRouterError("Grok CLI structured response failed validation") from exc
 
             if stream_progress:
                 cleaned = _clean_grok_cli_output(proc.response_text)
                 if cleaned:
-                    return cleaned
+                    return accept_named_response(cleaned)
                 raise LLMRouterError("Grok CLI returned no response text")
             if payload is not None:
                 text = payload.get("text")
                 if isinstance(text, str):
                     cleaned_text = _clean_grok_cli_output(text)
                     if cleaned_text:
-                        return cleaned_text
+                        return accept_named_response(cleaned_text)
                     raise LLMRouterError("Grok CLI returned no response text")
             cleaned = _clean_grok_cli_output(proc.stdout or "")
             if cleaned:
-                return cleaned
+                return accept_named_response(cleaned)
             raise LLMRouterError("Grok CLI returned no response text")
 
     return _GrokCLIProvider()
@@ -11585,12 +11876,21 @@ _STICKY_SKIP_KINDS = frozenset({"billing", "authentication"})
 
 def _bind_cli_session_kwargs(provider: str, kwargs: dict[str, object]) -> dict[str, object]:
     """Resume the native CLI session bound to this allocation session id."""
+    named_request = kwargs.get("grok_named_session_request")
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_preparation_option
+        validate_preparation_option(provider, named_request, kwargs)
     session_id, _path = _allocation_context()
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_allocation_session
+        validate_allocation_session(named_request, session_id)
     if not session_id or not provider:
         return kwargs
     try:
         from .llm_allocation.paths import CLI_PROVIDERS, inject_cli_session_kwargs
     except Exception:
+        if named_request is not None:
+            raise
         return kwargs
     if provider not in CLI_PROVIDERS:
         return kwargs
@@ -11601,7 +11901,14 @@ def _bind_cli_session_kwargs(provider: str, kwargs: dict[str, object]) -> dict[s
         stored = get_allocation_store().get_cli_session(session_id, provider)
         native = str((stored or {}).get("native_session_id") or "")
     except Exception:
+        if named_request is not None:
+            raise
         native = ""
+    if named_request is not None:
+        if native:
+            raise ValueError("automatic named bootstrap requires a fresh allocation session")
+        # Only this exact typed owner handoff suppresses create-on-first.
+        return kwargs
     inject_cli_session_kwargs(
         provider,
         kwargs,
@@ -11614,6 +11921,39 @@ def _bind_cli_session_kwargs(provider: str, kwargs: dict[str, object]) -> dict[s
 def _capture_cli_session(provider: str, kwargs: Mapping[str, object]) -> None:
     """Persist the native CLI session id used for this allocation session."""
     session_id, _path = _allocation_context()
+    named_request = kwargs.get("grok_named_session_request")
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import (
+            validate_allocation_session, NamedSessionRequest, NamedSessionCaptureRefusal)
+        # Validate exact type before reading its lifecycle, then leave an
+        # unfinished response uncaptured without querying the allocation store.
+        if type(named_request) is not NamedSessionRequest:
+            raise ValueError("automatic native capture requires the exact owner handoff")
+        native = named_request.completed_session_id
+        if not native:
+            validate_allocation_session(named_request, session_id)
+            return
+        try:
+            validate_allocation_session(named_request, session_id)
+            if provider != "grok_cli":
+                raise ValueError("automatic native capture requires the exact owner handoff")
+            from .llm_allocation import get_allocation_store
+            from .llm_allocation.paths import cli_session_contract
+            store = get_allocation_store()
+            contract = cli_session_contract(provider)
+            store.upsert_cli_session(session_id=session_id, provider=provider,
+                native_session_id=native, resume_style=str(contract.get("style") or ""),
+                workspace=str(named_request.workspace))
+            captured = store.get_cli_session(session_id, provider)
+            if (type(captured) is not dict or captured.get("allocation_session_id") != session_id
+                    or captured.get("provider") != provider or captured.get("native_session_id") != native
+                    or captured.get("workspace") != str(named_request.workspace)):
+                raise ValueError("automatic_native_capture_readback_mismatch")
+        except Exception as error:
+            # The accepted response and native UUID remain recorded on the
+            # request; an unconfirmed capture cannot replay that response.
+            raise NamedSessionCaptureRefusal("named_session_allocation_capture_unconfirmed") from error
+        return
     if not session_id or not provider:
         return
     try:
@@ -13236,12 +13576,23 @@ def generate_text(
     exactly for structured decisions. Ordinary Codex prose cleanup is default.
     """
 
+    named_request = kwargs.get("grok_named_session_request")
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_public_dispatch
+        validate_public_dispatch(provider=provider, model=model_name,
+            request=kwargs["grok_named_session_request"], options=kwargs,
+            allow_local_fallback=allow_local_fallback,
+            allow_cross_provider_fallback=allow_cross_provider_fallback,
+            allocation_session_id=allocation_session_id)
     if type(codex_cli_literal_response) is not bool:
         raise ValueError("Codex literal response must be an explicit Boolean")
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     call_kwargs = dict(kwargs)
     session_id = _resolve_allocation_session_id(allocation_session_id, call_kwargs)
+    if named_request is not None:
+        from .cli_runtime.grok_named_session import validate_allocation_session
+        validate_allocation_session(named_request, session_id)
     path = _resolve_allocation_path(allocation_path, call_kwargs, provider)
     call_kwargs.pop("allocation_session_id", None)
     call_kwargs.pop("allocation_path", None)
@@ -13329,16 +13680,25 @@ def generate_text(
     try:
         from .llm_allocation.api_key_slots import apply_api_key_to_kwargs
 
-        kwargs = apply_api_key_to_kwargs(
-            str(effective_provider_name or provider or ""),
-            dict(kwargs),
-            session_id=session_id,
-        )
+        if named_request is not None:
+            from .llm_allocation.api_key_slots import RequiredApiKeyBinding
+            kwargs = apply_api_key_to_kwargs(
+                str(effective_provider_name or provider or ""), dict(kwargs), session_id=session_id,
+                required_binding=RequiredApiKeyBinding(backend="grok_cli", session_id=named_request.allocation_session_id,
+                    slot_id=named_request.credential_slot, key_fingerprint=named_request.credential_fingerprint))
+        else:
+            kwargs = apply_api_key_to_kwargs(
+                str(effective_provider_name or provider or ""),
+                dict(kwargs),
+                session_id=session_id,
+            )
         _API_KEY_CONTEXT.slot = str(kwargs.pop("_api_key_slot", "") or "")
         _API_KEY_CONTEXT.fingerprint = str(kwargs.pop("_api_key_fingerprint", "") or "")
     except Exception:
         _API_KEY_CONTEXT.slot = ""
         _API_KEY_CONTEXT.fingerprint = ""
+        if named_request is not None:
+            raise
     _clear_last_generation_trace()
     _set_last_usage_admission(None)
 
@@ -13650,6 +14010,30 @@ def generate_text(
                 kwargs=kwargs,
             )
         raise
+
+
+def generate_text_with_observation(prompt: str, *, observation_request_id: Optional[str] = None, **kwargs: object):
+    """Generate once through the existing router with current-call Grok evidence.
+
+    This additive API supports the exact Grok CLI provider only. Both fallback
+    paths are disabled and native streaming framing is required. Cache hits and
+    injected providers return text with absent native evidence; no global last
+    observation or requested identity is substituted for a process observation.
+    The result's text is product output; only its closed observation is a receipt.
+    """
+    from .cli_runtime.grok_invocation_observation import (
+        ObservedTextGeneration, capture_grok_invocation,
+    )
+    options = dict(kwargs)
+    if options.get("provider") != "grok_cli":
+        raise ValueError("observed text generation requires provider=grok_cli")
+    if options.get("grok_stream_progress", True) is not True:
+        raise ValueError("observed Grok generation requires native streaming")
+    options.update(allow_local_fallback=False, allow_cross_provider_fallback=False,
+                   grok_stream_progress=True)
+    with capture_grok_invocation(observation_request_id) as capture:
+        text = generate_text(prompt, **options)
+    return ObservedTextGeneration(text=text, observation=capture.observation)
 
 
 def _batch_worker_count(

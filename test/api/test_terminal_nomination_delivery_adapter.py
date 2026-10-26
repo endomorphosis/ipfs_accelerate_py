@@ -14,10 +14,12 @@ import stat
 from types import SimpleNamespace
 
 import pytest
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 from harbor.models.agent.context import AgentContext
 
 from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
 from benchmarks.agent_supervisor.container_coding import semantic_decision_nomination_delivery as delivery
+from test.api.test_current_decision_configuration import _archive as _current_decision_archive
 
 
 def _source(tmp_path):
@@ -80,7 +82,7 @@ class _Environment:
                 snapshot.chmod(0o644)
                 snapshot.write_bytes(self.raw + b" ")
             if self.exhaust == "before_upload":
-                self.clock[0] = adapter.execution_budget()["exec_seconds"] - adapter.ADAPTER_FINALIZATION_SECONDS + 1
+                self.clock[0] = adapter.execution_budget()["harbor_seconds"] - adapter.ADAPTER_FINALIZATION_SECONDS + 1
         if operation == "publish" and self.exhaust == "before_driver":
             self.clock[0] = adapter.execution_budget()["exec_seconds"] - adapter.ADAPTER_FINALIZATION_SECONDS - 10
         selected = (self.failure or "").removeprefix(operation + "_")
@@ -117,17 +119,13 @@ class _Environment:
 def _fixture(tmp_path, monkeypatch, *, limits=None, failure=None, clock=None,
              exhaust=None, change_source=False, relative_logs=False):
     source, raw, digest = _source(tmp_path)
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    (archive / "manifest.json").write_text(json.dumps({
-        "archive_sha256": "authored", "learned_requirements": [],
-    }))
     logs = Path("logs") if relative_logs else tmp_path / "logs"
     if relative_logs:
         monkeypatch.chdir(tmp_path)
     options = dict(semantic_decision_nomination_source=source,
                    semantic_decision_nomination_sha256=digest, **(limits or {}))
-    agent = adapter.FullSupervisorAgent(logs_dir=logs, model_name="gpt-5.6-sol",
+    archive, _ = _current_decision_archive(tmp_path, options)
+    agent = adapter.FullSupervisorAgent(logs_dir=logs, model_name=adapter.resolve_provider_profile()["model"],
         runtime_archive=str(archive), arm="full", **options)
     environment = _Environment(source=source, raw=raw, digest=digest, logs=agent.logs_dir,
         failure=failure, clock=clock, exhaust=exhaust, change_source=change_source)
@@ -234,16 +232,15 @@ def test_delivery_failure_blocks_driver_and_preserves_bounded_failure_and_finali
     _assert_finalized(context, environment)
 
 
-def test_bad_source_pin_stops_forward_environment_work_but_finalizes(tmp_path, monkeypatch):
+def test_mutated_source_pin_refuses_before_environment_or_metadata_initialization(tmp_path, monkeypatch):
     agent, environment, context = _fixture(tmp_path, monkeypatch)
+    previous_metadata = context.metadata
     agent.semantic_decision_nomination_sha256 = "f" * 64
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="prepared semantic decision selection changed"):
         asyncio.run(agent.run("Authored public instruction.", environment, context))
-    assert not environment.commands and not environment.uploads
-    transfer = context.metadata["semantic_decision_nomination_delivery"]
-    assert transfer["stage"] == "nomination_capture" and transfer["status"] == "failed"
-    assert transfer["error_type"] == "ValueError" and transfer["provider_called"] is False
-    _assert_finalized(context, environment)
+    assert environment.commands == environment.uploads == environment.downloads == environment.events == []
+    assert context.metadata is previous_metadata
+    assert context.n_input_tokens is context.n_cache_tokens is context.n_output_tokens is None
 
 
 def test_failed_publish_retains_bounded_private_stderr_before_receipt_refusal(tmp_path, monkeypatch):

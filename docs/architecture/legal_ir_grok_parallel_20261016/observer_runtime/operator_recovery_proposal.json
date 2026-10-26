@@ -1,0 +1,98 @@
+{
+  "authority_bindings": [
+    "registered creator PID, birth, boot and exact physical/logical stores",
+    "exact latest native task revision, attempt, claim, lease and fence",
+    "original source/request hashes and genuine current-generation all-trees fence",
+    "exact original execution and coordination records plus current canonical logical population",
+    "explicit operator acceptance of UNKNOWN outcome and unverified possible effects"
+  ],
+  "coordinator_schema_change_required": false,
+  "design_only": true,
+  "existing_native_guards": {
+    "effective_toolset_verified": false,
+    "existing_public_admin_stop_contract": false,
+    "ordinary_unknown_replay": "refused",
+    "requested_tool_profile": "none",
+    "router_treats_planning_as_side_effecting": true
+  },
+  "implemented": false,
+  "observed_state": {
+    "canonical_revision": 12,
+    "canonical_status": "in_progress",
+    "inspection_result_sha256": "d90d45e230844984da300ca4db85f75d9e8f0d50c8688ebaab8dbff7a1e125be",
+    "latest_attempt_phase": "context",
+    "latest_attempt_status": "running",
+    "other_tasks_unchanged": 63,
+    "packet_revision": 11,
+    "per_attempt_effect_row_counts": [
+      0,
+      0
+    ],
+    "per_attempt_provider_row_counts": [
+      1,
+      1
+    ],
+    "portal_active_attempt": 0,
+    "unknown_rows_retained": 2,
+    "verified_grok_task_dispatch": false
+  },
+  "operator_policy": "pending_user_choice",
+  "preserve": [
+    "both original UNKNOWN invocation records byte-for-byte",
+    "original attempt1 and attempt2 identities and spent ordinals",
+    "raw invocation counts, without relabeling UNKNOWN as accepted result",
+    "all other63 tasks,34 goals,115 dependencies and33 goal edges",
+    "original native stop and recovery history",
+    "any existing candidate/worktree custody; old outputs cannot satisfy a new attempt"
+  ],
+  "product_scope": [
+    "todo_daemon/planning_operator_stop.py",
+    "todo_daemon/planning_operator_stop_settlement.py",
+    "task_sources/database_task_source.py",
+    "task_sources/typed_state_owner.py",
+    "runtime/quack_state_server.py",
+    "todo_daemon/implementation_daemon.py"
+  ],
+  "production_actions_executed": false,
+  "refuse_on": [
+    "missing or forged administrator registration/grant",
+    "changed source/request/claim/revision/fence or successor owner",
+    "accepted provider result, committed effect, merge or completion incompatible with the narrow profile",
+    "any verified-read-only assertion without independent confinement evidence",
+    "stale audit replay after rearm/new claim",
+    "automatic retry or reuse of old callback/evidence"
+  ],
+  "required_qualification": [
+    "real native gateway authorization and reserved-kind denial controls",
+    "real copied3-store positive and preservation checks",
+    "crash/lost-response replay at audit, FAILED phase, coordination failure, blocked CAS and separate rearm",
+    "negative stale/cross-store/newer-owner/changed-source cases",
+    "new attempt exactlyordinal3 with fresh acceptance crosswalk"
+  ],
+  "schema": "legal-ir-planning-unknown-operator-recovery-proposal/v1",
+  "semantics": {
+    "callback_closed": false,
+    "completion_authority": false,
+    "decision": "administratively abandon local execution authority",
+    "nonreachability_asserted": false,
+    "possible_external_effects": "unverified",
+    "provider_outcome": "unknown",
+    "remote_cancellation_proved": false,
+    "semantic_or_lean_authority": false
+  },
+  "separate_actions": [
+    "root-only ADMIN registered-context audit",
+    "truthful administrative_operator_stop_outcome_unknown native failure settlement",
+    "distinct operator_control_plane_repair rearm",
+    "separately qualified fresh packet, runtime, claim, receipts and gate with cap3"
+  ],
+  "subject": {
+    "attempt_id": "attempt:e1ddbe57f2a0408bacf841b2ba471a1f",
+    "board_namespace": "legal-ir-span-graph-lean-refinement-20261016",
+    "consumed_ordinal": 2,
+    "current_attempt_cap": 2,
+    "proposed_attempt_cap": 3,
+    "proposed_next_ordinal": 3,
+    "task_alias": "LIR-9001"
+  }
+}

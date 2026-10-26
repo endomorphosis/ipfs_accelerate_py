@@ -1,0 +1,433 @@
+{
+  "authentic_supervisor_launch_or_ADMIN_settlement_qualified_by_this_review": false,
+  "concrete_additional_static_blockers": [],
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "findings": [
+    "Producer native constructors/upserts/claim/context/provider/history/failure/control rearm/coordinator rearm/close/master call signatures bind to current exact source AST. Pure stdlib signature analysis performed; no native classes were imported or called.",
+    "FIXTURE-T is the native shard key and sha256prefix modulo3 equals1; strict lane path crash-copy.execution.shard-0001-of-0003.duckdb matches constructor binding. One-hour lease stays below native four-hour cap; owning goal defaultopen is claimable, not analysis_inconclusive.",
+    "Native run_provider writes exact canonical-key callback-intent UNKNOWN before entering the genuine DatabasePortalExecutionBridge. Bridge materializes/validates native task projection and invokes inertfactory before constructing/using any Portal daemon. InertFactoryRefusal is caught/re-raised by native heartbeat wrapper after real renewal-thread stop/join, with no issued native provider-exit failure authority.",
+    "The native callback marker schema/key/owner/claim/lease/fence fields match policy.unknown_row. Historical first attempt uses genuine terminal failure receipt, native FAILED/released/BLOCKED methods, actual sidecar close, then explicit disposable-only source/coordinator rearm. Current second attempt stays context/revision2/running with raw UNKNOWN and zero effects.",
+    "Explicitly supplied source/coordinator adapters remain live across historical daemon.close because native owns flags are false. They are really closed after current immutable snapshot; current execution connection/writer lock remains live until genuine child os_exit0, preserving native WAL without synthetic repair.",
+    "Empty-track runner has no configured-board profile or admission, so from_native_admission(None) returnsNone. Actual master ACTIVE binding is published before starting output callback, no child-track birth loop executes for[], and genuine terminal commits after native empty-tree fence. Producer snapshots actual ACTIVE and joins its CID to genuine terminal.",
+    "Pinned read-only SQL resources support the genuine native default catalog. It selects five contiguous required migrations from six physical resources and retains unchanged checksum/version/schema rules. PermissionError still denies the import-time Git subprocess; genuine caller catchesOSError\u2192ValueError and honest native protected capsule remains unavailable, no fake generation/handler override.",
+    "Closed environment/isolated pinned Python/backend/source loader boundaries remain unchanged. Actual full producer success is separate retained root evidence, not inferred merely from this source review; no broad transitive-import/model nonreachability or callback-closure claim follows."
+  ],
+  "limits": [
+    "Source/AST/JSON review only; no target/product/backend imports, native jobs, DB opens, current live-job output reads, process signals, C/frozen artifact edits.",
+    "Root-run preflight qualifies only its exact disposable fixture; current original supervisor_launch NativeFenceObserver custody, physicalB maintenance/status and genuine C/D ADMIN/settlement remain independent gates.",
+    "Real WAL/aggregate sizes and finite owner/root/phase/child finalization require actual retained observations; source reasoning alone proves neither resource availability nor successful process cleanup.",
+    "Original productionR06 UNKNOWN/WAL/provider state remains untouched and no recovery/rearm/successor authority is granted."
+  ],
+  "native_call_signature_checks": [
+    {
+      "keyword_names": [
+        "intent"
+      ],
+      "native_line": 2587,
+      "native_target": "DatabaseTaskSource.__init__",
+      "positional_arguments": 0,
+      "producer_line": 351
+    },
+    {
+      "keyword_names": [],
+      "native_line": 2807,
+      "native_target": "IntentRepository.__init__",
+      "positional_arguments": 1,
+      "producer_line": 351
+    },
+    {
+      "keyword_names": [
+        "objective_alias",
+        "objective_id",
+        "title"
+      ],
+      "native_line": 3217,
+      "native_target": "IntentRepository.upsert_objective",
+      "positional_arguments": 0,
+      "producer_line": 353
+    },
+    {
+      "keyword_names": [
+        "goal_alias",
+        "goal_cid",
+        "title"
+      ],
+      "native_line": 3367,
+      "native_target": "IntentRepository.upsert_goal",
+      "positional_arguments": 0,
+      "producer_line": 354
+    },
+    {
+      "keyword_names": [
+        "goal_cid",
+        "plan_alias",
+        "plan_cid"
+      ],
+      "native_line": 3701,
+      "native_target": "IntentRepository.upsert_plan",
+      "positional_arguments": 0,
+      "producer_line": 355
+    },
+    {
+      "keyword_names": [
+        "acceptance",
+        "body",
+        "goal_cid",
+        "objective_id",
+        "ordinal",
+        "outputs",
+        "plan_cid",
+        "status",
+        "task_alias",
+        "task_cid",
+        "validations"
+      ],
+      "native_line": 4154,
+      "native_target": "IntentRepository.upsert_task",
+      "positional_arguments": 0,
+      "producer_line": 357
+    },
+    {
+      "keyword_names": [],
+      "native_line": 1798,
+      "native_target": "DatabaseCoordinator.__init__",
+      "positional_arguments": 1,
+      "producer_line": 364
+    },
+    {
+      "keyword_names": [],
+      "native_line": 1845,
+      "native_target": "DatabaseCoordinator.open",
+      "positional_arguments": 0,
+      "producer_line": 365
+    },
+    {
+      "keyword_names": [
+        "authority_mode",
+        "coordination_path",
+        "coordinator",
+        "database_path",
+        "execution_path",
+        "lease_ms",
+        "require_real_execution",
+        "state_dir",
+        "state_prefix",
+        "strict_task_sharding",
+        "task_shard_count",
+        "task_shard_index",
+        "task_source",
+        "task_source_kind"
+      ],
+      "native_line": 71370,
+      "native_target": "DatabaseImplementationDaemon.__init__",
+      "positional_arguments": 0,
+      "producer_line": 377
+    },
+    {
+      "keyword_names": [],
+      "native_line": 71723,
+      "native_target": "DatabaseImplementationDaemon.open",
+      "positional_arguments": 0,
+      "producer_line": 382
+    },
+    {
+      "keyword_names": [],
+      "native_line": 74278,
+      "native_target": "DatabaseImplementationDaemon.claim_next",
+      "positional_arguments": 0,
+      "producer_line": 386
+    },
+    {
+      "keyword_names": [
+        "body"
+      ],
+      "native_line": 74852,
+      "native_target": "DatabaseImplementationDaemon.commit_phase",
+      "positional_arguments": 2,
+      "producer_line": 389
+    },
+    {
+      "keyword_names": [
+        "attempt_root",
+        "board_namespace",
+        "max_passes",
+        "portal_factory",
+        "repo_root",
+        "task_source"
+      ],
+      "native_line": 1852,
+      "native_target": "DatabasePortalExecutionBridge.__init__",
+      "positional_arguments": 0,
+      "producer_line": 390
+    },
+    {
+      "keyword_names": [
+        "provider_fn"
+      ],
+      "native_line": 75067,
+      "native_target": "DatabaseImplementationDaemon.run_provider",
+      "positional_arguments": 1,
+      "producer_line": 395
+    },
+    {
+      "keyword_names": [],
+      "native_line": 74756,
+      "native_target": "DatabaseImplementationDaemon.get_attempt",
+      "positional_arguments": 1,
+      "producer_line": 401
+    },
+    {
+      "keyword_names": [],
+      "native_line": 72406,
+      "native_target": "DatabaseImplementationDaemon._require_connection",
+      "positional_arguments": 0,
+      "producer_line": 404
+    },
+    {
+      "keyword_names": [],
+      "native_line": 72406,
+      "native_target": "DatabaseImplementationDaemon._require_connection",
+      "positional_arguments": 0,
+      "producer_line": 410
+    },
+    {
+      "keyword_names": [
+        "failure"
+      ],
+      "native_line": 76847,
+      "native_target": "DatabaseImplementationDaemon._build_portal_failure_settlement_receipt",
+      "positional_arguments": 1,
+      "producer_line": 419
+    },
+    {
+      "keyword_names": [],
+      "native_line": 77006,
+      "native_target": "DatabaseImplementationDaemon._commit_portal_failure_phase",
+      "positional_arguments": 2,
+      "producer_line": 420
+    },
+    {
+      "keyword_names": [],
+      "native_line": 77057,
+      "native_target": "DatabaseImplementationDaemon._fail_coordination_claim",
+      "positional_arguments": 2,
+      "producer_line": 421
+    },
+    {
+      "keyword_names": [],
+      "native_line": 7323,
+      "native_target": "DatabaseCoordinator.get_task_claim",
+      "positional_arguments": 1,
+      "producer_line": 421
+    },
+    {
+      "keyword_names": [],
+      "native_line": 77150,
+      "native_target": "DatabaseImplementationDaemon._settle_portal_failure_control_task",
+      "positional_arguments": 2,
+      "producer_line": 422
+    },
+    {
+      "keyword_names": [],
+      "native_line": 71944,
+      "native_target": "DatabaseImplementationDaemon.close",
+      "positional_arguments": 0,
+      "producer_line": 425
+    },
+    {
+      "keyword_names": [
+        "receipt"
+      ],
+      "native_line": 3960,
+      "native_target": "DatabaseTaskSource.rearm_blocked_task",
+      "positional_arguments": 1,
+      "producer_line": 428
+    },
+    {
+      "keyword_names": [
+        "control_task_observation",
+        "failure_receipt"
+      ],
+      "native_line": 6495,
+      "native_target": "DatabaseCoordinator.rearm_failed_task",
+      "positional_arguments": 0,
+      "producer_line": 430
+    },
+    {
+      "keyword_names": [],
+      "native_line": 74991,
+      "native_target": "DatabaseImplementationDaemon.phase_history",
+      "positional_arguments": 1,
+      "producer_line": 433
+    },
+    {
+      "keyword_names": [],
+      "native_line": 7323,
+      "native_target": "DatabaseCoordinator.get_task_claim",
+      "positional_arguments": 1,
+      "producer_line": 434
+    },
+    {
+      "keyword_names": [],
+      "native_line": 2390,
+      "native_target": "DatabaseCoordinator.get_lease",
+      "positional_arguments": 1,
+      "producer_line": 435
+    },
+    {
+      "keyword_names": [],
+      "native_line": 7335,
+      "native_target": "DatabaseCoordinator.get_task_attempt",
+      "positional_arguments": 1,
+      "producer_line": 436
+    },
+    {
+      "keyword_names": [],
+      "native_line": 7335,
+      "native_target": "DatabaseCoordinator.get_task_attempt",
+      "positional_arguments": 1,
+      "producer_line": 437
+    },
+    {
+      "keyword_names": [],
+      "native_line": 3498,
+      "native_target": "DatabaseTaskSource.get_task",
+      "positional_arguments": 1,
+      "producer_line": 439
+    },
+    {
+      "keyword_names": [],
+      "native_line": 4533,
+      "native_target": "IntentRepository.get_task",
+      "positional_arguments": 1,
+      "producer_line": 440
+    },
+    {
+      "keyword_names": [],
+      "native_line": 72406,
+      "native_target": "DatabaseImplementationDaemon._require_connection",
+      "positional_arguments": 0,
+      "producer_line": 444
+    },
+    {
+      "keyword_names": [],
+      "native_line": 2643,
+      "native_target": "DatabaseTaskSource.close",
+      "positional_arguments": 0,
+      "producer_line": 447
+    },
+    {
+      "keyword_names": [],
+      "native_line": 1895,
+      "native_target": "DatabaseCoordinator.close",
+      "positional_arguments": 0,
+      "producer_line": 448
+    },
+    {
+      "keyword_names": [
+        "common_args",
+        "duration_seconds",
+        "exit_when_all_tracks_terminal",
+        "heartbeat_interval_seconds",
+        "label",
+        "master_pid_path",
+        "output",
+        "python_executable",
+        "repo_root",
+        "stop_grace_seconds"
+      ],
+      "native_line": 12242,
+      "native_target": "multi_supervisor_runner.run_supervisor_tracks",
+      "positional_arguments": 1,
+      "producer_line": 477
+    },
+    {
+      "keyword_names": [],
+      "native_line": 72406,
+      "native_target": "DatabaseImplementationDaemon._require_connection",
+      "positional_arguments": 0,
+      "producer_line": 493
+    }
+  ],
+  "producer_pin": {
+    "bytes": 32519,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/produce_authentic_unknown_master_diagnostic_v04.py",
+    "sha256": "544b3b80ce3d22f61f3dc345a030e8ed2397dce82f2011e08c48221f31e72ced"
+  },
+  "production_authority": false,
+  "reviewer": "unknown_event_forensics",
+  "reviewer_native_jobs_or_imports_or_DB_opens": false,
+  "schema": "authentic-producer-native-call-source-review@1",
+  "separate_retained_root_full_producer_observation_pin": {
+    "bytes": 1897,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-runs-v01/producer05-preflight-post-owner-observation-v01.json",
+    "sha256": "8a9a113f0c7ee99fa97350ae75de69c1ffa7b671c21172423393bf24dec988ce"
+  },
+  "separate_retained_root_gate": {
+    "actual_tool_session": 41228,
+    "authentic_ADMIN_settlement_qualified": false,
+    "child_exit_code": 0,
+    "conservative_total_through_B_bytes": 80524634,
+    "original_supervisor_launch_qualified": false,
+    "tool_exit_code": 0,
+    "whole_fixture_census_bytes": 46955974
+  },
+  "source_pins": {
+    "merge/database_coordination.py": {
+      "bytes": 321499,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+      "sha256": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c"
+    },
+    "runtime/multi_supervisor_runner.py": {
+      "bytes": 603872,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "sha256": "d1682f52318e52076f4eecf12f32d5a4d6a93376511f02021d76bc4f18b8f6e6"
+    },
+    "runtime/native_dispatch_drain.py": {
+      "bytes": 29082,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/native_dispatch_drain.py",
+      "sha256": "0eaa5f4b1051c05b8402fad1b693f8bd3d09e4402685f0bc025ab29dc0d4ac68"
+    },
+    "task_sources/control_plane_migrations.py": {
+      "bytes": 61483,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+      "sha256": "8299b019f7b55612da209ca719126d8fa3f7198d03e4c258257c9f161fbaa5f6"
+    },
+    "task_sources/control_plane_schema.py": {
+      "bytes": 87099,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+      "sha256": "a06d0b6a927836aca3b06fd4efcab73054bd308c61822337670e3dc4c1dda358"
+    },
+    "task_sources/database_task_source.py": {
+      "bytes": 205700,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "sha256": "17cc1f39fc1e15f5094dca09ecf40174b76c17dee07e7c08edc1276f7d06829c"
+    },
+    "task_sources/intent_repository.py": {
+      "bytes": 433395,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "sha256": "cfb424da40edc50559600f065198e1a25ab5f0ebc2bff0393b3baec6d55b3127"
+    },
+    "todo_daemon/database_portal_bridge.py": {
+      "bytes": 494008,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "sha256": "afc5d1843b3477b1ba3d46ed4f08ad427351dfae788fc36de720f6d139911ebb"
+    },
+    "todo_daemon/implementation_daemon.py": {
+      "bytes": 3298714,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "8bd4c4a1aaef11140b2e2301bd203ce3159121f16fb821045e3ac2e0767783b5"
+    },
+    "todo_daemon/native_doctor_callback.py": {
+      "bytes": 10978,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_doctor_callback.py",
+      "sha256": "55ec7e4b5da59621539ca32b5ba1a0f061d8c3dfc61f9202cfac7f8c3fed36aa"
+    },
+    "todo_daemon/planning_unknown_abandonment.py": {
+      "bytes": 32448,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-supervisor-start-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py",
+      "sha256": "2c41ec13d6493da394d3285686e662e5fa36e88439eb840271260ce1605e60e7"
+    }
+  },
+  "verified_call_count": 37
+}

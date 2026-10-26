@@ -42,6 +42,8 @@ from .terminal_deployment import (
 from .benchmark_resource_profile import PROFILES, execution_budget, admission_environment
 from .native_codex_baseline import MODEL, CLI_VERSION
 from .benchmark_provider_profile import require_runtime_provider_profile, resolve_provider_profile
+from .full_supervisor_benchmark import _decision_options
+from .terminal_decision_policy import require_decision_archive
 from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection, _prompt_options
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
 from .terminal_retrieval_selection import require_retrieval_revision
@@ -633,6 +635,8 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_decision_max_total_input_tokens: int | None = None,
                  doctor_dispatch_policy: str = "auto",
                  **kwargs):
+        decision = _decision_options({**kwargs, **locals()}, arm=arm,
+            provider=resolve_provider_profile(provider_profile)["provider"])
         doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
         prompt_options = _prompt_options(arm,
             prompt_tokenizer_artifact=prompt_tokenizer_artifact,
@@ -789,7 +793,21 @@ class FullSupervisorAgent(BaseAgent):
         self.intent_requirement_contract = intent_requirement_contract
         from .terminal_task_profile import validate_task_profile
         self.task_profile = validate_task_profile(task_profile) if task_profile is not None else None
+        self._decision_frozen_json = json.dumps(decision, sort_keys=True, allow_nan=False)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    def _checked_decision_selection(self, manifest):
+            selected = _decision_options(vars(self), arm=self.arm,
+                provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+            if json.dumps(selected, sort_keys=True, allow_nan=False) != getattr(self, "_decision_frozen_json", "{}"):
+                raise ValueError("prepared semantic decision selection changed")
+            if selected:
+                # Inferred archive assets cannot silently broaden the selected route.
+                _decision_options({**vars(self), "source384_config": validate_source384_binding(manifest),
+                    "numerical_selection_config": manifest.get("numerical_selection_384")}, arm=self.arm,
+                    provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+                require_decision_archive(self.runtime_archive, manifest, selected)
+            return selected
 
     @staticmethod
     def name():
@@ -867,6 +885,7 @@ class FullSupervisorAgent(BaseAgent):
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
+        self._checked_decision_selection(manifest)
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
         require_planning_archive(manifest, self._checked_planning_mode())
@@ -971,6 +990,8 @@ class FullSupervisorAgent(BaseAgent):
 
     async def run(self, instruction: str, environment, context: AgentContext):
         run_started = monotonic()
+        _decision_options(vars(self), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         doctor_arguments = doctor_dispatch_arguments(arm=self.arm,
             doctor_dispatch_policy=getattr(self, "doctor_dispatch_policy", "auto"))
         nomination_source = getattr(self, "semantic_decision_nomination_source", None)
@@ -1029,6 +1050,7 @@ class FullSupervisorAgent(BaseAgent):
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
+        self._checked_decision_selection(manifest)
         planning_mode = self._checked_planning_mode()
         require_planning_archive(manifest, planning_mode)
         retrieval_revision = require_retrieval_revision(manifest, self.arm,

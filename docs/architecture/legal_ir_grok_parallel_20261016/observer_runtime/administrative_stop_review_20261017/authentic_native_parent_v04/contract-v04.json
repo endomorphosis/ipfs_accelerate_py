@@ -1,0 +1,58 @@
+{
+  "change_scope": [
+    "One terminal stale-socket branch calls existing ActualChild.observe instead of raw Popen.poll.",
+    "One bounded diagnostic helper and native-operation except branch execute before unchanged OUTER close custody."
+  ],
+  "controller_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "failure_observation": {
+    "ValueError_argument": "Only SHA256 and byte length for one exact str argument bounded to512characters/2048UTF8bytes; no plaintext argument export.",
+    "capture_boundary": "before_OUTER_actual_child_close",
+    "child_bookkeeping": "Existing pid/birth/group_bound/reaped/Popen.returncode properties only; no polling or kernel/resource query.",
+    "exit_witness_receipt_completion_or_retry_authority_created": false,
+    "output_relative_to_attempt": "parent-operation-failure-observation.json",
+    "publication_failure": "Best effort; bare raise preserves original operation exception before unchanged finally cleanup.",
+    "schema": "authentic-native-parent-operation-failure-observation@4",
+    "source_traceback": "Only actual pinned-parent frames; <=16 output frames/64 traversed frames; path/line/function only."
+  },
+  "fixture_only": true,
+  "parent_source_pin": {
+    "bytes": 46961,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-native-parent-v04/authentic_unknown_native_parent_v04.py",
+    "sha256": "d774c6781f7563514c0b1175933196e25fc1674ddd5f6f50e3a56b68b908022c"
+  },
+  "preserved": [
+    "ActualChild methods and actual cleanup/reap/witness checks",
+    "source-loader/custody verifier and real ADMIN peer grant",
+    "actual F07 root/phase/disk admission, strict attempts, charges, deadlines and ancestry",
+    "full global census before child deadline sealing or after actual reap",
+    "immediate real child custody/registration and live local guards",
+    "source/HEAD checks and bounded external/socket census",
+    "frozen A/B/C/D worker artifacts and failed06 stores/records"
+  ],
+  "production_access": false,
+  "runtime_gate": {
+    "C06_audit_or_WAL_replayed_or_removed": false,
+    "C06_exact_old_failure_reason_observed": false,
+    "decisive_check": "Fresh genuine A07/B07/C07 READY + committed audit/replay + actual child crash/reap + full owner finalization; then separately fresh native D stages.",
+    "derivative_runtime_qualified": false,
+    "failed_C06_parent_result_or_exit_witness_reconstructed": false,
+    "outer_tool_exit_and_actual_reservation_release_required_before_next_job": true,
+    "source_AST_and_independent_diff_review_only": true,
+    "standalone_mock_or_kernel_test_run": false,
+    "trace_wide_exact_C_HEAD_required": true
+  },
+  "schema": "authentic-native-parent-terminal-reap-contract@4",
+  "terminal_check": {
+    "actual_Popen_poll_updates_existing_ActualChild_reaped_bookkeeping": true,
+    "actual_group_absence_required": true,
+    "authenticated_READY_required": true,
+    "exact_owned_socket_identity_required": true,
+    "new_exit_witness_or_stopped_identity_synthesized": false,
+    "other_raw_live_only_poll_checks_unchanged": true
+  },
+  "wire_schemas_unchanged": {
+    "child_worker_request": "@2",
+    "request": "authentic-unknown-native-parent-request@2",
+    "result": "authentic-unknown-admin-settlement-native-parent-result@2"
+  }
+}

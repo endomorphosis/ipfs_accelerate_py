@@ -1,0 +1,487 @@
+{
+  "cases": [
+    {
+      "AGENTS_marker_in_all_primary_requests": true,
+      "backing_before_after_equal": true,
+      "case": "positive-read-file",
+      "case_pin": {
+        "bytes": 36923,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/case-result.json",
+        "sha256": "349ce38f91fb8ffba5d4725823d68ff8f09cc8bf639a1beb0ed6160c273b3bda"
+      },
+      "http_requests": 4,
+      "native_dispatch_profile_assertions_match": true,
+      "offered_tool_names": [
+        [
+          "read_file"
+        ],
+        [
+          "read_file"
+        ]
+      ],
+      "origin_count": 42,
+      "origin_pins_join_request": true,
+      "passed": true,
+      "primary_requests": 2,
+      "provider_output_cap_or_spend_enforcement": false
+    },
+    {
+      "AGENTS_marker_in_all_primary_requests": true,
+      "backing_before_after_equal": true,
+      "case": "empty-tools-control",
+      "case_pin": {
+        "bytes": 36611,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/case-result.json",
+        "sha256": "4cd28c920936f02c1fd781aa42d2f2d9e2844ddebce547ba867b9193e757dbfb"
+      },
+      "http_requests": 3,
+      "native_dispatch_profile_assertions_match": true,
+      "offered_tool_names": [
+        [
+          "run_terminal_command",
+          "read_file",
+          "search_replace",
+          "list_dir",
+          "grep",
+          "kill_command_or_subagent",
+          "todo_write",
+          "get_command_or_subagent_output",
+          "scheduler_create",
+          "scheduler_delete",
+          "scheduler_list",
+          "monitor",
+          "workflow",
+          "enter_plan_mode",
+          "exit_plan_mode",
+          "ask_user_question",
+          "image_gen",
+          "image_edit",
+          "image_to_video",
+          "reference_to_video",
+          "write"
+        ]
+      ],
+      "origin_count": 42,
+      "origin_pins_join_request": true,
+      "passed": true,
+      "primary_requests": 1,
+      "provider_output_cap_or_spend_enforcement": false
+    },
+    {
+      "AGENTS_marker_in_all_primary_requests": true,
+      "backing_before_after_equal": true,
+      "case": "canonical-planning-adversarial",
+      "case_pin": {
+        "bytes": 148335,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/case-result.json",
+        "sha256": "0b468d4268c38e8c2e23aecdbd847381e90295cceae1ad251a9906645ec30293"
+      },
+      "http_requests": 4,
+      "native_dispatch_profile_assertions_match": true,
+      "offered_tool_names": [
+        [],
+        []
+      ],
+      "origin_count": 205,
+      "origin_pins_join_request": true,
+      "passed": true,
+      "primary_requests": 2,
+      "provider_output_cap_or_spend_enforcement": false
+    }
+  ],
+  "controller_head": "500fb4ee4d538c5abb1a395c171c979636b8092a",
+  "finite_parse_observation": {
+    "eight_unique_assistant_calls_join_eight_native_parse_refusals": true,
+    "exact_id_repeated_name_and_argument_objects_match": true,
+    "registry_identity_established": false,
+    "universal_future_tool_confinement_established": false
+  },
+  "native_release_join": {
+    "actual_tool_exit": 0,
+    "actual_tool_session": 97538,
+    "post_owner_pin": {
+      "bytes": 1241,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-post-owner-v03.json",
+      "sha256": "c4f65980851b6a80fa96e65f1afc88cee1580ffad11b24eb9a22ae60b53f996b"
+    },
+    "post_owner_readback_pin": {
+      "bytes": 70818,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-post-owner-readback-v03.json",
+      "sha256": "6824172f721f8d1c5782a28484e45e4d00e4f81a2b632b0cac805d81fb352eb2"
+    },
+    "receipt_pin": {
+      "bytes": 634,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/receipt.json",
+      "sha256": "69818f4c23acacf3bdfe234e1ee492fda8ab02426cad705f86468f7cae1f1199"
+    },
+    "request_sha256": "1fd334ada652d142e8bcfda5d6965f3a124e03c2bf1c9cb3858d494f7fc82f13",
+    "reservation_release_and_absence_attribution": "Pinned separate root observation only; no fresh resource or process queries by this reviewer."
+  },
+  "postexit_and_retention": {
+    "all_symlink_targets_contained_root_observation": true,
+    "charged_fixture_apparent_bytes": 2365768,
+    "charged_fixture_entries": 204,
+    "continuous_custody_proved": false,
+    "exact_retention_comparison_attribution": "Root post-owner readback joined pinned baseline; no live reservation ledger read by reviewer.",
+    "record_canonical_sha256": {
+      "36c3ec43207e430abdadf4bbededef94": "90143f4793de683b1cb29ac4d7c0d87e29375990189c12025b4b46aa71046f6f",
+      "e7dba9e4219b45c0bff55cddf990c382": "0dafeb74e3443156801e5f12c77413025d040976f9dc1b2e4350b09137ae19a5"
+    },
+    "same_root_device_inode_as_inner": true,
+    "two_original_baseline_records_request_pin_and_canonical_digests_recomputed": true
+  },
+  "review_limits": [
+    "Pure retained JSON/source bytes were read; no helper, product, native process, provider, database, resource or API operation was executed.",
+    "The fixture intentionally rejected title generation and supplied synthetic primary/dashboard responses; no actual inference, output length, provider billing or spend enforcement is qualified.",
+    "Actual exit/release/group absence and the 204-entry final charged census are attributed to the root post-owner observations; this review does not repeat those inspections.",
+    "Selected-model cap mapping is qualified only for these five primary mock requests from this exact current source and synthetic home; shared-router budget kwargs alone and real production effective configuration remain separate concerns.",
+    "All loaded-origin declaration hashes were joined to the frozen request map; independent reviewer did not rehash every package leaf.",
+    "Unsigned harmless synthetic requirements and fake auth backing are distinct from production requirements, browser credentials, refresh or signed-policy behavior."
+  ],
+  "reviewer": "main_integration_survey",
+  "runtime_and_scope_limits": {
+    "actual_provider_output_cap_enforcement_verified": false,
+    "aggregate_token_or_spend_cap_verified": false,
+    "completion_authority": false,
+    "dashboard_or_title_disable_controls_tested": false,
+    "historical_unknown_resolution_authority": false,
+    "initial_title_suppression_qualified": false,
+    "mock_wire_selected_model_cap_mapping_observed": true,
+    "native_resume_qualified": false,
+    "native_runtime_provider_output_token_cap_enforced": false,
+    "production_auth_refresh_qualified": false,
+    "production_configuration_qualified": false,
+    "real_provider_requests": 0,
+    "retired_task_retry_rearm_successor_authority": false,
+    "runtime_requested_output_tokens": 4096
+  },
+  "schema": "current-grok-profile-wire-budget-independent-review@1",
+  "source_and_evidence_pins": [
+    {
+      "bytes": 776519,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-request-v03.json",
+      "sha256": "1fd334ada652d142e8bcfda5d6965f3a124e03c2bf1c9cb3858d494f7fc82f13"
+    },
+    {
+      "bytes": 1241,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-post-owner-v03.json",
+      "sha256": "c4f65980851b6a80fa96e65f1afc88cee1580ffad11b24eb9a22ae60b53f996b"
+    },
+    {
+      "bytes": 70818,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/current-profile-post-owner-readback-v03.json",
+      "sha256": "6824172f721f8d1c5782a28484e45e4d00e4f81a2b632b0cac805d81fb352eb2"
+    },
+    {
+      "bytes": 634,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/receipt.json",
+      "sha256": "69818f4c23acacf3bdfe234e1ee492fda8ab02426cad705f86468f7cae1f1199"
+    },
+    {
+      "bytes": 133024,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/qualification-result.json",
+      "sha256": "9486aae975cf107ed3436755c699ce8f4ee0c83d6504b266af93f62b0877ff5f"
+    },
+    {
+      "bytes": 66309,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_loopback_v02.py",
+      "sha256": "fb429a529bb32d1cfaccde6f359d5550aae1a479fa80cb85615bd321861a0442"
+    },
+    {
+      "bytes": 5597,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/qualify_grok_current_profile_rootlesskit_v02.py",
+      "sha256": "cfa311f21014fd75d1cd8654f1a2b3bfcabb34b85b12e6443de9dc1e7647ee3e"
+    },
+    {
+      "bytes": 7735,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/observe_current_profile_after_owner_v04.py",
+      "sha256": "d5365921ad2e484b6a1edd74189364d8b236d0c621aa7bd0f2ec119790cfedb7"
+    },
+    {
+      "bytes": 55015,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/fixture-root-after-all-agent-exits.json",
+      "sha256": "668de336b9acf9d13f44ef912dd6a53cff19753a10445cd0837768f1c225ff67"
+    },
+    {
+      "bytes": 9719,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/grok-current-profile-v01/retained-records-baseline-v01.json",
+      "sha256": "568dca0860992975d7ebcacfabb5130d37113c0191d3d59fd737c9dd22cfffba"
+    },
+    {
+      "bytes": 36923,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/case-result.json",
+      "sha256": "349ce38f91fb8ffba5d4725823d68ff8f09cc8bf639a1beb0ed6160c273b3bda"
+    },
+    {
+      "bytes": 1766,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-01.json",
+      "sha256": "a5d28659df21191f75e1069486c7bd567c3d4e67307d7603978039a74bba3b92"
+    },
+    {
+      "bytes": 9818,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-02.json",
+      "sha256": "9f513206aaabd4bbab2657c7be95dc0c6998a52335f477f4007c1b1fd73fa4c1"
+    },
+    {
+      "bytes": 10430,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-03.json",
+      "sha256": "ea801ef2d092dd2cbc7467c7fbe6486bdefbdf836306be947dd56c45cf27d9cb"
+    },
+    {
+      "bytes": 1657,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-04.json",
+      "sha256": "36f55bcde47642fc1acf1511136964682caa316d459e617cac4385d0b87dbc53"
+    },
+    {
+      "bytes": 36611,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/case-result.json",
+      "sha256": "4cd28c920936f02c1fd781aa42d2f2d9e2844ddebce547ba867b9193e757dbfb"
+    },
+    {
+      "bytes": 1766,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/request-01.json",
+      "sha256": "a5d28659df21191f75e1069486c7bd567c3d4e67307d7603978039a74bba3b92"
+    },
+    {
+      "bytes": 52403,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/request-02.json",
+      "sha256": "a9a4374e5283b422d4d8be54523b5cf10a21b160bd600f01f2d649ff054788ff"
+    },
+    {
+      "bytes": 1657,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/request-03.json",
+      "sha256": "36f55bcde47642fc1acf1511136964682caa316d459e617cac4385d0b87dbc53"
+    },
+    {
+      "bytes": 148335,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/case-result.json",
+      "sha256": "0b468d4268c38e8c2e23aecdbd847381e90295cceae1ad251a9906645ec30293"
+    },
+    {
+      "bytes": 1766,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-01.json",
+      "sha256": "a5d28659df21191f75e1069486c7bd567c3d4e67307d7603978039a74bba3b92"
+    },
+    {
+      "bytes": 7741,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-02.json",
+      "sha256": "5df1893503110f5e86a8a18f6a0627313baa1a511c1470aec970dccb7f5ff609"
+    },
+    {
+      "bytes": 14072,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-03.json",
+      "sha256": "528a4dbfacd60ce1ed88ba8ae39456cedd90f9a75fd7d07f5be5fec2afb03e27"
+    },
+    {
+      "bytes": 1657,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-04.json",
+      "sha256": "36f55bcde47642fc1acf1511136964682caa316d459e617cac4385d0b87dbc53"
+    }
+  ],
+  "source_bindings": {
+    "all_declared_origin_hashes_join_exact_request_source_map": true,
+    "case_origin_counts": [
+      42,
+      42,
+      205
+    ],
+    "full_origin_source_files_rehashed_by_this_reviewer": false,
+    "qualification_module_origin_count": 205,
+    "request_pin_count": 2974,
+    "root_post_readback_asserts_actual_origin_rehash": true,
+    "unique_case_module_origins": 205
+  },
+  "status": "passed-fixture-wire-and-metadata-verification",
+  "wire_requests": [
+    {
+      "case": "positive-read-file",
+      "class": "auxiliary_session_title",
+      "model": "grok-4.6",
+      "output_limit_fields": {
+        "max_output_tokens": 100
+      },
+      "path": "/v1/responses",
+      "request_pin": {
+        "bytes": 1766,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-01.json",
+        "sha256": "a5d28659df21191f75e1069486c7bd567c3d4e67307d7603978039a74bba3b92"
+      },
+      "temperature": 1.0
+    },
+    {
+      "case": "positive-read-file",
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 9818,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-02.json",
+        "sha256": "9f513206aaabd4bbab2657c7be95dc0c6998a52335f477f4007c1b1fd73fa4c1"
+      },
+      "temperature": 0.0
+    },
+    {
+      "case": "positive-read-file",
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 10430,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-03.json",
+        "sha256": "ea801ef2d092dd2cbc7467c7fbe6486bdefbdf836306be947dd56c45cf27d9cb"
+      },
+      "temperature": 0.0
+    },
+    {
+      "case": "positive-read-file",
+      "class": "auxiliary_dashboard_summary",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 1657,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/positive-read-file/request-04.json",
+        "sha256": "36f55bcde47642fc1acf1511136964682caa316d459e617cac4385d0b87dbc53"
+      },
+      "temperature": 0.0
+    },
+    {
+      "case": "empty-tools-control",
+      "class": "auxiliary_session_title",
+      "model": "grok-4.6",
+      "output_limit_fields": {
+        "max_output_tokens": 100
+      },
+      "path": "/v1/responses",
+      "request_pin": {
+        "bytes": 1766,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/request-01.json",
+        "sha256": "a5d28659df21191f75e1069486c7bd567c3d4e67307d7603978039a74bba3b92"
+      },
+      "temperature": 1.0
+    },
+    {
+      "case": "empty-tools-control",
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 52403,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/request-02.json",
+        "sha256": "a9a4374e5283b422d4d8be54523b5cf10a21b160bd600f01f2d649ff054788ff"
+      },
+      "temperature": 0.0
+    },
+    {
+      "case": "empty-tools-control",
+      "class": "auxiliary_dashboard_summary",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 1657,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/empty-tools-control/request-03.json",
+        "sha256": "36f55bcde47642fc1acf1511136964682caa316d459e617cac4385d0b87dbc53"
+      },
+      "temperature": 0.0
+    },
+    {
+      "case": "canonical-planning-adversarial",
+      "class": "auxiliary_session_title",
+      "model": "grok-4.6",
+      "output_limit_fields": {
+        "max_output_tokens": 100
+      },
+      "path": "/v1/responses",
+      "request_pin": {
+        "bytes": 1766,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-01.json",
+        "sha256": "a5d28659df21191f75e1069486c7bd567c3d4e67307d7603978039a74bba3b92"
+      },
+      "temperature": 1.0
+    },
+    {
+      "case": "canonical-planning-adversarial",
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 7741,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-02.json",
+        "sha256": "5df1893503110f5e86a8a18f6a0627313baa1a511c1470aec970dccb7f5ff609"
+      },
+      "temperature": 0.0
+    },
+    {
+      "case": "canonical-planning-adversarial",
+      "class": "primary_agent",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 14072,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-03.json",
+        "sha256": "528a4dbfacd60ce1ed88ba8ae39456cedd90f9a75fd7d07f5be5fec2afb03e27"
+      },
+      "temperature": 0.0
+    },
+    {
+      "case": "canonical-planning-adversarial",
+      "class": "auxiliary_dashboard_summary",
+      "model": "grok-4.7",
+      "output_limit_fields": {
+        "max_tokens": 4096
+      },
+      "path": "/v1/chat/completions",
+      "request_pin": {
+        "bytes": 1657,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-grok-current-profile-20261017-03/rootlesskit-loopback/canonical-planning-adversarial/request-04.json",
+        "sha256": "36f55bcde47642fc1acf1511136964682caa316d459e617cac4385d0b87dbc53"
+      },
+      "temperature": 0.0
+    }
+  ],
+  "wire_totals": {
+    "all_dashboard_caps": {
+      "max_tokens": 4096
+    },
+    "all_dashboard_model": "grok-4.7",
+    "all_dashboard_temperature": 0,
+    "all_http_requests": 11,
+    "all_primary_caps": {
+      "max_tokens": 4096
+    },
+    "all_primary_model": "grok-4.7",
+    "all_primary_temperature": 0,
+    "all_title_caps": {
+      "max_output_tokens": 100
+    },
+    "all_title_model": "grok-4.6",
+    "all_title_temperature": 1,
+    "all_wire_same_model": false,
+    "all_wire_temperature_zero": false,
+    "auxiliary_dashboard_summary_requests": 3,
+    "auxiliary_session_title_requests": 3,
+    "auxiliary_toggles": "stock unchanged; no disable-control qualification",
+    "classes_recomputed_from_actual_request_bodies": true,
+    "primary_requests": 5
+  }
+}

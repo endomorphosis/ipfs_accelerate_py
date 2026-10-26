@@ -1,0 +1,53 @@
+{
+  "ADMIN_fresh_settlement_qualified": false,
+  "actual_child_exit_code": 0,
+  "actual_disk_reservation_id": "61ae01bb9e8a4be185b4d0deb506b87d",
+  "actual_lease_ids_observed_absent": [
+    "ccf359811f62427c85da346a5adc3e54",
+    "e5e81822f7184ae3b78e6362d78155a6",
+    "e6e2a7c20d59417fba56e4e18f50d65a"
+  ],
+  "actual_native_fence_proof": {
+    "active_binding_cid": "baguqeerav5iisvrnttqatootubeo3eruvw5bd3pxcyw4pli6e2xudhle7hvq",
+    "all_trees_fenced": true,
+    "master_pid": 2679890,
+    "master_start_time_ticks": 124047140,
+    "run_started_at_epoch_nanoseconds": 1792222419675718527,
+    "terminal_receipt_cid": "baguqeerax5q2f7rb4deb54htd2lkvkuphdrdyq5kzcn2samd4jmmdq7ctvoq"
+  },
+  "actual_native_stop_verified": true,
+  "actual_original_v05_called_unchanged": true,
+  "actual_pids_observed_absent": [
+    2664111,
+    2679890
+  ],
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 35562,
+  "conservative_total_through_B_bytes": 80786558,
+  "execution_DB_bytes": 12288,
+  "execution_WAL_bytes": 14218,
+  "native_ACK_or_receipt_created_by_observer": false,
+  "native_terminal_pin": {
+    "bytes": 1137,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05/current-lane/master.pid.terminal.json",
+    "sha256": "ba50f9d0bd890fc0585ee9ef919d6915ff9af6fff78d742a3fcec19d1365318a"
+  },
+  "observation_only": true,
+  "observed_reservation_status": "released",
+  "original_fixture_launch_custody_qualified": true,
+  "owned_live_group_observed_absent": true,
+  "producer_result_pin": {
+    "bytes": 95316,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-fixture-20261017-05/producer-result.json",
+    "sha256": "b5b1c4db264b5712099e6a7766b1776cfa13a27baa142486b0d2db825575c367"
+  },
+  "production_actions_performed": false,
+  "receipt_pin": {
+    "bytes": 1068,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-launch-20261017-05/receipt.json",
+    "sha256": "398a9b329838aff25a9fee7f3649914bac3100a772a0f3dfd96ec11bae6da4fa"
+  },
+  "schema": "authentic-original-launch-post-owner-observation@1",
+  "whole_fixture_census_bytes": 47217908,
+  "whole_fixture_limit_bytes": 134217728
+}

@@ -1,0 +1,29 @@
+{
+  "actual_disk_reservation_id": "346f430c2fdc446a9dc458fd40ccc039",
+  "actual_lease_ids_observed_absent": [
+    "4e8e1200f83f400f8a930e880986c3f6",
+    "2784d296f1bb432298548c5ed78df170",
+    "ae28143ce84e4071bcf7003fcfdfa1b4"
+  ],
+  "actual_pids_observed_absent": [
+    3202225,
+    3228288
+  ],
+  "child_live_group_observed_absent": null,
+  "database_opened": false,
+  "native_ACK_or_receipt_created": false,
+  "observation_only": true,
+  "observed_at_epoch": 1792225627.7563717,
+  "observed_reservation_status": "released",
+  "original_result_rewritten": false,
+  "production_actions_performed": false,
+  "result_pin": {
+    "bytes": 2448,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-settlement-20261017-07-01/parent-result.json",
+    "sha256": "8a7870e09075e09f92f665232d601b3d7a38acb7d7bd8f0ea853720994a64eeb"
+  },
+  "root_reported_actual_tool_exit": 0,
+  "root_reported_actual_tool_session": 33612,
+  "schema": "finalized-fixture-owner-readonly-observation@1",
+  "semantic_or_operator_authority_asserted": false
+}

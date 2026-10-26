@@ -3241,6 +3241,7 @@ class MergeQueue:
         *,
         limit: int = 32,
         after_request_id: str | None = None,
+        include_cancelled: bool = False,
     ) -> tuple[MergeRequest, ...]:
         """Return a bounded deterministic snapshot of target-bound quarantines.
 
@@ -3259,10 +3260,11 @@ class MergeQueue:
         cursor = str(after_request_id or "")
         cursor_sql = " AND request_id > ?" if cursor else ""
         cursor_parameters = (cursor,) if cursor else ()
+        status_sql = "status IN ('quarantined','cancelled')" if include_cancelled else "status='quarantined'"
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM merge_requests "
-                "WHERE status='quarantined'"
+                "WHERE " + status_sql
                 + target_sql
                 + cursor_sql
                 + (
@@ -3392,8 +3394,9 @@ class MergeQueue:
         *,
         limit: int = 32,
         after_request_id: str | None = None,
+        include_deferred: bool = False,
     ) -> tuple[MergeRequest, ...]:
-        """Return a bounded fair-order snapshot of target-bound pending work."""
+        """Return bounded pending work; optionally inspect cooled rows read-only."""
 
         requested = max(0, min(int(limit), 256))
         if requested == 0:
@@ -3404,15 +3407,18 @@ class MergeQueue:
         cursor = str(after_request_id or "")
         cursor_sql = " AND request_id > ?" if cursor else ""
         cursor_parameters = (cursor,) if cursor else ()
+        cooldown_sql = "" if include_deferred else " AND retry_not_before <= ?"
+        cooldown_parameters = () if include_deferred else (now,)
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM merge_requests "
-                "WHERE status='pending' AND retry_not_before <= ?"
+                "WHERE status='pending'"
+                + cooldown_sql
                 + target_sql
                 + cursor_sql
                 + (" ORDER BY request_id LIMIT ?" if recovery_order else " LIMIT ?"),
                 (
-                    now,
+                    *cooldown_parameters,
                     *target_parameters,
                     *cursor_parameters,
                     requested,

@@ -1,0 +1,58 @@
+{
+  "C_worker_request_template": {
+    "control_scope": "NEW_SHORT_PRIVATE_EXPLICITLY_CHARGED_CONTROL_DIRECTORY",
+    "fixture_only": true,
+    "native_parent_deadline": "ACTUAL_FINITE_PARENT_DEADLINE",
+    "parent_kernel_identity": "ACTUAL_LIVE_NATIVE_PARENT_PID_BIRTH_BOOT",
+    "production_access": false,
+    "python_pin": "ACTUAL_PINNED_PYTHON",
+    "ready_path": "NEW_PRIVATE600_READY_PATH",
+    "schema": "authentic-native-unknown-admin-worker-request@1",
+    "socket_path": "EXACT_SHORT_CONTROL_SOCKET_PATH",
+    "stop_marker_path": "EXACT_PRIVATE_STOP_MARKER_PATH",
+    "unbound_input_pin": "ACTUAL_COMPILER_OUTPUT_PIN",
+    "worker_source_pin": "ACTUAL_NEW_ADMIN_WORKER_PIN"
+  },
+  "D_worker_request_template": {
+    "admin_creator_exit_witness_pin": "ACTUAL_PARENT_OBSERVED_C_EXIT_REAP_PIN",
+    "fixture_only": true,
+    "native_audit_response_pin": "ACTUAL_C_RPC_REPLAY_RESPONSE_PIN",
+    "parent_kernel_identity": "ACTUAL_LIVE_NEW_NATIVE_PARENT_PID_BIRTH_BOOT",
+    "production_access": false,
+    "python_pin": "ACTUAL_PINNED_PYTHON",
+    "result_path": "NEW_PRIVATE_RESULT_PATH",
+    "schema": "authentic-native-unknown-settlement-worker-request@1",
+    "sealed_old_authority_context_pin": "ACTUAL_C_CONTEXT_PIN",
+    "stage": "failed|coordination|blocked|terminal_event|complete|replay",
+    "unbound_input_pin": "ORIGINAL_COMPILER_OUTPUT_PIN",
+    "worker_source_pin": "ACTUAL_NEW_SETTLEMENT_WORKER_PIN"
+  },
+  "compiler_is_metadata_only": true,
+  "executable_request": false,
+  "fixture_only": true,
+  "input_compiler_argv": [
+    "PINNED_PYTHON",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v01/compile_authentic_admin_inputs_v01.py",
+    "--preparation-result",
+    "ACTUAL_A_PREPARATION_OWNER_RESULT",
+    "--maintenance-result",
+    "ACTUAL_B_MAINTENANCE_OWNER_RESULT",
+    "--admin-worker-source",
+    "NEW_QUALIFIED_AUTHENTIC_ADMIN_WORKER",
+    "--settlement-worker-source",
+    "NEW_QUALIFIED_AUTHENTIC_SETTLEMENT_WORKER",
+    "--output",
+    "NEW_PRIVATE_UNBOUND_INPUT_JSON"
+  ],
+  "live_child_seals_exactly": [
+    "registered_owner_identity",
+    "registered_creator",
+    "context_cid"
+  ],
+  "parent_execution_note": "No runnable parent CLI is supplied or authorized here. Future exact parent argv/source/resource/census/child registration must be implemented, reviewed and frozen before root runs it. Every native stage remains root serialized and waits for available genuine F07 resources.",
+  "production_access": false,
+  "runtime_driver_present": false,
+  "schema": "authentic-unknown-admin-settlement-request-templates@1",
+  "unbound_output_cannot_be_passed_to_gateway": true
+}

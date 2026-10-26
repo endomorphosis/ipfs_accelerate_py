@@ -1,0 +1,37 @@
+{
+  "actual_disk_reservation_id": "fee8cd4001574313a0ca3654d2d3e86a",
+  "actual_lease_ids_observed_absent": [
+    "ca1920aa8c14439fa10a3c703091471c",
+    "5adccdcc04944e6699572a6eb182b153",
+    "4ad125b7c3ee48b8a8e309329374fe24"
+  ],
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 96493,
+  "cases_passed": 12,
+  "child_pid_observed_absent": 2081949,
+  "native_owner_receipt_rewritten": false,
+  "native_resource_ack_created": false,
+  "observation_only": true,
+  "observed_reservation_status": "released",
+  "owned_head": "592d07580fca33894f37723dea4f84630a957f37",
+  "owned_live_group_observed_absent": true,
+  "owner_pid_observed_absent": 2072493,
+  "production_actions_performed": false,
+  "production_custody_qualified": false,
+  "receipt_pin": {
+    "bytes": 637,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/receipt.json",
+    "sha256": "313aa02d709bf55b0ca535df57a8ae41f74df7c25e9f6e0c4e58b4adc8e07f4f"
+  },
+  "request_pin": {
+    "bytes": 748233,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/planning-unknown-administrative-controls-request-v09.json",
+    "sha256": "b2d0a0a0dfa37f6509bbd245868e7c48b53171b3b272b09b9e7b907933e9af9c"
+  },
+  "result_pin": {
+    "bytes": 43766,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-09/administrative-controls-result.json",
+    "sha256": "4d49a226112a294abcc9ea7d843839aa5a4a51b153c26dfb44b1bd6c0683ebd8"
+  },
+  "schema": "native-controls-post-owner-readonly-observation@1"
+}

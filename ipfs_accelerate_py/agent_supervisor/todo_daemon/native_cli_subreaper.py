@@ -1,4 +1,4 @@
-"""Private Linux subreaper wrapper for native provider CLI execution.
+"""Private Linux subreaper wrapper for native CLI and validation execution.
 
 This module is an executable implementation detail of
 ``legacy_landed_provider_cli``.  It deliberately has no provider-specific
@@ -9,6 +9,8 @@ failure classification.
 from __future__ import annotations
 
 import ctypes
+import json
+import math
 import os
 import signal
 import subprocess
@@ -112,6 +114,24 @@ def _kill_and_reap_orphans() -> None:
             time.sleep(_TERMINATION_POLL_SECONDS)
 
 
+def _reap_exited_adopted_children(command_pid: int) -> None:
+    """Reap completed adoptees without consuming the Popen leader's status.
+
+    A nested owned process group can wait for its orphaned zombie to vanish
+    while the main command is still running. Waiting until the command exits
+    would make that group wait on its own outer subreaper. Kernel parentage
+    confines this nonblocking wait to this dedicated invocation's children;
+    live adoptees retain their existing terminal cleanup boundary.
+    """
+    for process_id in _direct_child_pids():
+        if process_id == command_pid:
+            continue
+        try:
+            os.waitpid(process_id, os.WNOHANG)
+        except ChildProcessError:
+            pass
+
+
 def run_with_child_custody(callback: Callable[[], int]) -> int:
     """Run one route in a fresh, dedicated worker and reap its descendants.
 
@@ -156,7 +176,39 @@ def main(arguments: Sequence[str] | None = None) -> int:
     global _termination_signal
     _termination_signal = 0
     values = list(sys.argv[1:] if arguments is None else arguments)
-    if len(values) < 2 or values[0] != "--" or not values[1]:
+    inherited_fds: list[int] = []
+    result_fd: int | None = None
+    timeout_seconds: float | None = None
+    output_limit: int | None = None
+    try:
+        while values and values[0] != "--":
+            option, value = values[:2]
+            values = values[2:]
+            if option == "--pass-fd":
+                descriptor = int(value)
+                if descriptor < 3 or descriptor in inherited_fds:
+                    raise ValueError("invalid inherited descriptor")
+                os.fstat(descriptor)
+                inherited_fds.append(descriptor)
+            elif option == "--result-fd" and result_fd is None:
+                result_fd = int(value)
+                if result_fd < 3:
+                    raise ValueError("invalid result descriptor")
+                os.fstat(result_fd)
+            elif option == "--timeout-seconds" and timeout_seconds is None:
+                timeout_seconds = float(value)
+                if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+                    raise ValueError("invalid timeout")
+            elif option == "--output-limit-bytes" and output_limit is None:
+                output_limit = int(value)
+                if output_limit < 1:
+                    raise ValueError("invalid output limit")
+            else:
+                raise ValueError("unknown option")
+        if (len(values) < 2 or values[0] != "--" or not values[1]
+                or result_fd in inherited_fds):
+            raise ValueError("invalid command")
+    except (OSError, ValueError, TypeError):
         return _CONFINEMENT_FAILURE_EXIT_CODE
     if not _enable_child_subreaper():
         return _CONFINEMENT_FAILURE_EXIT_CODE
@@ -173,6 +225,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
         signal.signal(signum, _record_termination)
 
     process: subprocess.Popen[bytes] | None = None
+    timed_out = False
+    output_limit_exceeded = False
+    deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
     try:
         process = subprocess.Popen(
             values[1:],
@@ -180,10 +235,14 @@ def main(arguments: Sequence[str] | None = None) -> int:
             stdout=None,
             stderr=None,
             close_fds=True,
+            pass_fds=tuple(inherited_fds),
             start_new_session=False,
         )
         while process.poll() is None:
-            if _termination_signal:
+            _reap_exited_adopted_children(process.pid)
+            timed_out = deadline is not None and time.monotonic() >= deadline
+            output_limit_exceeded = output_limit is not None and os.fstat(1).st_size > output_limit
+            if _termination_signal or timed_out or output_limit_exceeded:
                 try:
                     process.kill()
                 except ProcessLookupError:
@@ -195,6 +254,24 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 continue
         return_code = process.wait()
         _kill_and_reap_orphans()
+        # Only this private wrapper holds the result descriptor. The nested
+        # command receives exactly inherited_fds; it cannot write this report
+        # through an accidentally inherited result channel.
+        if result_fd is not None:
+            raw = json.dumps({"returncode": return_code, "timed_out": timed_out,
+                "output_limit_exceeded": output_limit_exceeded,
+                "termination_signal": _termination_signal, "children_reaped": True},
+                sort_keys=True).encode()
+            view = memoryview(raw)
+            while view:
+                count = os.write(result_fd, view)
+                if count <= 0:
+                    raise OSError("result write failed")
+                view = view[count:]
+        if timed_out:
+            return 124
+        if output_limit_exceeded:
+            return 75
         if _termination_signal:
             return min(255, 128 + _termination_signal)
         return _normalized_exit_code(return_code)

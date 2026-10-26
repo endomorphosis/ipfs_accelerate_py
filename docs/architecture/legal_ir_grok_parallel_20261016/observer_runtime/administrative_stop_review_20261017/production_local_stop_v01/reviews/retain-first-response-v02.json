@@ -1,0 +1,34 @@
+{
+  "DB_WAL_or_credential_bytes_read": false,
+  "baseline_pin": {
+    "bytes": 51717,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v01.py",
+    "sha256": "160184262e4f0008ab1b25e30164f97e6e601a6704df05c87470e4ed5ea540f8"
+  },
+  "baseline_review_pin": {
+    "bytes": 5192,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-three-adapters-independent-static-review-v01.json",
+    "sha256": "10b9ed2ebe01df57002a4f2503e549a7b2d84db4db99fc57e260da972bfef800"
+  },
+  "checks": [
+    "Exact diff only changes admin(): write actual first native response to private new audit-first-response.json, canonical compare decision/audit_receipt against actual same-live native replay, retain both response pins and equality assertion.",
+    "Every other top-level function is AST-identical; resource ownership, worker spawn/reap, finite deadline, socket/grant/identity checks, source guards, graceful close, settlement and finalization behavior are unchanged.",
+    "Current native DatabaseTaskSource response returns decision and audit_receipt in both branches, reconstructing prior IntentReceipt with changed=True and same durable event/body; only top-level replayed differs. The comparison deliberately excludes that expected top-level flag.",
+    "No discarded response, transport drop, extra ADMIN append, provider/model dispatch, synthetic receipt, context rebind, task rearm or successor is introduced."
+  ],
+  "native_execution_or_product_import_performed": false,
+  "outcome": "no_concrete_static_delta_blocker",
+  "patch_pin": {
+    "bytes": 2024,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production-parent-retain-first-response-v02-candidate.patch",
+    "sha256": "876f0563ab8f92a23e02f1fc9f2f66ce5accff2cdb4096f06cddd282d4a3247e"
+  },
+  "production_mutation_performed": false,
+  "qualification_pending": "Actual production peer-granted ADMIN call, same-live replay, graceful owner exit and separate full native local closeout remain root-run gates.",
+  "schema": "production-parent-first-response-independent-static-review@2",
+  "source_pin": {
+    "bytes": 52247,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/production_unknown_native_parent_v02.py",
+    "sha256": "db2efe5e16bf10aa0ba94de041cd533d4cf3374ea6ffc911feab4ab5299e8665"
+  }
+}

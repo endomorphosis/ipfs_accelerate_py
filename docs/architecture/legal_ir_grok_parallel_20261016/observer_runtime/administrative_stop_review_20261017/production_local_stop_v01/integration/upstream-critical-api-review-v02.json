@@ -1,0 +1,322 @@
+{
+  "blob_survey_pin": {
+    "bytes": 45965,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-post-closeout-main-token-accounting-blob-survey-v01.json",
+    "sha256": "e66bb4189cae169dd9d0bf47ae8ab3536c24d3fcf028698f6607546bd0112856"
+  },
+  "bounded_findings": [
+    {
+      "area": "Router source-owner/resource API",
+      "compatibility": "Existing Grok planning with no new parameters is not granted this Codex-specific route. Source-only default inspection does not prove runtime equivalence; productive Grok qualification remains separately scoped.",
+      "finding": "run adds optional parent-lease/policy/deadline and owner-descriptor/digest parameters, with early validation restricted to explicit Codex coding and nonlegacy repository policy. Owner descriptors and direct parent resources are mutually exclusive. Native owner selection, worker forwarding receipt collection and finally/interruption handling are new runtime behavior."
+    },
+    {
+      "area": "Repository MCP transport and audit",
+      "compatibility": "Readers with a closed@1/@2-only audit schema need adaptation to accept validated@3 or must report unavailable. Current administrative typed-state gateway is a separate path and is unchanged.",
+      "finding": "MCP introduces synchronous operation capture, read-observation audit@3 alongside existing@1/@2, a bytes-summary API, optional resource-grant CLI pair, delegated native resource ownership and interruptible FD framing. Audit observations explicitly describe prepared reads and do not prove provider ingestion."
+    },
+    {
+      "area": "Parented index/session/compiler admission",
+      "compatibility": "Old calls without controls remain accepted by optional signatures; resource-controlled execution needs matching native datasets lease classes/acquire_codebase_resources options. Fresh92 validates administration integration, not every new codebase source-owner/resource path.",
+      "finding": "NativeRepositoryIndex and RepositorySourceSession accept borrowed parent lease, cancellation and absolute monotonic deadline; compiler admission borrows those controls and nested work preserves the inherited deadline. CodeSourceView.replace adds an optional checkpoint callback before mutation."
+    },
+    {
+      "area": "Source binding and native cleanup",
+      "compatibility": "Owner and worker runtime-store lifecycles must remain distinct; new dispatcher/broker/stdio/retirement modules require their own source-owner test evidence before productive terminal-bench use.",
+      "finding": "Repository-source policy validates owner-binding schema via its dedicated module, rejects worker-owned runtime stores for owner bindings, validates optional resource-grant references and adds read-observation usage. Numerical broker starts through an overridable service-thread hook retaining existing default start."
+    },
+    {
+      "area": "Input/token observations",
+      "compatibility": "Byte/read/source accounting and captured native usage remain distinct from demonstrated model-token savings, semantic reconstruction or formalization quality.",
+      "finding": "Rendered input census can validate explicit world-task envelopes and optionally enrich inline-source commitments while preserving byte partition and token_savings_established false. Session accounting treats any invalid native-usage observation as a conflict."
+    }
+  ],
+  "concrete_required_actions": [
+    "Freeze the actual reviewed merged source HEAD and complete new source closure before fresh92.",
+    "Preserve historical qualified523 pins and all completed/failed production evidence.",
+    "After actual merged92 exits/releases, generate append-only docs copies and qualify exact4 local workflow steps at a distinct final doc HEAD."
+  ],
+  "corrected_count_typography_from_preserved_v01": {
+    "actual_27_product_delta": "16 added and11 modified, as recorded in the actual API-derived overall_delta.",
+    "prior_pin": {
+      "bytes": 20945,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-post-closeout-main-token-accounting-api-review-v01.json",
+      "sha256": "d3f7b99d8585be0f51e97ee3fd4b2060b70544d8ffaa82085441de02734fb5cd"
+    }
+  },
+  "inspected_immutable_source_pairs": [
+    {
+      "added_symbols": [],
+      "main2fe_source": {
+        "bytes": 134755,
+        "git_blob": "7e815c93fb207cebfad20fd5749b02b03ae4d164",
+        "sha256": "c42cb9f877338c51f6d8acf2747b903a5312bb0acf0911d3777c42cf989123ea"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "public_and_internal_signature_changes": [
+        {
+          "main2fe_arguments": "*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int, reasoning_effort: str='high', container_boundary: Path | None=None, container_boundary_sha256: str='', purpose: str='coding', semantic_repository: Path | None=None, source_formalization_handoff: Path | None=None, source_formalization_handoff_sha256: str | None=None, numerical_obligation_descriptor: Path | None=None, numerical_obligation_descriptor_sha256: str | None=None, source_lookup_descriptor: Path | None=None, source_lookup_descriptor_sha256: str | None=None, source_view_profile: str='disabled', source_edit_mode: str='disabled', source_view_descriptor: Path | None=None, source_view_descriptor_sha256: str | None=None, semantic_transport_schema: str='supervisor-semantic-router-input@1', semantic_metadata_view: str='legacy', semantic_working_set: str='legacy', grok_coding_max_turns: int=128, semantic_metadata_token_counter: SemanticMetadataTokenCounter | None=None, tool_output_policy: str='legacy', source_view_advisory_policy: str='legacy', repository_source_policy: str='legacy', repository_source_parent_lease=None, repository_source_scheduler_policy_sha256: str | None=None, repository_source_deadline_monotonic: float | None=None, repository_source_owner_descriptor: Path | None=None, repository_source_owner_descriptor_sha256: str | None=None, source_input_policy: str='legacy', query_reference_policy: str='legacy', census_only: bool=False, coding_reply_mode: str='legacy', doctor_residual_artifact: Path | None=None, doctor_residual_sha256: str='', doctor_residual_task_cid: str='', public_instruction_artifact: Path | None=None, public_instruction_sha256: str='', public_instruction_task_cid: str='', budget_profile: str | None=None, prompt_token_counter: PromptTokenCounter | None=None, prompt_tokenizer_artifact: Path | None=None, prompt_tokenizer_sha256: str='', max_input_tokens: int | None=None, world_task_packet: PreparedRepositoryWorldPacket | None=None, world_packet_audit_directory: Path | None=None, codex_cli_literal_response: bool=False, receipt_observer: Callable[[dict], None] | None=None",
+          "qualified523_arguments": "*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int, reasoning_effort: str='high', container_boundary: Path | None=None, container_boundary_sha256: str='', purpose: str='coding', semantic_repository: Path | None=None, source_formalization_handoff: Path | None=None, source_formalization_handoff_sha256: str | None=None, numerical_obligation_descriptor: Path | None=None, numerical_obligation_descriptor_sha256: str | None=None, source_lookup_descriptor: Path | None=None, source_lookup_descriptor_sha256: str | None=None, source_view_profile: str='disabled', source_edit_mode: str='disabled', source_view_descriptor: Path | None=None, source_view_descriptor_sha256: str | None=None, semantic_transport_schema: str='supervisor-semantic-router-input@1', semantic_metadata_view: str='legacy', semantic_working_set: str='legacy', grok_coding_max_turns: int=128, semantic_metadata_token_counter: SemanticMetadataTokenCounter | None=None, tool_output_policy: str='legacy', source_view_advisory_policy: str='legacy', repository_source_policy: str='legacy', source_input_policy: str='legacy', query_reference_policy: str='legacy', census_only: bool=False, coding_reply_mode: str='legacy', doctor_residual_artifact: Path | None=None, doctor_residual_sha256: str='', doctor_residual_task_cid: str='', public_instruction_artifact: Path | None=None, public_instruction_sha256: str='', public_instruction_task_cid: str='', budget_profile: str | None=None, prompt_token_counter: PromptTokenCounter | None=None, prompt_tokenizer_artifact: Path | None=None, prompt_tokenizer_sha256: str='', max_input_tokens: int | None=None, world_task_packet: PreparedRepositoryWorldPacket | None=None, world_packet_audit_directory: Path | None=None, codex_cli_literal_response: bool=False, receipt_observer: Callable[[dict], None] | None=None",
+          "symbol": "run"
+        }
+      ],
+      "qualified523_source": {
+        "bytes": 127126,
+        "git_blob": "041bf5d570ed5a2b1e9393c8988cec7d55f7f393",
+        "sha256": "bf3d83281f81d3c139fef216440ae3cb143cee7f3a94a4bf98419d576f4e4bef"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [
+        "RepositoryMCPServer.capture_audit_operations",
+        "RepositoryMCPServer.checkpoint",
+        "_Audit._publish_capture",
+        "_Audit._record",
+        "_Audit.capture",
+        "_InterruptibleStdio.__enter__",
+        "_InterruptibleStdio.__exit__",
+        "_InterruptibleStdio.__init__",
+        "_InterruptibleStdio._ready",
+        "_InterruptibleStdio.flush",
+        "_InterruptibleStdio.readline",
+        "_InterruptibleStdio.write",
+        "_empty_repository_audit_summary",
+        "_serve_frames",
+        "summarize_repository_audit_bytes"
+      ],
+      "main2fe_source": {
+        "bytes": 50155,
+        "git_blob": "e74963b316be0929ce81488a9f24b81732ed73eb",
+        "sha256": "c24ae7a05fd24b560c47f03b9cd8426a5329a1485e2191495302e97fa61971c7"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py",
+      "public_and_internal_signature_changes": [
+        {
+          "main2fe_arguments": "self, config, *, session_factory=None, scheduler=None, parent_lease=None, cancel_event=None, deadline_monotonic=None",
+          "qualified523_arguments": "self, config, *, session_factory=None",
+          "symbol": "RepositoryMCPServer.__init__"
+        },
+        {
+          "main2fe_arguments": "self, event, *, tool=None, success=True, returned_bytes=0, compact=False, canonical_changed=False, canonical_uncertain=False, refreshed=False, retrieval=None, read_observation=_NO_READ_OBSERVATION",
+          "qualified523_arguments": "self, event, *, tool=None, success=True, returned_bytes=0, compact=False, canonical_changed=False, canonical_uncertain=False, refreshed=False, retrieval=None",
+          "symbol": "_Audit.record"
+        }
+      ],
+      "qualified523_source": {
+        "bytes": 36683,
+        "git_blob": "a194f8a6d7f5d32c0f12e0d7efb4baf79674fcb7",
+        "sha256": "6947e4c7f902f2f13bace730f8d4f1a9bd901682b99932159bd861190aa0b6e8"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [
+        "NativeRepositoryIndex._resource_options",
+        "_check_resource_cancellation",
+        "_remaining_resource_seconds",
+        "_resource_controls",
+        "_validate_resource_deadline"
+      ],
+      "main2fe_source": {
+        "bytes": 32303,
+        "git_blob": "66d389146563ab83df3a5c1b3f44e88b6b10ad87",
+        "sha256": "9d8f063c85d9c1889d8cc6121d2c0359be37a3318efe0868f7e4d564a60d0811"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_index.py",
+      "public_and_internal_signature_changes": [
+        {
+          "main2fe_arguments": "self, state_dir: Path, *, scheduler=None, parent_lease=None, cancel_event=None, deadline_monotonic=None",
+          "qualified523_arguments": "self, state_dir: Path, *, scheduler=None",
+          "symbol": "NativeRepositoryIndex.__init__"
+        }
+      ],
+      "qualified523_source": {
+        "bytes": 26673,
+        "git_blob": "3ef27b7e901388f47b3fa16b7ae055e50c23265c",
+        "sha256": "21407fd38afd625dc26a316fc55699a6444a29c8bd0a134b9cd650c882a7e3d1"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [
+        "RepositorySourceSession._checkpoint",
+        "RepositorySourceSession._edit_controls"
+      ],
+      "main2fe_source": {
+        "bytes": 30181,
+        "git_blob": "57ea1b9018dfedfb48a77504c25d62bdfd76bda1",
+        "sha256": "9d580358231767b5ac0bb73231fb0ba5fe8e464707f5f1d4bd55535d216914c1"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py",
+      "public_and_internal_signature_changes": [
+        {
+          "main2fe_arguments": "self, workspace: Path, state_dir: Path, *, representation='compact', index_factory=None, max_files=512, max_total_bytes=16 * 1024 * 1024, max_file_bytes=256 * 1024, max_generations=8, scheduler=None, parent_lease=None, cancel_event=None, deadline_monotonic=None",
+          "qualified523_arguments": "self, workspace: Path, state_dir: Path, *, representation='compact', index_factory=None, max_files=512, max_total_bytes=16 * 1024 * 1024, max_file_bytes=256 * 1024, max_generations=8",
+          "symbol": "RepositorySourceSession.__init__"
+        }
+      ],
+      "qualified523_source": {
+        "bytes": 27464,
+        "git_blob": "8ed9d3db436801aab0912979e6bc33468c2648c2",
+        "sha256": "b2e8af98b1d290a8ca66f8ea6070a8d4e80417398e8e6bd2737b5fd80be96314"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [],
+      "main2fe_source": {
+        "bytes": 19125,
+        "git_blob": "138624cbaea818715fd8048afdcf5fa005c6d82b",
+        "sha256": "898a55caa595ca7f607659b225b8c2a75f2e373f6c4ee60e10b09ca9c819959f"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_context_compiler.py",
+      "public_and_internal_signature_changes": [],
+      "qualified523_source": {
+        "bytes": 17475,
+        "git_blob": "eb3687834518991466d960407317e28bc69d142a",
+        "sha256": "062ee527eed3f2435d4269a6af8ca93da95628b66c7151e22561ff4be870461c"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [
+        "helper_sources_match"
+      ],
+      "main2fe_source": {
+        "bytes": 18085,
+        "git_blob": "9dfbca81f009bf08f5e1b5f70bb94f2e51408c67",
+        "sha256": "f4c6cad4e1c1cd3498bfaa79bc7f421035152caca494ea8b86fdf7884166146f"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py",
+      "public_and_internal_signature_changes": [],
+      "qualified523_source": {
+        "bytes": 15716,
+        "git_blob": "bedf38de77530ecdd0389b4d12d21181af66fea1",
+        "sha256": "5ad8fd6a25bc36700c3853162f0c16030c02b055f0db1dd6d62b5f016dea1a84"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [
+        "NumericalObligationBroker._start_service_thread"
+      ],
+      "main2fe_source": {
+        "bytes": 20093,
+        "git_blob": "8a13c66eb5bb2d0d9e069bdeec803aaf303e2fe4",
+        "sha256": "5ad7e278d0f3cf4892c0a6b17be9afeca6cad1fac1b49cf77d790d22b6336957"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
+      "public_and_internal_signature_changes": [],
+      "qualified523_source": {
+        "bytes": 19938,
+        "git_blob": "06e22d1a8568a4e17064e91cc3c91487edd992b6",
+        "sha256": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [],
+      "main2fe_source": {
+        "bytes": 32321,
+        "git_blob": "46e9f05fe2f2ce784e44dbec20c376429dc8278f",
+        "sha256": "fa9a335aa5110502cb63be4dd72675ddf9d9a7bacc13b737c5dc14b8cdc25014"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/code_source_view.py",
+      "public_and_internal_signature_changes": [
+        {
+          "main2fe_arguments": "self, path: str, symbol: str, expected_sha256: str, replacement: str, format: str='compact', *, checkpoint=None",
+          "qualified523_arguments": "self, path: str, symbol: str, expected_sha256: str, replacement: str, format: str='compact'",
+          "symbol": "CodeSourceView.replace"
+        }
+      ],
+      "qualified523_source": {
+        "bytes": 31653,
+        "git_blob": "26d02985eeb1dc6d3ba4a83c18523a2c433d56c0",
+        "sha256": "7568b4f7b09607ba05b9758e57f2c809121ebcc3568c09b141a7a8a6def4154b"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [],
+      "main2fe_source": {
+        "bytes": 14078,
+        "git_blob": "dcbfdaa0be132972be8c3d92bcc0b445bb42e0aa",
+        "sha256": "f8e8305556e1084a601b7e922a6adacb01042bedf6aa780276f8f02045a209a2"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/rendered_input_census.py",
+      "public_and_internal_signature_changes": [
+        {
+          "main2fe_arguments": "*, model_prompt: str, workspace_advisory: str, invocation_id: str, input_representation: str | None=None",
+          "qualified523_arguments": "*, model_prompt: str, workspace_advisory: str, invocation_id: str",
+          "symbol": "census_rendered_input"
+        }
+      ],
+      "qualified523_source": {
+        "bytes": 10453,
+        "git_blob": "5b126e81268d75fcab5c5c420a2c6da992ea5688",
+        "sha256": "8734f94f831d0039d4907244d8f44994d18514875d9e3928c9f2836076cce21b"
+      },
+      "source_AST_parsed_without_execution": true
+    },
+    {
+      "added_symbols": [],
+      "main2fe_source": {
+        "bytes": 32937,
+        "git_blob": "504e9382f0559a6de572368f58ca5f5fd7a82bbe",
+        "sha256": "a8799d104bbf0d3468434ef74470aeea357b6492245e3584fc53665a9a0389cb"
+      },
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/context_delivery_accounting.py",
+      "public_and_internal_signature_changes": [],
+      "qualified523_source": {
+        "bytes": 32786,
+        "git_blob": "277db11ba1a2c7b666d95a7830a687259a879673",
+        "sha256": "348343021131afe5bbff26cb3a29ee5123634dd40178f622d09922d56f5e31fc"
+      },
+      "source_AST_parsed_without_execution": true
+    }
+  ],
+  "integration_decision": {
+    "fresh_qualification_scope": "Actual new92 full-case result and real post-owner exit/release qualify native administrative API integration under the merged product closure; upstream2392 test claim is separate evidence to verify and attribute, not a test performed by this reviewer.",
+    "future_docs_guard": "Prior docbuilder523→final docs-only guard must not be weakened silently. New derivative must explicitly consume actual newly qualified merged HEAD/result/post pins, require523/08fb/2fe ancestry, and prove merged→docsHEAD source/tests unchanged.",
+    "keeping_all523_product_bytes_and_all_new2fe_progress_simultaneously_without_requalification_is_possible": false,
+    "selected_root_plan": "Root merges exact reviewed2fe into owned feature preserving newer native policy@2, retains actual523 production evidence unchanged, qualifies a NEW fresh92 suite at actual MERGED_SOURCE_HEAD before any doc copies/edits, and uses a NEW docbuilder comparing MERGED_SOURCE_HEAD to later final doc HEAD with docs-only diff.",
+    "source_resolution": "Keep exact current0a090a6a policy/new33 tests and all27 upstream product changes. Do not restore the whole523 runtime tree over reviewed upstream progress.",
+    "whole2fe_merge_is_history_only": false
+  },
+  "native_administrative_stop_overlap": {
+    "native_closed_status_owner_settlement_typed_state_gateway_quack_and_implementation_daemon_not_in_new_delta": true,
+    "new_closed_status_policy_at2_still_local_only_and_must_preserve_0a090a6a_bytes": true,
+    "none_of_prior14_source_adoption_paths_changed_by_08fb_to_2fe": true,
+    "prior_actual_production_stop_at523_is_historical_qualification_not_rebased_or_reexecuted": true
+  },
+  "native_or_operator_authority": false,
+  "new_official_main": "2fe4b218e1de10c70ae842bdcc29457975d49477",
+  "old_qualified_source_HEAD": "523ec3fd2abd74cac543925aa58ae356123e024b",
+  "old_reviewed_main": "08fb614b2d0d79b610e82d6dc81a8ce73899504e",
+  "overall_delta": {
+    "all103_different_or_missing_from_owned523": true,
+    "benchmark_files": 43,
+    "documentation_files": 1,
+    "files": 103,
+    "product_files": 27,
+    "product_status_counts": {
+      "added": 16,
+      "modified": 11
+    },
+    "test_API_files": 32
+  },
+  "review_limits": [
+    "This is a bounded source/API integration survey, not a complete review of all103 files or the16 new runtime modules. No universal confinement, callback closure, provider outcome, token savings or new codebase-IR runtime qualification is established.",
+    "The2392-tests statement is a reported upstream integration claim; its actual native results/resources were not inspected or reproduced here.",
+    "No fetch/merge/branch/HEAD/native-input mutation, product/test import, native job, provider call, DB/WAL or live process/resource query occurred. All old source comparisons use immutable Git523 objects, not a changing checkout."
+  ],
+  "reviewed_at_utc": "2026-10-17T13:40:48.978217+00:00",
+  "root_reported_source_history_integration": {
+    "attribution": "Root reports exact103 upstream blobs preserved, policy conflict resolved to qualified0a09, no docs copied; fresh92 remains pending. This source review did not execute the merge or qualify the merged checkout.",
+    "merged_source_HEAD": "04556f5fe1907a38faf89b059dedfce66527a5b4",
+    "root_index_observation_pin_SHA": "861fd611db11f3b440c5613170d82fa4f0b8deb9cad9c06f223967c325542044"
+  },
+  "schema": "production-post-closeout-main-token-accounting-bounded-API-review@2",
+  "status": "whole_main_source_integration_requires_new_qualified_HEAD_not_history_only"
+}

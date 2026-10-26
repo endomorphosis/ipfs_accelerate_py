@@ -1,0 +1,31 @@
+{
+  "actual_disk_reservation_id": "a706a40a345449ba9fedbe5f067f9aaa",
+  "actual_lease_ids_observed_absent": [
+    "7a5cc3c0402c41748bd7a8531726ca68",
+    "50812a92d9c640c8ad3935f96b70b724",
+    "163badd317f54305913a8e495257d30c"
+  ],
+  "actual_pids_observed_absent": [
+    2258661,
+    2297889
+  ],
+  "child_live_group_observed_absent": null,
+  "database_opened": false,
+  "native_ACK_or_receipt_created": false,
+  "native_custody_fields_selected_from": "top_level_result",
+  "observation_only": true,
+  "observed_at_epoch": 1792244205.4306087,
+  "observed_reservation_status": "released",
+  "original_result_rewritten": false,
+  "production_actions_performed": false,
+  "result_pin": {
+    "bytes": 2469,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-production-unknown-settle-20261017-01/parent-result.json",
+    "sha256": "59c7d89db04a8af3e9a8184959eeaed3186ed857a81cca58a722224737bdcff3"
+  },
+  "root_reported_actual_tool_exit": 0,
+  "root_reported_actual_tool_session": 86759,
+  "schema": "finalized-fixture-owner-readonly-observation@1",
+  "semantic_or_operator_authority_asserted": false,
+  "source_result_schema": "production-unknown-local-stop-parent-result@1"
+}

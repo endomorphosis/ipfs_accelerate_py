@@ -120,10 +120,14 @@ def _read_file(path, limit):
 
 
 def validate_binding(binding, *, workspace=None, materialized=False):
+    if type(binding) is dict and binding.get("schema") == "supervisor-repository-source-owner-binding@1":
+        from .repository_source_owner_binding import validate_binding as validate_owner_binding
+        return validate_owner_binding(binding, workspace=workspace, materialized=materialized)
     fields = {"schema", "requested_policy", "python_executable", "helper_script", "helper_sha256",
         "workspace", "invocation_dir", "config_path", "config_sha256", "config", "state_dir",
         "audit_store", "instruction_sha256", "instruction_bytes", *_FALSE_FIELDS}
-    if (type(binding) is not dict or set(binding) not in (fields, fields | {"usage"})
+    if (type(binding) is not dict or set(binding) not in (
+            fields, fields | {"usage"}, fields | {"resource_grant"}, fields | {"usage", "resource_grant"})
             or binding.get("schema") != SCHEMA
             or type(binding.get("requested_policy")) is not str or binding["requested_policy"] not in POLICIES[1:]
             or any(binding.get(key) is not False for key in _FALSE_FIELDS)):
@@ -169,10 +173,16 @@ def validate_binding(binding, *, workspace=None, materialized=False):
         if (_read_file(paths["config_path"], 16_384) != _json(config)
                 or _sha(_read_file(helper, 256_000)) != binding["helper_sha256"]):
             raise ValueError("repository tool source or configuration changed")
+    if "resource_grant" in binding:
+        from .repository_source_resource_handoff import validate_resource_reference
+        validate_resource_reference(binding["resource_grant"], invocation_dir=directory,
+                                    materialized=materialized)
     return instruction
 
 
 def create_runtime_store(binding):
+    if type(binding) is dict and binding.get("schema") == "supervisor-repository-source-owner-binding@1":
+        raise ValueError("owner repository binding has no worker-owned runtime store")
     validate_binding(binding)
     directory = Path(binding["invocation_dir"])
     directory.mkdir(mode=0o700)
@@ -194,15 +204,32 @@ def create_runtime_store(binding):
 
 def native_config_arguments(binding):
     """Return TOML argv values; never shell-interpolate configuration data."""
+    if type(binding) is dict and binding.get("schema") == "supervisor-repository-source-owner-binding@1":
+        from .repository_source_owner_binding import native_config_arguments as owner_arguments
+        return owner_arguments(binding)
     validate_binding(binding, materialized=True)
     settings = {"command": binding["python_executable"], "args": [binding["helper_script"],
         "--config", binding["config_path"], "--config-sha256", binding["config_sha256"]],
         "env_vars": ["PYTHONPATH"], "startup_timeout_sec": 60, "tool_timeout_sec": 60,
         "enabled_tools": list(TOOLS), "required": True}
+    if "resource_grant" in binding:
+        reference = binding["resource_grant"]
+        settings["args"] += ["--resource-grant", reference["path"],
+                             "--resource-grant-sha256", reference["sha256"]]
     table = "{" + ",".join(key + "=" + json.dumps(value, ensure_ascii=False)
                           for key, value in settings.items()) + "}"
     return ["-c", "mcp_servers.repository_source=" + table,
             "-c", "mcp_optional_startup_grace_ms=0"]
+
+
+def helper_sources_match(binding):
+    """Check fixed helper bytes without treating a historical binding as live."""
+    validate_binding(binding)
+    if binding["schema"] == "supervisor-repository-source-owner-binding@1":
+        from .repository_source_owner_binding import helper_sources_match as owner_sources_match
+        return owner_sources_match(binding)
+    helper = Path(__file__).with_name("repository_source_mcp.py").resolve(strict=True)
+    return _sha(_read_file(helper, 256_000)) == binding["helper_sha256"]
 
 
 def _remove_contents(fd, *, remaining, depth=0):
@@ -250,6 +277,7 @@ def finish_runtime_store(binding, *, expected_identity):
             from .repository_source_mcp import summarize_repository_audit, validate_retrieval_observation
             summary = summarize_repository_audit(Path(binding["audit_store"]))
             retrieval = summary.pop("retrieval_observation", None) if type(summary) is dict else None
+            reads = summary.pop("read_observation", None) if type(summary) is dict else None
             if (type(summary) is dict and summary.get("status") in {"observed", "not_observed", "unavailable"}
                     and all(value is None or type(value) is int and value >= 0
                             for key, value in summary.items() if key != "status")
@@ -258,6 +286,11 @@ def finish_runtime_store(binding, *, expected_identity):
                 if retrieval is not None:
                     usage["retrieval_observation"] = validate_retrieval_observation(
                         retrieval, tool_calls=usage["tool_calls"], errors=usage["errors"])
+                if reads is not None:
+                    from .repository_source_read_observation import validate_read_observation
+                    usage["read_observation"] = validate_read_observation(reads,
+                        successful_reads=usage["successful_reads"], compact_reads=usage["compact_reads"],
+                        returned_bytes=usage["returned_bytes"], tool_calls=usage["tool_calls"], errors=usage["errors"])
         except Exception:
             pass
         if "tokenizer" in binding["config"]:

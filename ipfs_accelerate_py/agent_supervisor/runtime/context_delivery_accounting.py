@@ -507,6 +507,8 @@ def summarize_invocations(rows, unreceipted_provider_attempt=None):
                 previous = current
                 selected = index
         chosen = observations[selected]["native_usage"]
+        if any(observations[i]["native_usage"]["status"] == "invalid" for i in unique):
+            reasons.append("native_usage_observation_invalid")
         if chosen["status"] == "invalid":
             reasons.append("selected_native_usage_invalid")
         conflict = bool(reasons)

@@ -2,19 +2,24 @@
 
 The server has no provider or network client. One private, hash-bound config
 selects the canonical checkout. Requests cannot select a different root or run
-code. Source output appears only in tool replies; the audit contains counters.
+code. Source output appears only in tool replies; the audit contains counters
+and content-free commitments for prepared reads, not provider ingestion.
 """
 from __future__ import annotations
 
 import argparse
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import select
 import stat
 import sys
+import threading
+
+from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_read_observation as read_observations
 
 MAX_REQUEST_BYTES = 1024 * 1024
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -227,6 +232,7 @@ def _delivery_payload(name, value):
 
 AUDIT_FIELDS = {"schema", "sequence", "event", "tool", "success", "returned_bytes",
                 "compact", "canonical_changed", "canonical_uncertain", "refreshed"}
+_NO_READ_OBSERVATION = object()
 RETRIEVAL_TOOLS = {"repository_context_query", "repository_capsule_expand"}
 RETRIEVAL_COUNTERS = ("query_calls", "successful_queries", "empty_queries", "nonempty_queries",
     "candidates_returned", "expansion_calls", "successful_expansions", "empty_expansions",
@@ -317,10 +323,69 @@ class _Audit:
     def __init__(self, path):
         self.fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         self.sequence = 0
+        self._owner_thread = threading.get_ident()
+        self._capture = None
+
+    @contextmanager
+    def capture(self, witness=None):
+        """Witness exact committed lines for one synchronous MCP handle.
+
+        A complete scope can contain zero operations. The current handle emits
+        at most one audit line; overflow or ordinary witness publication failure
+        makes the observation incomplete without changing its MCP outcome.
+        Interrupted handlers and audit append failures remain incomplete.
+        """
+        if threading.get_ident() != self._owner_thread:
+            raise ValueError("audit_capture_thread_differs")
+        if self._capture is not None:
+            raise ValueError("audit_capture_already_active")
+        if witness is None:
+            witness = {"status": "incomplete", "operations": []}
+        if (type(witness) is not dict or set(witness) != {"status", "operations"}
+                or witness["status"] != "incomplete" or type(witness["operations"]) is not list
+                or witness["operations"]):
+            raise ValueError("invalid_audit_capture")
+        capture = {"witness": witness, "failed": False}
+        self._capture = capture
+        try:
+            yield witness
+        except BaseException:
+            witness["status"] = "incomplete"
+            raise
+        else:
+            witness["status"] = "incomplete" if capture["failed"] else "complete"
+        finally:
+            if self._capture is not capture:
+                witness["status"] = "incomplete"
+            self._capture = None
+
+    def _publish_capture(self, capture, *, sequence, raw):
+        operations = capture["witness"]["operations"]
+        if len(operations) >= 1:
+            raise ValueError("audit_capture_operation_limit")
+        operations.append({"sequence": sequence, "sha256": hashlib.sha256(raw).hexdigest(),
+                           "bytes": len(raw)})
 
     def record(self, event, *, tool=None, success=True, returned_bytes=0,
                compact=False, canonical_changed=False, canonical_uncertain=False, refreshed=False,
-               retrieval=None):
+               retrieval=None, read_observation=_NO_READ_OBSERVATION):
+        capture = self._capture
+        try:
+            return self._record(event, tool=tool, success=success, returned_bytes=returned_bytes,
+                compact=compact, canonical_changed=canonical_changed, canonical_uncertain=canonical_uncertain,
+                refreshed=refreshed, retrieval=retrieval, read_observation=read_observation)
+        except BaseException:
+            if capture is not None:
+                capture["failed"] = True
+                capture["witness"]["status"] = "incomplete"
+            raise
+
+    def _record(self, event, *, tool=None, success=True, returned_bytes=0,
+                compact=False, canonical_changed=False, canonical_uncertain=False, refreshed=False,
+                retrieval=None, read_observation=_NO_READ_OBSERVATION):
+        capture = self._capture
+        if capture is not None and threading.get_ident() != self._owner_thread:
+            raise ValueError("audit_capture_thread_differs")
         self.sequence += 1
         row = {"schema": "repository-source-mcp-audit@1", "sequence": self.sequence,
                "event": event, "tool": tool, "success": success, "returned_bytes": returned_bytes,
@@ -329,6 +394,14 @@ class _Audit:
         if retrieval is not None:
             _validate_retrieval_event(retrieval, success)
             row.update(schema="repository-source-mcp-audit@2", retrieval=retrieval)
+        if read_observation is not _NO_READ_OBSERVATION:
+            if event != "tool" or tool != "repository_read" or retrieval is not None:
+                raise ValueError("invalid_read_audit")
+            if read_observation is not None:
+                if not success:
+                    raise ValueError("invalid_read_audit")
+                read_observation = read_observations.validate_read_event(read_observation)
+            row.update(schema="repository-source-mcp-audit@3", read_observation=read_observation)
         raw = _json(row) + b"\n"
         if os.fstat(self.fd).st_size + len(raw) > MAX_AUDIT_BYTES:
             raise ValueError("audit_limit")
@@ -338,27 +411,37 @@ class _Audit:
             if size <= 0:
                 raise OSError("audit_write_failed")
             view = view[size:]
+        if capture is not None:
+            try:
+                self._publish_capture(capture, sequence=row["sequence"], raw=raw)
+            except Exception:
+                # Ordinary evidence failures must not turn a successful tool
+                # into an error. Control-flow interruptions still propagate
+                # through the scope and cannot become complete observations.
+                capture["failed"] = True
+                capture["witness"]["status"] = "incomplete"
 
     def close(self):
         os.close(self.fd)
 
 
-def summarize_repository_audit(path: str | Path) -> dict:
-    result = {"status": "not_observed", "initializations": 0, "tool_calls": 0,
-              "successful_reads": 0, "compact_reads": 0, "canonical_edits": 0,
-              "uncertain_edits": 0, "refreshes": 0, "errors": 0, "returned_bytes": 0}
+def _empty_repository_audit_summary():
+    return {"status": "not_observed", "initializations": 0, "tool_calls": 0,
+            "successful_reads": 0, "compact_reads": 0, "canonical_edits": 0,
+            "uncertain_edits": 0, "refreshes": 0, "errors": 0, "returned_bytes": 0}
+
+
+def summarize_repository_audit_bytes(raw: bytes) -> dict:
+    """Summarize bounded retained bytes without I/O or provenance claims.
+
+    The caller owns secure acquisition and authentication of these bytes. Empty
+    input is not observed; malformed input has unavailable, null counters.
+    Prepared operation/read observations do not establish response delivery.
+    """
+    result = _empty_repository_audit_summary()
     try:
-        path = Path(path)
-        _private_directory(path.parent)
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, "rb") as stream:
-            info = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600
-                    or info.st_size > MAX_AUDIT_BYTES):
-                raise ValueError("invalid_audit")
-            raw = stream.read(MAX_AUDIT_BYTES + 1)
-        if len(raw) > MAX_AUDIT_BYTES or (raw and not raw.endswith(b"\n")):
+        if (type(raw) is not bytes or len(raw) > MAX_AUDIT_BYTES
+                or raw and not raw.endswith(b"\n")):
             raise ValueError("invalid_audit")
         rows = raw.splitlines()
         if len(rows) > MAX_REQUESTS + 1:
@@ -367,11 +450,14 @@ def summarize_repository_audit(path: str | Path) -> dict:
             event_chain_sha256=hashlib.sha256(b"").hexdigest(),
             **dict.fromkeys(RETRIEVAL_COUNTERS, 0), **dict.fromkeys(RETRIEVAL_FALSE, False))
         retrieval_seen = False
+        audit_rows = []
         for sequence, line in enumerate(rows, 1):
             row = _loads(line)
             modern = type(row) is dict and row.get("schema") == "repository-source-mcp-audit@2"
-            if (type(row) is not dict or set(row) != AUDIT_FIELDS | ({"retrieval"} if modern else set())
-                    or row["schema"] not in {"repository-source-mcp-audit@1", "repository-source-mcp-audit@2"}
+            read_row = type(row) is dict and row.get("schema") == "repository-source-mcp-audit@3"
+            extras = {"retrieval"} if modern else {"read_observation"} if read_row else set()
+            if (type(row) is not dict or set(row) != AUDIT_FIELDS | extras
+                    or row["schema"] not in {"repository-source-mcp-audit@1", "repository-source-mcp-audit@2", "repository-source-mcp-audit@3"}
                     or type(row["sequence"]) is not int or row["sequence"] != sequence
                     or row["event"] not in {"initialize", "tool"}
                     or (row["event"] == "initialize" and row["tool"] is not None)
@@ -380,6 +466,16 @@ def summarize_repository_audit(path: str | Path) -> dict:
                     or type(row["returned_bytes"]) is not int
                     or not 0 <= row["returned_bytes"] <= MAX_RESPONSE_BYTES):
                 raise ValueError("invalid_audit")
+            if read_row:
+                if row["event"] != "tool" or row["tool"] != "repository_read":
+                    raise ValueError("invalid_read_audit")
+                event = row["read_observation"]
+                if event is not None:
+                    if not row["success"]:
+                        raise ValueError("invalid_read_audit")
+                    read_observations.validate_read_event(event)
+                    if row["compact"] is not (event["representation"] == "compact"):
+                        raise ValueError("invalid_read_audit")
             if modern:
                 if row["event"] != "tool" or row["tool"] not in RETRIEVAL_TOOLS:
                     raise ValueError("invalid_retrieval_audit")
@@ -415,13 +511,38 @@ def summarize_repository_audit(path: str | Path) -> dict:
             result["refreshes"] += row["refreshed"]
             result["errors"] += not row["success"]
             result["returned_bytes"] += row["returned_bytes"]
+            audit_rows.append(row)
         if rows:
             result["status"] = "observed"
         if retrieval_seen:
             retrieval["complete"] = retrieval["legacy_retrieval_calls"] == retrieval["unbound_successes"] == 0
             result["retrieval_observation"] = validate_retrieval_observation(
                 retrieval, tool_calls=result["tool_calls"], errors=result["errors"])
+        read_summary = read_observations.summarize_read_observation(audit_rows)
+        if read_summary is not None:
+            result["read_observation"] = read_observations.validate_read_observation(
+                read_summary, successful_reads=result["successful_reads"], compact_reads=result["compact_reads"],
+                returned_bytes=result["returned_bytes"], tool_calls=result["tool_calls"], errors=result["errors"])
         return result
+    except (ValueError, OSError, RecursionError, UnicodeError, TypeError):
+        return {"status": "unavailable", **{key: None for key in result if key != "status"}}
+
+
+def summarize_repository_audit(path: str | Path) -> dict:
+    """Read one private audit without relaxing its file/owner checks."""
+    result = _empty_repository_audit_summary()
+    try:
+        path = Path(path)
+        _private_directory(path.parent)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600
+                    or info.st_size > MAX_AUDIT_BYTES):
+                raise ValueError("invalid_audit")
+            raw = stream.read(MAX_AUDIT_BYTES + 1)
+        return summarize_repository_audit_bytes(raw)
     except FileNotFoundError:
         return result
     except (ValueError, OSError, RecursionError, UnicodeError, TypeError):
@@ -429,7 +550,27 @@ def summarize_repository_audit(path: str | Path) -> dict:
 
 
 class RepositoryMCPServer:
-    def __init__(self, config, *, session_factory=None):
+    def __init__(self, config, *, session_factory=None, scheduler=None, parent_lease=None,
+                 cancel_event=None, deadline_monotonic=None):
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_index import (
+            _resource_controls, _validate_resource_deadline,
+        )
+
+        self._deadline_monotonic = _validate_resource_deadline(deadline_monotonic)
+        # Custom factories retain the existing trusted opaque-dependency seam.
+        # Native factories must validate borrowed owner controls before files
+        # are created; explicit deadlines apply to either factory.
+        self._resource_signal = (_resource_controls(scheduler=scheduler, parent_lease=parent_lease,
+            cancel_event=cancel_event) if session_factory is None
+            else cancel_event if callable(getattr(cancel_event, "is_set", None)) else None)
+        self._interruptible_stdio = self._resource_signal is not None or deadline_monotonic is not None
+        self.checkpoint()
+        # Trusted in-process dependencies only. Never serialize native lease
+        # capabilities into the closed model-visible MCP configuration.
+        self._resource_options = {key: value for key, value in (
+            ("scheduler", scheduler), ("parent_lease", parent_lease), ("cancel_event", cancel_event),
+            ("deadline_monotonic", deadline_monotonic))
+            if value is not None}
         self.config = config
         self.session_factory = session_factory
         self.session = None
@@ -446,6 +587,11 @@ class RepositoryMCPServer:
                 self.audit.close()
                 raise
 
+    def checkpoint(self):
+        """Cooperative stop fence; cleanup remains available after cancellation."""
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_index import _check_resource_cancellation
+        _check_resource_cancellation(self._resource_signal, self._deadline_monotonic)
+
     def close(self):
         try:
             if self.session is not None:
@@ -459,6 +605,7 @@ class RepositoryMCPServer:
 
     def handle(self, request):
         """Serve the tools-only MCP subset. Never echo exception text or input."""
+        self.checkpoint()
         identity = request.get("id") if isinstance(request, dict) else None
         def error(code, message):
             return {"jsonrpc": "2.0", "id": identity, "error": {"code": code, "message": message}}
@@ -499,7 +646,7 @@ class RepositoryMCPServer:
                     from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_session import RepositorySourceSession
                     factory = RepositorySourceSession
                 self.session = factory(Path(self.config["workspace"]), Path(self.config["state_dir"]),
-                                       representation=self.config["representation"])
+                                       representation=self.config["representation"], **self._resource_options)
             except Exception:
                 self.audit.record("initialize", success=False)
                 return error(-32603, "repository_session_unavailable")
@@ -555,11 +702,17 @@ class RepositoryMCPServer:
                 canonical_uncertain=name == "repository_replace_symbol" and "canonical_changed" in payload and payload["canonical_changed"] is None,
                 refreshed=name in {"repository_refresh", "repository_replace_symbol"} and success and not payload.get("refresh_required", False),
                 retrieval=_retrieval_event(name, params.get("arguments"), payload, success)
-                    if name in RETRIEVAL_TOOLS else None)
+                    if name in RETRIEVAL_TOOLS else None,
+                read_observation=read_observations.make_read_event(params.get("arguments"), payload, success)
+                    if name == "repository_read" else _NO_READ_OBSERVATION)
             result = {"content": [{"type": "text", "text": raw.decode()}], "isError": not success}
         else:
             return error(-32601, "method_not_found")
         return {"jsonrpc": "2.0", "id": identity, "result": result}
+
+    def capture_audit_operations(self, witness=None):
+        """Scope content-free append witnesses to one owner-dispatched handle."""
+        return self.audit.capture(witness)
 
     def _selected_read(self, identity, arguments):
         from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_token_budget import select_repository_reply
@@ -585,8 +738,92 @@ class RepositoryMCPServer:
         return current, selection
 
 
-def serve(server, incoming, outgoing):
-    """Sequential bounded framing also prevents overlapping canonical edits."""
+class _InterruptibleStdio:
+    """Bounded FD framing for owned stdio, including partial and blocked pipes.
+
+    No worker thread can outlive this scope. Synchronous handlers cooperate at
+    their own checkpoints; this transport does not claim hard preemption.
+    """
+
+    def __init__(self, server, incoming, outgoing):
+        self.server, self.pending = server, bytearray()
+        self.input_fd, self.output_fd = incoming.fileno(), outgoing.fileno()
+        if (type(self.input_fd) is not int or type(self.output_fd) is not int
+                or min(self.input_fd, self.output_fd) < 0 or self.input_fd == self.output_fd):
+            raise ValueError("interruptible_stdio_descriptors_required")
+        self._blocking = {}
+
+    def __enter__(self):
+        try:
+            for descriptor in (self.input_fd, self.output_fd):
+                self._blocking[descriptor] = os.get_blocking(descriptor)
+                os.set_blocking(descriptor, False)
+            return self
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, *_):
+        for descriptor, blocking in self._blocking.items():
+            try:
+                os.set_blocking(descriptor, blocking)
+            except OSError:
+                pass
+        self._blocking.clear()
+
+    def _ready(self, descriptor, *, writing=False):
+        while True:
+            self.server.checkpoint()
+            try:
+                readable, writable, _ = select.select(
+                    [] if writing else [descriptor], [descriptor] if writing else [], [], .1)
+            except InterruptedError:
+                continue
+            self.server.checkpoint()
+            if (writable if writing else readable):
+                return
+
+    def readline(self, limit):
+        while True:
+            self.server.checkpoint()
+            newline = self.pending.find(b"\n", 0, limit)
+            size = newline + 1 if newline >= 0 else limit if len(self.pending) >= limit else None
+            if size is not None:
+                raw = bytes(self.pending[:size])
+                del self.pending[:size]
+                return raw
+            self._ready(self.input_fd)
+            try:
+                chunk = os.read(self.input_fd, min(65536, limit - len(self.pending)))
+            except (BlockingIOError, InterruptedError):
+                continue
+            if not chunk:
+                raw = bytes(self.pending)
+                self.pending.clear()
+                return raw
+            self.pending.extend(chunk)
+
+    def write(self, raw):
+        if type(raw) is not bytes or len(raw) > MAX_RESPONSE_BYTES + 1:
+            raise ValueError("response_limit")
+        view = memoryview(raw)
+        offset = 0
+        while offset < len(view):
+            self._ready(self.output_fd, writing=True)
+            try:
+                count = os.write(self.output_fd, view[offset:offset + 65536])
+            except (BlockingIOError, InterruptedError):
+                continue
+            if count <= 0:
+                raise OSError("stdio_write_failed")
+            offset += count
+
+    def flush(self):
+        # Writes go directly to the owned FD; there is no Python output buffer.
+        pass
+
+
+def _serve_frames(server, incoming, outgoing):
     for _ in range(MAX_REQUESTS):
         raw = incoming.readline(MAX_REQUEST_BYTES + 1)
         if not raw:
@@ -613,23 +850,57 @@ def serve(server, incoming, outgoing):
     return 0
 
 
+def serve(server, incoming, outgoing):
+    """Sequential bounded requests; explicit resource controls poll owned FDs."""
+    if getattr(server, "_interruptible_stdio", False):
+        with _InterruptibleStdio(server, incoming, outgoing) as streams:
+            return _serve_frames(server, streams, streams)
+    return _serve_frames(server, incoming, outgoing)
+
+
 def main(argv=None):
+    protocol_input, protocol_output = sys.stdin.buffer, sys.stdout.buffer
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--config-sha256", required=True)
+    parser.add_argument("--resource-grant", type=Path)
+    parser.add_argument("--resource-grant-sha256")
     args = parser.parse_args(argv)
-    server = None
-    try:
-        config = load_config(args.config, args.config_sha256)
-        server = RepositoryMCPServer(config)
-        return serve(server, sys.stdin.buffer, sys.stdout.buffer)
-    except (OSError, ValueError, RecursionError, UnicodeError):
-        print("repository_source_mcp_unavailable", file=sys.stderr)
-        return 2
-    finally:
-        if server is not None:
+    if (args.resource_grant is None) != (args.resource_grant_sha256 is None):
+        parser.error("resource grant path and digest must be supplied together")
+
+    def run(config, options):
+        with redirect_stdout(sys.stderr):
+            server = RepositoryMCPServer(config, **options)
+        try:
+            return serve(server, protocol_input, protocol_output)
+        finally:
+            # Close synchronous session/index handles while delegated capacity
+            # is still held. A cancellation observer never releases this scope
+            # in parallel with a running handler.
             with redirect_stdout(sys.stderr):
                 server.close()
+
+    failures = (OSError, ValueError, RecursionError, UnicodeError, ImportError)
+    try:
+        config = load_config(args.config, args.config_sha256)
+        if args.resource_grant is None:
+            return run(config, {})
+        with redirect_stdout(sys.stderr):
+            # Ordinary help, ping and EOF do not need datasets. Only explicit
+            # delegation loads the native admission API at CLI startup.
+            from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import ResourceSchedulerError
+            failures += (ResourceSchedulerError,)
+            from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_resource_handoff import (
+                delegated_repository_source_resources,
+            )
+            with delegated_repository_source_resources(artifact=args.resource_grant,
+                    expected_sha256=args.resource_grant_sha256, config_sha256=args.config_sha256,
+                    workspace=Path(config["workspace"])) as phase:
+                return run(config, phase.native_options())
+    except failures:
+        print("repository_source_mcp_unavailable", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

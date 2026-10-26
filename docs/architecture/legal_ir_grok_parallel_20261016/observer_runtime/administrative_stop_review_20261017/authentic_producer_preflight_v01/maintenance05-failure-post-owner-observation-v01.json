@@ -1,0 +1,48 @@
+{
+  "ADMIN_or_settlement_executed": false,
+  "B_qualified": false,
+  "actual_close_retry_count": 9,
+  "actual_component_close_returned": true,
+  "actual_disk_reservation_id": "4434dfd5f360478baa2cd6c0a14cf850",
+  "actual_error_type": "NativeExecutionWalMaintenanceError",
+  "actual_native_and_parent_lease_ids_observed_absent": [
+    "96b13e209cc140ed808515680f461d82",
+    "8576fc5bac9f4e84bb083da329de4a47"
+  ],
+  "actual_tool_exit_code": 2,
+  "actual_tool_session": 31203,
+  "component_close_verification_pin": {
+    "bytes": 146,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-unknown-authentic-maintenance-20261017-05/wal-maintenance-close-verified.json",
+    "sha256": "d3f850a3b93eb307138977e41584bd218f5c948d3aafb799deb58a721ccf63f6"
+  },
+  "exact_native_error_reason_captured": false,
+  "execution_input_opaque_observations": {
+    "WAL": {
+      "current_bytes": null,
+      "exists": false,
+      "opaque_bytes_match_pre_maintenance_pin": false,
+      "opaque_sha256": null
+    },
+    "execution": {
+      "current_bytes": 3944448,
+      "exists": true,
+      "opaque_bytes_match_pre_maintenance_pin": false,
+      "opaque_sha256": "3a74e209c0052dcc15970b1a1d9d948f25d3db2f087147fc521e4a97a4f54112"
+    }
+  },
+  "failed_fixture_replayed_or_deleted": false,
+  "failed_native_reservation_released_or_relabelled": false,
+  "fixture_census_bytes": 55106804,
+  "maintenance_result_or_owner_result_created": false,
+  "native_finalized": false,
+  "native_resource_ACK_created": false,
+  "no_remaining_native_leases_for_owner_pid": true,
+  "observation_only": true,
+  "observed_reservation_status": "retained",
+  "owner_pid_observed_absent": 2696327,
+  "production_actions_performed": false,
+  "retention_reason": "context_failed",
+  "schema": "authentic-maintenance-failure-post-owner-observation@1",
+  "source_contract_finding": "Native maintenance monitor requires cheap local check_only callback. Fixture B guard mapped it to a full global disk census. Exact runtime error reason was not captured, so this finding alone is not asserted to be the sole failure cause."
+}

@@ -1,0 +1,35 @@
+{
+  "all_other_pytest_roots_preserved": true,
+  "completed_at_epoch": 1792245413.9881458,
+  "database_payload_read_or_opened": false,
+  "ledger_records_mutated_by_cleanup": false,
+  "native_reservations_released_by_cleanup": false,
+  "passed92_result_pin": {
+    "bytes": 70574,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-10/administrative-controls-result.json",
+    "sha256": "a7e6fa368fa5faedb0048d47e24b610a3b267ae2ee8476b3ef15b16d2ca56a0f"
+  },
+  "post_owner_pin": {
+    "bytes": 1133,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/administrative-controls-v10-post-owner-observation-v01.json",
+    "sha256": "0cca53905c612392c75c94a69b9b934f7cbd8bcd05df77d8b1bb595180f99ad5"
+  },
+  "pre_cleanup_manifest_pin": {
+    "bytes": 159594,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/production-unknown-local-stop-v01/successful-pytest-pa17j-pre-cleanup-manifest-v01.json",
+    "sha256": "f70adb5b5dd3d175a2623d4e237f508b203cfdb646b38547f4f4b7d69c716725"
+  },
+  "production_failed_retained_foreign_stores_or_model_assets_removed": false,
+  "receipt_pin": {
+    "bytes": 636,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-planning-unknown-administrative-controls-20261017-10/receipt.json",
+    "sha256": "e85f5da21854ae9ef784283660d5c64c0777ee4e734f2f598c07370ed5e860f5"
+  },
+  "removed_apparent_bytes": 1442794396,
+  "removed_metadata_entries": 770,
+  "removed_path": "/tmp/pytest-of-barberb/pa17j",
+  "removed_root_device": 66306,
+  "removed_root_inode": 6309487,
+  "reports_and_JUnit_preserved": true,
+  "schema": "owned-successful-pytest-disposable-tree-cleanup@1"
+}

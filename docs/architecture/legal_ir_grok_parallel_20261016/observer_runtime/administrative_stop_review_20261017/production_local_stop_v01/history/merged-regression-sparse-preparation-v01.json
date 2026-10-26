@@ -1,0 +1,30 @@
+{
+  "actual_preparer_exit": 1,
+  "code_bytes_changed": false,
+  "failed_preparer": "prepare_planning_unknown_administrative_controls_v11.py",
+  "failure": "FileNotFoundError before inputs/request/native admission",
+  "native_job_started_by_failed_preparation": false,
+  "restored_exact_committed_dependency_paths": [
+    "test/__init__.py",
+    "test/api/__init__.py",
+    "test/api/causal_federation/test_typed_state_owner.py",
+    "test/api/native_execution_crash_wal_fixture.py",
+    "test/api/test_agent_route_source_addressed_paths.py",
+    "test/api/test_agent_supervisor_configured_board_namespace.py",
+    "test/api/test_agent_supervisor_direct_codex_isolation.py",
+    "test/api/test_agent_supervisor_grok_docker_task_execution.py",
+    "test/api/test_agent_supervisor_ordinary_worker_image.py",
+    "test/api/test_durable_cleanup_observer_checkpoint.py",
+    "test/api/test_grok_planning_temperature_zero.py",
+    "test/api/test_grok_private_temperature_zero.py",
+    "test/api/test_native_execution_status_gateway.py",
+    "test/api/test_native_execution_status_owner.py",
+    "test/api/test_native_execution_wal_maintenance.py",
+    "test/api/test_portal_task_state_readonly_catalog.py",
+    "test/api/test_quack_status_publisher_readonly.py"
+  ],
+  "schema": "merged-source-regression-sparse-checkout-preparation-observation@1",
+  "source_HEAD": "04556f5fe1907a38faf89b059dedfce66527a5b4",
+  "tracked_tree_clean": true,
+  "v11_inputs_or_request_created_by_failed_preparation": false
+}

@@ -1,0 +1,93 @@
+{
+  "accelerator_passed_subtests": 39,
+  "accelerator_qualified_primary_checks": 345,
+  "accelerator_qualified_source_head": "569bd4d89c2825d783573c0daa7cb7f5d3a270dd",
+  "accelerator_upstream_integrated": "79fb5a18fb6ef08c2a1346db598825b1d50d8e1f",
+  "administrative_abandonment": {
+    "contract": "administrative_abandonment_contract_v04.json",
+    "implementation_status": "Offline patch under development; not included in this qualification",
+    "production_actions_executed": false,
+    "successor_or_rearm_authorized": false
+  },
+  "automatic_retry_admitted": false,
+  "completion_authority": false,
+  "datasets_github_main": "4a410373a64fe951875b4da73cd1ed65c191529e",
+  "datasets_qualified_checks": 112,
+  "evidence": {
+    "accelerator_original_junit": {
+      "filename": "pytest.junit.xml",
+      "sha256": "d5d45c13f965f0ecc60aa63d8470e328ec97d2a9b6531a798ab41a232d1f3d58"
+    },
+    "accelerator_original_result": {
+      "filename": "merged-supervisor-pytest-result.json",
+      "sha256": "c799cf99ee3c0d64335b1fb0968d49bd79d8a0a26d28747e8ca04fd44cc8f472"
+    },
+    "accelerator_retained_reconciliation": {
+      "filename": "retained-pytest-evidence-qualification.json",
+      "sha256": "5221406e62836db07b1a0151dcf85ec7ab9b35eb6f40bbeaf6ffa96cf5296986"
+    },
+    "datasets_result": {
+      "filename": "datasets-main-resource-controls-result.json",
+      "sha256": "03c9ea1f93b4f0f48aa5490b0e076a5d22b399e293e4300b9bc1f0c3eabef4f1"
+    },
+    "grok_probe": {
+      "filename": "retained-controls-and-loopback-result.json",
+      "sha256": "44b8cef2d77b48dd3d1efe6b88758593fada6fb78b6acd1bee765a647d92b04e"
+    },
+    "retained_event_forensic": {
+      "filename": "launch06-event-forensics.json",
+      "sha256": "ceb6149c55f7693520e9c4084a5220e04a4686af22fa6245c3f3d10e04454662"
+    }
+  },
+  "grok_loopback": {
+    "fallback_to_host_network": false,
+    "fixture_toolset_verified": false,
+    "grok_process_started": false,
+    "helper_sha256": "8d785f25fcfc7725cd0ddcfde4864895dbc32c9fff2b2919170054f96fd9319e",
+    "production_toolset_qualified": false,
+    "real_model_calls": false,
+    "reason": "unshare: write failed /proc/self/uid_map: Operation not permitted",
+    "status": "inconclusive"
+  },
+  "informational_only": true,
+  "latest_task_observation": {
+    "latest_attempt_ordinal": 2,
+    "latest_phase": "context",
+    "observational_source": "legal-ir-launch06-attempt2-readonly-inspection-20261017-04",
+    "preserved_unknown_count": 2,
+    "revision": 12,
+    "status": "in_progress",
+    "task_alias": "LIR-9001"
+  },
+  "native_supervisor_operational": false,
+  "production_wal_maintenance_performed": false,
+  "qualification": {
+    "limitations": [
+      "Individual subtest contexts were not retained",
+      "Installed pytest internals were pinned for reconciliation, not for the original test run"
+    ],
+    "original_driver_error": "Counted pytest9 builtin passing subtest reports as collected primary cases",
+    "original_pytest_returncode": 0,
+    "original_receipt_preserved": true,
+    "original_test_owner_status": "failed",
+    "retained_evidence_verifier_owner_fully_finalized": true,
+    "retained_evidence_verifier_owner_status": "completed",
+    "sources_unchanged_during_retained_reconciliation": true,
+    "tests_reexecuted_for_bookkeeping": false
+  },
+  "retained_event_finding": {
+    "all_model_nonreachability_proven": false,
+    "continuous_historical_stream_custody_proven": false,
+    "negative_controls_passed": 12,
+    "original_source_head": "05f80b01235ebab7b2c907972b44e21a96cc0b39",
+    "portal_events": [
+      "task_selected"
+    ],
+    "recovery_authority": false,
+    "streams_verified": 4
+  },
+  "schema": "legal-ir-supervisor-integration-qualification/v1",
+  "semantic_admission": false,
+  "unknown_outcomes_resolved": false,
+  "verified_grok_task_dispatch": false
+}

@@ -1,0 +1,47 @@
+{
+  "ADMIN_pin": {
+    "bytes": 24726,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/authentic_unknown_admin_worker_v05.py",
+    "sha256": "1adeb3a8c45d366ddd0e92b675bbd9b9c90d0a7aba673d598aa5263f0ca318e0"
+  },
+  "AST_only": true,
+  "base_ADMIN_pin": {
+    "bytes": 24726,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v04/authentic_unknown_admin_worker_v04.py",
+    "sha256": "7993fcb86a7e80918fbd862ec3aa18b16eaac8c7f9182054b83f9012b8c1c03e"
+  },
+  "concrete_static_blockers": [],
+  "exact_delta_pin": {
+    "bytes": 888,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-admin-settlement-v05/admin-pinned-resource-loader-v05.patch",
+    "sha256": "e2fb2bbf637dbebde3952733f34db9b5ff64cd6a8f32949dbd7958ebe86142f5"
+  },
+  "findings": [
+    "The only source change is LOADER_SHA fba59b05\u2192c385185d. Whole source is byte-identical after that one literal restoration; complete restored AST equality verified. The strict supplied source_loader_pin hash check remains in place.",
+    "New loader c385 is the independently source-reviewed pin exposing the real task_sources SQL resources with exact source/resource closure. Existing ADMIN calls only utility _package_pins/_published/_PinnedProductFinder/_loaded_product_sources; no old nonadmitting helper creator/serve entrypoint is used.",
+    "Actual native gateway/kernel peer grant/context sealing/unmodified policy function+code identity, source/HEAD guards, PermissionError dispatch denials, closed environment,64MiB file bound,30s window, private publication/stop/close rules and all @2 wire/output keysets remain unchanged.",
+    "Unchanged parentv03 and settlementv04 dynamically consume the new unbound producer/loader/map pins; this literal change preserves strict compatibility instead of weakening source authentication."
+  ],
+  "imports_jobs_DB_opens_C_mutations": false,
+  "production_authority": false,
+  "remaining_gates": [
+    "No target/loader/product/backend import or resource API/native job/test/DB open/process signal/C/frozen edit was performed. Static source approval is not runtime qualification.",
+    "Root must use NEW actual qualified same-store A/B results and NEW compiler output pinning ADMINv05 and unchanged settlementv04, actual loaderc385/producerv04 and expanded2810Python+6SQL catalog. Never overwrite an existing context, audit, input, request or prior result.",
+    "Focused resource API qualification and successful exact-source full producer preflight, genuine A/B custody/maintenance/status and actual C/D grants/audit/exit/reap/fresh stages/finalization remain required.",
+    "Old helper16MiB/verify_custody-replacement entrypoints remain unqualified utility-source baggage. Native protected source capsule remains expected unavailable; no source-seal/protected-route/model/UNKNOWN resolution authority is granted."
+  ],
+  "resource_loader_independent_review_pin": {
+    "bytes": 8371,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/resource-loader-independent-static-review-v01.json",
+    "sha256": "6130f51e4d8113b7fcada526d87e11533f45203450d6c63c238e9087597bfac8"
+  },
+  "resource_loader_pin": {
+    "bytes": 55889,
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-grok-parallel-start-20261016/unknown-abandonment-authentic-resource-loader-v01/pinned_product_resource_loader_v01.py",
+    "sha256": "c385185d64b20f1d657bfc008686961f76cab8a769f106a206354cfaa547a446"
+  },
+  "review_scope": "Exact bytes/hash/unified diff and restored whole-module AST; loader utility API/source-pin flow comparison only.",
+  "reviewer": "unknown_event_forensics",
+  "runtime_qualified": false,
+  "schema": "authentic-ADMIN-pinned-resource-loader-independent-source-review@5"
+}

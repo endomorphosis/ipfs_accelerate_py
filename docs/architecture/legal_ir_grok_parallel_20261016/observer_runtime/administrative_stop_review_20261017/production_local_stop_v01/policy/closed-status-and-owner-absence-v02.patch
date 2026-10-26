@@ -1,0 +1,296 @@
+--- a/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py
++++ b/ipfs_accelerate_py/agent_supervisor/todo_daemon/planning_unknown_abandonment.py
+@@ -23,6 +23,8 @@
+ CLIENT_ID = "planning-unknown-abandonment-administrator"
+ EVIDENCE_KIND = "planning_unknown_abandonment_decision_v1"
+ AUTHORITY_SCHEMA = "planning-unknown-abandonment-authority-context@1"
++CLOSED_AUTHORITY_SCHEMA = "planning-unknown-abandonment-authority-context@2"
++CLOSED_STATUS_RECEIPT_SCHEMA = "planning-unknown-closed-store-status-receipt@1"
+ SNAPSHOT_SCHEMA = "planning-unknown-abandonment-native-preimage@1"
+ AUDIT_SCHEMA = "planning-unknown-administrative-abandonment-decision@1"
+ FAILURE_KIND = "administrative_operator_stop_outcome_unknown"
+@@ -113,7 +115,7 @@
+         os.close(descriptor)
+ 
+ 
+-def stopped_processes(rows: Any) -> None:
++def _stopped_processes_strict_v1(rows: Any) -> None:
+     need(type(rows) is list and 1 <= len(rows) <= 128, "stopped owner population differs")
+     current_boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+     for row in rows:
+@@ -179,7 +181,7 @@
+          "original owner/child/master process birth crosswalk differs")
+ 
+ 
+-def verify_custody(context: Mapping[str, Any], snapshot: Mapping[str, Any], *, check_current_file: bool) -> None:
++def _verify_maintenance_custody_v1(context: Mapping[str, Any], snapshot: Mapping[str, Any], *, check_current_file: bool) -> None:
+     """Bind named native launch/terminal/status/maintenance artifacts.
+ 
+     These immutable files remain host-administrator attestations under the
+@@ -259,7 +261,7 @@
+ 
+ 
+ def load_context(context: Mapping[str, Any], *, check_closed_stores: bool) -> dict[str, Any]:
+-    need(type(context) is dict and set(context) == CONTEXT_KEYS and context["schema"] == AUTHORITY_SCHEMA,
++    need(type(context) is dict and set(context) == CONTEXT_KEYS and context["schema"] in {AUTHORITY_SCHEMA, CLOSED_AUTHORITY_SCHEMA},
+          "administrative context is not a closed record")
+     need(len(canonical_json_bytes(context)) <= 64 * 1024
+          and context["context_cid"] == content_identity({key: value for key, value in context.items() if key != "context_cid"}),
+@@ -350,7 +352,14 @@
+          "historical execution/coordination owner/fence crosswalk differs")
+     need(type(snapshot["phases"]) is list and len(snapshot["phases"]) == 2
+          and [row["phase"] for row in snapshot["phases"]] == ["claimed", "context"], "original phase history differs")
+-    stopped_processes(context["stopped_processes"])
++    if context["schema"] == CLOSED_AUTHORITY_SCHEMA:
++        artifacts = context["custody_artifacts"]
++        need(type(artifacts) is dict and "native_owner_receipt" in artifacts,
++             "closed-status context requires the named original native owner receipt")
++        original_owner = decode(read_pin(artifacts["native_owner_receipt"]))
++        stopped_processes(context["stopped_processes"], original_owner_receipt=original_owner)
++    else:
++        stopped_processes(context["stopped_processes"])
+     verify_custody(context, snapshot, check_current_file=check_closed_stores)
+     need(type(context["closed_store_pins"]) is dict and set(context["closed_store_pins"]) == {"execution", "coordination"},
+          "registered stopped sidecar pins differ")
+@@ -478,3 +487,241 @@
+         "original_control_binding": dict(binding),
+         "unknown_provider_rows_digest": audit["body"]["unknown_provider_rows_digest"],
+         "historical_unknown_rows_digest": audit["body"]["historical_unknown_rows_digest"]})
++
++
++
++def stopped_processes(rows: Any, *, original_owner_receipt: Mapping[str, Any] | None = None) -> None:
++    """Keep strict births by default; a tagged original-owner absence is explicit.
++
++    The optional receipt grants no authority. Callers must bind its pinned bytes
++    to the original launch/terminal crosswalk before any native operation.
++    An unrecorded birth never permits treating a present PID as a reused PID.
++    """
++    if original_owner_receipt is None:
++        return _stopped_processes_strict_v1(rows)
++    need(type(rows) is list and 1 <= len(rows) <= 128, "stopped owner population differs")
++    owner = original_owner_receipt
++    need(type(owner) is dict and owner.get("schema") == "legal-ir-native-orchestration-receipt@1"
++         and type(owner.get("owner_pid")) is int and owner["owner_pid"] > 1
++         and owner.get("native_stop_verified") is True and owner.get("owned_group_quiescent") is True
++         and owner.get("cleanup_pending") is False and owner.get("completion_authority") is False
++         and type(owner.get("native_fence_proof")) is dict
++         and owner["native_fence_proof"].get("all_trees_fenced") is True,
++         "unrecorded original-owner absence requires its genuine stopped native receipt")
++    tagged = [row for row in rows if type(row) is dict and "observation" in row]
++    if not tagged:
++        return _stopped_processes_strict_v1(rows)
++    need(len(tagged) == 1, "only one original owner may have unrecorded birth")
++    row = tagged[0]
++    need(set(row) == {"pid", "observation", "observed_boot_id"}
++         and type(row["pid"]) is int and row["pid"] == owner["owner_pid"]
++         and row["observation"] == "pid_absent_unrecorded_birth"
++         and type(row["observed_boot_id"]) is str and bool(row["observed_boot_id"])
++         and all(key not in owner for key in ("owner_birth_marker", "owner_start_time_ticks",
++             "owner_process_birth_id", "owner_birth_id"))
++         and row["pid"] not in {owner.get("child_pid"), owner["native_fence_proof"].get("master_pid")},
++         "tagged absence is not the exact originally unrecorded native owner")
++    current_boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
++    need(row["observed_boot_id"] == current_boot, "tagged owner absence observation is from another boot")
++    try:
++        Path(f"/proc/{row['pid']}").lstat()
++    except FileNotFoundError:
++        pass
++    else:
++        need(False, "original owner PID is present; an unrecorded birth cannot identify reuse")
++    positives = [item for item in rows if item is not row]
++    need(positives and all(type(item) is dict and item.get("pid") != row["pid"] for item in positives),
++         "tagged original-owner record is duplicated or child/master births are absent")
++    _stopped_processes_strict_v1(positives)
++
++
++def stopped_processes_v2(rows: Any, *, original_owner: Mapping[str, Any]) -> None:
++    """Explicit adapter entry for the same receipt-bound tagged absence check."""
++    stopped_processes(rows, original_owner_receipt=original_owner)
++
++
++def verify_custody(context: Mapping[str, Any], snapshot: Mapping[str, Any], *, check_current_file: bool) -> None:
++    """Dispatch only the explicit closed-status @2 variant; default stays @1."""
++    if context.get("schema") == CLOSED_AUTHORITY_SCHEMA:
++        return _verify_closed_status_custody_v2(context, snapshot, check_current_file=check_current_file)
++    return _verify_maintenance_custody_v1(context, snapshot, check_current_file=check_current_file)
++
++
++def _validate_closed_status_receipt_v2(context: Mapping[str, Any], snapshot: Mapping[str, Any],
++        decoded: Mapping[str, Any], status_binding: Any, *, check_current_file: bool) -> None:
++    """A status read/close report never stands in for WAL maintenance or backup."""
++    artifacts = context["custody_artifacts"]
++    report = decoded["closed_store_status_receipt"]
++    required = {"schema", "receipt_cid", "fixture_only", "production_access", "read_only",
++        "status_binding_cid", "status_binding_pin", "status_observation_pin", "raw_observation_pin",
++        "authorization_pin", "snapshot_pin", "execution_path", "original_launch_request_pin", "native_owner_receipt_pin",
++        "master_terminal_pin", "database_pin_before", "database_pin_after", "execution_file_identity_before",
++        "execution_file_identity_after", "writer_lock_identity_before", "writer_lock_identity_after",
++        "policy_lock_identity_before", "policy_lock_identity_after", "wal_absent_before", "wal_absent_after",
++        "expected_native_rows_matched", "all_metadata_preserved", "provider_unknown_not_settled",
++        "connection_close_verified", "original_locks_released", "physical_maintenance_performed",
++        "logical_write_performed", "backup_created", "completion_authority", "semantic_authority",
++        "automatic_retry_admitted", "callback_closed", "remote_cancellation_proved", "nonreachability_asserted",
++        "source_pins", "owner_process", "root_lease_id", "phase_lease_id", "disk_reservation_id",
++        "actual_parented_native_lease_id"}
++    need(type(report) is dict and set(report) == required and report["schema"] == CLOSED_STATUS_RECEIPT_SCHEMA
++         and report["receipt_cid"] == digest({key: value for key, value in report.items() if key != "receipt_cid"}),
++         "closed-status report schema/closed fields/content identity differs")
++    need(report["fixture_only"] is False and report["production_access"] is True
++         and all(report[key] is True for key in ("read_only", "wal_absent_before", "wal_absent_after",
++             "expected_native_rows_matched", "all_metadata_preserved", "provider_unknown_not_settled",
++             "connection_close_verified", "original_locks_released"))
++         and all(report[key] is False for key in ("physical_maintenance_performed", "logical_write_performed",
++             "backup_created", "completion_authority", "semantic_authority", "automatic_retry_admitted",
++             "callback_closed", "remote_cancellation_proved", "nonreachability_asserted")),
++         "closed-status report claims maintenance/write/backup or lacks actual read/close")
++    need(report["status_binding_cid"] == status_binding.binding_cid
++         and report["status_binding_pin"] == artifacts["status_binding"]
++         and report["status_observation_pin"] == artifacts["status_observation"]
++         and report["original_launch_request_pin"] == artifacts["launch_request"]
++         and report["native_owner_receipt_pin"] == artifacts["native_owner_receipt"]
++         and report["master_terminal_pin"] == artifacts["master_terminal"]
++         and report["execution_path"] == context["stores"]["execution"]
++         and report["snapshot_pin"] == context["snapshot_pin"]
++         and report["database_pin_before"] == report["database_pin_after"]
++         == context["closed_store_pins"]["execution"]
++         and report["execution_file_identity_before"] == report["execution_file_identity_after"]
++         == dict(status_binding.execution_file_identity)
++         and report["writer_lock_identity_before"] == report["writer_lock_identity_after"]
++         == dict(status_binding.writer_lock_identity)
++         and report["policy_lock_identity_before"] == report["policy_lock_identity_after"],
++         "closed-status before/after store/status/lock scope differs")
++    identity_keys = {"device", "inode", "size", "mtime_ns"}
++    for key in ("execution_file_identity_before", "execution_file_identity_after",
++                "writer_lock_identity_before", "writer_lock_identity_after",
++                "policy_lock_identity_before", "policy_lock_identity_after"):
++        identity = report[key]
++        need(type(identity) is dict and set(identity) == identity_keys
++             and all(type(value) is int and value >= (1 if name == "inode" else 0)
++                     for name, value in identity.items()), "closed-status file identity types differ")
++    need(type(report["source_pins"]) is list and 1 <= len(report["source_pins"]) <= 128,
++         "closed-status actual source closure absent")
++    required_sources = {str(Path(__file__).resolve().parents[1] / relative) for relative in (
++        "todo_daemon/native_execution_status_owner.py", "todo_daemon/implementation_daemon.py",
++        "task_sources/duckdb_state.py")}
++    need(required_sources <= {pin["path"] for pin in report["source_pins"]},
++         "closed-status report omits actual native reader/connector/source")
++    registered = {pin["path"]: pin for pin in context["source_pins"] + context["immutable_pins"]}
++    need(sum(Path(pin["path"]).name == "production_unknown_closed_status_owner_v01.py"
++             for pin in report["source_pins"]) == 1,
++         "closed-status report lacks its one actual typed adapter source")
++    for pin in report["source_pins"]:
++        need(pin["path"] not in context["stores"].values(), "closed-status source pin is a mutable native store")
++        need(registered.get(pin["path"]) == pin, "closed-status reader/adapter source is not registered")
++        read_pin(pin)
++    immutable = {pin["path"]: pin for pin in context["immutable_pins"]}
++    for key in ("authorization_pin", "raw_observation_pin", "snapshot_pin"):
++        need(immutable.get(report[key]["path"]) == report[key], "closed-status input is not pinned in native context")
++        read_pin(report[key])
++    raw = decode(read_pin(report["raw_observation_pin"]))
++    need(type(raw) is dict and raw.get("schema") == "legal-ir-attempt2-private-raw-native-observation/v1"
++         and raw.get("read_only") is True and raw.get("recovery_authority") is False
++         and raw.get("schema_installation_attempted") is False
++         and raw.get("production_handle_write_connection_opened") is False
++         and raw.get("task_cid") == context["task_cid"]
++         and raw.get("attempt_id") == snapshot["attempt"]["attempt_id"],
++         "closed-status raw native observation scope differs")
++    roles = [role for role, pin in raw["database_pins"].items()
++             if pin["path"] == context["stores"]["execution"] and role in raw["execution"]]
++    need(len(roles) == 1, "closed-status raw execution selector is ambiguous")
++    role = roles[0]
++    need(raw["database_pins"][role] == report["database_pin_before"]
++         and raw["database_file_identities"][role] == report["execution_file_identity_before"]
++         and role not in raw["wal_pins"] and role not in raw["wal_file_identities"],
++         "closed-status raw execution generation/WAL scope differs")
++    metadata = {}
++    for row in raw["execution"][role]["daemon_execution_metadata"]:
++        need(type(row) is dict and set(row) == {"key", "value"}
++             and type(row["key"]) is str and type(row["value"]) is str and row["key"] not in metadata,
++             "closed-status raw native metadata is malformed or duplicated")
++        metadata[row["key"]] = row["value"]
++    metadata_keys = {"interface", "schema", "authority_mode", "logical_owner_session_id", "process_instance_id",
++        "state_schema_revision", "control_schema_profile_id", "control_schema_fingerprint", "execution_state_dir",
++        "execution_state_prefix", "task_shard_count", "task_shard_index", "strict_task_sharding"}
++    need(set(metadata) == metadata_keys
++         and decoded["status_observation"].get("native_metadata") == metadata
++         and all(metadata.get(key) == value for key, value in status_binding.expected_metadata.items()),
++         "closed-status native metadata differs from immutable raw preimage")
++    owner = report["owner_process"]
++    need(type(owner) is dict and set(owner) == {"pid", "start_time_ticks", "boot_id", "process_birth_id"}
++         and type(owner["pid"]) is int and owner["pid"] > 1
++         and type(owner["start_time_ticks"]) is int and owner["start_time_ticks"] > 0
++         and type(owner["boot_id"]) is str and bool(owner["boot_id"])
++         and type(owner["process_birth_id"]) is str and bool(owner["process_birth_id"])
++         and owner["process_birth_id"] == "birth:kernel:" + hashlib.sha256(
++             f"{owner['pid']}:{owner['start_time_ticks']}".encode("ascii")).hexdigest()[:32]
++         and {"pid": owner["pid"], "start_time_ticks": owner["start_time_ticks"], "boot_id": owner["boot_id"]}
++             in context["stopped_processes"]
++         and all(type(report[key]) is str and report[key] for key in (
++             "root_lease_id", "phase_lease_id", "disk_reservation_id", "actual_parented_native_lease_id")),
++         "closed-status real owner/resource identity fields differ")
++    if check_current_file:
++        read_pin(report["database_pin_after"])
++        need(not Path(context["stores"]["execution"] + ".wal").exists(),
++             "already-closed status requires actual WAL absence")
++
++def _verify_closed_status_custody_v2(context: Mapping[str, Any], snapshot: Mapping[str, Any], *, check_current_file: bool) -> None:
++    """Bind original native custody and a genuine already-closed status read.
++
++    These immutable files remain host-administrator attestations under the
++    registered custody assumption; they are not remote provider cancellation
++    proofs. This path neither performs nor represents WAL maintenance or backup.
++    """
++    artifacts = context["custody_artifacts"]
++    required = {"launch_request", "native_owner_receipt", "master_terminal", "status_binding",
++                "status_observation", "closed_store_status_receipt"}
++    need(type(artifacts) is dict and set(artifacts) == required, "required named native custody crosswalk absent")
++    decoded = {name: decode(read_pin(pin)) for name, pin in artifacts.items()}
++    request, owner, terminal = (decoded[name] for name in ("launch_request", "native_owner_receipt", "master_terminal"))
++    need(request.get("schema") == "legal-ir-native-orchestration-request@1"
++         and owner.get("schema") == "legal-ir-native-orchestration-receipt@1"
++         and owner.get("request_sha256") == artifacts["launch_request"]["sha256"]
++         and owner.get("native_stop_verified") is True and owner.get("owned_group_quiescent") is True
++         and owner.get("cleanup_pending") is False and owner.get("completion_authority") is False,
++         "original finite native owner is not durably stopped")
++    fence = owner.get("native_fence_proof", {})
++    need(terminal.get("schema") == "ipfs_accelerate_py.agent_supervisor.multi-supervisor-terminal@1"
++         and terminal.get("all_trees_fenced") is True and terminal.get("task_completion_authority") is False
++         and fence.get("all_trees_fenced") is True
++         and terminal.get("terminal_receipt_cid") == content_identity({k: v for k, v in terminal.items() if k != "terminal_receipt_cid"})
++         and all(terminal.get(key) == fence.get(key) for key in ("master_pid", "active_binding_cid",
++             "run_started_at_epoch_nanoseconds", "terminal_receipt_cid"))
++         and request.get("native_terminal_receipt") == artifacts["master_terminal"]["path"]
++         and request.get("board_namespace") == terminal.get("label") == context["namespace"]
++         and Path(context["stores"]["execution"]).is_relative_to(Path(artifacts["master_terminal"]["path"]).parent),
++         "original native launch/terminal/store crosswalk differs")
++    processes = context["stopped_processes"]
++    original_process_crosswalk(owner, fence, processes)
++    from .native_execution_status_owner import NativeExecutionStatusBinding, OBSERVATION_SCHEMA
++    status_binding = NativeExecutionStatusBinding.from_dict(decoded["status_binding"])
++    observation = decoded["status_observation"]
++    expected_attempt = {key: value for key, value in snapshot["attempt"].items() if key not in {"schema", "interface"}}
++    expected_provider = [{**{key: value for key, value in row.items() if key != "result_json"},
++                          "result": decode(row["result_json"])} for row in snapshot["providers"]]
++    need(status_binding.execution_path == context["stores"]["execution"]
++         and status_binding.control_store_id == context["logical_store_id"]
++         and status_binding.task_cid == context["task_cid"]
++         and all(getattr(status_binding, key) == snapshot["attempt"][key] for key in IDENTITY_FIELDS)
++         and status_binding.control_revision == context["expected_task_revision"]
++         and status_binding.expected_control_status == "in_progress"
++         and observation.get("schema") == OBSERVATION_SCHEMA
++         and observation.get("binding_cid") == status_binding.binding_cid
++         and observation.get("backend_read_only") is True and observation.get("original_process_impersonated") is False
++         and observation.get("attempt") == expected_attempt
++         and observation.get("phase_history") == snapshot["phases"]
++         and observation.get("provider_records") == expected_provider and observation.get("effect_records") == []
++         and observation.get("phase_history_complete") is True
++         and observation.get("provider_records_complete") is True and observation.get("effect_records_complete") is True,
++         "published native status does not corroborate registered execution preimage")
++    _validate_closed_status_receipt_v2(context, snapshot, decoded, status_binding,
++        check_current_file=check_current_file)
++    if check_current_file:
++        info = Path(context["stores"]["execution"]).stat()
++        need(dict(device=info.st_dev, inode=info.st_ino, size=info.st_size, mtime_ns=info.st_mtime_ns)
++             == dict(status_binding.execution_file_identity),
++             "current execution generation differs from published closed status")

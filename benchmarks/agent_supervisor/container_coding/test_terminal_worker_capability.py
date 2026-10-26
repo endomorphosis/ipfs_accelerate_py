@@ -53,6 +53,14 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     assert value['terminal_semantic_scope_schema'] == 'terminal-public-task-semantic-scope@1'
     assert set(value['source_sha256']) == {
         'source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_owner_observation.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_owner_audit.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_owner_lifecycle.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_repository_worker_forwarding.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_worker_receipts.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_retirement.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_monitor.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_lifecycle.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_output_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py',
@@ -207,7 +215,9 @@ def test_prepare_rejects_stale_or_mismatched_archive_before_harbor(packaged, tmp
     archive, manifest, dataset = packaged
     (archive / 'manifest.json').write_text(json.dumps(_mutate(manifest, kind)))
     monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k: pytest.fail('unexpected Harbor call'))
-    with pytest.raises(ValueError, match='worker archive capability'):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if kind == "inventory" else "worker archive capability")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=dataset, output=tmp_path / 'trial', archive=archive,
                           arm='full', resource_profile=profile)
     assert not (tmp_path / 'trial').exists()
