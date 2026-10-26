@@ -236,6 +236,20 @@ class CampaignProgressWatchdog:
             return self._result("error", str(exc) if isinstance(exc, ValueError) and str(exc).startswith("campaign_")
                                 else type(exc).__name__)
 
+    def reconcile_health_pending_restart(self, *, incident_key, expected_terminal_cid,
+                                         action_observation, verify_effects):
+        """Resolve only proved complete restart effects, without replay or refund.
+
+        ``verify_effects`` is a trusted read-only application observer, like
+        ``observe``. It binds the historical restarted owner and later actual
+        work to the exact action receipt. A fresh owned active observation is
+        independently required. The original Native terminal stays immutable.
+        """
+        from .campaign_reconciliation import reconcile_health_pending_restart
+        return reconcile_health_pending_restart(self, incident_key=incident_key,
+            expected_terminal_cid=expected_terminal_cid,
+            action_observation=action_observation, verify_effects=verify_effects)
+
     def _run_locked(self, before, now):
         state = self._load()
         grace_key = _digest([before["progress_token"], before["owner_token"]])
@@ -258,7 +272,7 @@ class CampaignProgressWatchdog:
             incidents[key] = {"confirmations": 0, "confirmation_owner": before["owner_token"], "last_confirmation_ms": 0,
                               "attempts": 0, "last_attempt_ms": 0, "phase": "observing"}
         entry = incidents[key]
-        if (not isinstance(entry, dict) or set(entry) - {"confirmations", "confirmation_owner", "last_confirmation_ms", "attempts", "last_attempt_ms", "phase", "terminal_cid"}
+        if (not isinstance(entry, dict) or set(entry) - {"confirmations", "confirmation_owner", "last_confirmation_ms", "attempts", "last_attempt_ms", "phase", "terminal_cid", "reconciliation_cid"}
                 or any(type(entry.get(k)) is not int or entry[k] < 0 for k in ("confirmations", "last_confirmation_ms", "attempts", "last_attempt_ms"))
                 or type(entry.get("confirmation_owner")) is not str
                 or entry.get("phase") not in {"observing", "in_flight", "finished", "uncertain"}):
