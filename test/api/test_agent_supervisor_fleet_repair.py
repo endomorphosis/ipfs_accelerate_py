@@ -2467,7 +2467,7 @@ def test_bound_repair_route_matches_actual_primary_fallback_and_probe_models(tmp
 @pytest.mark.parametrize("change", [
     {"primary_model_id": "grok-4.5"}, {"fallback_model_id": "other"},
     {"fallback_reasoning_effort": "low"}, {"fallback_trigger": "unknown"},
-    {"extra": "field"},
+    {"extra": "field"}, {"default_route": "legacy"}, {"authorization": None},
 ])
 def test_bound_repair_route_rejects_unknown_or_hybrid_contract(tmp_path, change):
     policy = _bound_repair_policy(tmp_path)
@@ -2475,6 +2475,17 @@ def test_bound_repair_route_rejects_unknown_or_hybrid_contract(tmp_path, change)
     with pytest.raises(ValueError):
         repair.llm_router_repair_argv(policy, tmp_path / "prompt", tmp_path / "last")
     assert repair._launch_preflight(policy) == "repair_route_configuration_invalid"
+
+
+@pytest.mark.parametrize("route", [{"default_route": "legacy"}, {}, {
+    "primary_provider_id": "grok_cli", "primary_model_id": "grok-4.7",
+    "fallback_provider_id": "codex", "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high"}])
+def test_bound_repair_route_requires_complete_tuple_without_contextual_defaults(tmp_path, route):
+    policy = _bound_repair_policy(tmp_path)
+    policy["implementation_route"] = route
+    with pytest.raises(ValueError, match="six-field mapping"):
+        repair.llm_router_repair_argv(policy, tmp_path / "prompt", tmp_path / "last")
 
 
 @pytest.mark.parametrize("argv", [

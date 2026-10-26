@@ -39,7 +39,9 @@ def _bound_implementation_route(policy: dict[str, Any]):
         return None
     from ipfs_accelerate_py.agent_implementation_route import resolve_agent_implementation_route
     value = policy["implementation_route"]
-    if not isinstance(value, dict):
+    fields = {"primary_provider_id", "primary_model_id", "fallback_provider_id",
+              "fallback_model_id", "fallback_trigger", "fallback_reasoning_effort"}
+    if not isinstance(value, dict) or set(value) != fields:
         raise ValueError("repair implementation_route must be a six-field mapping")
     try:
         route = resolve_agent_implementation_route(**value)
