@@ -27,7 +27,6 @@ grace period, while transient kernel waits can clear before repair. Holds and
 native recovery admission still apply, and providers in other lanes remain
 visible. These diagnostics do not authorize signalling or callback replay.
 
-
 ## LegalIR service fleet
 
 The existing LegalIR deployment retains four implementation services:
@@ -109,6 +108,26 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -o addopts= \
 Qualification on public base `a8f18f6a3fc9a1d3f5efe8307dcff2b25a8cb95f` passed
 all **160 tests**. The cases cover bounded recovery, changed/reused PID births,
 fresh worker/completed-idle/resource-fence suppression and unreadable evidence.
+
+## Isolated LegalIR diagnostic profile
+
+`install_fleet_watchdog.py --profile legal-ir` stages a separate instance of these same watchdog/repair owners. It consumes the existing minute LegalIR fleet-monitor report and does not add another lane monitor. The six-board global configuration, units, operator holds and repair history remain unchanged. Use this profile when the global runtime/source bindings require their own separate review.
+
+Prepare a host inventory containing exactly one `service_fleet_report` board with an absolute report path, namespace,180-second freshness limit and explicit lane-to-service bindings. Its ensure command must be empty: the existing LegalIR service monitor retains exact-service recovery. The diagnostic board cannot acquire publication or completion authority.
+
+```sh
+python3 scripts/ops/agent_supervisor/install_fleet_watchdog.py \
+  --profile legal-ir --inventory /path/to/legal-ir-inventory.json \
+  --repair-cwd /accepted/accelerate-development-checkout --dry-run
+```
+
+Review the returned file postimages, then repeat without `--dry-run` to stage them. Profile staging performs no systemctl commands; `--enable` records intent only. Activate explicitly through `systemctl --user daemon-reload` and enable/start only `ipfs-taskboard-legal-ir-watchdog.service` and `ipfs-taskboard-legal-ir-repair.service`. Existing installations require exact idempotence or an explicit reconciliation; they are never silently overwritten.
+
+Configuration lives in `~/.config/ipfs-taskboard-watchdog/legal-ir/`; state and repair evidence live in `~/.local/state/ipfs-taskboard-watchdog/legal-ir/`. The dedicated coding unit is `ipfs-taskboard-legal-ir-repair-job.service`, preventing collision with the global dispatcher. The profile inherits the operator's existing repair model/argv, uses the explicitly selected development checkout, and limits this diagnostic board to three cumulative coding attempts with visible `repair_budget_exhausted` escalation.
+
+The report probe validates regular bounded JSON, freshness, namespace, exact lane/service population, counts and native liveness. Confirmed empty engineering work stays healthy without advancing a progress timestamp or claiming task/goal completion. Newly runnable work starts its own stall interval. A fresh bound dependency wait is a noncoding wait. Stale, malformed or foreign reports cannot prove recovery; a coding exit code alone cannot do so either. A fresh bound report can verify diagnostic runtime recovery only, retaining all semantic/task/goal authority as false.
+
+The completed135-task legacy engineering board and the separate34-goal/64-task LegalIR programme retain distinct scopes. Before corpus-worker cutover, reviewed execution packets and authenticated native task/goal scope must be admitted through the existing owners. This diagnostic profile does not rematerialize that population, rearm attempts, approve legal meanings or declare the US Code formalized.
 
 ## Operation
 
@@ -262,8 +281,19 @@ controls to deploy it. It can commit and normally push validated changes under
 the user's authorization. Unknown faults may need several repair jobs; an
 unresolved fault remains visible rather than becoming a fabricated success.
 
-Coding jobs use the installed Codex CLI's unattended execution and the user's
-existing authentication. They retain the configured model choice. See the
+Coding jobs use the existing packaged Grok-to-Codex fallback owner and the user's
+existing authentication. `repair_worker.argv` supplies the Codex fallback command.
+An optional `repair_worker.implementation_route` uses the existing complete
+six-field route validator to bind the primary model, fallback model/reasoning and
+hard-quota-only boundary. For the LegalIR route, set Grok4.7, Codex `gpt-6.1-sol`
+and high reasoning, and include explicit matching `--model gpt-6.1-sol` and
+`-c 'model_reasoning_effort="high"'` in the fallback argv. Actual primary and
+readiness-probe models then share this binding; conflicting or missing fallback
+options fail before queue changes. The validator is included in the immutable
+installed runtime. Other configurations without this optional binding preserve
+their existing route and model behavior. This does not change task acceptance,
+repair-attempt limits, resource admission or live configuration automatically.
+See the
 [official unattended execution documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
 No local model service is started; the existing llama-server mask is retained.
 

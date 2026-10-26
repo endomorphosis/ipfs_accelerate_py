@@ -37,6 +37,7 @@ WAIT_STALLS = {
     "closeout_requires_native_authority",
     "closeout_waiting_on_unsettled_goals",
     "operator_hold",
+    "external_dependency_wait",
     "board_checkout_missing",
     "kernel_uninterruptible_wait",
     "native_status_unavailable_with_live_workers",
@@ -584,6 +585,82 @@ def _carry_observational_task_counts(
     return observation
 
 
+def _service_fleet_availability(observation: dict[str, Any], board: dict[str, Any], now: float) -> str:
+    """Validate diagnostic scheduling evidence without granting task authority.
+
+    Only explicitly enrolled service fleets may wait indefinitely with no work.
+    Ordinary native boards retain their existing admitted-progress contract.
+    """
+    binding = board.get("service_fleet_binding")
+    details = observation.get("details")
+    if not isinstance(binding, dict) or not isinstance(details, dict):
+        return ""
+    report = details.get("service_fleet")
+    if not isinstance(report, dict) or report.get("schema") != "service-fleet-diagnostic/v1":
+        return ""
+    namespace, expected = binding.get("board_namespace"), binding.get("lanes")
+    maximum = binding.get("max_age_seconds", 180)
+    if (not isinstance(namespace, str) or not namespace
+            or not isinstance(expected, dict) or not 1 <= len(expected) <= 32
+            or any(not isinstance(k, str) or not k or not isinstance(v, str)
+                   or not re.fullmatch(r"[A-Za-z0-9_.@:-]+\.service", v)
+                   for k, v in expected.items())
+            or len(set(expected.values())) != len(expected)
+            or type(maximum) is not int or not 1 <= maximum <= 3600
+            or observation.get("board_id") != board.get("id")
+            or observation.get("health") not in {"healthy", "blocked"}
+            or observation.get("complete") is not False
+            or observation.get("completion_candidate") is not False
+            or details.get("completion_authority") is not False
+            or report.get("completion_authority") is not False
+            or report.get("board_namespace") != namespace):
+        return ""
+
+    def fresh(value: Any) -> bool:
+        return (type(value) in (int, float) and math.isfinite(value)
+                and 0 <= now - value <= maximum)
+
+    if not fresh(report.get("checked_at_epoch")):
+        return ""
+    lanes = report.get("lanes")
+    if not isinstance(lanes, list) or len(lanes) != len(expected):
+        return ""
+    seen: set[str] = set()
+    idle, runnable, waiting = True, False, False
+    for lane in lanes:
+        if not isinstance(lane, dict):
+            return ""
+        identifier = lane.get("lane_id")
+        if (not isinstance(identifier, str) or identifier in seen
+                or identifier not in expected or lane.get("service") != expected[identifier]
+                or lane.get("healthy") is not True
+                or not fresh(lane.get("checked_at_epoch"))
+                or not fresh(lane.get("native_status_at_epoch"))
+                or type(lane.get("active")) is not bool):
+            return ""
+        seen.add(identifier)
+        keys = ("ready_count", "selectable_ready_count", "global_ready_count",
+                "blocked_count", "waiting_count", "task_count", "completed_count")
+        if any(type(lane.get(k)) is not int or lane[k] < 0 for k in keys):
+            return ""
+        if lane["completed_count"] > lane["task_count"]:
+            return ""
+        idle = idle and (not lane["active"] and all(lane[k] == 0 for k in keys[:5])
+                         and lane["completed_count"] == lane["task_count"])
+        runnable = runnable or lane["active"] or any(lane[k] > 0 for k in keys[:3])
+        waiting = waiting or lane["blocked_count"] > 0 or lane["waiting_count"] > 0
+    availability = report.get("work_availability")
+    if availability == "no_runnable_work" and idle and observation["health"] == "healthy":
+        return availability
+    if availability == "runnable_work" and runnable and observation["health"] == "healthy":
+        return availability
+    if (availability == "dependency_wait" and waiting and not runnable
+            and observation["health"] == "blocked"
+            and "external_dependency_wait" in observation.get("reason_codes", [])):
+        return availability
+    return ""
+
+
 def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[str, Any], now: float) -> dict[str, Any]:
     state = dict(previous)
     observation = _carry_observational_task_counts(observation, previous)
@@ -616,14 +693,24 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     # A newly healthy heartbeat is not work progress. Stale busy flags are the
     # adapter's responsibility; only an explicit live activity probe sets busy.
     health = observation["health"]
+    availability = _service_fleet_availability(observation, board, now)
+    confirmed_idle = availability == "no_runnable_work"
+    if confirmed_idle:
+        state.pop("work_available_since", None)
+    elif availability == "runnable_work":
+        # Start a scheduling interval, not an accepted-work/progress event.
+        state.setdefault("work_available_since", now)
+    state["idle_without_runnable_work"] = confirmed_idle
+    stall_anchor = max(state["last_progress_at"], state.get("work_available_since", state["last_progress_at"]))
     if (health == "healthy" and observation.get("completion_candidate") is not True
-            and observation.get("busy") is not True
-            and now - state["last_progress_at"] >= board.get("stall_seconds", 900)):
+            and observation.get("busy") is not True and not confirmed_idle
+            and now - stall_anchor >= board.get("stall_seconds", 900)):
         health = "stalled"
         observation = dict(observation, health=health,
                            reason_codes=[*observation.get("reason_codes", []), "no_task_progress"])
         state["observation"] = observation
-    state["stall_class"] = classify_stall(observation, previous)
+    state["stall_class"] = ("external_dependency_wait" if availability == "dependency_wait"
+                            else classify_stall(observation, previous))
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]
     if previous.get("incident_signature") != signature:
@@ -701,6 +788,12 @@ def reset_failed_ensure_unit(board: dict[str, Any]) -> bool:
 
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
     health = state["health"]
+    diagnostic_stall = (isinstance(board.get("service_fleet_binding"), dict)
+                        and state.get("stall_class") == "stalled_no_progress")
+    if diagnostic_stall and now < state.get("next_action_at", 0):
+        # Diagnostic coding repair keeps its durable cooldown. Native-owner
+        # healing below may retry early, but this fleet has no native owner.
+        return ""
     if now < state.get("next_action_at", 0):
         stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
         observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
@@ -766,6 +859,10 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
     if stall == "kernel_uninterruptible_wait":
         return "supervisor_heal"
     if stall == "stalled_no_progress":
+        # Service-fleet diagnostics have no native owner to heal. Their
+        # configured repair queue owns bounded coding recovery instead.
+        if diagnostic_stall:
+            return "repair"
         # Remaining SAWM/DOEP todos are not llm_router work.
         return "supervisor_heal"
     if stall == "independent_work_beside_blocked_peer":
@@ -823,7 +920,11 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
 
 
 def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
-               runner=command, now: float | None = None) -> dict[str, Any]:
+               runner=command, now: float | None = None,
+               repair_unit: str | None = None) -> dict[str, Any]:
+    if repair_unit is not None:
+        from .fleet_repair import repair_job_unit
+        repair_unit = repair_job_unit({"repair_worker": {"job_unit": repair_unit}})
     now = time.time() if now is None else now
     board_id = board["id"]
     directory = state_root / board_id
@@ -859,9 +960,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         if apply and state.get("stall_class") in WAIT_STALLS:
             job = read_json(state_root / "repairs" / board_id / "job.json")
             if job.get("status") == "running":
+                if repair_unit is None:
+                    from .fleet_repair import repair_job_unit
+                    repair_unit = repair_job_unit({})
                 try:
                     command({"argv": ["systemctl", "--user", "stop",
-                                      "ipfs-taskboard-repair-job.service"]},
+                                      repair_unit]},
                             cwd="/", timeout=45)
                 except (OSError, subprocess.TimeoutExpired, ValueError):
                     pass
@@ -1040,8 +1144,14 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             else:
                 state.pop("publication_failure", None)
         elif action in {"repair", "completion_review"}:
-            from .fleet_heals import apply_supervisor_heal
-            heal = apply_supervisor_heal(board, state)
+            if (isinstance(board.get("service_fleet_binding"), dict)
+                    and state.get("stall_class") == "stalled_no_progress"):
+                # Preserve the original service monitor's restart authority;
+                # this diagnostic stall is only a coding-queue incident.
+                heal = {"status": "skip", "reason": "service_fleet_diagnostic_stall"}
+            else:
+                from .fleet_heals import apply_supervisor_heal
+                heal = apply_supervisor_heal(board, state)
             if heal.get("status") in {"applied", "wait"}:
                 action_result = {"status": heal["status"], "supervisor_heal": heal,
                                  "incident": str(incident_path)}
@@ -1109,10 +1219,15 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
+    repair_unit = None
+    if "repair_worker" in config:
+        from .fleet_repair import repair_job_unit
+        repair_unit = repair_job_unit(config)
     root = Path(config["state_dir"])
     observations = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(config["boards"]))) as pool:
-        work = {pool.submit(tick_board, board, root, apply=apply): board["id"] for board in config["boards"]}
+        work = {pool.submit(tick_board, board, root, apply=apply,
+                            repair_unit=repair_unit): board["id"] for board in config["boards"]}
         for future in concurrent.futures.as_completed(work):
             identifier = work[future]
             try:
