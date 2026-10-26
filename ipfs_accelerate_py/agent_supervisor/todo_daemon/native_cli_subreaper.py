@@ -114,6 +114,24 @@ def _kill_and_reap_orphans() -> None:
             time.sleep(_TERMINATION_POLL_SECONDS)
 
 
+def _reap_exited_adopted_children(command_pid: int) -> None:
+    """Reap completed adoptees without consuming the Popen leader's status.
+
+    A nested owned process group can wait for its orphaned zombie to vanish
+    while the main command is still running. Waiting until the command exits
+    would make that group wait on its own outer subreaper. Kernel parentage
+    confines this nonblocking wait to this dedicated invocation's children;
+    live adoptees retain their existing terminal cleanup boundary.
+    """
+    for process_id in _direct_child_pids():
+        if process_id == command_pid:
+            continue
+        try:
+            os.waitpid(process_id, os.WNOHANG)
+        except ChildProcessError:
+            pass
+
+
 def run_with_child_custody(callback: Callable[[], int]) -> int:
     """Run one route in a fresh, dedicated worker and reap its descendants.
 
@@ -221,6 +239,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             start_new_session=False,
         )
         while process.poll() is None:
+            _reap_exited_adopted_children(process.pid)
             timed_out = deadline is not None and time.monotonic() >= deadline
             output_limit_exceeded = output_limit is not None and os.fstat(1).st_size > output_limit
             if _termination_signal or timed_out or output_limit_exceeded:
