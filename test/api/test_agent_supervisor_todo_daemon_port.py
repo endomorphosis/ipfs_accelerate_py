@@ -17357,6 +17357,7 @@ def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_childr
 ):
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
         implementation_supervisor as implementation_supervisor_module,
+        supervisor as supervisor_helpers,
     )
 
     repo = tmp_path / "repo"
@@ -17374,7 +17375,7 @@ def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_childr
     )
     monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 1234)
     monkeypatch.setattr(
-        implementation_supervisor_module,
+        supervisor_helpers,
         "descendant_processes",
         lambda _pid: [
             {

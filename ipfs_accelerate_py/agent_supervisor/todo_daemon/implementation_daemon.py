@@ -10795,6 +10795,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         from .current_incident_adjudication import review
         return review(self, task_id=task_id, incident_cid=incident_cid)
 
+    def review_quiesced_pending_task_claim(self, *, task_id: str) -> dict[str, Any]:
+        """Prove an unchanged stopped ordinary attempt without changing custody."""
+        from .pending_task_claim_recovery import review
+        return review(self, task_id=task_id)
+
+    def reconcile_quiesced_pending_task_claim(self, *, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Release the exact reviewed dead pending claim, without task authority.
+
+        The caller retains its application launcher/checkout/queue guards;
+        Native rechecks the complete proof under dispatch and claim CAS guards.
+        """
+        from .pending_task_claim_recovery import reconcile
+        return reconcile(self, request=request)
+
     def adjudicate_quiesced_ordinary_incident(self, *, request: Mapping[str, Any]) -> dict[str, Any]:
         """Explicit administrative abandonment, requiring caller launcher guards.
 
@@ -31032,7 +31046,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "commit_result": commit_result,
                 "implementation_commit": candidate_commit,
                 "merge_result": merge_result,
-                "validation_result": validation_result,
+                "validation_result": (
+                    self._detach_in_process_proposal_validation(
+                        validation_result
+                    )
+                ),
                 "protected_path_violation": protected_path_violation,
                 "recovery_key": recovery_key,
             }
@@ -39988,6 +40006,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "pruned_seeded_context": pruned_seeded_context,
             evidence_field: dict(evidence),
         }
+        # Administrative recovery daemons need not have registered a dispatch
+        # cache. A checkpoint always carries its actual canonical task context.
+        identity = self._identity_for_task(task)
+        result.update(canonical_task_cid=identity.canonical_task_cid,
+                      canonical_task_key=identity.canonical_task_key,
+                      board_namespace=identity.board_namespace)
         if retain_on_failure:
             result["retained"] = worktree_path.exists()
             if not preserved_commit:
