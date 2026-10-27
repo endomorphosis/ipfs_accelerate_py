@@ -30,7 +30,7 @@ def _clock_rows(raw):
         if (type(index) is not int or index <= 0
                 or row.get("event_id") != "sha256:" + _sha(_bytes({k: v for k, v in row.items() if k != "event_id"}))
                 or sequence is not None and (index != sequence + 1 or prior != previous)
-                or sequence is None and not (index == 1 and prior == "" or index > 1 and isinstance(prior, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", prior)))
+                or sequence is None and not (index == 1 and prior == "" or index > 1 and isinstance(prior, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", prior))
                 or sequence is not None and (row.get("stream_id") != stream or row.get("snapshot_id") != snapshot)):
             raise ValueError("execution_clock_history_changed")
         previous, sequence, stream, snapshot = row["event_id"], index, row.get("stream_id"), row.get("snapshot_id")
@@ -52,6 +52,17 @@ def current_execution_started_at(supervisor, state, *, now_ts):
                 or state.last_implementation_task_cid != state.active_task_cid
                 or state.last_implementation_worktree_path != state.active_worktree_path
                 or state.last_implementation_log_path != state.active_log_path):
+            return None
+        workspace = Path(state.active_worktree_path)
+        log = Path(state.active_log_path)
+        workroot = supervisor.config.worktree_root
+        if workroot is None:
+            return None
+        if not workroot.is_absolute():
+            workroot = supervisor.config.repo_root / workroot
+        if (not workspace.is_absolute() or workspace.resolve() != workspace
+                or workspace == workroot.resolve() or not workspace.is_relative_to(workroot.resolve())
+                or not log.is_absolute() or log.resolve() != log or not log.is_relative_to(supervisor.config.state_dir)):
             return None
         expected = {"task_id": state.active_task_id, "canonical_task_cid": state.active_task_cid,
             "canonical_task_key": state.active_task_key, "attempt": state.active_attempt}
