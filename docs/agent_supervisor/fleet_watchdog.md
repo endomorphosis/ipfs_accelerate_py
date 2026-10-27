@@ -731,6 +731,11 @@ activation: `manifest.files` is reference metadata, while the launcher enforces
 the external manifest pin and SQL hashes. Code commitments require that external
 staging control. Do not silently replace an active content-addressed generation.
 
+The schema binding recipe preflights its selected shell/Python assets before
+creating or replacing a drop-in. A missing, empty or symlinked asset produces
+`supervisor_runtime_assets_unavailable` and preserves existing bindings. This
+availability check does not establish integrity or permit an owner restart.
+
 The compatible invocation is:
 
 ```sh
@@ -761,3 +766,60 @@ select a new complete bundle for subsequent starts. Preserve operator holds and
 use the existing per-board watchdog maintenance fence while recovery actors are
 being qualified. Fresh lane heartbeats alone do not prove useful task progress
 or authorize an external owner restart.
+
+## Retained attempts and owner recovery
+
+`expired_attempt_settlement_unavailable` means a real callback's outcome is
+unknown. An expired lease cannot establish whether that callback ran. The
+watchdog classifies this as `retained_attempt_settlement_wait` before stale
+in-progress, unclaimed-todo and retrying heuristics. A later lane's settlement
+wait takes precedence over the first lane's ordinary `no_ready_tasks` result.
+The marker withholds recovery; it cannot authorize a retry or completion.
+
+For runtimes that publish daemon pass heartbeats rather than task-state JSON,
+set `daemon_pass_heartbeat_paths` on the probe inventory board to an ordered
+list of absolute paths, one per lane (`max_lanes`). The adapter reports only a
+settlement-wait marker from the declared heartbeat schema when the daemon's
+PID, process birth and boot match and its completion timestamp is at most 120
+seconds old. Counts, writes and completion flags in that file confer no
+authority. Missing or stale metadata does not release an owner-retention policy.
+
+For an accepted owner whose native contract forbids external replacement, put
+this operator policy on its fleet board and on its service monitor config:
+
+```json
+{
+  "recovery_policy": {
+    "schema": "agent-supervisor/owner-retention@1",
+    "mode": "retain",
+    "profile_id": "semantic-addressed-world-model-v1/m70",
+    "reason": "The accepted M70 contract retains the generation-48 owner."
+  }
+}
+```
+
+`profile_id` identifies the operator's native contract; it is not a capability
+or grant. Only the four shown policy fields are accepted. A present malformed
+policy fails closed. Boards without this policy retain their existing recovery
+contract; the expired-callback denial applies independently of configuration.
+
+During a denial, the watchdog still probes and records health. It preserves
+attempt counters, cooldowns, pending repairs, operator holds and live repair
+workers. It does not cancel a shared repair cgroup, review away a hold, launch
+a coding repair, rearm tasks, clear sidecars, signal processes, dump/import a
+database or replace the owner. Direct heal helpers and the service monitor
+apply the same denial before their effects. Existing native workers can still
+process independently admitted work; the watchdog adds no task pause or grant.
+
+Automatic diagnosis distinguishes an unresolved callback from a missing
+runtime asset or stale client. The existing native completion and terminal
+failure reconciliations may settle exact receipt-backed outcomes. They must
+preserve UNKNOWN outcomes. Do not add a generic settlement RPC or infer a
+non-dispatch receipt from elapsed time. A cached unresolved incident remains
+retained until its evidence is explicitly superseded after native settlement;
+removing an operator policy alone does not establish callback custody.
+
+For deployment, qualify a board-scoped runtime with private inventories and
+hermetic effect stubs before enabling it. Preserve the accepted owner's
+identity and the other boards' recovery policies. A health/readiness sample
+must never replenish the task attempt budget or establish semantic completion.

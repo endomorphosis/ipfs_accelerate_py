@@ -268,6 +268,12 @@ def _native_heal_binding_reason(board: Mapping[str, Any]) -> str:
     return "" if _inventory_board(board) else "explicit_inventory_required"
 
 
+def _recovery_denial(board: Mapping[str, Any], observation: Mapping[str, Any]) -> str:
+    from .recovery_policy import recovery_denial
+
+    return recovery_denial(board, observation)
+
+
 def _objectives_path(cwd: Path, config_path: Any) -> Path | None:
     if not isinstance(config_path, str) or not config_path:
         return None
@@ -677,6 +683,8 @@ def unstall_stale_native_work(
         "completion_authority": False,
         "unstalled": [],
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     inventory = _inventory_board(board)
     endpoint = inventory.get("quack_endpoint")
     if not isinstance(endpoint, str) or not endpoint.startswith("quack:"):
@@ -832,6 +840,8 @@ def run_board_local_repair(
         "completion_authoritative": False,
         "unstalled": [],
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     if not passed:
         return {**empty, "reason": "no_locally_validated_blocked_tasks"}
     inventory = _inventory_board(board)
@@ -971,6 +981,8 @@ def run_board_claim_verification_recover(
         "completion_authoritative": False,
         "unstalled": [],
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     inventory = _inventory_board(board)
     cwd = Path(str(inventory.get("cwd") or board.get("cwd") or ""))
     handoff = _board_handoff_argv(inventory)
@@ -1110,6 +1122,8 @@ def rearm_locally_validated_blocked_tasks(
         "completion_authoritative": False,
         "unstalled": [],
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     passed = [
         str(item.get("task_id") or "")
         for item in (results or [])
@@ -1202,6 +1216,9 @@ def provisionally_complete_disabled_extra_gate_goals(
     Extra-gate launched with --no-objective-goal-migration cannot close goals
     after the task frontier. Fleet uses the live owner transport, not DuckDB.
     """
+    if reason := _recovery_denial(board, observation):
+        return {"status": "wait", "recipe": "native_goals_still_active",
+                "reason": reason, "completion_authority": False, "changed_goal_ids": []}
     from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import GoalState
     schema = "ipfs_accelerate_py/agent-supervisor/provisional-goal-completion@1"
     empty = {
@@ -1565,6 +1582,8 @@ def clear_overlay_copies_blocking_owner_start(
         "completion_authority": False,
         "removed": [],
     }
+    if reason := _recovery_denial(board, {}):
+        return {**empty, "reason": reason}
     board_id = str(board.get("id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return {**empty, "reason": "retain_owner_checkout_untouched"}
@@ -1626,6 +1645,8 @@ def dump_board_before_owner_stop(
         "completion_authority": False,
         "completion_authoritative": False,
     }
+    if reason := _recovery_denial(board, {}):
+        return {**empty, "reason": reason}
     if reason := _native_heal_binding_reason(board):
         return {**empty, "reason": reason}
     inventory = _inventory_board(board)
@@ -1675,6 +1696,8 @@ def _exclusive_owner_unit(
 
     if observation_only(board):
         return ""
+    if _recovery_denial(board, observation or {}):
+        return ""
     inventory = _inventory_board(board)
     if not inventory:
         return ""
@@ -1697,6 +1720,11 @@ def _exclusive_owner_unit(
 
 def diagnose_board_repair_problems(observation: Mapping[str, Any]) -> dict[str, Any]:
     """Map probe evidence to the rows the dump/stop/repair pipeline may touch."""
+    if reason := _recovery_denial({}, observation):
+        return {"blocked_aliases": [], "in_progress_aliases": [], "retrying_aliases": [],
+                "unstall_all_in_progress": False, "rearm_retrying": False,
+                "missing_lanes": False, "leftover_retrying": False,
+                "problems": [], "recovery_denial": reason}
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     blocked = [str(item) for item in details.get("blocked_task_ids") or [] if item]
     lanes = details.get("lanes") if isinstance(details.get("lanes"), list) else []
@@ -2115,6 +2143,10 @@ def bind_schema_serve_in_place(
     apply() serves in place when live schema is newer, or migrates forward.
     """
 
+    if reason := _recovery_denial(board, observation):
+        return {"status": "skip", "recipe": "bind_schema_serve_in_place",
+                "reason": reason, "completion_authority": False}
+
     def _mirror_schema(result: dict[str, Any]) -> dict[str, Any]:
         try:
             from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -2156,6 +2188,11 @@ def bind_schema_serve_in_place(
         return _mirror_schema({**empty, "reason": "source_root_absent", "live_owner_unit": unit})
     if not Path(cwd).is_dir():
         return _mirror_schema({**empty, "reason": "source_root_absent", "live_owner_unit": unit})
+    from .runtime_assets import schema_runtime_assets
+    assets = schema_runtime_assets(overlay, board_id=board_id)
+    if assets.get("valid") is not True:
+        return {**empty, "reason": assets.get("reason", "schema_runtime_assets_unavailable"),
+                "missing_assets": assets.get("missing_assets", [])}
     user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
     dropin_dir = user_dir / f"{unit}.d"
     dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -2562,6 +2599,8 @@ def attach_native_lanes(
         "supervisors": 0,
         "daemons": 0,
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     if reason := _native_heal_binding_reason(board):
         return {**empty, "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
@@ -2676,6 +2715,8 @@ def run_board_dump_stop_repair_import_start(
         "completion_authority": False,
         "completion_authoritative": False,
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     if reason := _native_heal_binding_reason(board):
         return {**empty, "reason": reason}
     if dump_stop_repair_import_start_already_recorded(state or {}, observation):
@@ -2861,6 +2902,8 @@ def should_run_dump_stop_repair_import_start(
     SPAR/ASEH are never dump-stopped. Live claiming workers are not interrupted
     unless diagnosis already says leftover retrying or missing lanes.
     """
+    if _recovery_denial(board, observation):
+        return False
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return False
@@ -2905,6 +2948,8 @@ def should_run_dump_stop_repair_import_start(
 
 def restore_dirty_control_plane(board: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
     """Drop uncommitted control-plane dirt back to HEAD. Never forges completion."""
+    if reason := _recovery_denial(board, observation):
+        return {"status": "skip", "reason": reason, "completion_authority": False}
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
     integrity = details.get("source_integrity") if isinstance(details.get("source_integrity"), dict) else {}
     if integrity.get("reason") != "configured_control_plane_dirty":
@@ -3025,6 +3070,8 @@ def collapse_extra_gate_recursion(
         "recipe": "collapse_extra_gate_recursion",
         "completion_authority": False,
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     if reason := _native_heal_binding_reason(board):
         return {**empty, "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
@@ -3180,6 +3227,8 @@ def admit_native_owner_overlay(
         "recipe": "overlay_first_native_admission",
         "completion_authority": False,
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return _mirror_native_owner_overlay(
@@ -3325,6 +3374,8 @@ def relaunch_native_lanes_on_ready_owner(
         "recipe": "relaunch_native_lanes_on_ready_owner",
         "completion_authority": False,
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "status": "skip", "reason": reason}
     if reason := _native_heal_binding_reason(board):
         return {**empty, "status": "skip", "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
@@ -3392,6 +3443,8 @@ def restart_native_owner_and_attach(
         "recipe": "restart_native_owner_and_attach",
         "completion_authority": False,
     }
+    if reason := _recovery_denial(board, observation):
+        return {**empty, "reason": reason}
     if reason := _native_heal_binding_reason(board):
         return {**empty, "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
@@ -3500,9 +3553,12 @@ def _systemd_start_unit(unit: str) -> None:
 
 def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
     """Formal logic first. llm_router is the residual coding path."""
+    observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
+    if reason := _recovery_denial(board, observation):
+        return {"status": "wait", "recipe": "retain_native_owner", "reason": reason,
+                "completion_authority": False}
     if reason := _native_heal_binding_reason(board):
         return {"status": "skip", "reason": reason, "completion_authority": False}
-    observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
     stall = str(state.get("stall_class") or "")
     dirty = restore_dirty_control_plane(board, observation)
     if dirty.get("status") == "applied":

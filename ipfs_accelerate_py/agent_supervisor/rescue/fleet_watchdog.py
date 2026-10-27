@@ -25,10 +25,12 @@ from pathlib import Path
 from typing import Any
 
 from .live_board_probe import COMPLETED, native_population, read_json_object
+from .recovery_policy import recovery_denial, retained_attempt_wait
 
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
 WAIT_STALLS = {
+    "retained_attempt_settlement_wait",
     "in_progress_awaiting_effect",
     "independent_work_beside_blocked_peer",
     "independent_todos_unclaimed",
@@ -196,6 +198,8 @@ def _locally_validated_blocked_ids(
 
 def classify_stall(observation: dict[str, Any], previous: dict[str, Any] | None = None) -> str:
     """Map probe evidence to a bounded stall class. Never infers completion."""
+    if retained_attempt_wait(observation):
+        return "retained_attempt_settlement_wait"
     health = observation.get("health")
     reasons = {str(x) for x in observation.get("reason_codes") or []}
     details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
@@ -718,6 +722,7 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
                            reason_codes=[*observation.get("reason_codes", []), "no_task_progress"])
         state["observation"] = observation
     state["stall_class"] = ("external_dependency_wait" if availability == "dependency_wait"
+                            and not retained_attempt_wait(observation)
                             else classify_stall(observation, previous))
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]
@@ -734,11 +739,12 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     # Merely upgrading the watchdog cannot replay an interrupted launch.
     state.setdefault("ensure_attempts", previous.get("attempts", 0))
     epoch = _ready_owner_epoch(details)
-    if epoch is not None and epoch != previous.get("ensure_owner_epoch"):
+    denied = recovery_denial(board, observation)
+    if not denied and epoch is not None and epoch != previous.get("ensure_owner_epoch"):
         state.update(ensure_attempts=0, ensure_owner_epoch=epoch)
     state.setdefault("next_action_at", 0)
     state["health"] = health
-    if health == "healthy" and observation.get("completion_candidate") is not True:
+    if not denied and health == "healthy" and observation.get("completion_candidate") is not True:
         state.update(incident_since=now, attempts=0, ensure_attempts=0)
         state.pop("pending_action", None)
     return state
@@ -796,6 +802,9 @@ def reset_failed_ensure_unit(board: dict[str, Any]) -> bool:
 
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
     if observation_only(board):
+        return ""
+    if (recovery_denial(board, state.get("observation") or {})
+            or state.get("stall_class") == "retained_attempt_settlement_wait"):
         return ""
     health = state["health"]
     diagnostic_stall = (isinstance(board.get("service_fleet_binding"), dict)
@@ -968,9 +977,10 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "action": "diagnostic_only", "diagnostics": diagnostics,
                 })
         state = assess(observation, previous, board, now)
+        denial = recovery_denial(board, observation)
         if observe_only or "observation_only" in state:
             state["observation_only"] = observe_only
-        if observe_only:
+        if observe_only or denial:
             # Observation must precede every recovery path, including WAIT
             # cancellation and hold review below. Keep existing recovery
             # history byte-for-byte in value; healthy samples cannot reset it.
@@ -980,10 +990,15 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     state[key] = previous[key]
                 else:
                     state.pop(key, None)
-            state.update(observation_only=True, observed_health=state["health"],
-                         planned_action="", holds=hold_paths(board))
+            if denial:
+                state["recovery_denial"] = denial
+            else:
+                state.pop("recovery_denial", None)
+            state.update(observed_health=state["health"], planned_action="",
+                         holds=hold_paths(board))
             write_json(path, state)
             return state
+        state.pop("recovery_denial", None)
         if apply and state.get("stall_class") in WAIT_STALLS:
             job = read_json(state_root / "repairs" / board_id / "job.json")
             if job.get("status") == "running":

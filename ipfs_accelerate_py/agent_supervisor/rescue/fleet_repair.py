@@ -26,6 +26,7 @@ from .fleet_watchdog import (
     write_json, supervisor_pythonpath, observation_only,
 )
 from .fleet_watchdog import repair_hold_paths as hold_paths
+from .recovery_policy import recovery_denial
 
 DEFAULT_REPAIR_JOB_UNIT = "ipfs-taskboard-repair-job.service"
 DEFAULT_REPAIR_DISK_AVAILABLE_BYTES = 8 * 1024 ** 3
@@ -262,6 +263,25 @@ def _record_productive_continuation(job: dict[str, Any], progress: dict[str, Any
                reconciled_evidence=progress["after"], reconciled_at=now)
 
 
+def _recovery_denial(config: dict[str, Any], board: dict[str, Any],
+                     observation: Any = None) -> str:
+    """A configured retention policy and unresolved custody cannot dispatch coding work.
+
+    Recheck the configured board rather than a caller's copied board or a job's
+    cached policy. A denial preserves queue history, cooldowns and live workers.
+    """
+    state = read_json(Path(config["state_dir"]) / board["id"] / "state.json")
+    sample = state.get("observation")
+    job = read_json(Path(config["state_dir"]) / "repairs" / board["id"] / "job.json")
+    incident = job.get("latest_incident")
+    cached = incident.get("observation") if isinstance(incident, dict) else {}
+    return (recovery_denial(board, sample if isinstance(sample, dict) else {})
+            or ("retained_attempt_settlement_wait"
+                if state.get("stall_class") == "retained_attempt_settlement_wait" else "")
+            or recovery_denial(board, cached if isinstance(cached, dict) else {})
+            or recovery_denial(board, observation if isinstance(observation, dict) else {}))
+
+
 def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command) -> list[dict[str, Any]]:
     """Fresh probes can retire recovered jobs or advance useful continuations.
 
@@ -274,7 +294,7 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
     root = Path(config["state_dir"])
     results = []
     for board in config["boards"]:
-        if observation_only(board):
+        if observation_only(board) or _recovery_denial(config, board):
             continue
         path = root / "repairs" / board["id"] / "job.json"
         job = read_json(path)
@@ -333,12 +353,14 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
             fresh = normalize_probe(board["id"], runner(board["probe"], cwd=board["cwd"], timeout=90))
         except Exception:
             fresh = {"board_id": board["id"], "health": "unknown"}
+        if _recovery_denial(config, board, fresh):
+            continue
         with lock(path.parent / "queue.lock") as acquired:
             if not acquired:
                 continue
             current = read_json(path)
             if (any(current.get(key) != value for key, value in identity.items())
-                    or hold_paths(board)):
+                    or hold_paths(board) or _recovery_denial(config, board, fresh)):
                 continue
             current["reconcile_checked_at"] = now
             evidence = repair_evidence(fresh)
@@ -474,6 +496,9 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
         raise ValueError("incident board is not authorized in fleet configuration")
     if observation_only(boards[board_id]):
         return {"status": "observation_only", "board_id": board_id}
+    denial = _recovery_denial(config, boards[board_id], incident.get("observation"))
+    if denial:
+        return {"status": "recovery_wait", "reason": denial, "board_id": board_id}
     directory = Path(config["state_dir"]) / "repairs" / board_id
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
@@ -878,6 +903,14 @@ def _service_fleet_recovery(board: dict[str, Any], incident: dict[str, Any],
 def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
                         observation: dict[str, Any], publication_dir: Path) -> dict[str, Any]:
     """Verify progress or current publication; model reports grant neither."""
+    prior = incident.get("observation")
+    denial = (recovery_denial(board, observation)
+              or recovery_denial(board, prior if isinstance(prior, dict) else {}))
+    if denial:
+        # A wait is not successful recovery. Do not publish or open even a
+        # derived metadata owner on the strength of unresolved custody.
+        return {"verified": False, "wait": True, "reason": denial,
+                "completion_authority": False}
     if hold_paths(board):
         return _mirror_job_recovery({"verified": False, "reason": "operator_hold"})
     details = observation.get("details", {})
@@ -926,7 +959,7 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
     root = Path(config["state_dir"]) / "repairs"
     candidates = []
     for board in config["boards"]:
-        if observation_only(board):
+        if observation_only(board) or _recovery_denial(config, board):
             continue
         path = root / board["id"] / "job.json"
         job = read_json(path)
@@ -967,6 +1000,12 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
             held.append({"board_id": board["id"],
                          "next_attempt_at": job.get("next_attempt_at", now),
                          "reason": "observation_only"})
+            continue
+        denial = _recovery_denial(config, board)
+        if denial:
+            held.append({"board_id": board["id"],
+                         "next_attempt_at": job.get("next_attempt_at", now),
+                         "reason": denial})
             continue
         if board_is_complete(config, board["id"]):
             continue
@@ -1198,12 +1237,14 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     unit = repair_job_unit(config)
     jobs = [(board, job) for board, job in _iter_repair_jobs(config)
             if job.get("repair_job_unit", DEFAULT_REPAIR_JOB_UNIT) == unit]
-    if any(observation_only(board) and job.get("status") == "running"
+    if any((observation_only(board) or _recovery_denial(config, board))
+           and job.get("status") == "running"
            for board, job in jobs):
         # Observation does not cancel an already-running worker, including
         # when another board shares the dispatcher's single job unit.
         return False
-    jobs = [(board, job) for board, job in jobs if not observation_only(board)]
+    jobs = [(board, job) for board, job in jobs
+            if not observation_only(board) and not _recovery_denial(config, board)]
     running = [(board, job) for board, job in jobs if job.get("status") == "running"]
     if running:
         return any(
@@ -1232,6 +1273,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     configured = next(item for item in config["boards"] if item["id"] == board["id"])
     if observation_only(configured):
         return {"status": "observation_only", "board_id": board["id"]}
+    denial = _recovery_denial(config, configured)
+    if denial:
+        return {"status": "recovery_wait", "reason": denial, "board_id": board["id"]}
     limit = limits[board["id"]]  # A caller's copied board cannot remove the configured cap.
     policy = dict(config["repair_worker"])
     if hold_paths(board):
@@ -1290,6 +1334,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         initial = normalize_probe(board["id"], command(board["probe"], cwd=board["cwd"], timeout=90))
     except Exception:
         initial = {"board_id": board["id"], "health": "unknown"}
+    denial = _recovery_denial(config, configured, initial)
+    if denial:
+        return {"status": "recovery_wait", "reason": denial, "board_id": board["id"]}
     initial_at = time.time()
     if "service_fleet_binding" in board:
         verification = verify_job_recovery(board, read_json(path).get("latest_incident", {}), initial,
@@ -1299,7 +1346,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                 if not acquired:
                     return {"status": "queue_busy"}
                 job = read_json(path)
-                if _launch_selection(job) != selection or hold_paths(board):
+                if (_launch_selection(job) != selection or hold_paths(board)
+                        or _recovery_denial(config, configured, initial)):
                     return {"status": "completion_superseded"}
                 status = "retired_wait" if verification.get("wait") is True else "verified_healthy"
                 job.update(status=status, verification=verification, latest_probe=initial,
@@ -1323,6 +1371,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
             return {"status": "queue_busy"}
+        denial = _recovery_denial(config, configured, initial)
+        if denial:
+            return {"status": "recovery_wait", "reason": denial, "board_id": board["id"]}
         if hold_paths(board):
             return {"status": "operator_hold", "board_id": board["id"]}
         job = read_json(path)
@@ -1376,6 +1427,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             *inner]
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
+    denial = _recovery_denial(config, configured, initial)
+    if denial:
+        return {"status": "recovery_wait", "reason": denial, "board_id": board["id"]}
     with prompt.open("rb") as inp, log_path.open("wb") as log:
         os.chmod(log_path, 0o600)
         storage = _storage_preflight(policy, path, config["state_dir"])
