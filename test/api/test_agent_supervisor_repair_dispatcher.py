@@ -1011,3 +1011,27 @@ def test_operator_holds_block_and_reset_exhausted_failure_dispatch(rig, location
     assert not state["exhausted_wait_observations"]
     hold.unlink()
     assert not observe(config, state, now=now + 32, probe=probe)["incidents"]
+
+
+def test_todo_board_is_real_pending_work_for_dead_lane(rig):
+    config, now, lane, live, probe = rig
+    board = config.repo_root / "todo.md"
+    board.write_text("## VOG-001 Bootstrap\n- Status: todo\n- Depends on: none\n")
+    live[200] = False
+    status(lane, active_task_id="")
+    result = observe(config, {}, now=now, probe=probe)
+    assert result["pending_task_ids"] == ["VOG-001"]
+    assert result["selectable_task_ids"] == ["VOG-001"]
+    assert "lane_dead_pending" in kinds(result)
+
+
+def test_verified_progress_clock_is_not_refreshed_by_log_spam(rig):
+    config, now, lane, live, probe = rig
+    status(lane, meaningful_progress_at_ms=(now - 2000) * 1000)
+    result = observe(config, {}, now=now, probe=probe)
+    assert "lane_no_progress" in kinds(result)
+    incident = next(item for item in result["incidents"] if item["kind"] == "lane_no_progress")
+    assert incident["evidence"]["evidence_basis"] == "verified_progress_clock"
+    # A subsequent verified transition, rather than arbitrary stdout, clears it.
+    status(lane, meaningful_progress_at_ms=now * 1000)
+    assert "lane_no_progress" not in kinds(observe(config, {}, now=now, probe=probe))

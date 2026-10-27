@@ -372,7 +372,7 @@ def observe(
         tasks = _tasks(_path(config.repo_root, manifest["todo_path"]), manifest.get("task_header_prefix", "## TASK-"))
         if not tasks:
             raise ValueError("configured taskboard has no recognized task headers")
-    pending = sorted(k for k, v in tasks.items() if v["status"] in {"pending", "ready", "blocked", "failed", "in_progress", "in-progress"})
+    pending = sorted(k for k, v in tasks.items() if v["status"] in {"todo", "pending", "ready", "blocked", "failed", "in_progress", "in-progress"})
     ready = sorted(k for k in pending if all(tasks.get(dep, {}).get("status") in _COMPLETED for dep in tasks[k]["depends"]))
     board_digest = _digest(tasks)
     sources = config.evidence_paths or (Path(__file__).with_name("lane_resume.py"), Path(__file__).with_name("supervisor_watchdog.py"))
@@ -409,6 +409,8 @@ def observe(
             and _lane_storage_identity(process["pid"], config.repo_root.resolve(), status_path))
         transition = status.get("last_task_transition_at_ms")
         transition_age = max(0.0, now - float(transition) / 1000) if transition else None
+        meaningful = status.get("meaningful_progress_at_ms", status.get("last_verified_progress_at_ms"))
+        meaningful_age = max(0.0, now - float(meaningful) / 1000) if meaningful else None
         log_path = _path(config.repo_root, lane.get("log_path") or directory / "supervisor.log")
         lane_holds = [str(p) for p in (directory / "hold", directory / "operator.hold") if p.exists()]
         intentional = status.get("state") in _HELD_STATES or status.get("terminal_reason") == "resume_stopped"
@@ -423,6 +425,7 @@ def observe(
                           "last_task_transition_at_ms": transition,
                           "gate_recovery_needed": status.get("gate_recovery_needed") is True,
                           "heartbeat_age_seconds": heartbeat_age, "transition_age_seconds": transition_age,
+                          "meaningful_progress_age_seconds": meaningful_age,
                           "storage_pressure": storage_pressure, "emergency_identity_verified": bool(emergency),
                           "log_age_seconds": _age(log_path, now), "status_error": status_error,
                           "held": bool(intentional or lane_holds), "hold_paths": lane_holds})
@@ -483,9 +486,13 @@ def observe(
                                  failure_evidence_fingerprint=signature)
             if task and phase not in {"gate_withheld", "gate_retry_wait", "gate_recovery_needed", "attempt_retry_wait"}:
                 log_age, transition_age = lane["log_age_seconds"], lane["transition_age_seconds"]
-                if log_age is not None and transition_age is not None and min(log_age, transition_age) >= config.quiet_seconds:
+                meaningful_age = lane["meaningful_progress_age_seconds"]
+                stalled = (meaningful_age >= config.quiet_seconds if meaningful_age is not None else
+                           log_age is not None and transition_age is not None and min(log_age, transition_age) >= config.quiet_seconds)
+                if stalled:
                     incident("lane_no_progress", key, task, log_age_seconds=log_age,
-                             transition_age_seconds=transition_age)
+                             transition_age_seconds=transition_age, meaningful_progress_age_seconds=meaningful_age,
+                             evidence_basis="verified_progress_clock" if meaningful_age is not None else "legacy_log_and_transition")
             if task and (phase == "gate_recovery_needed" or lane["gate_recovery_needed"]):
                 incident("gate_fixed_point", key, task,
                          gate_evidence_fingerprint=lane["gate_evidence_fingerprint"],

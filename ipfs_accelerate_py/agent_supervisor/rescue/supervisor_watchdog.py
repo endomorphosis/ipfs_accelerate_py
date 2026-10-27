@@ -1597,6 +1597,7 @@ def check_lane_heartbeat(
         result["schema"] = str(status.get("schema") or "")
         result["active_task_id"] = str(status.get("active_task_id") or "")
         result["last_task_transition_at_ms"] = status.get("last_task_transition_at_ms")
+        result["meaningful_progress_at_ms"] = status.get("meaningful_progress_at_ms", status.get("last_verified_progress_at_ms"))
         result["gate_evidence_fingerprint"] = str(status.get("gate_evidence_fingerprint") or "")
         result["gate_recovery_needed"] = status.get("gate_recovery_needed") is True
         result["repair_packet"] = str(status.get("repair_packet") or "")
@@ -1793,23 +1794,28 @@ def classify_progress_stall(
     log_age_seconds: float | None,
     task_transition_age_seconds: float | None,
     quiet_seconds: float,
+    meaningful_progress_age_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Classify a live lane whose heartbeat is fresh but work is not moving.
 
-    A missing log age or transition age is not a stall. Idle lanes with no
-    active task are not stalls. The result never grants completion authority.
+    When the owner publishes an explicit verified-progress clock, log growth
+    cannot refresh it. Legacy lanes without that clock still require both
+    quiet log and task-transition evidence. Idle lanes are not stalls.
     """
 
-    evidence_present = (
-        log_age_seconds is not None and task_transition_age_seconds is not None
+    verified_clock = meaningful_progress_age_seconds is not None
+    evidence_present = verified_clock or (log_age_seconds is not None and task_transition_age_seconds is not None)
+    progress_quiet = (
+        float(meaningful_progress_age_seconds) >= quiet_seconds
+        if verified_clock else
+        evidence_present and float(log_age_seconds) >= quiet_seconds and float(task_transition_age_seconds) >= quiet_seconds
     )
     stalled = bool(
         process_alive
         and not heartbeat_stale
         and bool(active_task_id)
         and evidence_present
-        and float(log_age_seconds) >= quiet_seconds
-        and float(task_transition_age_seconds) >= quiet_seconds
+        and progress_quiet
     )
     return {
         "progress_stalled": stalled,
@@ -1817,6 +1823,8 @@ def classify_progress_stall(
         "active_task_id": active_task_id,
         "log_age_seconds": log_age_seconds,
         "task_transition_age_seconds": task_transition_age_seconds,
+        "meaningful_progress_age_seconds": meaningful_progress_age_seconds,
+        "evidence_basis": "verified_progress_clock" if verified_clock else "legacy_log_and_transition",
         "quiet_seconds": quiet_seconds,
         "completion_authority": False,
         "work_complete": False,
@@ -1840,7 +1848,7 @@ def _millis_age_seconds(value: Any) -> float | None:
 
 _COMPLETED_TODO_STATUSES: Final[frozenset[str]] = frozenset({"completed", "complete", "done"})
 _SELECTABLE_TODO_STATUSES: Final[frozenset[str]] = frozenset(
-    {"pending", "ready", "in_progress"}
+    {"todo", "pending", "ready", "in_progress", "in-progress"}
 )
 
 
@@ -2112,6 +2120,7 @@ class SupervisorWatchdog:
                 heartbeat_check.get("last_task_transition_at_ms")
             ),
             quiet_seconds=self.progress_quiet_seconds,
+            meaningful_progress_age_seconds=_millis_age_seconds(heartbeat_check.get("meaningful_progress_at_ms")),
         )
         try:
             retry_remaining_ms = float(heartbeat_check.get("next_retry_at_ms") or 0) - time.time() * 1000
