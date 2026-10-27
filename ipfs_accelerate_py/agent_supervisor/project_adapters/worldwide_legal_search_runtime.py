@@ -10,10 +10,12 @@ import argparse
 import contextlib
 from dataclasses import asdict, dataclass
 import fcntl
+import fnmatch
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import signal
 import subprocess
@@ -27,6 +29,57 @@ from typing import Any, Mapping
 
 MODULE = "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime"
 COMPLETED = {"completed", "complete", "done"}
+
+# This stdlib-only validator is embedded verbatim in the native immutable
+# validation argv. Candidate imports cannot replace its scope or red/green
+# checks. Every baseline module comes from the admitted Git object.
+REPAIR_VALIDATOR = r'''
+import hashlib, json, os, pathlib, subprocess, sys, tarfile, tempfile, xml.etree.ElementTree as ET
+b = json.loads(sys.argv[1]); root = pathlib.Path.cwd()
+def command(argv, *, cwd=root, env=None, timeout=900):
+    return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, timeout=timeout)
+def require(ok, reason):
+    if not ok: raise SystemExit(reason)
+require(command(['git','merge-base','--is-ancestor',b['source_revision'],'HEAD']).returncode == 0, 'repair baseline is not an ancestor')
+changed = command(['git','diff','--name-only',b['source_revision']]).stdout.decode().splitlines()
+changed += command(['git','ls-files','--others','--exclude-standard']).stdout.decode().splitlines()
+require(set(changed) <= set(b['allowed_paths']), 'repair changed an undeclared path')
+for path, digest in b['protected_hashes'].items():
+    target = root/path
+    require(target.is_file() and not target.is_symlink() and hashlib.sha256(target.read_bytes()).hexdigest() == digest, 'repair changed a protected regression or criterion')
+regression = root/b['regression_path']
+require(regression.is_file() and not regression.is_symlink() and 0 < regression.stat().st_size <= 131072, 'repair regression is missing or unbounded')
+with tempfile.TemporaryDirectory(prefix='wwl-repair-red-green-') as temporary:
+    base = pathlib.Path(temporary); checkout = base/'baseline'; checkout.mkdir()
+    listing = command(['git','ls-tree','-r','--name-only',b['source_revision']]).stdout.decode().splitlines()
+    names = [p for p in listing if (p.startswith('ipfs_accelerate_py/') and p.endswith('.py')) or p in b['baseline_inputs']]
+    require(len(names) <= 10000, 'repair baseline source exceeds bound')
+    archive = subprocess.Popen(['git','archive',b['source_revision'],'--',*names], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    total = 0
+    with tarfile.open(fileobj=archive.stdout, mode='r|') as stream:
+        for member in stream:
+            total += member.size
+            require(member.isdir() or member.isfile(), 'repair baseline contains a link')
+            require(total <= 209715200 and member.size <= 16777216, 'repair baseline bytes exceed bound')
+            stream.extract(member, checkout, filter='data')
+    require(archive.wait(timeout=30) == 0, 'repair baseline archive failed')
+    target = checkout/b['regression_path']; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(regression.read_bytes())
+    def pytest(cwd, targets, name):
+        environment = dict(os.environ); environment['PYTHONPATH'] = str(cwd)
+        environment['PYTHONDONTWRITEBYTECODE'] = '1'
+        environment['IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB'] = str(base/(name+'-seal.duckdb'))
+        report = base/(name+'.xml')
+        result = command([sys.executable,'-B','-m','pytest',*targets,'-q','-o','cache_dir='+str(base/(name+'-cache')),'--junitxml='+str(report)], cwd=cwd, env=environment)
+        require(report.is_file(), name+' regression produced no independent test report')
+        suites = ET.parse(report).getroot(); suites = [suites] if suites.tag == 'testsuite' else suites.findall('testsuite')
+        counts = {key:sum(int(s.attrib.get(key,0)) for s in suites) for key in ('tests','errors','failures')}
+        return result, counts
+    red, counts = pytest(checkout,[b['regression_path']],'baseline')
+    require(red.returncode == 1 and counts['tests'] >= 1 and counts['errors'] == 0 and counts['failures'] >= 1, 'new regression did not reproduce a test failure on the admitted baseline')
+    green, counts = pytest(root,[b['regression_path'],*b['focused_tests']],'candidate')
+    require(green.returncode == 0 and counts['tests'] >= 1 and counts['errors'] == counts['failures'] == 0, 'repair candidate failed independent regressions')
+print(json.dumps({'schema':'wwl.native-repair-validation@1','action_id':b['action_id'],'baseline_revision':b['source_revision'],'baseline_failure_verified':True,'candidate_regressions_verified':True,'completion_authority':False},sort_keys=True))
+'''
 
 
 def identity(value: Any) -> str:
@@ -205,8 +258,9 @@ def bootstrap(config: CampaignConfig, *, already_locked: bool = False) -> dict[s
         atomic_json(config.state_root / "typed-goals.json", typed)
         with DatabaseTaskSource(config.database, owner_id=config.run_id + ":bootstrap", repository_tree_id=population["repository_tree_id"], plan_root_cid=population["plan_root_cid"]) as source:
             materialization = dict(source.materialize(population))
-            snapshot = source.snapshot().to_dict()
-            ready = [task.task_alias for task in source.ready_tasks(limit=256).tasks]
+            with source.intent.read_session():
+                snapshot = source.snapshot().to_dict()
+                ready = [task.task_alias for task in source.ready_tasks(limit=256).tasks]
         expected = [task["id"] for task in plan["tasks"] if not task["depends_on"]]
         if ready != expected or snapshot["task_count"] != len(plan["tasks"]) or snapshot["goal_count"] != len(plan["goals"]):
             raise ValueError("native materialization lost the exact task/goal population or readiness frontier")
@@ -232,15 +286,25 @@ class CampaignRuntime:
         if ledger.is_file():
             self._actions = read_json(ledger)
         self._last_failure: dict[str, Any] = {}
+        previous_status = config.state_root / "campaign-status.json"
+        if previous_status.is_file():
+            previous = read_json(previous_status)
+            failure = previous.get("native_error", {})
+            if previous.get("run_id") == config.run_id and isinstance(failure, dict) and failure.get("receipt_id") == identity({key: value for key, value in failure.items() if key != "receipt_id"}):
+                self._last_failure = failure
         self._last_result: dict[str, Any] = {}
         self._worker: threading.Thread | None = None
         self._daemon: Any = None
         self._progress_at = time.time()
         self._progress_token = ""
         self._passes = 0
+        self._loaded_framework_revision = git(config.framework_root, "rev-parse", "HEAD") if config.framework_root.is_dir() else ""
+        self._last_successful_pass: dict[str, Any] = {}
         self._provider_callback_entered = False
         self._retained_attempt_before_pass = False
-        self._pending_controls: list[str] = []
+        self._pending_controls: list[str] = [key for key, value in self._actions.items()
+            if value.get("request", {}).get("kind") == "reconcile" and value.get("result", {}).get("status") == "accepted"
+            and value.get("observation", {}).get("status") == "running"]
         self._repair_thread: threading.Thread | None = None
 
     def repository_for_task(self, alias: str) -> Path:
@@ -273,12 +337,25 @@ class CampaignRuntime:
             "--max-task-attempts", str(self.config.max_task_attempts), "--implementation-timeout", str(self.config.task_timeout_seconds)])
         for protected in self.plan["execution"]["protected_acceptance_inputs"]:
             args.implementation_protected_path.append(protected)
+        for protected in ("config/worldwide_supervisor_host.json", "scripts/worldwide_supervisor_host.py",
+                          "implementation_plan/worldwide_legal_search/watchdog_loop.py"):
+            if (self.config.site_root / protected).is_file() and protected not in args.implementation_protected_path:
+                args.implementation_protected_path.append(protected)
         parent = self
 
         class CampaignPortal(PortalImplementationDaemon):
             def __init__(self, **kwargs: Any):
                 kwargs["implementation_cancelled"] = parent.cancel.is_set
                 super().__init__(**kwargs)
+
+            def _proposal_scope_paths(self, task: Any, *, include_ast_companions: bool = True) -> tuple[str, ...]:
+                binding = parent.plan.get("operational_repair_binding")
+                if binding:
+                    # The immutable operational plan binds exact traced owners
+                    # and its new regression. Import companions may be read but
+                    # cannot expand autonomous repair write authority.
+                    return tuple(binding["allowed_paths"])
+                return super()._proposal_scope_paths(task, include_ast_companions=include_ast_companions)
 
         captured: dict[str, Any] = {}
         proxy = SimpleNamespace(task_source=self._daemon.task_source,
@@ -293,12 +370,13 @@ class CampaignRuntime:
     def capture(self, stage: str = "", attempt: Any = None) -> None:
         """Called only by the native DB owner worker, never the watcher."""
         source = self._daemon.task_source
-        snapshot = source.snapshot().to_dict()
-        records = source.list_tasks(limit=256).tasks
-        evidence = dict(source.intent.completion_evidence_projection())
-        receipt_cids = {item["task_cid"]: item["receipt_cid"] for item in evidence["completion_receipts"]}
-        verified = [task.task_alias for task in records if task.status in COMPLETED and task.task_cid in receipt_cids]
-        ready = [task.task_alias for task in source.ready_tasks(limit=256).tasks]
+        with source.intent.read_session():
+            snapshot = source.snapshot().to_dict()
+            records = source.list_tasks(limit=256).tasks
+            evidence = dict(source.intent.completion_evidence_projection())
+            receipt_cids = {item["task_cid"]: item["receipt_cid"] for item in evidence["completion_receipts"]}
+            verified = [task.task_alias for task in records if task.status in COMPLETED and task.task_cid in receipt_cids]
+            ready = [task.task_alias for task in source.ready_tasks(limit=256).tasks]
         running = self._daemon.list_running_attempts()
         current = attempt or (running[0] if running else None)
         active = str(getattr(current, "task_alias", "") or "")
@@ -350,6 +428,7 @@ class CampaignRuntime:
             "native_completion_receipts": cached.get("native_completion_receipts", {}), "native_completion_projection": cached.get("native_completion_projection", ""),
             "native_completion_receipts_by_alias": cached.get("native_completion_receipts_by_alias", {}),
             "native_error": failure, "native_passes": self._passes, "completion_authority": False}
+        snapshot.update(loaded_framework_revision=self._loaded_framework_revision, last_successful_native_pass=self._last_successful_pass)
         for name in ("campaign-status.json", "status.json"):
             atomic_json(self.config.state_root / name, snapshot)
         return snapshot
@@ -361,9 +440,11 @@ class CampaignRuntime:
             "native_revision": git(self.config.framework_root, "rev-parse", "HEAD"),
             "admitted_plan_revision": self.bootstrap_receipt["admitted_plan_revision"],
             "readiness_receipt": self.bootstrap_receipt["receipt_id"], "required_task_ids": list(self.tasks),
-            "bindings": {"task_source": True, "reconcile": True, "lifecycle_restart": True,
+            "bindings": {"task_source": True, "reconcile": True, "lifecycle_restart": False,
                 "route_policy": True, "independent_validation": True, "validated_promotion": True,
                 "incident_deduplication": True, "meaningful_progress": True, "repair_dispatch": enabled_repair,
+                "scoped_repair_admission": enabled_repair, "exclusive_effect_ownership": True,
+                "repair_canary_verified": False,
                 "rescue_planner": False, "rescue_orchestrator": False},
             "control_canary_verified": False, "bootstrap_only": True}
         atomic_json(self.config.state_root / "campaign-readiness.json", value)
@@ -376,6 +457,9 @@ class CampaignRuntime:
             self._reconcile_controls()
             self._last_result = dict(self._daemon.run_once())
             self.capture()
+            self._last_successful_pass = {"owner_pid": os.getpid(), "framework_revision": self._loaded_framework_revision,
+                "completed_at": time.time(), "result": self._last_result, "authority_revision": self._cached.get("authority_revision"),
+                "progress_token": self._cached.get("progress_token"), "receipt_id": identity(self._last_result)}
             previous_task = str(self._last_failure.get("task_id") or "")
             if self._last_failure and (previous_task in self._cached.get("verified_task_ids", []) or (not previous_task and not self._cached.get("active_task_id"))):
                 self._last_failure = {}
@@ -447,7 +531,13 @@ class CampaignRuntime:
             kind = request.get("kind")
             receipt = {"schema": "wwl.watchdog.action-result@1", "action_id": action_id, "status": "blocked", "receipt": identity(request)}
             reason = "native operation is not currently bound"
-            if kind == "reconcile":
+            stale = request.get("authority_revision") != str(self._cached.get("authority_revision") or "bootstrap") or request.get("accepted_tree") != identity(observed_forest(self.config))
+            held = any((self.config.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP"))
+            issued = request.get("issued_at")
+            expired = type(issued) not in (int, float) or not 0 <= time.time() - issued <= 120
+            if stale or held or expired:
+                reason = "native action is stale, held or outside its owner admission window"
+            elif kind == "reconcile":
                 # A fresh owner observation is safe while a provider is
                 # active. It cannot certify/clear ambiguous provider effects.
                 reason = "native pass reconciliation is retained at the next safe owner boundary"
@@ -458,9 +548,14 @@ class CampaignRuntime:
                 reason = "cancellation requested; native ownership/effect reconciliation required before another writer"
                 receipt.update(status="accepted", deadline_at=float(request["issued_at"]) + 120)
             elif kind == "repair" and self.config.repair_command:
-                self.cancel.set()
-                reason = "repair queued behind drained native attempt"
-                receipt.update(status="accepted", deadline_at=float(request["issued_at"]) + self.config.task_timeout_seconds)
+                try:
+                    admit_repair(self.config, path)
+                except (OSError, ValueError) as error:
+                    reason = "repair admission refused: " + str(error)[:500]
+                else:
+                    self.cancel.set()
+                    reason = "repair queued behind drained native attempt"
+                    receipt.update(status="accepted", deadline_at=float(request["issued_at"]) + self.config.task_timeout_seconds)
             self._actions[action_id] = {"request": request, "result": receipt, "reason": reason,
                 "observation": {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
                     "status": "running" if receipt["status"] == "accepted" else "blocked", "receipt": receipt["receipt"],
@@ -482,16 +577,44 @@ class CampaignRuntime:
                     "status": "blocked", "receipt": identity({"action": action_id, "native_worker_drained": True, "requires_next_native_pass": True}), "effects_verified": True}
                 self.cancel.clear()
             elif request["kind"] == "repair" and (self._repair_thread is None or not self._repair_thread.is_alive()):
+                if action["observation"].get("requires_fenced_reload"):
+                    continue
+                if action.get("repair_started"):
+                    # A restarted owner cannot prove a prior dispatcher did
+                    # not launch. Preserve the action's identity and uncertainty.
+                    action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
+                        "status": "unknown", "receipt": identity({"action": action_id, "prior_dispatch_requires_reconciliation": True}), "effects_verified": False}
+                    continue
                 # The host binds the native bounded dispatcher, which runs
                 # repair-once below; its exit code is never repair evidence.
+                action["repair_started"] = time.time()
+                atomic_json(self.config.state_root / "control/action-ledger.json", self._actions)
                 self._repair_thread = threading.Thread(target=self._execute_repair, args=(action_id, action), name="wwl-native-repair", daemon=False)
                 self._repair_thread.start()
         atomic_json(self.config.state_root / "control/action-ledger.json", self._actions)
 
     def _execute_repair(self, action_id: str, action: dict[str, Any]) -> None:
+        launched = False
+        try:
+            request_path = self.config.state_root / "control/requests" / (action_id + ".json")
+            admit_repair(self.config, request_path)
+            launched = True
+            self._dispatch_repair(action_id, action, request_path)
+        except Exception as error:
+            evidence = {"schema": "wwl.native-repair-dispatch-failure@1", "action_id": action_id,
+                "error_class": type(error).__name__, "reason": str(error)[:1500], "dispatch_may_have_started": launched}
+            atomic_json(self.config.state_root / "repairs" / action_id / "dispatch-failure.json", evidence)
+            action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
+                "status": "unknown" if launched else "blocked", "receipt": identity(evidence), "effects_verified": not launched}
+        finally:
+            # Cancellation does not establish whether a provider/effect was
+            # absent. The durable observation above retains that uncertainty.
+            self.cancel.clear()
+            atomic_json(self.config.state_root / "control/action-ledger.json", self._actions)
+
+    def _dispatch_repair(self, action_id: str, action: dict[str, Any], request_path: Path) -> None:
         from ..rescue.repair_dispatcher import Config, run_worker
 
-        request_path = self.config.state_root / "control/requests" / (action_id + ".json")
         argv = [part.replace("{request_path}", str(request_path)) for part in self.config.repair_command]
         manifest = self.config.state_root / "repair-manifest.json"
         atomic_json(manifest, {"repo_root": str(self.config.framework_root), "run_id": self.config.run_id})
@@ -502,10 +625,21 @@ class CampaignRuntime:
         result = run_worker(config, config.state_dir / "dispatcher.log", lambda process: atomic_json(config.state_dir / "dispatcher-process.json", {key: value for key, value in process.items() if key != "argv"}))
         evidence_path = config.state_dir / "native-repair-result.json"
         evidence = read_json(evidence_path) if evidence_path.is_file() else {}
-        passed = bool(evidence.get("native_completion_receipt") and evidence.get("validated") is True and evidence.get("action_id") == action_id)
+        passed = bool(evidence.get("native_completion_receipt") and evidence.get("native_projection") and evidence.get("validated") is True
+            and evidence.get("action_id") == action_id and evidence.get("action_request_identity") == identity(action["request"])
+            and evidence.get("framework_head") == git(self.config.framework_root, "rev-parse", "HEAD")
+            and evidence.get("framework_tree") == git(self.config.framework_root, "rev-parse", "HEAD^{tree}"))
         action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
-            "status": "succeeded" if passed else "failed", "receipt": identity({"dispatcher": result, "native_evidence": evidence}), "effects_verified": True}
-        self.cancel.clear()
+            "status": "running" if passed else "unknown", "receipt": identity({"dispatcher": result, "native_evidence": evidence}),
+            "effects_verified": passed, "candidate_promotion_verified": passed, "recovery_verified": False,
+            **({"requires_fenced_reload": True, "expected_framework_revision": evidence["framework_head"],
+                "original_failure_receipt": action["request"]["reproducer_receipt"], "deadline_at": min(time.time() + 300, action["result"]["deadline_at"])} if passed else {})}
+        if passed:
+            self._last_failure = {}
+            # The registered external lifecycle controller must fence/reload
+            # this lane and prove its original fault cleared. No loaded old
+            # module is allowed to resume tasks after source promotion.
+            self.stop.set()
         atomic_json(self.config.state_root / "control/action-ledger.json", self._actions)
 
     def run(self, *, once: bool = False) -> dict[str, Any]:
@@ -532,6 +666,10 @@ class CampaignRuntime:
                 self._worker.join(timeout=60)
                 if self._worker.is_alive():
                     raise RuntimeError("native worker has not drained; refusing DB ownership release")
+            if self._repair_thread is not None:
+                self._repair_thread.join(timeout=60)
+                if self._repair_thread.is_alive():
+                    raise RuntimeError("native repair worker has not drained; refusing DB ownership release")
             return self.publish(alive=False)
         finally:
             if self._worker is None or not self._worker.is_alive():
@@ -625,24 +763,101 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+def admit_repair(config: CampaignConfig, request_path: Path) -> dict[str, Any]:
+    """Resolve a current owner failure and bind exact allowed repair paths."""
+    from .worldwide_legal_search_watchdog import read_owned_json
+
+    request = read_owned_json(request_path)
+    action_id = str(request.get("action_id") or "")
+    if request.get("schema") != "wwl.watchdog.action@1" or request.get("kind") != "repair" or request.get("run_id") != config.run_id or re.fullmatch(r"[0-9a-f]{64}", action_id) is None or not request.get("reproducer_receipt"):
+        raise ValueError("repair task requires an admitted campaign action and reproducer")
+    if request_path.resolve() != config.state_root / "control/requests" / (action_id + ".json"):
+        raise ValueError("repair request is outside the immutable campaign control queue")
+    status = read_owned_json(config.state_root / "campaign-status.json")
+    if status.get("run_id") != config.run_id or status.get("hold") or status.get("effects_unknown") is not False or status.get("authority_revision") != request.get("authority_revision"):
+        raise ValueError("repair action no longer matches current canonical campaign authority")
+    if status.get("native_error", {}).get("receipt_id") != request.get("reproducer_receipt"):
+        raise ValueError("repair reproducer is an archived or resolved failure")
+    issued = request.get("issued_at")
+    if type(issued) not in (int, float) or not 0 <= time.time() - issued <= config.task_timeout_seconds + 120:
+        raise ValueError("repair action is outside its bounded admission window")
+    policy = read_owned_json(config.plan_path.with_name("watchdog.policy.json"))
+    if request.get("policy_id") != policy["policy_id"] or request.get("accepted_tree") != identity(observed_forest(config)):
+        raise ValueError("repair action policy or accepted repository forest is stale")
+    failures = list((config.state_root / "failures").glob("*.json"))
+    if len(failures) > 256:
+        raise ValueError("repair failure lookup exceeds the admitted bound")
+    matches = [value for path in failures if (value := read_owned_json(path)).get("receipt_id") == request["reproducer_receipt"]]
+    if len(matches) != 1:
+        raise ValueError("repair reproducer receipt is missing or ambiguous")
+    failure = matches[0]
+    body = {key: value for key, value in failure.items() if key != "receipt_id"}
+    if identity(body) != failure["receipt_id"] or failure.get("schema") != "wwl.native-failure@1" or failure.get("run_id") != config.run_id:
+        raise ValueError("repair reproducer integrity or campaign identity is invalid")
+    if failure.get("effects_unknown") is not False or failure.get("source_revision") != git(config.framework_root, "rev-parse", "HEAD"):
+        raise ValueError("repair requires reconciled effects and the current supervisor source")
+    if failure != status.get("native_error"):
+        raise ValueError("repair current error and durable reproducer differ")
+    if not failure.get("traceback") or not failure.get("reproduce_argv") or not failure.get("source_frames"):
+        raise ValueError("repair reproducer lacks a native traceback and source binding")
+    patterns = policy["repair_scope"]["allowed_paths"]
+    protected = set(read_json(config.plan_path)["execution"]["protected_acceptance_inputs"])
+    owners = []
+    for frame in failure["source_frames"]:
+        relative = str(frame.get("path") or "")
+        target = config.framework_root / relative
+        if not relative or Path(relative).is_absolute() or ".." in Path(relative).parts or not target.is_file() or target.is_symlink():
+            raise ValueError("repair traceback contains an unsafe source path")
+        if not any(fnmatch.fnmatchcase(relative, pattern) for pattern in patterns) or relative in protected or relative.startswith("test/"):
+            # A wrapper on the allowed list cannot authorize changing an
+            # unadmitted innermost cause or a protected test criterion.
+            raise ValueError("repair traceback source lies outside the admitted production scope")
+        expected = str(frame.get("source_sha256") or "")
+        current = hashlib.sha256(target.read_bytes()).hexdigest()
+        committed = subprocess.run(["git", "-C", str(config.framework_root), "show", "HEAD:" + relative], capture_output=True, timeout=30, check=False)
+        if not expected or expected != current or committed.returncode or hashlib.sha256(committed.stdout).hexdigest() != expected:
+            raise ValueError("repair traceback source changed after failure admission")
+        owners.append(relative)
+    owners = sorted(set(owners))
+    regression = "test/api/test_worldwide_legal_search_repair_" + action_id[:16] + ".py"
+    if (config.framework_root / regression).exists() or not any(fnmatch.fnmatchcase(regression, pattern) for pattern in patterns):
+        raise ValueError("repair regression must be a new action-specific admitted path")
+    focused = {"test/api/test_worldwide_legal_search_runtime.py", "test/api/test_worldwide_legal_search_provider.py", "test/api/test_worldwide_legal_search_goals.py"}
+    for owner in owners:
+        stem = Path(owner).stem
+        for candidate in ("test/api/test_agent_supervisor_" + stem + ".py", "test/api/test_" + stem + ".py"):
+            if (config.framework_root / candidate).is_file():
+                focused.add(candidate)
+    focused = sorted(path for path in focused if (config.framework_root / path).is_file())
+    protected.update(focused)
+    protected.update(path for path in ("pytest.ini", "test/pytest.ini", "test/conftest.py", "test/api/conftest.py") if (config.framework_root / path).is_file())
+    evidence = "artifacts/worldwide-legal-search/repairs/" + action_id + ".json"
+    protected_hashes = {path: hashlib.sha256((config.framework_root / path).read_bytes()).hexdigest() for path in sorted(protected) if (config.framework_root / path).is_file()}
+    return {"schema": "wwl.native-repair-admission@1", "request": request, "failure": failure,
+        "source_revision": failure["source_revision"], "source_paths": owners, "regression_path": regression,
+        "focused_tests": focused, "protected_paths": sorted(protected), "evidence_path": evidence,
+        "protected_hashes": protected_hashes, "allowed_paths": [*owners, regression, evidence]}
+
+
 def repair_once(config: CampaignConfig, request_path: Path) -> dict[str, Any]:
     """Execute a separate operational repair task through all native gates."""
-    request = read_json(request_path)
-    action_id = str(request.get("action_id") or "")
-    if request.get("schema") != "wwl.watchdog.action@1" or request.get("kind") != "repair" or request.get("run_id") != config.run_id or not action_id or not request.get("reproducer_receipt"):
-        raise ValueError("repair task requires an admitted campaign action and reproducer")
+    admission = admit_repair(config, request_path)
+    request, failure = admission["request"], admission["failure"]
+    action_id = request["action_id"]
     state = config.state_root / "repairs" / action_id
     task_id = "WWL-REPAIR-" + action_id[:16]
     source = read_json(config.plan_path)
+    validation_binding = {key: admission[key] for key in ("source_revision", "allowed_paths", "regression_path", "focused_tests", "protected_hashes")}
+    validation_binding.update(action_id=action_id, baseline_inputs=[path for path in admission["protected_paths"] if path in admission["protected_hashes"]])
     task = {"id": task_id, "title": "Repair the reproduced native supervisor defect", "status": "todo", "completion": "auto",
         "goal_id": "WWL-G000", "subgoal_id": "WWL-G000", "root_goal_id": "WWL-G000", "repository": "accelerate", "depends_on": [],
-        "outputs": ["ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_runtime.py", "test/api/test_worldwide_legal_search_runtime.py"],
-        "evidence_output": "artifacts/worldwide-legal-search/repairs/" + action_id + ".json",
-        "write_scope": ["ipfs_accelerate_py/agent_supervisor/project_adapters/", "test/api/"],
-        "acceptance": "Reproduce and fix exactly the observed native defect, preserving routing, ownership, validation and completion gates. Original failure evidence: " + request["reproducer_receipt"] + "; reason: " + str(request.get("reason") or "") + ". Add a failing regression first and make it pass; do not alter criteria or fabricate receipts.",
-        "validation_argv": [[config.python_executable, "-m", "pytest", "test/api/test_worldwide_legal_search_runtime.py", "test/api/test_worldwide_legal_search_provider.py", "test/api/test_worldwide_legal_search_goals.py", "-q"]],
+        "outputs": [*admission["source_paths"], admission["regression_path"]],
+        "evidence_output": admission["evidence_path"], "write_scope": admission["allowed_paths"],
+        "acceptance": "Reproduce and fix exactly the observed native defect, preserving routing, ownership, validation and completion gates. Add the new action-specific regression and prove it fails on the bound baseline and passes after the fix. Existing tests, routing policies and acceptance criteria are read-only. Native failure evidence: " + json.dumps(failure, sort_keys=True),
+        "validation_argv": [[config.python_executable, "-I", "-c", REPAIR_VALIDATOR, json.dumps(validation_binding, sort_keys=True)]],
         "bounds": {"max_attempts": 2, "wall_seconds_per_attempt": config.task_timeout_seconds, "validation_reserve_percent": 25}}
-    plan = {**source, "namespace": config.run_id + "-repair-" + action_id[:16], "tasks": [task],
+    plan = {**source, "namespace": config.run_id + "-repair-" + action_id[:16], "tasks": [task], "operational_repair_binding": admission,
+        "execution": {**source["execution"], "protected_acceptance_inputs": admission["protected_paths"]},
         "goals": [{"id": "WWL-G000", "title": "Repair the exact reproduced native defect", "parent_ids": [], "task_ids": [task_id], "status": "active", "acceptance": task["acceptance"]}]}
     plan_path, objectives, config_path = state / "repair-plan.json", state / "goals.objectives.md", state / "runtime-config.json"
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -657,10 +872,11 @@ def repair_once(config: CampaignConfig, request_path: Path) -> dict[str, Any]:
         boot = bootstrap(child, already_locked=True)
         runtime = CampaignRuntime(child, boot)
         result = runtime.run(once=True)
-    native = result.get("native_completion_receipts", {})
-    validated = task_id in result.get("verified_task_ids", []) and bool(native)
+    native = result.get("native_completion_receipts_by_alias", {})
+    validated = task_id in result.get("verified_task_ids", []) and bool(native.get(task_id)) and bool(result.get("native_completion_projection"))
     output = {"schema": "wwl.native-repair-result@1", "action_id": action_id, "validated": validated,
-        "native_completion_receipt": next(iter(native.values()), "") if validated else "",
+        "action_request_identity": identity(request), "original_failure_receipt": failure["receipt_id"], "baseline_revision": admission["source_revision"],
+        "native_completion_receipt": native.get(task_id, "") if validated else "",
         "native_projection": result.get("native_completion_projection"), "framework_head": git(config.framework_root, "rev-parse", "HEAD"),
         "framework_tree": git(config.framework_root, "rev-parse", "HEAD^{tree}"), "completion_authority": False}
     atomic_json(state / "native-repair-result.json", output)

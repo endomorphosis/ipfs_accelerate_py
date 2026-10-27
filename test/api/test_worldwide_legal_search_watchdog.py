@@ -124,6 +124,23 @@ def test_native_hold_cannot_enqueue_a_new_action(bridge):
     assert adapter.dispatch(action(), timeout_seconds=0)["status"] == "blocked"
 
 
+@pytest.mark.parametrize("name", ["HOLD", "STOP", "OPERATOR_STOP"])
+def test_current_operator_hold_cannot_be_hidden_by_old_projection(bridge, name):
+    adapter, _, snapshot = bridge
+    assert snapshot["hold"] is False
+    (adapter.state_root / name).touch()
+    assert adapter.dispatch(action(), timeout_seconds=0)["status"] == "blocked"
+    assert not (adapter.state_root / "control/requests").exists()
+
+
+@pytest.mark.parametrize("issued_at", [None, "10000", float("nan"), float("inf"), 10031])
+def test_malformed_action_time_cannot_be_published(bridge, issued_at):
+    adapter, _, _ = bridge
+    with pytest.raises(WatchdogBridgeError, match="issue time"):
+        adapter.dispatch({**action(), "issued_at": issued_at}, timeout_seconds=0)
+    assert not (adapter.state_root / "control").exists()
+
+
 def test_projection_and_action_path_escape_are_refused(bridge):
     adapter, _, _ = bridge
     bad = action()

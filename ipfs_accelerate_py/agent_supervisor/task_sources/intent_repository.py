@@ -3013,13 +3013,19 @@ class IntentRepository:
         snapshot. Callers retain native admission and final drift checks.
         Repository writes in the session thread are refused before any SQL.
         The outer context owns physical close, including when close() marks
-        the repository closed while an observation is still unwinding.
+        the repository closed while an observation is still unwinding. An
+        externally bound connection remains owned by its original caller.
         """
         self._require_open()
         if getattr(self._read_session_state, "connection", None) is not None:
             yield self
             return
-        connection = open_duckdb_connection(self._open_target)
+        owns_connection = self._bound_connection is None
+        connection = (
+            open_duckdb_connection(self._open_target)
+            if owns_connection
+            else self._bound_connection
+        )
         try:
             self._require_open()
             self._read_session_state.connection = connection
@@ -3028,19 +3034,20 @@ class IntentRepository:
             # Clear before close so an exceptional close cannot leave a stale
             # adapter installed for a later observation in the same thread.
             self._read_session_state.connection = None
-            connection.close()
+            if owns_connection:
+                connection.close()
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         self._require_open()
-        if self._bound_connection is not None:
-            yield self._bound_connection
-            return
         session_connection = getattr(self._read_session_state, "connection", None)
         if session_connection is not None:
             if write:
                 raise IntentRepositoryError("writes are forbidden inside a read session")
             yield session_connection
+            return
+        if self._bound_connection is not None:
+            yield self._bound_connection
             return
         # Match DuckDBTaskSource / StateTransaction durability: begin with SQL,
         # commit/rollback with SQL, and always close the adapter explicitly.
@@ -4627,6 +4634,21 @@ class IntentRepository:
         status: str | Iterable[str] | None = None,
         limit: int = DEFAULT_PAGE_LIMIT,
         offset: int = 0,
+    ) -> tuple[Mapping[str, Any], ...]:
+        # Hydration calls get_task for every row. Borrow one native adapter
+        # across the bounded page rather than re-admitting the database for
+        # every task. This remains a live read, without transaction authority.
+        with self.read_session():
+            return self._list_tasks_in_read_session(
+                status=status, limit=limit, offset=offset
+            )
+
+    def _list_tasks_in_read_session(
+        self,
+        *,
+        status: str | Iterable[str] | None,
+        limit: int,
+        offset: int,
     ) -> tuple[Mapping[str, Any], ...]:
         selected = _bounded_limit(limit)
         off = _nonneg_int(offset, noun="offset")

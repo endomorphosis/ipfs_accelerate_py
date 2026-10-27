@@ -46,7 +46,10 @@ def registered(tmp_path, monkeypatch):
             native["pid"] = 0
         elif argv[2] == "start":
             native.update(pid=202, ready=True)
-            (state / "campaign-status.json").write_text(json.dumps({"run_id": "wwl-test", "owner_pid": 202, "observed_at": clock[0]}))
+            projection_path = state / "campaign-status.json"
+            projection = json.loads(projection_path.read_text()) if projection_path.exists() else {}
+            projection.update(run_id="wwl-test", owner_pid=202, observed_at=clock[0])
+            projection_path.write_text(json.dumps(projection))
         else:
             pytest.fail("unexpected command")
         return ""
@@ -59,7 +62,7 @@ def registered(tmp_path, monkeypatch):
 
 def test_registered_host_recovery_fences_then_starts_only_exact_unit(registered):
     lifecycle, native, calls, config_path, clock = registered
-    action = {"action_id": "a" * 64, "policy_id": "wwl-policy", "kind": "recover"}
+    action = {"action_id": "a" * 64, "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover"}
     result = lifecycle.recover(action)
     assert result["recovered"] is True
     assert result["old_owner_fenced"] is True
@@ -77,7 +80,7 @@ def test_registered_host_recovery_fences_then_starts_only_exact_unit(registered)
 def test_lost_owner_can_be_recovered_without_owner_rpc(registered):
     lifecycle, native, calls, config_path, clock = registered
     native["pid"] = 0
-    result = lifecycle.recover({"action_id": "b" * 64, "policy_id": "wwl-policy", "kind": "recover"})
+    result = lifecycle.recover({"action_id": "b" * 64, "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover"})
     assert result["recovered"] is True
     assert native["pid"] == 202
 
@@ -86,7 +89,7 @@ def test_wrong_runtime_owner_is_never_stopped(registered):
     lifecycle, native, calls, config_path, clock = registered
     native["wrong_identity"] = True
     with pytest.raises(host.HostLifecycleError, match="MainPID"):
-        lifecycle.recover({"action_id": "c" * 64, "policy_id": "wwl-policy", "kind": "recover"})
+        lifecycle.recover({"action_id": "c" * 64, "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover"})
     assert not [item for item in calls if item[2] != "show"]
 
 
@@ -99,6 +102,34 @@ def test_other_service_registration_is_rejected_before_control(registered):
     with pytest.raises(host.HostLifecycleError, match="exact registered"):
         host.RegisteredSystemdLifecycle(repository=lifecycle.repository, state_root=lifecycle.state_root, run_id="wwl-test")
     assert calls == []
+
+
+def test_other_campaign_action_is_rejected_before_control(registered):
+    lifecycle, native, calls, config_path, clock = registered
+    with pytest.raises(host.HostLifecycleError, match="registered campaign"):
+        lifecycle.recover({"action_id": "d" * 64, "run_id": "different-campaign", "policy_id": "wwl-policy", "kind": "recover"})
+    assert not [item for item in calls if item[2] != "show"]
+
+
+def test_adapter_dispatch_recovers_a_dead_owner_and_preserves_single_authority(registered):
+    lifecycle, native, calls, config_path, clock = registered
+    state = lifecycle.state_root
+    native["pid"] = 0
+    (state / "campaign-readiness.json").write_text(json.dumps({"schema": "wwl.watchdog.ready@1", "run_id": "wwl-test", "repository": str(lifecycle.repository), "policy_id": "wwl-policy", "native_revision": "accepted", "admitted_plan_revision": "plan-1", "required_task_ids": ["WWL-000"], "bindings": {"reconcile": True, "lifecycle_restart": False, "repair_dispatch": False}}))
+    (state / "campaign-status.json").write_text(json.dumps({"schema": "wwl.watchdog.snapshot@1", "run_id": "wwl-test", "owner_pid": 101, "observed_at": 9700, "heartbeat_at": 9700,
+        "progress_token": "last-real-phase", "authority_revision": "source-1", "accepted_tree": "tree-1", "hold": False}))
+    bridge = WorldwideWatchdogBridge(repository=lifecycle.repository, state_root=state, run_id="wwl-test", clock=lambda: clock[0], host_lifecycle=lifecycle)
+    request = {"schema": "wwl.watchdog.action@1", "action_id": "e" * 64, "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover",
+        "issued_at": clock[0], "authority_revision": "source-1", "accepted_tree": "tree-1"}
+    result = bridge.dispatch(request, timeout_seconds=0)
+    assert result["status"] == "accepted"
+    assert not (state / "control/requests").exists()
+    observed = bridge.observe({"run_id": "wwl-test", "policy_id": "wwl-policy", "action_ids": [request["action_id"]]})
+    assert observed["action_observations"][0]["status"] == "succeeded"
+    assert observed["action_observations"][0]["effects_verified"] is True
+    calls.clear()
+    assert bridge.dispatch(request, timeout_seconds=0) == result
+    assert not [item for item in calls if item[2] != "show"]
 
 
 def test_stale_task_projection_keeps_old_heartbeat_but_gets_real_host_observation(registered):

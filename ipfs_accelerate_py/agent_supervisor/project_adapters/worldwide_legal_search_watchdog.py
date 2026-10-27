@@ -198,6 +198,8 @@ class WorldwideWatchdogBridge:
             raise WatchdogBridgeError("malformed bounded native action request")
         if action.get("run_id") != self.run_id or action.get("kind") not in {"reconcile", "recover", "repair"}:
             raise WatchdogBridgeError("action run or kind differs")
+        if type(action.get("issued_at")) not in (int, float) or not math.isfinite(action["issued_at"]) or action["issued_at"] > self.clock() + 30:
+            raise WatchdogBridgeError("action must have a finite original issue time")
         ready = self._readiness()
         if action.get("policy_id") != ready["policy_id"]:
             raise WatchdogBridgeError("action policy differs")
@@ -231,7 +233,9 @@ class WorldwideWatchdogBridge:
         if ready["bindings"].get(capability) is not True:
             return self._refuse(action, "native_" + capability + "_not_bound")
         snapshot = self.observe({"run_id": self.run_id, "policy_id": ready["policy_id"]})
-        if snapshot.get("hold"):
+        # A stopped owner cannot refresh its cached hold projection. Respect
+        # current operator controls before publishing any new operation.
+        if snapshot.get("hold") or any((self.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP")):
             return self._refuse(action, "native_pause_or_hold")
         if action.get("authority_revision") != snapshot.get("authority_revision") or action.get("accepted_tree") != snapshot.get("accepted_tree"):
             return self._refuse(action, "native_observation_revision_changed")

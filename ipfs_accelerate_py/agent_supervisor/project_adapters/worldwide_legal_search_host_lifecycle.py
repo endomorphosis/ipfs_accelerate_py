@@ -53,7 +53,10 @@ class RegisteredSystemdLifecycle:
 
     @staticmethod
     def _command(argv: list[str], timeout: float) -> str:
-        result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=max(0.1, timeout), check=False)
+        try:
+            result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=max(0.1, timeout), check=False)
+        except subprocess.TimeoutExpired as error:
+            raise HostLifecycleError("registered host lifecycle command exceeded its bound") from error
         if result.returncode:
             raise HostLifecycleError("registered host lifecycle command failed: " + str(result.returncode))
         return result.stdout
@@ -112,6 +115,8 @@ class RegisteredSystemdLifecycle:
         before = self.probe()
         if not isinstance(action.get("action_id"), str) or ACTION_ID.fullmatch(action["action_id"]) is None or not isinstance(action.get("policy_id"), str) or not action["policy_id"]:
             raise HostLifecycleError("host action must have an exact identity and admitted policy")
+        if action.get("run_id") != self.run_id or action.get("kind") not in {"reconcile", "recover"}:
+            raise HostLifecycleError("host action run or operation differs from the registered campaign")
         admission_path = self.state_root / "host-recovery/admissions" / (action["action_id"] + ".json")
         try:
             admission = read_owned_json(admission_path)

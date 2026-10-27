@@ -2992,6 +2992,12 @@ class DatabaseTaskSource:
             )
 
     def snapshot(self) -> TaskSourceSnapshot:
+        # A source observation combines intent and hydrated task reads. Reuse
+        # one admitted adapter; this is not a transaction or frozen snapshot.
+        with self._intent.read_session():
+            return self._snapshot_in_read_session()
+
+    def _snapshot_in_read_session(self) -> TaskSourceSnapshot:
         snap = self._intent.snapshot()
         terminal = True
         plan_root = self.plan_root_cid

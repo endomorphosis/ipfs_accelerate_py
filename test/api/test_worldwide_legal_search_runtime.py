@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -12,7 +15,7 @@ import tempfile
 
 from ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime import (
     CampaignConfig, CampaignRuntime, atomic_json, build_population, identity,
-    read_json, topological_tasks, validate_goal,
+    read_json, topological_tasks, validate_goal, admit_repair, REPAIR_VALIDATOR,
 )
 
 
@@ -147,6 +150,135 @@ class RuntimeBoundaries(unittest.TestCase):
             with patch.object(runtime, "capture"), patch("ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime.git", return_value="source-head"):
                 runtime._run_pass()
             self.assertTrue(runtime._last_failure["effects_unknown"])
+
+
+class RepairAdmissionBoundaries(unittest.TestCase):
+    def fixture(self, root):
+        site, framework, state = root / "site", root / "framework", root / "state"
+        for repository in (site, framework):
+            repository.mkdir()
+            subprocess.run(["git", "init", "-q", "-b", "campaign", str(repository)], check=True)
+            subprocess.run(["git", "-C", str(repository), "config", "user.email", "fixture@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(repository), "config", "user.name", "Fixture"], check=True)
+        relative = "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_runtime.py"
+        target = framework / relative
+        target.parent.mkdir(parents=True)
+        target.write_text("def affected():\n    raise RuntimeError('native fixture defect')\n")
+        (site / "fixture").write_text("site")
+        for repository in (site, framework):
+            subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repository), "commit", "-qm", "Fixture"], check=True)
+        config = CampaignConfig(site, framework, state, site / "plan.json", root / "config.json")
+        atomic_json(config.plan_path, plan_fixture())
+        atomic_json(config.plan_path.with_name("watchdog.policy.json"), {"policy_id": "fixture-policy", "repair_scope": {"allowed_paths": ["ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search*.py", "test/api/test_worldwide_legal_search*.py"]}})
+        from ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime import git, observed_forest
+        failure = {"schema": "wwl.native-failure@1", "run_id": config.run_id, "effects_unknown": False,
+            "source_revision": git(framework, "rev-parse", "HEAD"), "traceback": "Native fixture traceback", "reproduce_argv": ["native-exclusive-fixture"],
+            "phase": "preselection", "source_frames": [{"path": relative, "line": 2, "source_sha256": hashlib.sha256(target.read_bytes()).hexdigest()}]}
+        failure["receipt_id"] = identity(failure)
+        atomic_json(state / "failures/fixture.json", failure)
+        request = {"schema": "wwl.watchdog.action@1", "action_id": "a" * 64, "kind": "repair", "run_id": config.run_id,
+            "policy_id": "fixture-policy", "accepted_tree": identity(observed_forest(config)), "reproducer_receipt": failure["receipt_id"], "issued_at": time.time(), "authority_revision": "fixture-revision"}
+        atomic_json(state / "campaign-status.json", {"run_id": config.run_id, "effects_unknown": False, "hold": False,
+            "authority_revision": request["authority_revision"], "native_error": failure})
+        path = state / "control/requests" / (request["action_id"] + ".json")
+        atomic_json(path, request)
+        return config, path, failure, target
+
+    def test_repair_binds_exact_current_traced_source_and_new_regression(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, request, failure, target = self.fixture(Path(directory))
+            admission = admit_repair(config, request)
+            self.assertEqual(admission["source_paths"], [target.relative_to(config.framework_root).as_posix()])
+            self.assertEqual(admission["failure"], failure)
+            self.assertIn("repair_aaaaaaaaaaaaaaaa.py", admission["regression_path"])
+            self.assertTrue(all(not path.endswith("/") for path in admission["allowed_paths"]))
+
+    def test_repair_rejects_missing_and_tampered_reproducer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, request, failure, _target = self.fixture(Path(directory))
+            record = config.state_root / "failures/fixture.json"
+            record.unlink()
+            with self.assertRaisesRegex(ValueError, "missing or ambiguous"):
+                admit_repair(config, request)
+            atomic_json(record, {**failure, "traceback": "tampered failure evidence"})
+            with self.assertRaisesRegex(ValueError, "integrity"):
+                admit_repair(config, request)
+
+    def test_repair_rejects_archived_failure_and_stale_owner_authority(self):
+        for mutation in ("resolved", "authority"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                config, request, _failure, _target = self.fixture(Path(directory))
+                status_path = config.state_root / "campaign-status.json"
+                status = read_json(status_path)
+                if mutation == "resolved":
+                    status["native_error"] = {}
+                else:
+                    status["authority_revision"] = "new-native-revision"
+                atomic_json(status_path, status)
+                with self.assertRaises(ValueError):
+                    admit_repair(config, request)
+
+    def test_repair_rejects_changed_source_and_protected_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, request, _failure, target = self.fixture(Path(directory))
+            target.write_text(target.read_text() + "# drift\n")
+            with self.assertRaisesRegex(ValueError, "source changed"):
+                admit_repair(config, request)
+        with tempfile.TemporaryDirectory() as directory:
+            config, request, _failure, target = self.fixture(Path(directory))
+            plan = read_json(config.plan_path)
+            plan["execution"]["protected_acceptance_inputs"] = [target.relative_to(config.framework_root).as_posix()]
+            atomic_json(config.plan_path, plan)
+            with self.assertRaisesRegex(ValueError, "outside the admitted"):
+                admit_repair(config, request)
+
+    def test_repair_rejects_unknown_effects_and_outside_policy_cause(self):
+        for mutation in ("effects_unknown", "outside"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                config, request, failure, _target = self.fixture(Path(directory))
+                if mutation == "effects_unknown":
+                    failure["effects_unknown"] = True
+                else:
+                    policy_path = config.plan_path.with_name("watchdog.policy.json")
+                    policy = read_json(policy_path)
+                    policy["repair_scope"]["allowed_paths"] = ["unrelated.py"]
+                    atomic_json(policy_path, policy)
+                failure.pop("receipt_id")
+                failure["receipt_id"] = identity(failure)
+                atomic_json(config.state_root / "failures/fixture.json", failure)
+                action = read_json(request)
+                action["reproducer_receipt"] = failure["receipt_id"]
+                atomic_json(request, action)
+                status = read_json(config.state_root / "campaign-status.json")
+                status["native_error"] = failure
+                atomic_json(config.state_root / "campaign-status.json", status)
+                with self.assertRaises(ValueError):
+                    admit_repair(config, request)
+
+    def test_immutable_repair_validator_requires_real_baseline_failure_and_green_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", "-b", "repair-fixture", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Fixture"], check=True)
+            module = root / "fixture_module.py"
+            module.write_text("VALUE = 1\n")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "Reproduced baseline"], check=True)
+            revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+            module.write_text("VALUE = 2\n")
+            regression = root / "test_repair_regression.py"
+            regression.write_text("from fixture_module import VALUE\n\ndef test_defect():\n    assert VALUE == 2\n")
+            binding = {"action_id": "a" * 64, "source_revision": revision, "regression_path": regression.name,
+                "allowed_paths": [module.name, regression.name], "protected_hashes": {}, "focused_tests": [], "baseline_inputs": [module.name]}
+            result = subprocess.run([sys.executable, "-I", "-c", REPAIR_VALIDATOR, json.dumps(binding)], cwd=root, capture_output=True, text=True, timeout=180)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(json.loads(result.stdout)["baseline_failure_verified"])
+            regression.write_text("def test_placeholder():\n    assert True\n")
+            result = subprocess.run([sys.executable, "-I", "-c", REPAIR_VALIDATOR, json.dumps(binding)], cwd=root, capture_output=True, text=True, timeout=180)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("did not reproduce", result.stderr)
 
 
 if __name__ == "__main__":
