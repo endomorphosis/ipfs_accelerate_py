@@ -221,6 +221,8 @@ class WorldwideWatchdogBridge:
                     item = read_owned_json(self.state_root / "control/host-observations" / name)
                 except FileNotFoundError:
                     continue
+            if item.get("status") == "unknown" and host is not None:
+                item = self._settle_superseded_host_recovery(action_id, item, host) or item
             if item.get("status") == "unknown" and item.get("fence_verified") is True and host is not None and host.get("fresh_owner_projection"):
                 try:
                     before = read_owned_json(self.state_root / "control/host-before" / name)
@@ -240,6 +242,117 @@ class WorldwideWatchdogBridge:
                 observations[action_id] = terminal
         snapshot["action_observations"] = list(observations.values())
         return snapshot
+
+    def _settle_superseded_host_recovery(self, action_id: str, prior: Mapping[str, Any], host: dict[str, Any]) -> dict[str, Any] | None:
+        """A later native fence can settle an earlier timed-out host action.
+
+        This certifies known fencing of the old process tree. It never claims
+        current owner health, provider effects, task completion, or success of
+        the earlier incomplete recovery.
+        """
+        if self.host_lifecycle is None or not hasattr(self.host_lifecycle, "completed_recovery_receipt"):
+            return None
+        try:
+            request = read_owned_json(self.state_root / "control/host-requests" / (action_id + ".json"))
+            before = read_owned_json(self.state_root / "control/host-before" / (action_id + ".json"))
+        except FileNotFoundError:
+            return None
+        if request.get("run_id") != self.run_id or request.get("action_id") != action_id or request.get("kind") != "recover":
+            return None
+        if type(request.get("issued_at")) not in (int, float) or not math.isfinite(request["issued_at"]):
+            return None
+        paths = list((self.state_root / "control/host-requests").glob("*.json"))
+        if len(paths) > 128:
+            raise WatchdogBridgeError("host recovery settlement exceeds the campaign bound")
+        for path in sorted(paths):
+            if path.stem == action_id:
+                continue
+            later = read_owned_json(path)
+            if type(later.get("issued_at")) not in (int, float) or not math.isfinite(later["issued_at"]):
+                continue
+            if (later.get("action_id") != path.stem or later.get("run_id") != self.run_id or later.get("policy_id") != request.get("policy_id")
+                    or later.get("kind") != "recover" or later.get("issued_at", 0) <= request.get("issued_at", 0)
+                    or (action_id not in later.get("unsettled_action_ids", []) and later.get("previous_unacknowledged_action") != action_id)):
+                continue
+            try:
+                completed = read_owned_json(self.state_root / "control/host-observations" / path.name)
+                admission = read_owned_json(self.state_root / "host-recovery/admissions" / path.name)
+                if completed.get("status") != "succeeded" or completed.get("effects_verified") is not True or canonical(admission.get("action")) != canonical(later):
+                    continue
+                native = self.host_lifecycle.completed_recovery_receipt(path.stem, completed["receipt"])
+                prior_native = self.host_lifecycle.recorded_recovery_receipt(action_id, prior["receipt"])
+                fenced = self.host_lifecycle.prior_owner_fenced(before, host)
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                continue
+            if fenced is None or native.get("started_at_ms", 0) < int(request["issued_at"] * 1000):
+                continue
+            settlement = {"schema": "wwl.watchdog.host-supersession@1", "run_id": self.run_id, "action_id": action_id,
+                "prior_request_identity": identity(request), "prior_unknown_receipt": prior["receipt"], "before": before,
+                "prior_native_receipt": prior_native,
+                "later_action_id": path.stem, "later_native_fence_receipt": native, "old_owner_fence": fenced,
+                "effects": ["old_lane_fenced"], "recovery_verified": False}
+            publish_once(self.state_root / "control/host-supersession-receipts" / (action_id + ".json"), settlement)
+            terminal = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id, "status": "failed",
+                "receipt": identity(settlement), "effects_verified": True, "fence_verified": True, "recovery_verified": False,
+                "reason": "incomplete_recovery_superseded_by_later_verified_native_fence"}
+            publish_once(self.state_root / "control/host-terminal-observations" / (action_id + ".json"), terminal)
+            return terminal
+        return None
+
+    def verify_host_supersession(self, action_id: str, *, expected_task_id: str | None = None,
+                                 expected_stage: str | None = None, require_owner_stopped: bool = False) -> dict[str, Any]:
+        """Recheck the complete read-only proof chain for native maintenance.
+
+        The returned observation is not task rearm or completion authority.
+        The native owner must separately authorize its exact task-status CAS.
+        """
+        if not isinstance(action_id, str) or ACTION_ID.fullmatch(action_id) is None or self.host_lifecycle is None:
+            raise WatchdogBridgeError("host supersession needs an exact registered action")
+        name = action_id + ".json"
+        proof_path = self.state_root / "control/host-supersession-receipts" / name
+        proof = read_owned_json(proof_path)
+        terminal = read_owned_json(self.state_root / "control/host-terminal-observations" / name)
+        original = read_owned_json(self.state_root / "control/host-requests" / name)
+        before = read_owned_json(self.state_root / "control/host-before" / name)
+        admission = read_owned_json(self.state_root / "host-recovery/admissions" / name)
+        unknown = read_owned_json(self.state_root / "control/host-observations" / name)
+        if (proof.get("schema") != "wwl.watchdog.host-supersession@1" or proof.get("run_id") != self.run_id or proof.get("action_id") != action_id
+                or original.get("schema") != "wwl.watchdog.action@1" or original.get("action_id") != action_id or original.get("run_id") != self.run_id or original.get("kind") != "recover"
+                or proof.get("prior_request_identity") != identity(original) or canonical(proof.get("before")) != canonical(before)
+                or canonical(admission.get("action")) != canonical(original) or unknown.get("action_id") != action_id or unknown.get("status") != "unknown"
+                or unknown.get("receipt") != proof.get("prior_unknown_receipt") or proof.get("recovery_verified") is not False):
+            raise WatchdogBridgeError("superseded native action proof bindings differ")
+        if expected_task_id is not None and original.get("task_id") != expected_task_id:
+            raise WatchdogBridgeError("superseded host action belongs to another task")
+        if expected_stage is not None and original.get("stage") != expected_stage:
+            raise WatchdogBridgeError("superseded host action belongs to another native phase")
+        if (terminal.get("schema") != "wwl.watchdog.action-observation@1" or terminal.get("action_id") != action_id or terminal.get("status") != "failed"
+                or terminal.get("receipt") != identity(proof) or terminal.get("effects_verified") is not True or terminal.get("fence_verified") is not True or terminal.get("recovery_verified") is not False):
+            raise WatchdogBridgeError("supersession terminal receipt is not exact failed/fenced evidence")
+        later_id = proof.get("later_action_id")
+        if not isinstance(later_id, str) or ACTION_ID.fullmatch(later_id) is None or later_id == action_id:
+            raise WatchdogBridgeError("supersession later action identity is invalid")
+        later = read_owned_json(self.state_root / "control/host-requests" / (later_id + ".json"))
+        later_admission = read_owned_json(self.state_root / "host-recovery/admissions" / (later_id + ".json"))
+        if (later.get("run_id") != self.run_id or later.get("policy_id") != original.get("policy_id") or later.get("action_id") != later_id or later.get("kind") != "recover"
+                or canonical(later_admission.get("action")) != canonical(later)
+                or (action_id not in later.get("unsettled_action_ids", []) and later.get("previous_unacknowledged_action") != action_id)
+                or type(later.get("issued_at")) not in (int, float) or type(original.get("issued_at")) not in (int, float) or later["issued_at"] <= original["issued_at"]):
+            raise WatchdogBridgeError("supersession later request does not fence the original action")
+        native = self.host_lifecycle.completed_recovery_receipt(later_id, proof["later_native_fence_receipt"]["receipt_cid"])
+        prior_native = self.host_lifecycle.recorded_recovery_receipt(action_id, unknown["receipt"])
+        if canonical(native) != canonical(proof["later_native_fence_receipt"]) or canonical(prior_native) != canonical(proof["prior_native_receipt"]):
+            raise WatchdogBridgeError("supersession native content-addressed receipts changed")
+        current = self.host_lifecycle.probe()
+        fenced = self.host_lifecycle.prior_owner_fenced(before, current)
+        if fenced is None or (require_owner_stopped and (current.get("owner_alive") or current.get("main_pid") != 0)):
+            raise WatchdogBridgeError("superseded native owner is not currently fenced")
+        for key in ("main_pid", "start_ticks", "control_group", "unit"):
+            if admission.get("before", {}).get(key) != before.get(key):
+                raise WatchdogBridgeError("supersession original PID birth/cgroup differs from native admission")
+        return {"schema": "wwl.watchdog.verified-host-supersession@1", "action": original, "supersession_path": str(proof_path),
+                "supersession_receipt": identity(proof), "native_prior_receipt": prior_native, "native_later_fence_receipt": native,
+                "current_owner_fence": fenced, "current_host": current, "completion_authority": False, "task_retry_authority": False}
 
     def _reload_binding(self, action: Mapping[str, Any]) -> dict[str, Any]:
         repair_id = action.get("reload_after_action_id")

@@ -6,6 +6,7 @@ incident bounds and receipts. This helper never opens or changes task state.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -106,6 +107,69 @@ class RegisteredSystemdLifecycle:
         except OSError:
             return False
 
+    def completed_recovery_receipt(self, action_id: str, receipt_id: str) -> dict[str, Any]:
+        """Verify a historical native fence receipt without executing actions."""
+        return self.recorded_recovery_receipt(action_id, receipt_id, require_completed=True)
+
+    def recorded_recovery_receipt(self, action_id: str, receipt_id: str, *, require_completed: bool = False) -> dict[str, Any]:
+        """Check native content-addressed recovery/exhaustion and its roots."""
+        from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import ProgrammaticRecoveryExhaustionReceipt, prompt_workflow_cid
+        from ipfs_accelerate_py.agent_supervisor.rescue.recovery_diagnostics import diagnose_supervisor_incident
+        from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery import (
+            PROGRAMMATIC_RECOVERY_CATALOG_CID, ProgrammaticRecoveryPolicy, ProgrammaticRecoveryReceipt,
+        )
+        from .worldwide_legal_search_watchdog import ACTION_ID, read_owned_json
+
+        if ACTION_ID.fullmatch(action_id) is None:
+            raise HostLifecycleError("historical recovery action identity is invalid")
+        admission = read_owned_json(self.state_root / "host-recovery/admissions" / (action_id + ".json"))
+        action, before = admission.get("action", {}), admission.get("before", {})
+        if admission.get("run_id") != self.run_id or admission.get("unit") != UNIT or action.get("action_id") != action_id or action.get("run_id") != self.run_id or action.get("kind") not in {"recover", "reconcile"} or not action.get("policy_id"):
+            raise HostLifecycleError("historical recovery admission scope differs")
+        diagnosis = diagnose_supervisor_incident(repository_root=str(self.repository), state_root=str(self.state_root),
+            repository_root_cid=prompt_workflow_cid({"repository": str(self.repository)}),
+            policy_root=prompt_workflow_cid({"policy_id": action["policy_id"]}), run_cid=prompt_workflow_cid({"run_id": self.run_id}),
+            process={"lane_id": UNIT, "alive": before["owner_alive"], "failed": not before["owner_alive"], "lane_identity_current": True, "request_action_id": action_id},
+            heartbeat={"lane_id": UNIT, "stale": True, "request_action_id": action_id}, health={"healthy": False}, observed_at_ms=admission["observed_at_ms"])
+        policy = ProgrammaticRecoveryPolicy(max_attempts_per_action=1, max_total_attempts=1, max_actions=2, deadline_ms=45000)
+        key = hashlib.sha256((diagnosis.incident_cid + ":" + policy.policy_cid + ":" + PROGRAMMATIC_RECOVERY_CATALOG_CID).encode()).hexdigest()
+        result = read_owned_json(self.state_root / "host-recovery/programmatic-recovery" / (key + ".json"))
+        if result.get("schema") != "programmatic-recovery-result@1" or result.get("incident_cid") != diagnosis.incident_cid or result.get("recovery_policy_cid") != policy.policy_cid or result.get("recovery_catalog_cid") != PROGRAMMATIC_RECOVERY_CATALOG_CID:
+            raise HostLifecycleError("historical native recovery result bindings differ")
+        if result.get("terminal_kind") == "recovery":
+            receipt = ProgrammaticRecoveryReceipt.from_dict(result["terminal"])
+        elif result.get("terminal_kind") == "exhaustion" and not require_completed:
+            receipt = ProgrammaticRecoveryExhaustionReceipt.from_dict(result["terminal"])
+        else:
+            raise HostLifecycleError("historical native recovery result is not a completed fence")
+        if (receipt.receipt_cid != receipt_id or receipt.incident_cid != diagnosis.incident_cid
+                or receipt.repository_root_cid != prompt_workflow_cid({"repository": str(self.repository)})
+                or receipt.policy_root != prompt_workflow_cid({"policy_id": action["policy_id"]})
+                or receipt.run_cid != prompt_workflow_cid({"run_id": self.run_id})):
+            raise HostLifecycleError("historical native recovery receipt roots differ")
+        if isinstance(receipt, ProgrammaticRecoveryReceipt) and (receipt.target_id != UNIT
+                or receipt.operation.value != "restart_lane" or receipt.disposition.value != "recovered"
+                or not {"old_lane_fenced", "lane_restarted"} <= set(receipt.observed_effects)
+                or receipt.post_action_health.get("healthy") is not True
+                or receipt.started_at_ms < int(action["issued_at"] * 1000)):
+            raise HostLifecycleError("historical native recovery receipt bindings differ")
+        return receipt.to_dict()
+
+    def prior_owner_fenced(self, before: dict[str, Any], current: dict[str, Any]) -> dict[str, Any] | None:
+        """Read process identity after a separately verified later unit fence."""
+        if before.get("unit") != UNIT or before.get("registered") is not True or current.get("unit") != UNIT or current.get("registered") is not True:
+            return None
+        group = before.get("control_group", "")
+        if group and (not group.startswith("/") or ".." in Path(group).parts or not group.endswith("/" + UNIT)):
+            return None
+        process = process_identity(int(before["main_pid"]))
+        if process["alive"] and process["start_ticks"] == before["start_ticks"]:
+            return None
+        if not current.get("owner_alive") and not self._cgroup_empty(group):
+            return None
+        return {"old_pid": before["main_pid"], "old_start_ticks": before["start_ticks"], "old_identity_absent": True,
+                "current_main_pid": current["main_pid"], "current_start_ticks": current["start_ticks"], "current_owner_alive": current["owner_alive"]}
+
     def recover(self, action: dict[str, Any]) -> dict[str, Any]:
         from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import RescueOperation, prompt_workflow_cid
         from ipfs_accelerate_py.agent_supervisor.rescue.recovery_diagnostics import diagnose_supervisor_incident
@@ -140,7 +204,7 @@ class RegisteredSystemdLifecycle:
         def restart(context):
             deadline = self.monotonic() + min(35, max(0.1, (context.deadline_at_ms - int(self.clock() * 1000)) / 1000))
             self.probe()
-            self.command(["systemctl", "--user", "stop", UNIT], min(10, max(0.1, deadline - self.monotonic())))
+            self.command(["systemctl", "--user", "stop", "--no-block", UNIT], min(5, max(0.1, deadline - self.monotonic())))
             while self.monotonic() < deadline:
                 stopped = self.probe()
                 old_process = process_identity(before["main_pid"])
@@ -151,7 +215,7 @@ class RegisteredSystemdLifecycle:
                 self.sleep(0.1)
             else:
                 return RecoveryActionObservation(False, reason="registered_old_owner_not_fenced", partial=True)
-            self.command(["systemctl", "--user", "start", UNIT], min(10, max(0.1, deadline - self.monotonic())))
+            self.command(["systemctl", "--user", "start", "--no-block", UNIT], min(5, max(0.1, deadline - self.monotonic())))
             while self.monotonic() < deadline:
                 current = self.probe()
                 if current["fresh_owner_projection"]:

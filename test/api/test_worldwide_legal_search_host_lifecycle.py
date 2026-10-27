@@ -68,7 +68,7 @@ def test_registered_host_recovery_fences_then_starts_only_exact_unit(registered)
     assert result["old_owner_fenced"] is True
     assert result["receipt"]
     mutations = [item for item in calls if item[2] != "show"]
-    assert mutations == [["systemctl", "--user", "stop", host.UNIT], ["systemctl", "--user", "start", host.UNIT]]
+    assert mutations == [["systemctl", "--user", "stop", "--no-block", host.UNIT], ["systemctl", "--user", "start", "--no-block", host.UNIT]]
     assert native["pid"] == 202
     # A repeated action consumes the native durable receipt, not another stop.
     calls.clear()
@@ -83,6 +83,29 @@ def test_lost_owner_can_be_recovered_without_owner_rpc(registered):
     result = lifecycle.recover({"action_id": "b" * 64, "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover"})
     assert result["recovered"] is True
     assert native["pid"] == 202
+
+
+def test_async_stop_allows_twelve_second_drain_within_original_recovery_deadline(registered):
+    lifecycle, native, calls, config_path, clock = registered
+    original = lifecycle.command
+    drain_at, command_bounds = [None], []
+    def delayed(argv, timeout):
+        command_bounds.append(timeout)
+        if argv[2] == "stop":
+            calls.append(argv)
+            assert "--no-block" in argv
+            drain_at[0] = clock[0] + 12
+            return ""
+        if argv[2] == "show" and drain_at[0] is not None and clock[0] >= drain_at[0] and native["pid"] == 101:
+            native["pid"] = 0
+        return original(argv, timeout)
+    lifecycle.command = delayed
+    started = clock[0]
+    result = lifecycle.recover({"action_id": "9" * 64, "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover", "issued_at": started})
+    assert result["recovered"] is True
+    assert result["old_owner_fenced"] is True
+    assert 12 <= clock[0] - started < 35
+    assert max(command_bounds) <= 5
 
 
 def test_wrong_runtime_owner_is_never_stopped(registered):
@@ -109,6 +132,66 @@ def test_other_campaign_action_is_rejected_before_control(registered):
     with pytest.raises(host.HostLifecycleError, match="registered campaign"):
         lifecycle.recover({"action_id": "d" * 64, "run_id": "different-campaign", "policy_id": "wwl-policy", "kind": "recover"})
     assert not [item for item in calls if item[2] != "show"]
+
+
+@pytest.mark.parametrize("current_owner_alive", [True, False])
+def test_later_native_fence_settles_timed_out_recovery_without_claiming_current_health(registered, current_owner_alive):
+    lifecycle, native, calls, config_path, clock = registered
+    state = lifecycle.state_root
+    (state / "campaign-readiness.json").write_text(json.dumps({"schema": "wwl.watchdog.ready@1", "run_id": "wwl-test", "repository": str(lifecycle.repository), "policy_id": "wwl-policy", "native_revision": "revision", "admitted_plan_revision": "plan", "required_task_ids": ["WWL-000"], "bindings": {"lifecycle_restart": True}}))
+    (state / "campaign-status.json").write_text(json.dumps({"schema": "wwl.watchdog.snapshot@1", "run_id": "wwl-test", "owner_pid": 101, "observed_at": clock[0], "authority_revision": "source", "accepted_tree": "tree", "hold": False}))
+    original_command = lifecycle.command
+    failed = [False]
+    def stop_timeout(argv, timeout):
+        output = original_command(argv, timeout)
+        if argv[2] == "stop" and not failed[0]:
+            failed[0] = True
+            raise host.HostLifecycleError("stop returned after the caller timed out")
+        return output
+    lifecycle.command = stop_timeout
+    bridge = WorldwideWatchdogBridge(repository=lifecycle.repository, state_root=state, run_id="wwl-test", clock=lambda: clock[0], host_lifecycle=lifecycle)
+    first = {"schema": "wwl.watchdog.action@1", "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover", "action_id": "1" * 64,
+        "issued_at": clock[0], "authority_revision": "source", "accepted_tree": "tree", "task_id": "WWL-000", "stage": "provider"}
+    assert bridge.dispatch(first, timeout_seconds=0)["status"] == "unknown"
+    original = read_owned_json(state / "control/host-observations" / (first["action_id"] + ".json"))
+    assert original["fence_verified"] is False
+    query = {"run_id": "wwl-test", "policy_id": "wwl-policy", "action_ids": [first["action_id"]]}
+    assert bridge.observe(query)["action_observations"][0]["status"] == "unknown"
+    clock[0] += 30
+    later = {**first, "action_id": "2" * 64, "issued_at": clock[0], "unsettled_action_ids": [first["action_id"]]}
+    assert bridge.dispatch(later, timeout_seconds=0)["status"] == "accepted"
+    if not current_owner_alive:
+        native["pid"] = 0
+    calls.clear()
+    observed = bridge.observe(query)
+    settled = observed["action_observations"][0]
+    assert settled["status"] == "failed"
+    assert settled["effects_verified"] is True
+    assert settled["fence_verified"] is True
+    assert settled["recovery_verified"] is False
+    proof = read_owned_json(state / "control/host-supersession-receipts" / (first["action_id"] + ".json"))
+    assert proof["old_owner_fence"]["current_owner_alive"] is current_owner_alive
+    assert proof["later_action_id"] == later["action_id"]
+    assert proof["later_native_fence_receipt"]["observed_effects"] == ["old_lane_fenced", "lane_restarted"]
+    verified = bridge.verify_host_supersession(first["action_id"], expected_task_id="WWL-000", expected_stage="provider", require_owner_stopped=not current_owner_alive)
+    assert verified["native_prior_receipt"]["status"] == "quarantined"
+    assert verified["current_owner_fence"]["old_identity_absent"] is True
+    assert verified["task_retry_authority"] is False
+    with pytest.raises(ValueError, match="another task"):
+        bridge.verify_host_supersession(first["action_id"], expected_task_id="WWL-999")
+    assert read_owned_json(state / "control/host-observations" / (first["action_id"] + ".json")) == original
+    assert not [item for item in calls if item[2] != "show"]
+
+
+def test_completed_native_fence_receipt_rejects_tampered_proof(registered):
+    lifecycle, native, calls, config_path, clock = registered
+    action = {"action_id": "f" * 64, "run_id": "wwl-test", "policy_id": "wwl-policy", "kind": "recover", "issued_at": clock[0]}
+    result = lifecycle.recover(action)
+    assert lifecycle.completed_recovery_receipt(action["action_id"], result["receipt"])["target_id"] == host.UNIT
+    path = next((lifecycle.state_root / "host-recovery/programmatic-recovery").glob("*.json"))
+    value = json.loads(path.read_text()); value["terminal"]["target_id"] = "another-service.service"; path.write_text(json.dumps(value))
+    with pytest.raises((ValueError, RuntimeError)):
+        lifecycle.completed_recovery_receipt(action["action_id"], result["receipt"])
 
 
 def test_adapter_dispatch_recovers_a_dead_owner_and_preserves_single_authority(registered):
