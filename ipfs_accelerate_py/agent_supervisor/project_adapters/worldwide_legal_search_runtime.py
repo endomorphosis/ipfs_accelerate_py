@@ -210,7 +210,7 @@ def build_population(plan: Mapping[str, Any], *, source_forest: Mapping[str, Any
             "objective_id": "objective:" + str(plan["namespace"]), "ordinal": ordinal, "status": "todo", "priority": "P1",
             "depends_on": [task_cids[alias] for alias in task["depends_on"]],
             "outputs": [{"path": path, "effect_id": identity({"task_cid": task_cids[task["id"]], "path": path})} for path in outputs],
-            "acceptance": [task["acceptance"]], "validations": validations, "validation": " && ".join(validations),
+            "acceptance": [task["acceptance"]], "validations": [{"argv": list(argv)} for argv in task["validation_argv"]], "validation": " && ".join(validations),
             "completion": "auto", "board_namespace": plan["namespace"], "owning_repository": task["repository"],
             "source_plan_task": dict(task), "accepted_plan_root_cid": root, "base_repository_tree_id": tree,
             "base_revision": source_forest[task["repository"]]["head"],
@@ -226,9 +226,80 @@ def observed_forest(config: CampaignConfig) -> dict[str, Any]:
             for key, root in (("site", config.site_root), ("accelerate", config.framework_root))}
 
 
+def repair_pipeline_binding(config: CampaignConfig) -> dict[str, Any]:
+    """Bind pipeline behavior independently from unrelated repository commits."""
+    plan = read_json(config.plan_path)
+    policy = read_json(config.plan_path.with_name("watchdog.policy.json"))
+    paths = ["ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_goals.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py",
+        "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/repair_dispatcher.py"]
+    return {"schema": "wwl.native-repair-pipeline-binding@1", "interface": "wwl.native-repair-pipeline@1",
+        "validator_sha256": hashlib.sha256(REPAIR_VALIDATOR.encode()).hexdigest(),
+        "route_id": identity(plan.get("routing", {})), "repair_scope_id": identity(policy["repair_scope"]),
+        "source_sha256": {path: hashlib.sha256((config.framework_root / path).read_bytes()).hexdigest() for path in paths}}
+
+
+def verified_repair_canary(config: CampaignConfig) -> dict[str, Any] | None:
+    from .worldwide_legal_search_watchdog import read_owned_json
+
+    raw = read_json(config.config_path) if config.config_path.is_file() else {}
+    path = Path(raw.get("repair_canary_receipt") or config.state_root / "repair-canary.json")
+    try:
+        receipt = read_owned_json(path)
+        if receipt.get("schema") != "wwl.native-repair-canary@1" or receipt.get("receipt_id") != identity({key: value for key, value in receipt.items() if key != "receipt_id"}):
+            return None
+        if receipt.get("pipeline_binding") != repair_pipeline_binding(config):
+            return None
+        if not all(receipt.get(key) is True for key in ("baseline_failure_verified", "candidate_regressions_verified", "validated_promotion")):
+            return None
+        if not receipt.get("native_completion_receipt") or not receipt.get("native_projection") or not receipt.get("source_provenance"):
+            return None
+        return receipt
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def storage_observation(config: CampaignConfig) -> dict[str, Any]:
+    from .worldwide_legal_search_watchdog import resource_observation
+    raw = read_json(config.config_path) if config.config_path.is_file() else {}
+    probe_root = config.state_root
+    while not probe_root.exists() and probe_root.parent != probe_root:
+        probe_root = probe_root.parent
+    return resource_observation(repository=config.site_root, state_root=probe_root, framework_root=config.framework_root, config=raw)
+
+
+def wait_for_storage(config: CampaignConfig, stop: threading.Event) -> dict[str, Any]:
+    """Wait without native database opens, durable writes or provider work."""
+    last_report = 0.0
+    while True:
+        observation = storage_observation(config)
+        if not observation["blocked"] or stop.is_set():
+            return observation
+        if time.monotonic() - last_report >= 30:
+            print(json.dumps({"schema": "wwl.native-runtime-resource-wait@1", "run_id": config.run_id,
+                "blocked_kind": "resource_quota", "resource_pressure": observation, "new_provider_dispatch_admitted": False,
+                "new_execution_pass_admitted": False, "completion_authority": False}, sort_keys=True), file=sys.stderr, flush=True)
+            last_report = time.monotonic()
+        stop.wait(min(5.0, max(0.1, config.poll_seconds)))
+
+
 @contextlib.contextmanager
 def owner_lock(config: CampaignConfig):
     config.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Establish explicit campaign custody before any native path resolver can
+    # consider an unlocked lane database eligible for legacy relocation.
+    from ..task_sources.board_control_plane import register_managed_state_root
+    register_managed_state_root(config.state_root, owner_id=config.run_id)
     with (config.state_root / "native-owner.lock").open("a+") as stream:
         try:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -238,6 +309,8 @@ def owner_lock(config: CampaignConfig):
 
 
 def bootstrap(config: CampaignConfig, *, already_locked: bool = False) -> dict[str, Any]:
+    if storage_observation(config)["blocked"]:
+        raise OSError(28, "native bootstrap is deferred by resource quota before state creation")
     from ..task_sources.database_task_source import DatabaseTaskSource
     from .worldwide_legal_search_goals import admit_typed_goals
 
@@ -300,12 +373,90 @@ class CampaignRuntime:
         self._passes = 0
         self._loaded_framework_revision = git(config.framework_root, "rev-parse", "HEAD") if config.framework_root.is_dir() else ""
         self._last_successful_pass: dict[str, Any] = {}
+        self._native_terminal_result: dict[str, Any] = {}
         self._provider_callback_entered = False
         self._retained_attempt_before_pass = False
         self._pending_controls: list[str] = [key for key, value in self._actions.items()
             if value.get("request", {}).get("kind") == "reconcile" and value.get("result", {}).get("status") == "accepted"
             and value.get("observation", {}).get("status") == "running"]
         self._repair_thread: threading.Thread | None = None
+        self._canary_refresh_lock = threading.Lock()
+        self._canary_refresh_thread: threading.Thread | None = None
+        self._canary_refresh_process: subprocess.Popen | None = None
+        self._canary_refresh_next_at = 0.0
+        self._canary_refresh_stopping = False
+
+    def _maybe_refresh_repair_canary(self) -> None:
+        """Refresh optional repair proof after reload, without blocking work."""
+        if not self.config.repair_command or self.stop.is_set() or self.cancel.is_set():
+            return
+        with self._canary_refresh_lock:
+            if self._canary_refresh_stopping or time.monotonic() < self._canary_refresh_next_at or (self._canary_refresh_thread is not None and self._canary_refresh_thread.is_alive()):
+                return
+            # A promotion must first fence and reload its old owner. A canary
+            # cannot acknowledge that fence or delay the required handoff.
+            try:
+                if git(self.config.framework_root, "rev-parse", "HEAD") != self._loaded_framework_revision:
+                    return
+                current = verified_repair_canary(self.config)
+            except (OSError, ValueError, KeyError, TypeError):
+                self._canary_refresh_next_at = time.monotonic() + 300
+                return
+            if current is not None:
+                self._canary_refresh_next_at = time.monotonic() + 30
+                return
+            self._canary_refresh_next_at = time.monotonic() + 300
+            self._canary_refresh_thread = threading.Thread(target=self._refresh_repair_canary, name="wwl-repair-canary-refresh", daemon=True)
+            self._canary_refresh_thread.start()
+
+    def _refresh_repair_canary(self) -> None:
+        from .worldwide_legal_search_canary import refresh_argv
+
+        started = time.time()
+        result: dict[str, Any] = {"schema": "wwl.native-repair-canary-refresh-observation@1", "started_at": started,
+            "verified": False, "paid_provider_calls": 0, "completion_authority": False}
+        path = self.config.state_root / "control/repair-canary-refresh.json"
+        process = None
+        try:
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with path.with_suffix(".log").open("wb") as log:
+                with self._canary_refresh_lock:
+                    if self._canary_refresh_stopping:
+                        result["reason"] = "owner_shutdown_cancelled_optional_refresh"
+                        return
+                    process = subprocess.Popen(refresh_argv(self.config.python_executable, self.config.config_path), cwd=self.config.framework_root,
+                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                    self._canary_refresh_process = process
+                try:
+                    result["returncode"] = process.wait(timeout=900)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    result.update(returncode=process.wait(timeout=5), reason="bounded_refresh_deadline_elapsed")
+            canary = verified_repair_canary(self.config)
+            result["verified"] = result.get("returncode") == 0 and canary is not None
+            result["receipt_id"] = canary["receipt_id"] if result["verified"] else ""
+        except Exception as error:
+            result.update(error_class=type(error).__name__, reason=str(error)[:500])
+        finally:
+            with self._canary_refresh_lock:
+                self._canary_refresh_process = None
+            result["completed_at"] = time.time()
+            atomic_json(path, result)
+            # Readiness publication only reads bounded filesystem receipts.
+            # It neither opens the native DB nor acknowledges a reload fence.
+            if not self.stop.is_set() and not self._canary_refresh_stopping:
+                self.publish_readiness()
+
+    def _stop_repair_canary_refresh(self) -> None:
+        """Cancel optional proof work without joining it during owner reload."""
+        with self._canary_refresh_lock:
+            self._canary_refresh_stopping = True
+            process = self._canary_refresh_process
+        if process is not None and process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
     def repository_for_task(self, alias: str) -> Path:
         task = self.tasks.get(alias)
@@ -377,6 +528,8 @@ class CampaignRuntime:
             receipt_cids = {item["task_cid"]: item["receipt_cid"] for item in evidence["completion_receipts"]}
             verified = [task.task_alias for task in records if task.status in COMPLETED and task.task_cid in receipt_cids]
             ready = [task.task_alias for task in source.ready_tasks(limit=256).tasks]
+            plans = source.plan_projection()["plans"]
+            native_active = [plan for plan in plans if plan["status"] == "active"]
         running = self._daemon.list_running_attempts()
         current = attempt or (running[0] if running else None)
         active = str(getattr(current, "task_alias", "") or "")
@@ -396,12 +549,15 @@ class CampaignRuntime:
                 "active_attempt_id": str(getattr(current, "attempt_id", "") or ""),
                 "stage_deadline_at": (int(getattr(current, "started_at_ms", 0)) / 1000 + self.config.task_timeout_seconds) if current else 0,
                 "source_snapshot": snapshot}
+            self._cached.update(native_active_plan_revision=native_active[0]["plan_cid"] if len(native_active) == 1 else "",
+                native_active_plan_revision_receipt=native_active[0].get("body", {}).get("revision_cid", "") if len(native_active) == 1 else "")
 
     def publish(self, *, alive: bool = True) -> dict[str, Any]:
         now = time.time()
         with self._cache_lock:
             cached = dict(self._cached)
         failure = self._last_failure
+        repair_unknown = any(value.get("request", {}).get("kind") == "repair" and value.get("observation", {}).get("status") == "unknown" for value in self._actions.values())
         hold = any((self.config.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP"))
         verified = list(cached.get("verified_task_ids", []))
         required = list(self.tasks)
@@ -418,9 +574,9 @@ class CampaignRuntime:
             "stage": str(cached.get("stage") or "startup"), "task_id": str(cached.get("active_task_id") or ""),
             "progress_token": str(cached.get("progress_token") or self.bootstrap_receipt["receipt_id"]),
             "heartbeat_at": now, "owner_alive": alive, "owner_identity_verified": alive,
-            "runnable_count": len(cached.get("ready_task_ids", [])), "blocked_kind": "software_defect" if failure else "none",
+            "runnable_count": len(cached.get("ready_task_ids", [])), "blocked_kind": "software_defect" if failure else ("permission" if self._native_terminal_result.get("reason") == "implementation_protected_path_mutated" else "none"),
             "dependency_running": False, "stage_deadline_at": cached.get("stage_deadline_at", 0),
-            "effects_unknown": bool(failure.get("effects_unknown", False)), "failure_key": failure.get("failure_key", ""),
+            "effects_unknown": bool(failure.get("effects_unknown", False) or repair_unknown), "failure_key": failure.get("failure_key", ""),
             "reproducer_receipt": failure.get("receipt_id", ""),
             "action_observations": [value["observation"] for value in self._actions.values() if value.get("observation")],
             "owner_pid": os.getpid(), "meaningful_progress_at_ms": int(self._progress_at * 1000),
@@ -429,12 +585,18 @@ class CampaignRuntime:
             "native_completion_receipts_by_alias": cached.get("native_completion_receipts_by_alias", {}),
             "native_error": failure, "native_passes": self._passes, "completion_authority": False}
         snapshot.update(loaded_framework_revision=self._loaded_framework_revision, last_successful_native_pass=self._last_successful_pass)
+        snapshot.update(native_active_plan_revision=cached.get("native_active_plan_revision", ""),
+            native_active_plan_revision_receipt=cached.get("native_active_plan_revision_receipt", ""),
+            original_admitted_plan_revision=self.bootstrap_receipt["admitted_plan_revision"],
+            typed_goal_semantics_id=self.bootstrap_receipt.get("plan_definition_id", ""),
+            last_native_pass_result=self._last_result, native_terminal_result=self._native_terminal_result)
         for name in ("campaign-status.json", "status.json"):
             atomic_json(self.config.state_root / name, snapshot)
         return snapshot
 
     def publish_readiness(self) -> None:
         enabled_repair = bool(self.config.repair_command)
+        canary = verified_repair_canary(self.config) if enabled_repair else None
         value = {"schema": "wwl.watchdog.ready@1", "run_id": self.config.run_id,
             "policy_id": "worldwide-legal-search-recovery-v1", "repository": str(self.config.site_root),
             "native_revision": git(self.config.framework_root, "rev-parse", "HEAD"),
@@ -444,9 +606,18 @@ class CampaignRuntime:
                 "route_policy": True, "independent_validation": True, "validated_promotion": True,
                 "incident_deduplication": True, "meaningful_progress": True, "repair_dispatch": enabled_repair,
                 "scoped_repair_admission": enabled_repair, "exclusive_effect_ownership": True,
-                "repair_canary_verified": False,
+                "repair_canary_verified": bool(canary),
                 "rescue_planner": False, "rescue_orchestrator": False},
             "control_canary_verified": False, "bootstrap_only": True}
+        if canary:
+            pipeline = {"schema": "worldwide-legal-search.repair-pipeline@1", "policy_id": value["policy_id"], "native_revision": value["native_revision"],
+                "native_canary_receipt": canary["receipt_id"], "pipeline_binding": canary["pipeline_binding"],
+                "native_completion_receipt": canary["native_completion_receipt"], "native_projection": canary["native_projection"]}
+            pipeline["receipt_id"] = identity(pipeline)
+            value["repair_pipeline"] = pipeline
+        value.update(native_active_plan_revision=self._cached.get("native_active_plan_revision", ""),
+            native_active_plan_revision_receipt=self._cached.get("native_active_plan_revision_receipt", ""),
+            original_admitted_plan_revision=self.bootstrap_receipt["admitted_plan_revision"])
         atomic_json(self.config.state_root / "campaign-readiness.json", value)
 
     def _run_pass(self) -> None:
@@ -457,9 +628,13 @@ class CampaignRuntime:
             self._reconcile_controls()
             self._last_result = dict(self._daemon.run_once())
             self.capture()
-            self._last_successful_pass = {"owner_pid": os.getpid(), "framework_revision": self._loaded_framework_revision,
-                "completed_at": time.time(), "result": self._last_result, "authority_revision": self._cached.get("authority_revision"),
-                "progress_token": self._cached.get("progress_token"), "receipt_id": identity(self._last_result)}
+            implementation = self._last_result.get("implementation_result") or {}
+            self._native_terminal_result = dict(implementation) if implementation.get("status") in {"blocked", "failed"} else {}
+            selected = str(self._last_result.get("active_task_id") or implementation.get("task_alias") or "")
+            if selected and selected in self._cached.get("verified_task_ids", []):
+                self._last_successful_pass = {"owner_pid": os.getpid(), "framework_revision": self._loaded_framework_revision,
+                    "completed_at": time.time(), "result": self._last_result, "authority_revision": self._cached.get("authority_revision"),
+                    "progress_token": self._cached.get("progress_token"), "receipt_id": identity(self._last_result)}
             previous_task = str(self._last_failure.get("task_id") or "")
             if self._last_failure and (previous_task in self._cached.get("verified_task_ids", []) or (not previous_task and not self._cached.get("active_task_id"))):
                 self._last_failure = {}
@@ -524,14 +699,15 @@ class CampaignRuntime:
         for path in sorted(requests.glob("*.json")):
             request = read_json(path)
             action_id = str(request.get("action_id") or "")
-            if not action_id or path.stem != action_id or request.get("run_id") != self.config.run_id or request.get("schema") != "wwl.watchdog.action@1":
+            if re.fullmatch(r"[0-9a-f]{64}", action_id) is None or path.stem != action_id or request.get("run_id") != self.config.run_id or request.get("schema") != "wwl.watchdog.action@1":
                 continue
             if action_id in self._actions:
                 continue
             kind = request.get("kind")
             receipt = {"schema": "wwl.watchdog.action-result@1", "action_id": action_id, "status": "blocked", "receipt": identity(request)}
             reason = "native operation is not currently bound"
-            stale = request.get("authority_revision") != str(self._cached.get("authority_revision") or "bootstrap") or request.get("accepted_tree") != identity(observed_forest(self.config))
+            policy_id = read_json(self.config.plan_path.with_name("watchdog.policy.json"))["policy_id"]
+            stale = request.get("policy_id") != policy_id or request.get("authority_revision") != str(self._cached.get("authority_revision") or "bootstrap") or request.get("accepted_tree") != identity(observed_forest(self.config))
             held = any((self.config.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP"))
             issued = request.get("issued_at")
             expired = type(issued) not in (int, float) or not 0 <= time.time() - issued <= 120
@@ -642,16 +818,39 @@ class CampaignRuntime:
             self.stop.set()
         atomic_json(self.config.state_root / "control/action-ledger.json", self._actions)
 
+    def _repair_requires_reconciliation(self) -> bool:
+        for action in self._actions.values():
+            if action.get("request", {}).get("kind") != "repair" or not action.get("repair_started"):
+                continue
+            observation = action.get("observation", {})
+            if observation.get("status") == "unknown":
+                return True
+            if observation.get("status") == "running" and (not observation.get("requires_fenced_reload") or observation.get("expected_framework_revision") != self._loaded_framework_revision):
+                return True
+        return False
+
     def run(self, *, once: bool = False) -> dict[str, Any]:
+        observation = wait_for_storage(self.config, self.stop)
+        if self.stop.is_set():
+            return {"schema": "wwl.native-runtime-stopped@1", "resource_pressure": observation, "completion_authority": False}
         self.open()
+        self.capture()
         self.publish_readiness()
         try:
             while not self.stop.is_set():
+                if storage_observation(self.config)["blocked"]:
+                    wait_for_storage(self.config, self.stop)
+                    continue
+                self._maybe_refresh_repair_canary()
                 self.process_requests()
                 self.settle_controls()
                 hold = any((self.config.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP"))
                 repairing = self._repair_thread is not None and self._repair_thread.is_alive()
-                if not hold and not repairing and (self._worker is None or not self._worker.is_alive()):
+                repair_fence = self._repair_requires_reconciliation()
+                if repair_fence and self._pending_controls and (self._worker is None or not self._worker.is_alive()):
+                    self._worker = threading.Thread(target=self._reconcile_controls, name="wwl-native-reconciliation-owner", daemon=False)
+                    self._worker.start()
+                if not hold and not repairing and not repair_fence and (self._worker is None or not self._worker.is_alive()):
                     if once and self._passes:
                         break
                     self.cancel.clear()
@@ -672,6 +871,7 @@ class CampaignRuntime:
                     raise RuntimeError("native repair worker has not drained; refusing DB ownership release")
             return self.publish(alive=False)
         finally:
+            self._stop_repair_canary_refresh()
             if self._worker is None or not self._worker.is_alive():
                 self._daemon.close()
 
@@ -747,6 +947,13 @@ def main(argv: list[str] | None = None) -> int:
             output = repair_once(config, args.request)
         else:
             os.environ["PATH"] = str(Path(config.python_executable).parent) + os.pathsep + os.environ.get("PATH", "")
+            waiting_stop = threading.Event()
+            signal.signal(signal.SIGTERM, lambda *_args: waiting_stop.set())
+            signal.signal(signal.SIGINT, lambda *_args: waiting_stop.set())
+            observation = wait_for_storage(config, waiting_stop)
+            if waiting_stop.is_set():
+                print(json.dumps({"schema": "wwl.native-runtime-stopped@1", "resource_pressure": observation, "completion_authority": False}), flush=True)
+                return 0
             with owner_lock(config):
                 receipt = bootstrap(config, already_locked=True)
                 runtime = CampaignRuntime(config, receipt)
@@ -766,6 +973,9 @@ def main(argv: list[str] | None = None) -> int:
 def admit_repair(config: CampaignConfig, request_path: Path) -> dict[str, Any]:
     """Resolve a current owner failure and bind exact allowed repair paths."""
     from .worldwide_legal_search_watchdog import read_owned_json
+
+    if storage_observation(config)["blocked"]:
+        raise ValueError("repair admission is blocked by resource quota")
 
     request = read_owned_json(request_path)
     action_id = str(request.get("action_id") or "")
@@ -854,7 +1064,7 @@ def repair_once(config: CampaignConfig, request_path: Path) -> dict[str, Any]:
         "outputs": [*admission["source_paths"], admission["regression_path"]],
         "evidence_output": admission["evidence_path"], "write_scope": admission["allowed_paths"],
         "acceptance": "Reproduce and fix exactly the observed native defect, preserving routing, ownership, validation and completion gates. Add the new action-specific regression and prove it fails on the bound baseline and passes after the fix. Existing tests, routing policies and acceptance criteria are read-only. Native failure evidence: " + json.dumps(failure, sort_keys=True),
-        "validation_argv": [[config.python_executable, "-I", "-c", REPAIR_VALIDATOR, json.dumps(validation_binding, sort_keys=True)]],
+        "validation_argv": [[config.python_executable, "-I", "-c", "exec(" + repr(REPAIR_VALIDATOR) + ")", json.dumps(validation_binding, sort_keys=True)]],
         "bounds": {"max_attempts": 2, "wall_seconds_per_attempt": config.task_timeout_seconds, "validation_reserve_percent": 25}}
     plan = {**source, "namespace": config.run_id + "-repair-" + action_id[:16], "tasks": [task], "operational_repair_binding": admission,
         "execution": {**source["execution"], "protected_acceptance_inputs": admission["protected_paths"]},

@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -16,6 +17,8 @@ import tempfile
 from ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime import (
     CampaignConfig, CampaignRuntime, atomic_json, build_population, identity,
     read_json, topological_tasks, validate_goal, admit_repair, REPAIR_VALIDATOR,
+    repair_pipeline_binding, verified_repair_canary,
+    wait_for_storage, bootstrap,
 )
 
 
@@ -54,6 +57,7 @@ class RuntimeBoundaries(unittest.TestCase):
         self.assertEqual(tasks[1]["depends_on"], [tasks[0]["task_cid"]])
         self.assertEqual(tasks[0]["completion"], "auto")
         self.assertTrue(tasks[0]["validations"])
+        self.assertEqual(tasks[0]["validations"][0]["argv"], plan_fixture()["tasks"][0]["validation_argv"][0])
         self.assertNotIn("completion_receipt", tasks[0])
 
     def test_native_source_ingests_exact_dependency_frontier(self):
@@ -65,6 +69,7 @@ class RuntimeBoundaries(unittest.TestCase):
                 self.assertEqual(receipt["task_count"], 2)
                 self.assertEqual(receipt["goal_count"], 2)
                 self.assertEqual([task.task_alias for task in source.ready_tasks().tasks], ["WWL-000"])
+                self.assertEqual(list(source.get_task("WWL-000").validations[0]["argv"]), plan_fixture()["tasks"][0]["validation_argv"][0])
                 projection = source.intent.completion_evidence_projection()
                 self.assertEqual(projection["completion_receipts"], [])
                 self.assertFalse(source.snapshot().terminal)
@@ -279,6 +284,117 @@ class RepairAdmissionBoundaries(unittest.TestCase):
             result = subprocess.run([sys.executable, "-I", "-c", REPAIR_VALIDATOR, json.dumps(binding)], cwd=root, capture_output=True, text=True, timeout=180)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("did not reproduce", result.stderr)
+
+    def test_restarted_repair_is_never_dispatched_twice_and_reconcile_survives_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, request_path, _failure, _target = self.fixture(Path(directory))
+            request = read_json(request_path)
+            action = {"request": request, "result": {"status": "accepted", "deadline_at": time.time() + 120},
+                "observation": {"status": "running"}, "repair_started": time.time()}
+            reconcile = {"request": {"kind": "reconcile"}, "result": {"status": "accepted"}, "observation": {"status": "running"}}
+            atomic_json(config.state_root / "control/action-ledger.json", {request["action_id"]: action, "reconcile-action": reconcile})
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            self.assertEqual(runtime._pending_controls, ["reconcile-action"])
+            runtime.settle_controls()
+            self.assertEqual(runtime._actions[request["action_id"]]["observation"]["status"], "unknown")
+            self.assertIsNone(runtime._repair_thread)
+
+    def test_dispatch_exception_and_exit_zero_without_native_receipt_remain_unknown(self):
+        for mode in ("exception", "exit-zero"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                config, request_path, _failure, _target = self.fixture(Path(directory))
+                request = read_json(request_path)
+                runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+                action = {"request": request, "result": {"status": "accepted", "deadline_at": time.time() + 120},
+                    "observation": {"status": "running"}, "repair_started": time.time()}
+                runtime._actions[request["action_id"]] = action
+                if mode == "exception":
+                    with patch.object(runtime, "_dispatch_repair", side_effect=RuntimeError("owned dispatcher fixture fault")):
+                        runtime._execute_repair(request["action_id"], action)
+                else:
+                    with patch("ipfs_accelerate_py.agent_supervisor.rescue.repair_dispatcher.run_worker", return_value={"outcome": "awaiting_observation", "exit_code": 0}):
+                        runtime._execute_repair(request["action_id"], action)
+                self.assertEqual(action["observation"]["status"], "unknown")
+                self.assertFalse(action["observation"]["effects_verified"])
+                self.assertFalse(runtime.cancel.is_set())
+
+    def test_promoted_handoff_metadata_survives_reloaded_owner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, request_path, _failure, _target = self.fixture(Path(directory))
+            request = read_json(request_path)
+            observation = {"status": "running", "requires_fenced_reload": True, "expected_framework_revision": "new-native-head",
+                "original_failure_receipt": request["reproducer_receipt"]}
+            action = {"request": request, "result": {"status": "accepted"}, "observation": observation, "repair_started": time.time()}
+            atomic_json(config.state_root / "control/action-ledger.json", {request["action_id"]: action})
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            runtime.settle_controls()
+            self.assertEqual(runtime._actions[request["action_id"]]["observation"], observation)
+            self.assertIsNone(runtime._repair_thread)
+            self.assertTrue(runtime._repair_requires_reconciliation())
+            runtime._loaded_framework_revision = observation["expected_framework_revision"]
+            self.assertFalse(runtime._repair_requires_reconciliation())
+            observation["status"] = "unknown"
+            runtime._actions[request["action_id"]]["observation"] = observation
+            self.assertTrue(runtime._repair_requires_reconciliation())
+
+    def test_canary_binding_survives_unrelated_commit_but_rejects_pipeline_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request_path, _failure, target = self.fixture(Path(directory))
+            for relative in ("project_adapters/worldwide_legal_search_provider.py", "project_adapters/worldwide_legal_search_goals.py",
+                             "todo_daemon/implementation_daemon_runner.py", "todo_daemon/implementation_daemon.py", "todo_daemon/database_portal_bridge.py", "rescue/repair_dispatcher.py",
+                             "task_sources/board_control_plane.py", "task_sources/database_task_source.py", "task_sources/intent_repository.py",
+                             "validation/validation_runtime.py", "validation/validation_commands.py", "validation/project_dependency_preflight.py"):
+                path = config.framework_root / "ipfs_accelerate_py/agent_supervisor" / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# pipeline fixture\n")
+            receipt = {"schema": "wwl.native-repair-canary@1", "pipeline_binding": repair_pipeline_binding(config),
+                "baseline_failure_verified": True, "candidate_regressions_verified": True, "validated_promotion": True,
+                "native_completion_receipt": "native-fixture-proof", "native_projection": "native-fixture-projection",
+                "source_provenance": {"fixture": True}}
+            receipt["receipt_id"] = identity(receipt)
+            atomic_json(config.state_root / "repair-canary.json", receipt)
+            self.assertIsNotNone(verified_repair_canary(config))
+            (config.framework_root / "unrelated.txt").write_text("unrelated commit\n")
+            subprocess.run(["git", "-C", str(config.framework_root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(config.framework_root), "commit", "-qm", "Unrelated source commit"], check=True)
+            self.assertIsNotNone(verified_repair_canary(config))
+            target.write_text(target.read_text() + "# pipeline changed\n")
+            self.assertIsNone(verified_repair_canary(config))
+
+    def test_blocked_native_result_is_not_success_or_an_autonomous_repair_fault(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            runtime._last_failure = {}
+            runtime._daemon = SimpleNamespace(list_running_attempts=lambda: [], run_once=lambda: {
+                "active_task_id": "WWL-000", "implementation_result": {"status": "blocked", "reason": "implementation_protected_path_mutated"}})
+            with patch.object(runtime, "capture"):
+                runtime._run_pass()
+            self.assertEqual(runtime._last_successful_pass, {})
+            self.assertEqual(runtime.publish()["blocked_kind"], "permission")
+            self.assertEqual(runtime._last_failure, {})
+
+    def test_resource_wait_is_stoppable_and_resumes_without_native_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            stop = threading.Event()
+            blocked = {"schema": "wwl.resource-observation@1", "blocked": True, "paths": []}
+            sufficient = {**blocked, "blocked": False}
+            with patch("ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime.storage_observation", side_effect=[blocked, sufficient]), patch.object(stop, "wait", return_value=False) as waited:
+                self.assertFalse(wait_for_storage(config, stop)["blocked"])
+                waited.assert_called_once()
+            stop.set()
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            runtime.stop.set()
+            with patch("ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime.storage_observation", return_value=blocked), patch.object(runtime, "open") as opened:
+                self.assertEqual(runtime.run()["schema"], "wwl.native-runtime-stopped@1")
+                opened.assert_not_called()
+            with patch("ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime.storage_observation", return_value=blocked):
+                with self.assertRaises(OSError) as raised:
+                    bootstrap(config)
+                self.assertEqual(raised.exception.errno, 28)
+            self.assertFalse(config.database.exists())
+            self.assertFalse((config.state_root / "native-owner.lock").exists())
 
 
 if __name__ == "__main__":

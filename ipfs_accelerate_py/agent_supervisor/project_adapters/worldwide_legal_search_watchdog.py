@@ -36,6 +36,38 @@ def identity(value: Any) -> str:
     return "sha256:" + hashlib.sha256(canonical(value)).hexdigest()
 
 
+def native_identity(value: Any) -> str:
+    """Match the native runtime's UTF-8 receipt encoding."""
+    return "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+
+
+def resource_observation(*, repository: Path, state_root: Path, framework_root: Path | None = None,
+                         config: Mapping[str, Any] | None = None, statvfs=None) -> dict[str, Any]:
+    """Read actual storage admission evidence without modifying any file."""
+    bounds = (config or {}).get("resource_pressure", {})
+    if not isinstance(bounds, Mapping):
+        raise WatchdogBridgeError("resource pressure thresholds must be an object")
+    state_min = bounds.get("minimum_state_free_bytes", 64 * 1024**2)
+    repository_min = bounds.get("minimum_repository_free_bytes", 256 * 1024**2)
+    if any(type(value) is not int or not 0 < value <= 1024**4 for value in (state_min, repository_min)):
+        raise WatchdogBridgeError("resource pressure thresholds must be finite positive byte counts")
+    probe = statvfs or os.statvfs
+    roots = [("state", state_root, state_min), ("site", repository, repository_min)]
+    if framework_root is not None:
+        roots.append(("framework", framework_root, repository_min))
+    evidence = []
+    for role, path, minimum in roots:
+        item = {"role": role, "path": str(path), "minimum_free_bytes": minimum}
+        try:
+            usage = probe(path)
+            free = max(0, int(usage.f_bavail)) * int(usage.f_frsize)
+            item.update(free_bytes=free, reason="sufficient" if free >= minimum else "insufficient_free_space")
+        except OSError as error:
+            item.update(free_bytes=None, reason="statvfs_unavailable", error_errno=error.errno)
+        evidence.append(item)
+    return {"schema": "wwl.resource-observation@1", "blocked": any(item["reason"] != "sufficient" for item in evidence), "paths": evidence}
+
+
 def read_owned_json(path: Path) -> dict[str, Any]:
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(descriptor, "rb") as source:
@@ -87,7 +119,7 @@ def publish_once(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 class WorldwideWatchdogBridge:
-    def __init__(self, *, repository: Path, state_root: Path, run_id: str, freshness_seconds: float = 120, clock=time.time, sleep=time.sleep, host_lifecycle=None):
+    def __init__(self, *, repository: Path, state_root: Path, run_id: str, freshness_seconds: float = 120, clock=time.time, sleep=time.sleep, host_lifecycle=None, statvfs=None):
         self.repository = repository.expanduser().resolve(strict=True)
         self.state_root = state_root.expanduser().resolve(strict=True)
         if not self.repository.is_dir() or not self.state_root.is_dir() or self.state_root.stat().st_uid != os.getuid() or not run_id:
@@ -98,10 +130,18 @@ class WorldwideWatchdogBridge:
             raise WatchdogBridgeError("freshness bound must be positive")
         self.run_id, self.freshness_seconds, self.clock, self.sleep = run_id, freshness_seconds, clock, sleep
         self.host_lifecycle = host_lifecycle
+        self.statvfs = statvfs
         config = self.repository / "config/worldwide_supervisor_host.json"
+        self.host_config = read_owned_json(config) if config.is_file() else {}
+        self.framework_root = Path(self.host_config["framework_root"]).resolve(strict=True) if self.host_config.get("framework_root") else None
+        # Validate configured bounds at construction, before any action can run.
+        self.resources()
         if self.host_lifecycle is None and config.is_file():
             from .worldwide_legal_search_host_lifecycle import RegisteredSystemdLifecycle
             self.host_lifecycle = RegisteredSystemdLifecycle(repository=self.repository, state_root=self.state_root, run_id=self.run_id)
+
+    def resources(self) -> dict[str, Any]:
+        return resource_observation(repository=self.repository, state_root=self.state_root, framework_root=self.framework_root, config=self.host_config, statvfs=self.statvfs)
 
     def _host_probe(self) -> dict[str, Any] | None:
         if self.host_lifecycle is None:
@@ -137,7 +177,8 @@ class WorldwideWatchdogBridge:
         requested = request.get("required_task_ids")
         if not isinstance(requested, list) or not set(requested) <= set(value["required_task_ids"]):
             raise WatchdogBridgeError("native readiness omitted requested work")
-        return value
+        resources = self.resources()
+        return {**value, "resource_pressure": resources} if resources["blocked"] else value
 
     def observe(self, request: Mapping[str, Any]) -> dict[str, Any]:
         ready = self._readiness()
@@ -161,6 +202,12 @@ class WorldwideWatchdogBridge:
             if stale or snapshot.get("owner_pid") != host["main_pid"]:
                 # A current host observation is not a current task-state proof.
                 snapshot.update(completion_verified=False, completion_receipt="")
+        resources = self.resources()
+        if resources["blocked"]:
+            # Disk pressure is an external admission blocker, not a software
+            # defect. In particular, do not publish settlement files on a full
+            # filesystem while observing it.
+            return {**snapshot, "blocked_kind": "resource_quota", "resource_pressure": resources}
         # Canonical heartbeat, progress token and source revision are retained.
         observations = {item["action_id"]: item for item in snapshot.get("action_observations", [])}
         for action_id in request.get("action_ids", []):
@@ -185,8 +232,120 @@ class WorldwideWatchdogBridge:
                     item = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id, "status": "succeeded", "receipt": identity(settlement), "effects_verified": True}
                     publish_once(self.state_root / "control/host-terminal-observations" / name, item)
             observations[action_id] = item
+        # Promotion is not incident recovery. A separate, admitted host
+        # operation must fence/reload before a fresh native pass can settle it.
+        for action_id in set(request.get("action_ids", [])) | set(observations):
+            terminal = self._repair_settlement(action_id, snapshot, host)
+            if terminal is not None:
+                observations[action_id] = terminal
         snapshot["action_observations"] = list(observations.values())
         return snapshot
+
+    def _reload_binding(self, action: Mapping[str, Any]) -> dict[str, Any]:
+        repair_id = action.get("reload_after_action_id")
+        expected = action.get("expected_framework_revision")
+        failure_id = action.get("original_failure_receipt")
+        if action.get("kind") != "recover" or not isinstance(repair_id, str) or ACTION_ID.fullmatch(repair_id) is None or repair_id == action["action_id"]:
+            raise WatchdogBridgeError("reload must reference a distinct native repair action")
+        if not isinstance(expected, str) or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", expected) is None or not isinstance(failure_id, str) or not failure_id:
+            raise WatchdogBridgeError("reload requires the exact promoted source and original failure")
+        ledger = read_owned_json(self.state_root / "control/action-ledger.json")
+        entry = ledger.get(repair_id, {})
+        request, result, observation = entry.get("request", {}), entry.get("result", {}), entry.get("observation", {})
+        if request.get("action_id") != repair_id or request.get("kind") != "repair" or request.get("run_id") != self.run_id or request.get("policy_id") != action["policy_id"]:
+            raise WatchdogBridgeError("reload does not reference this campaign's admitted repair")
+        if result.get("status") != "accepted" or result.get("action_id") != repair_id or type(result.get("deadline_at")) not in (int, float) or not math.isfinite(result["deadline_at"]):
+            raise WatchdogBridgeError("referenced repair has no bounded native admission")
+        if observation.get("status") != "running" or observation.get("candidate_promotion_verified") is not True or observation.get("effects_verified") is not True or observation.get("requires_fenced_reload") is not True or observation.get("recovery_verified") is not False:
+            raise WatchdogBridgeError("referenced repair has no validated pending promotion")
+        if observation.get("expected_framework_revision") != expected or observation.get("original_failure_receipt") != failure_id or request.get("reproducer_receipt") != failure_id:
+            raise WatchdogBridgeError("reload source or failure differs from the native promotion")
+        evidence = read_owned_json(self.state_root / "repairs" / repair_id / "native-repair-result.json")
+        if evidence.get("schema") != "wwl.native-repair-result@1" or evidence.get("action_id") != repair_id or evidence.get("validated") is not True or not evidence.get("native_completion_receipt") or not evidence.get("native_projection"):
+            raise WatchdogBridgeError("reload is missing native validation and promotion evidence")
+        if evidence.get("action_request_identity") != native_identity(request) or evidence.get("framework_head") != expected or evidence.get("original_failure_receipt") != failure_id:
+            raise WatchdogBridgeError("reload native evidence belongs to another request or source")
+        return {"schema": "wwl.watchdog.repair-reload@1", "run_id": self.run_id, "repair_action_id": repair_id,
+                "recover_action_id": action["action_id"], "recover_request_identity": identity(action),
+                "expected_framework_revision": expected, "original_failure_receipt": failure_id,
+                "original_task_id": request.get("task_id", ""),
+                "original_repair_deadline_at": result["deadline_at"], "native_promotion_receipt": observation["receipt"],
+                "native_completion_receipt": evidence["native_completion_receipt"], "issued_at": action["issued_at"]}
+
+    def _repair_settlement(self, repair_id: str, snapshot: Mapping[str, Any], host: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        terminal_path = self.state_root / "control/repair-terminal-observations" / (repair_id + ".json")
+        try:
+            return read_owned_json(terminal_path)
+        except FileNotFoundError:
+            pass
+        if host is None or not host.get("fresh_owner_projection") or snapshot.get("source_projection_stale") or snapshot.get("owner_pid") != host.get("main_pid") or snapshot.get("effects_unknown") or snapshot.get("native_error"):
+            return None
+        successful_pass = snapshot.get("last_successful_native_pass", {})
+        if not isinstance(successful_pass, dict) or successful_pass.get("owner_pid") != host["main_pid"] or successful_pass.get("framework_revision") != snapshot.get("loaded_framework_revision"):
+            return None
+        if not isinstance(successful_pass.get("result"), dict) or not successful_pass["result"] or successful_pass.get("receipt_id") != native_identity(successful_pass["result"]) or not successful_pass.get("progress_token"):
+            return None
+        completed_at = successful_pass.get("completed_at")
+        if type(completed_at) not in (int, float) or not math.isfinite(completed_at) or completed_at > self.clock() + 30:
+            return None
+        reloads = self.state_root / "control/repair-reloads" / repair_id
+        paths = list(reloads.glob("*.json"))
+        if len(paths) > 128:
+            raise WatchdogBridgeError("repair reload receipt lookup exceeds the campaign bound")
+        for path in sorted(paths):
+            binding = read_owned_json(path)
+            if binding.get("repair_action_id") != repair_id or binding.get("run_id") != self.run_id or binding.get("recover_action_id") != path.stem:
+                raise WatchdogBridgeError("repair reload receipt has mismatched scope")
+            if completed_at < binding["issued_at"] or snapshot.get("loaded_framework_revision") != binding["expected_framework_revision"]:
+                continue
+            name = path.name
+            try:
+                before = read_owned_json(self.state_root / "control/host-before" / name)
+                try:
+                    recovery = read_owned_json(self.state_root / "control/host-terminal-observations" / name)
+                except FileNotFoundError:
+                    recovery = read_owned_json(self.state_root / "control/host-observations" / name)
+            except FileNotFoundError:
+                continue
+            if recovery.get("status") != "succeeded" or recovery.get("effects_verified") is not True or (before["main_pid"], before["start_ticks"]) == (host["main_pid"], host["start_ticks"]):
+                continue
+            # Resolve the original failure content; a cleared bootstrap bool
+            # alone cannot substitute for a new native pass of the same task.
+            failures = list((self.state_root / "failures").glob("*.json"))
+            if len(failures) > 256:
+                raise WatchdogBridgeError("original repair failure lookup exceeds its bound")
+            matches = [value for item in failures if (value := read_owned_json(item)).get("receipt_id") == binding["original_failure_receipt"]]
+            if len(matches) != 1:
+                continue
+            failure = matches[0]
+            if failure.get("run_id") != self.run_id or native_identity({k: v for k, v in failure.items() if k != "receipt_id"}) != failure["receipt_id"]:
+                raise WatchdogBridgeError("original repair failure receipt is invalid")
+            task_id = failure.get("task_id") or binding.get("original_task_id") or successful_pass["result"].get("active_task_id")
+            completion = snapshot.get("native_completion_receipts_by_alias", {}).get(task_id)
+            # A nonthrowing daemon pass can still return a blocked or failed
+            # attempt. Only the original task's canonical validated completion
+            # proves recovery; a cleared error flag or return value cannot.
+            if (completed_at <= failure.get("observed_at", 0) or not task_id
+                    or successful_pass["result"].get("active_task_id") != task_id
+                    or task_id not in snapshot.get("verified_task_ids", [])
+                    or snapshot.get("task_statuses", {}).get(task_id) not in {"completed", "complete", "done"}
+                    or not isinstance(completion, str) or not completion
+                    or not snapshot.get("native_completion_projection")):
+                continue
+            on_time = completed_at <= binding["original_repair_deadline_at"]
+            settlement = {"schema": "wwl.watchdog.repair-settlement@1", "run_id": self.run_id, "repair_action_id": repair_id,
+                "reload_binding": binding, "host_recovery_receipt": recovery["receipt"], "host_owner": dict(host),
+                "loaded_framework_revision": snapshot["loaded_framework_revision"], "native_pass": successful_pass,
+                "recovered_task_id": task_id, "native_task_completion_receipt": completion,
+                "native_completion_projection": snapshot["native_completion_projection"],
+                "original_failure_receipt": failure["receipt_id"], "original_fault_cleared": True, "within_original_deadline": on_time}
+            publish_once(self.state_root / "control/repair-settlement-receipts" / (repair_id + ".json"), settlement)
+            terminal = {"schema": "wwl.watchdog.action-observation@1", "action_id": repair_id, "status": "succeeded" if on_time else "failed",
+                "receipt": identity(settlement), "effects_verified": True, "recovery_verified": True,
+                "reason": "fenced_native_owner_proved_recovery" if on_time else "recovery_verified_after_original_repair_deadline"}
+            publish_once(terminal_path, terminal)
+            return terminal
+        return None
 
     def _refuse(self, action: Mapping[str, Any], reason: str) -> dict[str, Any]:
         receipt = {"schema": "wwl.watchdog.control-refusal@1", "action_id": action["action_id"], "request_identity": identity(action), "run_id": self.run_id, "reason": reason, "effects_applied": False}
@@ -229,6 +388,12 @@ class WorldwideWatchdogBridge:
             # Existing submission may already have effects. A later scope
             # transition cannot turn its outcome into a no-effect refusal.
             return self._wait_result(action, path, timeout_seconds)
+        resources = self.resources()
+        if resources["blocked"]:
+            # No durable no-effect receipt can be promised on a full volume.
+            # Preserve the request/outbox as unknown and perform no mutation.
+            return {"schema": "wwl.watchdog.action-result@1", "action_id": action["action_id"], "status": "unknown",
+                    "receipt": identity({"not_dispatched_for_resource_pressure": identity(action), "evidence": resources}), "resource_pressure": resources}
         capability = {"reconcile": "reconcile", "recover": "lifecycle_restart", "repair": "repair_dispatch"}[action["kind"]]
         if ready["bindings"].get(capability) is not True:
             return self._refuse(action, "native_" + capability + "_not_bound")
@@ -240,6 +405,14 @@ class WorldwideWatchdogBridge:
         if action.get("authority_revision") != snapshot.get("authority_revision") or action.get("accepted_tree") != snapshot.get("accepted_tree"):
             return self._refuse(action, "native_observation_revision_changed")
         host = snapshot.get("registered_host_lifecycle")
+        if action.get("reload_after_action_id") is not None:
+            if host is None:
+                return self._refuse(action, "registered_host_lifecycle_required_for_repair_reload")
+            try:
+                binding = self._reload_binding(action)
+            except (OSError, ValueError, KeyError) as error:
+                return self._refuse(action, "native_promotion_reload_binding_rejected: " + str(error))
+            publish_once(self.state_root / "control/repair-reloads" / binding["repair_action_id"] / (action["action_id"] + ".json"), binding)
         if host is not None and (action["kind"] == "recover" or (action["kind"] == "reconcile" and (not host["owner_alive"] or snapshot.get("source_projection_stale")))):
             return self._host_recover(action, host_path)
         publish_once(path, action)
