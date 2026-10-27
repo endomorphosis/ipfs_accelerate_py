@@ -82,6 +82,51 @@ This explicit agent-CLI route is separate from `llm_router.generate_text`.
 Generic agent/tool requests continue to prohibit cross-provider retries after
 side effects.
 
+## Consumed attempts after a runtime reload
+
+An ordinary validation failure, test timeout, proposal failure or changed
+control-plane source revision does not grant another attempt budget for the
+same canonical task. Historical `ordinary_task_validation_obsolescence_rearmed`
+events and `validation_obsolescence_rearm_receipts` remain evidence; the generic
+source-revision reset entrypoint no longer clears either attempt-count map.
+Completed board-bound retry repairs and their once-only durable receipts,
+generated-repair recovery, and separately verified stale-proposal or
+undispatched-provider recovery retain their existing owners and gates.
+
+After the whole lane is quiescent, attempt-limit partitioning can restore a
+minimum known consumed count for an exact CID with nonempty persisted
+`validation_obsolescence_rearm_receipts`. It uses the existing strict lifecycle
+journal verifier, matching each persisted fingerprint, canonical CID, policy
+revision and exact integer count fields. Protected same-attempt reuse is checked
+through its existing latch/finish owners using those same verified rows, before
+any floor mutation. A later exact completed-repair reset supersedes older floors
+and clears only its exact-CID derived fingerprint cache, recording the superseded
+values in its original reset event so future repaired retries survive archive
+eviction. Restoration changes the existing count maps only;
+it never relabels the historical local ordinal, reconstructs a lifetime total,
+refunds an attempt or admits a candidate. Active task identities, phases and
+in-progress owners are exempt from this acquisition and mutation.
+
+Only this floor caller supplies a total evidence limit of **64 selected files
+and 32 MiB**, including an existing journal manifest. The optional verifier
+preflight runs before manifest rebuilding, body replay or cache reuse and
+rejects unsafe aliases and growth beyond the limit. Existing callers keep
+their previous verification semantics and independent limits. This evidence
+acquisition budget does not change CPU, memory, retry, provider, validation
+runtime or model budgets. The motivating retained lane journal was
+15,914,019 bytes plus a 1,504-byte manifest; its eventual post-closeout size must
+be checked again rather than inferred from that earlier observation.
+
+Missing, malformed, mismatched or over-budget proof returns the affected CID
+as `validation_rearm_floor_evidence_unverified` through the existing partition,
+with no counter mutation or provider dispatch. Other receipt-free task
+identities do not scan or depend on that legacy history. The persisted field
+belongs to `PortalTaskState` and its original DuckDB/Quack save/load owners;
+an absent plain JSON snapshot does not prove that the native field is absent.
+If an affected legacy CID genuinely lacks its receipt, a separate original-owned
+quiescent accounting migration is required before its release. This path does
+not infer an absent receipt or manufacture that migration authority.
+
 ## Extending
 
 1. Add modules here only if this package **owns** the concern ([placement table](../../../docs/architecture/agent_supervisor/PACKAGE_MAP.md)).

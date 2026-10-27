@@ -347,7 +347,7 @@ def test_proposal_gate_failure_is_rearmable_evidence(tmp_path):
     assert daemon._task_has_validation_command_failure_evidence(task) is True
 
 
-def test_rearm_clears_exhausted_inventory_attempts_after_proposal_gate(
+def test_source_revision_preserves_exhausted_inventory_attempts_after_proposal_gate(
     tmp_path,
 ):
     daemon = _daemon(tmp_path)
@@ -375,10 +375,10 @@ def test_rearm_clears_exhausted_inventory_attempts_after_proposal_gate(
         {"IPS-001": "ready"},
         recovery_revision="rev-unstuck",
     )
-    assert len(rearmed) == 1
-    assert rearmed[0]["task_id"] == "IPS-001"
-    assert "IPS-001" not in state.implementation_attempts
-    assert identity.canonical_task_cid not in state.implementation_attempts_by_cid
+    assert rearmed == []
+    assert state.implementation_attempts["IPS-001"] == 5
+    assert state.implementation_attempts_by_cid[identity.canonical_task_cid] == 5
+    assert state.validation_obsolescence_rearm_receipts == {}
 
 
 def test_database_projection_does_not_release_consumed_quarantine(tmp_path):

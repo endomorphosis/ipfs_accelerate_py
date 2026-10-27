@@ -3064,6 +3064,10 @@ STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
 VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION = (
     "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@2"
 )
+# Caller evidence acquisition only; no retry, provider, runtime or model budget changes.
+VALIDATION_REARM_FLOOR_MAX_JOURNAL_FILES = 64
+VALIDATION_REARM_FLOOR_MAX_JOURNAL_BYTES = 32 * 1024 * 1024
+
 RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "todo_daemon/implementation_daemon.py",
     "objectives/backlog_refinery.py",
@@ -11355,6 +11359,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self,
         state: PortalTaskState,
         task: PortalTask,
+        *,
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> int | None:
         """Recover one exact revision/attempt from its durable signed latch."""
 
@@ -11368,10 +11374,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             attempt=current,
             task_revision_cid=revision,
         )
+        history_arguments = ({} if verified_lifecycle_events is None else
+            {"verified_lifecycle_events": verified_lifecycle_events})
         event_latch = self._protected_attempt_event_latch(
             task_id=task.task_id,
             attempt=current,
             task_revision_cid=revision,
+            **history_arguments,
         )
         if not state_latched and event_latch is None:
             return None
@@ -11394,6 +11403,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 current,
                 task_revision_cid=revision,
                 board_namespace=expected_namespace,
+                **history_arguments,
             )
         ):
             return None
@@ -11494,6 +11504,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 for canonical_task_cid in sorted(canonical_task_cids)
             }
+            superseded_validation_rearms = {
+                canonical_task_cid: state.validation_obsolescence_rearm_receipts.pop(canonical_task_cid)
+                for canonical_task_cid in sorted(canonical_task_cids)
+                if canonical_task_cid in state.validation_obsolescence_rearm_receipts
+            }
             for canonical_task_cid in canonical_task_cids:
                 queue_changed = (
                     self.task_queue.reset_retry_state(canonical_task_cid)
@@ -11507,6 +11522,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "failure_kind": failure_kind,
                     "previous_display_attempt_count": previous_display_count,
                     "previous_canonical_attempt_counts": previous_cid_counts,
+                    "superseded_validation_obsolescence_rearm_receipts": superseded_validation_rearms,
                 }
             )
 
@@ -12294,113 +12310,162 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         recovery_revision: str,
     ) -> list[dict[str, Any]]:
-        """Rearm ordinary tasks exhausted on validation after control-plane fixes.
+        """Keep ordinary consumed attempts spent across runtime revisions.
 
-        When a provider burns its attempt budget solely on validation failures
-        and the recovery runtime revision later advances (gate/daemon fix),
-        grant one full attempt-budget reset so the supervisor can self-unblock
-        without operator counter surgery. Each recovery revision rearms a
-        canonical task at most once.
+        A source revision and failed validation do not establish that the
+        failure was an infrastructure defect, or that the revision fixed it.
+        In particular, timeout/output-observability changes cannot authorize
+        another provider budget for the same canonical task. Historical
+        obsolescence receipts remain readable, but this compatibility entry
+        point no longer manufactures a reset from those two observations.
+
+        Completed, board-bound retry repairs retain their separate durable
+        authority in _reset_attempt_budgets_for_completed_retry_repairs.
+        Generated repair and stale-proposal recovery keep their own gates.
         """
 
-        if not automatic_retry_rearm_enabled():
-            return []
-        revision = str(recovery_revision or "").strip()
-        if self.max_task_attempts <= 0 or not revision:
-            return []
-        active_task_id = (
-            str(state.active_task_id or "").strip()
-            if state.implementation_in_progress
-            else ""
-        )
-        identities = {
-            task.task_id: self._identity_for_task(task) for task in tasks
-        }
-        aliases_by_cid: dict[str, list[str]] = {}
-        for task_id, identity in identities.items():
-            aliases_by_cid.setdefault(
-                identity.canonical_task_cid, []
-            ).append(task_id)
+        # Preserve the existing closed policy validation even though this
+        # source-hash-only recovery path cannot authorize a counter change.
+        automatic_retry_rearm_enabled()
+        return []
 
-        rearmed: list[dict[str, Any]] = []
-        queue_changed = False
+    def _restore_consumed_validation_rearm_attempt_floors(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        exempt_task_ids: Iterable[str] = (),
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
+    ) -> None:
+        """Recover a minimum spent count from exact, bounded native history.
+
+        Historical source-only rearms may already have lowered the maps.
+        This restores only an authenticated lower bound, not a reconstructed
+        lifetime total or a relabelled historical local attempt. It never
+        changes an active attempt or supersedes a completed repair reset.
+        """
+
+        if (state.implementation_in_progress or state.active_task_id
+                or state.active_task_cid or state.active_phase):
+            return
+        exempt = set(exempt_task_ids)
+        by_cid: dict[str, list[PortalTask]] = {}
+        required: dict[str, set[str]] = {}
         for task in tasks:
-            if (
-                task.task_id == active_task_id
-                or resolved_statuses.get(task.task_id) != "ready"
-                or is_retry_budget_repair_task(task)
-            ):
+            cid = self._canonical_ref(task)
+            if (task.task_id in exempt
+                    or resolved_statuses.get(task.task_id) != "ready"
+                    or is_retry_budget_repair_task(task)):
                 continue
-            attempt_count = self._task_attempt_count(state, task)
-            if attempt_count < self.max_task_attempts:
+            receipts = state.validation_obsolescence_rearm_receipts.get(cid, [])
+            if (type(receipts) is not list or any(type(item) is not str or not item
+                    for item in receipts) or len(receipts) != len(set(receipts))):
+                raise CursorReplayError("validation attempt floor has invalid rearm receipts")
+            if not receipts:
                 continue
-            if not self._task_has_validation_command_failure_evidence(task):
+            current = self._task_attempt_count(state, task)
+            if current >= self.max_task_attempts:
                 continue
-            identity = identities[task.task_id]
-            fingerprint_payload = {
-                "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
-                "recovery_revision": revision,
-                "canonical_task_cid": identity.canonical_task_cid,
-            }
-            fingerprint = "sha256:" + hashlib.sha256(
-                json.dumps(
-                    fingerprint_payload,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ).encode("utf-8")
-            ).hexdigest()
-            prior = state.validation_obsolescence_rearm_receipts.setdefault(
-                identity.canonical_task_cid,
-                [],
-            )
-            if fingerprint in prior:
+            by_cid.setdefault(cid, []).append(task)
+            required[cid] = set(receipts)
+        if not required:
+            return
+
+        # The existing replay owner performs this caller preflight before
+        # manifest/body reads and before its normal verified cache can return.
+        events = (verified_lifecycle_events if verified_lifecycle_events is not None else
+            self._iter_merge_lifecycle_events(
+                maximum_evidence_files=VALIDATION_REARM_FLOOR_MAX_JOURNAL_FILES,
+                maximum_evidence_bytes=VALIDATION_REARM_FLOOR_MAX_JOURNAL_BYTES,
+            ))
+
+        matches: dict[str, dict[str, tuple[int, int]]] = {cid: {} for cid in required}
+        completed_reset: dict[str, int] = {}
+        for event in events:
+            sequence = event.get("sequence")
+            if type(sequence) is not int or sequence <= 0:
+                raise CursorReplayError("validation attempt floor history has invalid sequence")
+            if event.get("type") == "ordinary_task_validation_obsolescence_rearmed":
+                items = event.get("rearmed")
+                if type(items) is not list or any(type(item) is not dict for item in items):
+                    raise CursorReplayError("validation attempt floor has malformed rearm history")
+                for item in items:
+                    cid = item.get("canonical_task_cid")
+                    if type(cid) is not str or cid not in required:
+                        continue
+                    fingerprint = item.get("rearm_fingerprint")
+                    if type(fingerprint) is not str or fingerprint not in required[cid]:
+                        continue
+                    revision = event.get("recovery_revision")
+                    expected = "sha256:" + hashlib.sha256(json.dumps({
+                        "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
+                        "recovery_revision": revision,
+                        "canonical_task_cid": cid,
+                    }, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+                    count = item.get("previous_attempt_count")
+                    canonical = item.get("previous_canonical_attempt_count")
+                    display = item.get("previous_display_attempt_counts")
+                    if (event.get("schema") != VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION
+                            or type(revision) is not str or not revision
+                            or item.get("recovery_revision") != revision
+                            or fingerprint != expected or fingerprint in matches[cid]
+                            or type(count) is not int or count <= 0
+                            or type(canonical) is not int or not 0 <= canonical <= count
+                            or type(display) is not dict or not display
+                            or type(item.get("task_id")) is not str or not item.get("task_id")
+                            or any(type(key) is not str or not key for key in display)
+                            or item.get("task_id") not in display
+                            or any(type(value) is not int or not 0 <= value <= count for value in display.values())
+                            or max([canonical, *display.values()]) != count):
+                        raise CursorReplayError("validation attempt floor rearm witness is invalid")
+                    matches[cid][fingerprint] = (sequence, count)
+            elif event.get("type") == "task_retry_budget_reset":
+                resets = event.get("resets")
+                if type(resets) is not list or any(type(reset) is not dict for reset in resets):
+                    raise CursorReplayError("validation attempt floor has malformed completed repair history")
+                for reset in resets:
+                    source_id = reset.get("source_task_id")
+                    for cid, aliases in by_cid.items():
+                        task = next((task for task in aliases if task.task_id == source_id), None)
+                        previous_counts = reset.get("previous_canonical_attempt_counts")
+                        if task is None or type(previous_counts) is not dict or cid not in previous_counts:
+                            continue
+                        scope = self._retry_no_change_pre_dispatch_scope(task, state)
+                        if (scope is not None and scope.get("kind") == "retry_budget_released_source"
+                                and scope.get("repair_task_id") == reset.get("repair_task_id")):
+                            display_count = reset.get("previous_display_attempt_count")
+                            if (type(display_count) is not int or display_count < 0
+                                    or any(type(count) is not int or count < 0 for count in previous_counts.values())
+                                    or scope.get("failure_kind") != reset.get("failure_kind")):
+                                raise CursorReplayError("validation attempt floor completed repair witness is invalid")
+                            completed_reset[cid] = sequence
+
+        restored = []
+        for cid, fingerprints in required.items():
+            if not fingerprints.issubset(matches[cid]):
+                raise CursorReplayError("validation attempt floor is missing a matching rearm fingerprint")
+            floor = max((matches[cid][fingerprint][1] for fingerprint in fingerprints
+                         if matches[cid][fingerprint][0] > completed_reset.get(cid, 0)), default=0)
+            current = max(self._task_attempt_count(state, task) for task in by_cid[cid])
+            if floor <= current:
                 continue
-            previous_display_counts = {
-                alias: int(state.implementation_attempts.pop(alias, 0) or 0)
-                for alias in aliases_by_cid.get(
-                    identity.canonical_task_cid,
-                    [task.task_id],
-                )
-            }
-            previous_canonical_count = int(
-                state.implementation_attempts_by_cid.pop(
-                    identity.canonical_task_cid,
-                    0,
-                )
-                or 0
-            )
-            queue_changed = (
-                self.task_queue.reset_retry_state(identity.canonical_task_cid)
-                or queue_changed
-            )
-            prior.append(fingerprint)
-            rearmed.append(
-                {
-                    "task_id": task.task_id,
-                    "canonical_task_cid": identity.canonical_task_cid,
-                    "previous_attempt_count": attempt_count,
-                    "previous_display_attempt_counts": previous_display_counts,
-                    "previous_canonical_attempt_count": previous_canonical_count,
-                    "recovery_revision": revision,
-                    "rearm_fingerprint": fingerprint,
-                }
-            )
-        if not rearmed:
-            return []
-        state.last_progress_at = utc_now()
-        state.save(self.state_path)
-        if queue_changed:
-            self.task_queue.save()
-        self._record_event(
-            "ordinary_task_validation_obsolescence_rearmed",
-            {
-                "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
-                "recovery_revision": revision,
-                "rearmed_count": len(rearmed),
-                "rearmed": rearmed,
-            },
-        )
-        return rearmed
+            restored.append({"canonical_task_cid": cid,
+                "task_ids": [task.task_id for task in by_cid[cid]],
+                "previous_current_count": current, "minimum_consumed_attempts": floor,
+                "historical_local_ordinals_relabelled": False,
+                "lifetime_total_reconstructed": False})
+        if restored:
+            # Authenticate every candidate before changing any projection.
+            for item in restored:
+                state.implementation_attempts_by_cid[item["canonical_task_cid"]] = item["minimum_consumed_attempts"]
+                for task_id in item["task_ids"]:
+                    state.implementation_attempts[task_id] = item["minimum_consumed_attempts"]
+            state.save(self.state_path)
+            self._record_event("ordinary_task_validation_attempt_floor_restored", {
+                "restored": restored, "new_attempt_authority": False,
+                "attempt_refunded": False, "completion_authority": False,
+            })
 
     def _partition_tasks_at_attempt_limit(
         self,
@@ -12424,16 +12489,58 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and bool(getattr(state, "implementation_in_progress", False))
         ):
             exempt.add(active_id)
+        legacy_cids = {
+            self._canonical_ref(task) for task in tasks
+            if task.task_id not in exempt and not is_retry_budget_repair_task(task)
+            and resolved_statuses.get(task.task_id) == "ready"
+            and self._task_attempt_count(state, task) < self.max_task_attempts
+            and self._canonical_ref(task) in state.validation_obsolescence_rearm_receipts
+            and (type(state.validation_obsolescence_rearm_receipts[self._canonical_ref(task)]) is not list
+                 or bool(state.validation_obsolescence_rearm_receipts[self._canonical_ref(task)]))
+        }
+        evidence_refused_cids: set[str] = set()
+        evidence_refusal = ""
+        verified_events = None
+        quiescent = not (state.implementation_in_progress or state.active_task_id
+                         or state.active_task_cid or state.active_phase)
+        if legacy_cids and quiescent:
+            try:
+                verified_events = self._iter_merge_lifecycle_events(
+                    maximum_evidence_files=VALIDATION_REARM_FLOOR_MAX_JOURNAL_FILES,
+                    maximum_evidence_bytes=VALIDATION_REARM_FLOOR_MAX_JOURNAL_BYTES,
+                )
+            except CursorReplayError as exc:
+                evidence_refused_cids = set(legacy_cids)
+                evidence_refusal = str(exc)
+        # Protected same-attempt recovery is an exemption before any floor
+        # mutation. A refused legacy CID must never fall through to repairing
+        # _iter_events; a verified one reuses these exact strict replay rows.
+        for task in tasks:
+            cid = self._canonical_ref(task)
+            if cid in evidence_refused_cids:
+                continue
+            history_arguments = ({} if cid not in legacy_cids or verified_events is None else
+                {"verified_lifecycle_events": verified_events})
+            if self._durable_protected_recovery_attempt(state, task, **history_arguments) is not None:
+                exempt.add(task.task_id)
+        if not evidence_refused_cids:
+            try:
+                self._restore_consumed_validation_rearm_attempt_floors(
+                    state, tasks, resolved_statuses, exempt_task_ids=exempt,
+                    verified_lifecycle_events=verified_events,
+                )
+            except CursorReplayError as exc:
+                evidence_refused_cids = set(legacy_cids)
+                evidence_refusal = str(exc)
         selectable: list[PortalTask] = []
         limited: list[dict[str, Any]] = []
         for task in tasks:
             attempt_count = self._task_attempt_count(state, task)
-            if self._durable_protected_recovery_attempt(state, task) is not None:
-                exempt.add(task.task_id)
+            evidence_refused = self._canonical_ref(task) in evidence_refused_cids
             if (
                 task.task_id not in exempt
                 and resolved_statuses.get(task.task_id) == "ready"
-                and attempt_count >= self.max_task_attempts
+                and (attempt_count >= self.max_task_attempts or evidence_refused)
             ):
                 identity = self._identity_for_task(task)
                 limited.append(
@@ -12442,6 +12549,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "canonical_task_key": identity.canonical_task_key,
                         "canonical_task_cid": identity.canonical_task_cid,
                         "attempt_count": attempt_count,
+                        **({"reason": "validation_rearm_floor_evidence_unverified",
+                            "evidence_error": evidence_refusal,
+                            "new_attempt_authority": False} if evidence_refused else {}),
                     }
                 )
                 continue
@@ -12471,6 +12581,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         task_revision_cid: str = "",
         board_namespace: str = "",
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> bool:
         """Return whether a durable finish exists for this exact revision."""
 
@@ -12485,7 +12596,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or not namespace
         ):
             return False
-        for event in self._iter_events():
+        for event in (self._iter_events() if verified_lifecycle_events is None else verified_lifecycle_events):
             if str(event.get("type") or "") != "implementation_finished":
                 continue
             if str(event.get("task_id") or "") != task_id:
@@ -12574,6 +12685,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task_id: str,
         attempt: int,
         task_revision_cid: str,
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         """Recover an immutable latch from the append-only event journal."""
 
@@ -12590,7 +12702,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "provider_attempt_store",
             "provider_attempt_store_identity",
         )
-        for event in reversed(tuple(self._iter_events())):
+        for event in reversed(tuple((self._iter_events() if verified_lifecycle_events is None else verified_lifecycle_events))):
             if (
                 event.get("type") != "protected_implementation_attempt_latched"
                 or event.get("task_id") != task_id
@@ -18739,7 +18851,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             if not remaining_ready:
                 attempt_limit_idle_reason = (
-                    "all_selectable_ready_tasks_reached_max_task_attempts"
+                    "all_selectable_ready_tasks_blocked_on_attempt_accounting_evidence"
+                    if any(item.get("reason") == "validation_rearm_floor_evidence_unverified"
+                           for item in attempt_limited_tasks)
+                    else "all_selectable_ready_tasks_reached_max_task_attempts"
                 )
             self._record_event(
                 "task_attempt_limit_backpressure",
@@ -62483,7 +62598,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._events_cache_data = data
         return data
 
-    def _iter_merge_lifecycle_events(self) -> list[dict[str, Any]]:
+    def _iter_merge_lifecycle_events(
+        self,
+        *,
+        maximum_evidence_files: int | None = None,
+        maximum_evidence_bytes: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Strictly replay the retained active and rotated lifecycle history.
 
         General supervisor events predate the float-free control-contract
@@ -62492,7 +62612,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         hash-chain, and physical-file invariants while preserving those JSON
         values.  The first retained sequence may be greater than one after
         archive eviction; only gaps *inside* the retained window are invalid.
+
+        Optional caller budgets bound physical acquisition before either
+        manifest rebuilding or cache reuse. Existing callers remain unchanged.
         """
+
+        if maximum_evidence_files is not None or maximum_evidence_bytes is not None:
+            if (type(maximum_evidence_files) is not int or maximum_evidence_files <= 0
+                    or type(maximum_evidence_bytes) is not int or maximum_evidence_bytes <= 0):
+                raise CursorReplayError("merge lifecycle caller evidence budget is invalid")
+            try:
+                evidence_sources = event_log_sources((self.events_path,), include_rotated=True)
+                if not evidence_sources:
+                    raise CursorReplayError("merge lifecycle caller evidence file budget exceeded or missing")
+                # Include the existing owner manifest in the caller's total
+                # acquisition budget; it is an input when already present.
+                evidence_sources = list(evidence_sources)
+                manifest_path = self.events_path.with_name(self.events_path.name + ".manifest.json")
+                if manifest_path.exists() or manifest_path.is_symlink():
+                    evidence_sources.append(manifest_path)
+                if len(evidence_sources) > maximum_evidence_files:
+                    raise CursorReplayError("merge lifecycle caller evidence file budget exceeded or missing")
+                total_bytes = 0
+                physical_sources: set[tuple[int, int]] = set()
+                for source in evidence_sources:
+                    witness = source.lstat()
+                    physical = (witness.st_dev, witness.st_ino)
+                    if (not stat_module.S_ISREG(witness.st_mode)
+                            or witness.st_nlink != 1 or witness.st_uid != os.getuid()
+                            or source.resolve().parent != self.events_path.resolve().parent
+                            or physical in physical_sources):
+                        raise CursorReplayError("merge lifecycle caller evidence physical source is invalid")
+                    physical_sources.add(physical)
+                    total_bytes += witness.st_size
+                if total_bytes > maximum_evidence_bytes:
+                    raise CursorReplayError("merge lifecycle caller evidence byte budget exceeded")
+            except OSError as exc:
+                raise CursorReplayError("merge lifecycle caller evidence is unavailable") from exc
 
         try:
             manifest = event_log_manifest(self.events_path)
