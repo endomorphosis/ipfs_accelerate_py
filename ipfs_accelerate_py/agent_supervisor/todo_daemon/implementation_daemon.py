@@ -38178,18 +38178,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if self._git_ref_exists_in_repo(source, submodule_branch):
                 self._run_git(["worktree", "add", str(target), submodule_branch], cwd=source)
                 return True
-            try:
-                self._run_git(["worktree", "add", "-b", submodule_branch, str(target), base_ref], cwd=source)
-            except RuntimeError:
-                if offline_local_only:
-                    raise
-                fallback_ref = self._fallback_submodule_worktree_ref(
-                    source,
-                    bad_ref=base_ref,
-                    source_key=source_key,
-                    worktree_path=worktree_path,
-                )
-                self._run_git(["worktree", "add", "-b", submodule_branch, str(target), fallback_ref], cwd=source)
+            # Missing refs were resolved before checkout. A failed add can
+            # already have created this branch; retrying -b masks the original
+            # checkout error and cannot safely substitute another revision.
+            self._run_git(["worktree", "add", "-b", submodule_branch, str(target), base_ref], cwd=source)
             return True
         self._run_git(["worktree", "add", "--detach", str(target), base_ref], cwd=source)
         return True
