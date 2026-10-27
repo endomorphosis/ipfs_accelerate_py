@@ -145,7 +145,12 @@ def current_execution_started_at(supervisor, state, *, now_ts):
             if tuple(getattr(path.lstat(), field) for field in _STAT) != signature:
                 return None
             supervisor._current_execution_clock_cache = (signature, binding, stamp)
+        setup_bound = min(
+            max(30.0, supervisor._implementation_watchdog_timeout_seconds()),
+            max(30.0, float(supervisor.config.stale_seconds), float(supervisor.config.implementation_log_stall_seconds)),
+        )
         if (not issued.timestamp() <= stamp <= now_ts
+                or stamp - issued.timestamp() > setup_bound
                 or supervisor._read_watchdog_authority(lease_path) != lease
                 or supervisor._read_watchdog_authority(claim_path) != claim
                 or runtime.read_process_birth(birth.pid) != birth):

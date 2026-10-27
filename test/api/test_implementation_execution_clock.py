@@ -71,17 +71,17 @@ def test_cold_setup_does_not_end_existing_execution_budget_before_native_callbac
         assert asdict(state) == before and events.read_bytes() == raw
 
 
-@pytest.mark.parametrize("damage", ["cid", "key", "attempt", "worktree", "log", "namespace", "future", "replay", "outcome", "chain", "claim_birth", "repository", "alias", "joint_foreign_workspace", "joint_foreign_log"])
+@pytest.mark.parametrize("damage", ["cid", "key", "attempt", "worktree", "log", "namespace", "future", "late", "replay", "outcome", "chain", "claim_birth", "repository", "alias", "joint_foreign_workspace", "joint_foreign_log"])
 def test_foreign_replayed_or_unfinished_clock_evidence_cannot_extend_old_bound(tmp_path, damage):
     outer, native, task, state = _scope(tmp_path)
     with _child(outer) as child:
         selected, events, payload, claim = _execution(outer, native, task, state, child, tmp_path)
         observed = selected + 936
-        if damage in {"cid", "key", "attempt", "worktree", "log", "namespace", "future"}:
+        if damage in {"cid", "key", "attempt", "worktree", "log", "namespace", "future", "late"}:
             key, value = {"cid": ("canonical_task_cid", "foreign"), "key": ("canonical_task_key", "foreign"),
                 "attempt": ("attempt", 2), "worktree": ("worktree_path", str(tmp_path / "foreign")),
                 "log": ("log_path", str(tmp_path / "foreign.log")), "namespace": ("board_namespace", "foreign"),
-                "future": ("timestamp", _iso(observed + 5))}[damage]
+                "future": ("timestamp", _iso(observed + 5)), "late": ("timestamp", _iso(selected + 181))}[damage]
             payload[key] = value
             events.unlink(); events.with_name(events.name + ".manifest.json").unlink()
             append_jsonl_event(events, "implementation_started", payload)
