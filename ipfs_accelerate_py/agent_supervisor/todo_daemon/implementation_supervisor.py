@@ -21204,12 +21204,18 @@ class PortalImplementationSupervisor:
         finished_at = parse_timestamp(state.last_implementation_finished_at)
         if finished_at is not None and finished_at >= started_at:
             return False
+        # The persisted/log header starts before checkout preparation. Native
+        # issues its implementation timeout after the owned execution-start
+        # event; use that exact current event without changing either bound.
+        from .implementation_execution_clock import current_execution_started_at
+        execution_started_at = current_execution_started_at(self, state, now_ts=now_ts)
+        anchor = started_at.timestamp() if execution_started_at is None else execution_started_at
         grace_seconds = max(30.0, float(self.config.check_interval) * 2.0)
         max_age_seconds = max(
             float(self.config.stale_seconds),
             self._implementation_watchdog_timeout_seconds(),
         )
-        return max(0.0, now_ts - started_at.timestamp()) <= max_age_seconds + grace_seconds
+        return max(0.0, now_ts - anchor) <= max_age_seconds + grace_seconds
 
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id or not state.implementation_in_progress:
