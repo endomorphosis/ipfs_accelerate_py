@@ -60,6 +60,168 @@ PUBLICATION_AUTOHEAL_STALLS = {
 PUBLICATION_STOP_STALLS = set()
 
 
+INFRASTRUCTURE_PROFILE = "infrastructure-only/v1"
+INFRASTRUCTURE_STALLS = frozenset({
+    "probe_failed", "probe_stale", "native_catalogue_read_unavailable",
+    "service_fleet_report_unavailable", "service_fleet_report_invalid",
+    "service_fleet_unhealthy", "stalled_no_progress",
+})
+NATIVE_CATALOGUE_WAITS = frozenset({
+    "native_catalogue_activation_missing", "native_catalogue_expected_blocked",
+    "native_catalogue_provider_outcome_unknown", "native_catalogue_outcome_unknown",
+    "native_catalogue_attempt_budget_exhausted",
+    "native_catalogue_scope_mismatch", "native_catalogue_population_invalid",
+    "native_catalogue_probe_invalid",
+})
+
+
+def infrastructure_policy(board: dict[str, Any]) -> dict[str, Any] | None:
+    """An opt-in diagnostic policy grants no native task recovery authority."""
+    value = board.get("recovery_policy")
+    if value is None:
+        if board.get("probe_profile") == "native_catalogue":
+            raise ValueError("native catalogue probes require infrastructure-only recovery")
+        return None
+    fields = {"profile", "repairable_stalls", "max_actions_per_window",
+              "window_seconds", "circuit_breaker_seconds"}
+    if (type(value) is not dict or not fields <= set(value)
+            or set(value) - fields - {"stop_own_repair_on_wait"}
+            or type(value.get("stop_own_repair_on_wait", False)) is not bool
+            or value.get("profile") != INFRASTRUCTURE_PROFILE):
+        raise ValueError("invalid closed recovery_policy")
+    stalls = value["repairable_stalls"]
+    if (type(stalls) is not list or not stalls or any(type(x) is not str for x in stalls)
+            or len(stalls) != len(set(stalls)) or not set(stalls) <= INFRASTRUCTURE_STALLS):
+        raise ValueError("invalid infrastructure repairable stalls")
+    if type(value["max_actions_per_window"]) is not int or not 1 <= value["max_actions_per_window"] <= 100:
+        raise ValueError("invalid infrastructure action budget")
+    for key in ("window_seconds", "circuit_breaker_seconds"):
+        if type(value[key]) not in (int, float) or not math.isfinite(value[key]) or value[key] <= 0:
+            raise ValueError("invalid infrastructure time budget")
+    if type(board.get("max_repair_attempts")) is not int or board["max_repair_attempts"] < 1:
+        raise ValueError("infrastructure recovery requires a cumulative repair cap")
+    return value
+
+
+def infrastructure_classification(observation: dict[str, Any], board: dict[str, Any],
+                                  now: float) -> tuple[dict[str, Any], str] | None:
+    """Validate diagnostic provenance before interpreting a scientific wait."""
+    if infrastructure_policy(board) is None:
+        return None
+    sample = dict(observation, complete=False)
+    reasons = set(str(x) for x in sample.get("reason_codes", []))
+    if board.get("probe_profile") == "native_catalogue":
+        sample.update(completion_candidate=False, busy=False)
+        binding = board.get("native_catalogue_binding")
+        details = sample.get("details")
+        report = details.get("native_catalogue") if isinstance(details, dict) else None
+        valid = isinstance(binding, dict) and isinstance(report, dict)
+        if valid:
+            keys = ("board_namespace", "plan_root_cid", "repository_tree_id", "population_sha256")
+            valid = all(type(binding.get(k)) is str and binding[k] and report.get(k) == binding[k] for k in keys)
+            observed, age = report.get("probe_observed_at_epoch"), binding.get("max_age_seconds")
+            valid = (valid and report.get("schema") == "native-catalogue-diagnostic/v1"
+                     and report.get("completion_authority") is False
+                     and type(observed) in (int, float) and math.isfinite(observed)
+                     and type(age) in (int, float) and math.isfinite(age) and age > 0
+                     and type(now) in (int, float) and math.isfinite(now)
+                     and 0 <= now - observed <= age)
+        if not valid:
+            stall = "probe_failed" if reasons == {"probe_failed"} else "native_catalogue_probe_invalid"
+            sample.update(health="unknown", reason_codes=sorted(reasons | {stall}))
+            return sample, stall
+        if reasons & {"native_catalogue_scope_mismatch", "native_catalogue_population_invalid"}:
+            stall = sorted(reasons & {"native_catalogue_scope_mismatch", "native_catalogue_population_invalid"})[0]
+            sample.update(health="unknown")
+            return sample, stall
+        if report.get("fresh_read") is not True:
+            # This clock authenticates only a recent diagnostic error, not catalogue facts.
+            stall = ("native_catalogue_read_unavailable" if "native_catalogue_read_unavailable" in reasons
+                     else "native_catalogue_probe_invalid")
+            sample.update(health="unknown")
+            return sample, stall
+        checked = report.get("checked_at_epoch")
+        if (type(checked) not in (int, float) or not math.isfinite(checked)
+                or checked > now or now - checked > age):
+            sample.update(health="unknown")
+            return sample, "probe_stale" if type(checked) in (int, float) and math.isfinite(checked) and checked <= now else "native_catalogue_probe_invalid"
+        counts = report.get("counts")
+        if (not isinstance(counts, dict) or not counts
+                or any(type(v) is not int or v < 0 for v in counts.values())):
+            sample.update(health="unknown")
+            return sample, "native_catalogue_probe_invalid"
+        for stall in ("native_catalogue_provider_outcome_unknown", "native_catalogue_outcome_unknown",
+                      "native_catalogue_attempt_budget_exhausted",
+                      "native_catalogue_expected_blocked", "native_catalogue_activation_missing"):
+            if stall in reasons:
+                sample.update(health="blocked")
+                return sample, stall
+        if report.get("activation_state") != "active":
+            sample.update(health="blocked")
+            return sample, "native_catalogue_activation_missing"
+        # An observer cannot attest executor health from task rows or a heartbeat.
+        sample.update(health="unknown")
+        return sample, "native_catalogue_probe_invalid"
+    if "service_fleet_binding" in board:
+        availability = _service_fleet_availability(sample, board, now)
+        if availability == "dependency_wait":
+            return sample, "external_dependency_wait"
+        if availability == "no_runnable_work":
+            return sample, "none"
+        if availability == "runnable_work":
+            return sample, classify_stall(sample)
+        sample.update(health="unknown")
+        for stall in ("service_fleet_unhealthy", "service_fleet_report_unavailable",
+                      "service_fleet_report_invalid", "probe_failed"):
+            if stall in reasons:
+                return sample, stall
+        return sample, "service_fleet_report_invalid"
+    sample.update(health="unknown")
+    return sample, "probe_failed" if "probe_failed" in reasons else "native_catalogue_probe_invalid"
+
+
+def infrastructure_repair_allowed(board: dict[str, Any], observation: dict[str, Any], now: float) -> bool:
+    classified = infrastructure_classification(observation, board, now)
+    return bool(classified and classified[1] in infrastructure_policy(board)["repairable_stalls"])
+
+
+def infrastructure_budget(path: Path, board: dict[str, Any], now: float) -> dict[str, Any]:
+    """A separate durable window is never replenished by health or token churn."""
+    policy = infrastructure_policy(board)
+    empty = {"schema": "agent-supervisor/infrastructure-budget@1", "board_id": board["id"],
+             "window_started_at": now, "actions": 0, "total_actions": 0, "circuit_open_until": 0}
+    try:
+        budget = read_json(path) if os.path.lexists(path) else empty
+        if (set(budget) != set(empty) or budget["schema"] != empty["schema"]
+                or budget["board_id"] != board["id"]
+                or any(type(budget[k]) is not int or budget[k] < 0 for k in ("actions", "total_actions"))
+                or budget["total_actions"] < budget["actions"]
+                or any(type(budget[k]) not in (int, float) or not math.isfinite(budget[k]) or budget[k] < 0
+                       for k in ("window_started_at", "circuit_open_until"))
+                or budget["window_started_at"] > now):
+            raise ValueError("invalid infrastructure budget")
+        if (now - budget["window_started_at"] >= policy["window_seconds"]
+                and now >= budget["circuit_open_until"]):
+            budget = dict(empty, total_actions=budget["total_actions"])
+        return dict(budget, status="open" if (budget["actions"] >= policy["max_actions_per_window"]
+                                             or now < budget["circuit_open_until"]) else "available")
+    except (ValueError, TypeError, KeyError, OSError):
+        return {"status": "open", "reason": "infrastructure_budget_invalid"}
+
+
+def reserve_infrastructure_action(path: Path, board: dict[str, Any], now: float) -> dict[str, Any]:
+    budget = infrastructure_budget(path, board, now)
+    if budget["status"] != "available":
+        return budget
+    budget.pop("status")
+    budget["actions"] += 1
+    budget["total_actions"] += 1
+    if budget["actions"] >= infrastructure_policy(board)["max_actions_per_window"]:
+        budget["circuit_open_until"] = now + infrastructure_policy(board)["circuit_breaker_seconds"]
+    write_json(path, budget)
+    return dict(budget, status="reserved")
+
+
 def missing_board_checkout(board: dict[str, Any]) -> dict[str, Any] | None:
     """Configured checkout paths that must exist before a probe subprocess can run.
 
@@ -662,6 +824,9 @@ def _service_fleet_availability(observation: dict[str, Any], board: dict[str, An
 
 
 def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[str, Any], now: float) -> dict[str, Any]:
+    policy_observation = infrastructure_classification(observation, board, now)
+    if policy_observation is not None:
+        observation = policy_observation[0]
     state = dict(previous)
     observation = _carry_observational_task_counts(observation, previous)
     state.update(board_id=board["id"], observed_at=now, observation=observation)
@@ -711,6 +876,8 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
         state["observation"] = observation
     state["stall_class"] = ("external_dependency_wait" if availability == "dependency_wait"
                             else classify_stall(observation, previous))
+    if policy_observation is not None:
+        state["stall_class"] = policy_observation[1]
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]
     if previous.get("incident_signature") != signature:
@@ -787,6 +954,15 @@ def reset_failed_ensure_unit(board: dict[str, Any]) -> bool:
 
 
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
+    policy = infrastructure_policy(board)
+    if policy is not None:
+        if (hold_paths(board) or state.get("health") in {"healthy", "complete", "operator_hold"}
+                or state.get("stall_class") not in policy["repairable_stalls"]
+                or state.get("infrastructure_budget", {}).get("status") != "available"
+                or now < state.get("next_action_at", 0)):
+            return ""
+        grace = board.get("failure_grace_seconds", 60)
+        return "repair" if now - state.get("incident_since", now) >= grace else ""
     health = state["health"]
     diagnostic_stall = (isinstance(board.get("service_fleet_binding"), dict)
                         and state.get("stall_class") == "stalled_no_progress")
@@ -925,6 +1101,7 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
     if repair_unit is not None:
         from .fleet_repair import repair_job_unit
         repair_unit = repair_job_unit({"repair_worker": {"job_unit": repair_unit}})
+    injected_now = now is not None
     now = time.time() if now is None else now
     board_id = board["id"]
     directory = state_root / board_id
@@ -956,22 +1133,30 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "observed_at": now, "status": diagnostics["status"],
                     "action": "diagnostic_only", "diagnostics": diagnostics,
                 })
+        if not injected_now:
+            # A real probe finishes after tick entry; its timestamps are compared
+            # against the assessment clock, not the pre-subprocess instant.
+            now = time.time()
         state = assess(observation, previous, board, now)
-        if apply and state.get("stall_class") in WAIT_STALLS:
-            job = read_json(state_root / "repairs" / board_id / "job.json")
-            if job.get("status") == "running":
-                if repair_unit is None:
-                    from .fleet_repair import repair_job_unit
-                    repair_unit = repair_job_unit({})
-                try:
-                    command({"argv": ["systemctl", "--user", "stop",
-                                      repair_unit]},
-                            cwd="/", timeout=45)
-                except (OSError, subprocess.TimeoutExpired, ValueError):
-                    pass
         # Holds fence mutations, not observation. A board assigned to another
         # owner still needs fresh health and progress evidence during a hold.
         state["observed_health"] = state["health"]
+        policy = infrastructure_policy(board)
+        if policy is not None:
+            state["infrastructure_budget"] = infrastructure_budget(
+                directory / "infrastructure-budget.json", board, now)
+            if hold_paths(board):
+                state.update(health="operator_hold", stall_class="operator_hold", planned_action="",
+                             holds=hold_paths(board))
+                write_json(path, state)
+                return state
+        if (apply and (policy is None or policy.get("stop_own_repair_on_wait") is True)
+                and (state.get("stall_class") in WAIT_STALLS
+                      or state.get("stall_class") in NATIVE_CATALOGUE_WAITS)):
+            if not hold_paths(board):
+                from .fleet_repair import cancel_waiting_repair_job
+                state["repair_cancellation"] = cancel_waiting_repair_job(
+                    state_root, board, repair_unit=repair_unit, runner=command)
         holds = hold_paths(board)
         if repair_hold_paths(board):
             # A deletion hold still fences ensure/start. Keep a typed missing
@@ -1023,6 +1208,10 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             )
             write_json(path, state)
             return state
+        if policy is not None and holds:
+            state.update(health="operator_hold", stall_class="operator_hold", planned_action="", holds=holds)
+            write_json(path, state)
+            return state
         if holds and action == "ensure":
             # A launch-custody marker may have arrived after action selection.
             action = "repair"
@@ -1030,6 +1219,13 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             state["launch_only_holds"] = holds
             incident["action"] = action
             write_json(incident_path, incident)
+        if policy is not None:
+            reserved = reserve_infrastructure_action(directory / "infrastructure-budget.json", board, now)
+            state["infrastructure_budget"] = reserved
+            if reserved.get("status") != "reserved":
+                state["planned_action"] = ""
+                write_json(path, state)
+                return state
         attempts = state.get("attempts", 0) + 1
         # Record intent and backoff BEFORE side effects: interrupted watchdogs
         # must not repeatedly relaunch work or burn provider retry budgets.
@@ -1040,6 +1236,11 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         if action == "ensure":
             state["ensure_attempts"] = state.get("ensure_attempts", 0) + 1
         write_json(path, state)
+        if policy is not None and hold_paths(board):
+            state.pop("pending_action", None)
+            state.update(health="operator_hold", stall_class="operator_hold", planned_action="", holds=hold_paths(board))
+            write_json(path, state)
+            return state
         if action == "supervisor_heal":
             from .fleet_heals import apply_supervisor_heal
             action_result = apply_supervisor_heal(board, state)
@@ -1144,8 +1345,8 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
             else:
                 state.pop("publication_failure", None)
         elif action in {"repair", "completion_review"}:
-            if (isinstance(board.get("service_fleet_binding"), dict)
-                    and state.get("stall_class") == "stalled_no_progress"):
+            if (policy is not None or (isinstance(board.get("service_fleet_binding"), dict)
+                    and state.get("stall_class") == "stalled_no_progress")):
                 # Preserve the original service monitor's restart authority;
                 # this diagnostic stall is only a coding-queue incident.
                 heal = {"status": "skip", "reason": "service_fleet_diagnostic_stall"}
@@ -1212,6 +1413,7 @@ def load_config(path: Path) -> dict[str, Any]:
         identifiers.add(identifier)
         if not Path(board["cwd"]).is_absolute() or not board.get("probe"):
             raise ValueError("each board needs an absolute cwd and a probe command")
+        infrastructure_policy(board)
         if "storage_checks" in board:
             from .storage_diagnostics import validate_storage_checks
             validate_storage_checks(board["storage_checks"])

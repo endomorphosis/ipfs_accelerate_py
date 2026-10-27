@@ -15,7 +15,7 @@ from pathlib import Path
 
 MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "fleet_heals",
            "fleet_holds", "live_board_probe", "canonical_writer_custody",
-           "diagnostic_handoff", "storage_diagnostics", "service_fleet_probe")
+           "diagnostic_handoff", "storage_diagnostics", "service_fleet_probe", "native_catalogue_probe")
 PACKAGE_MODULES = {"agent_implementation_route": "ipfs_accelerate_py/agent_implementation_route.py"}
 
 

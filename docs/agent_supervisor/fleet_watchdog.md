@@ -668,3 +668,44 @@ The read session controls resource lifetime only. It does not begin a read
 transaction, freeze task heads, grant authority, or replace native source/owner
 admission. The caller must retain the final snapshot comparison and retry only
 the typed observation drift that the native restart-check contract permits.
+
+
+## Infrastructure-only recovery for scientific and engineering observations
+
+The opt-in `recovery_policy.profile = "infrastructure-only/v1"` keeps the existing
+watchdog, repair queue, provider route and worker. It never invokes native ensure,
+unstall, publication or supervisor-heal recipes. Configure `repairable_stalls`
+from the closed infrastructure allowlist, `max_actions_per_window`,
+`window_seconds`, `circuit_breaker_seconds`, and the existing positive
+`max_repair_attempts` board cap. The separate per-board
+`infrastructure-budget.json` is reserved before action and survives symptom,
+progress-token and healthy-sample changes. Corrupt accounting opens the circuit;
+the original evidence must be reconciled rather than deleted. A new time window
+may admit diagnostic actions after its circuit interval, while actual coding
+attempts retain their existing cumulative cap.
+
+Optional `stop_own_repair_on_wait` defaults to false. When explicitly true, a wait
+can stop only the exact board/attempt token reported by the configured systemd
+repair unit, under the original queue lock. A missing or foreign token cannot
+stop a different board's job. Any configured hold, including a dangling symlink,
+fences all recovery and hold review; observation can continue. Holds are never
+automatically cleared by this profile.
+
+For `probe_profile = "native_catalogue"`, bind `native_catalogue_binding` to the
+exact `board_namespace`, `plan_root_cid`, `repository_tree_id`,
+`population_sha256` and finite positive `max_age_seconds`. Fresh bound catalogue
+observations remain blocked when activation, review, exhausted-attempt or unknown
+provider-outcome gates remain. Missing/stale/mismatched observations are unknown,
+never healthy. Only explicitly allowed read/timeout/import observer faults may
+enqueue infrastructure diagnosis. Scope/population mismatches are manual waits.
+Repair workers may fix observer/import/service/reporting code and regressions;
+they may not create, replace or repair the native database/WAL, activate tasks,
+reset budgets, change source populations or approve legal meaning.
+
+A fresh blocked readback can verify observer recovery with
+`scope="infrastructure_observer"`, `observer_verified=true`, and task health still
+`blocked`. It supplies no native task, goal, completion or publication authority.
+The same opt-in policy can monitor the existing service-fleet engineering bridge;
+its original monitor retains lane restart authority and completed/no-runnable
+fleets remain healthy and idle. Give each namespace its own board ID and state
+subdirectory; retain a single existing repair worker and its scoped queue locks.

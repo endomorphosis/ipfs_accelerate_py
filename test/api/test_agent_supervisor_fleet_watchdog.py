@@ -1971,7 +1971,9 @@ def _wait_cancel_cycle(tmp_path, monkeypatch, *, job_status="running", policy=No
         config["repair_worker"] = policy
     job = root / "repairs/spar/job.json"
     if job_status is not None:
-        fleet.write_json(job, {"status": job_status, "attempts": 2})
+        fleet.write_json(job, {"board_id": "spar", "status": job_status, "attempts": 2,
+                              "repair_job_unit": (policy or {}).get("job_unit", "ipfs-taskboard-repair-job.service"),
+                              "repair_unit_token": "a" * 32})
     foreign = root / "repairs/foreign/job.json"
     fleet.write_json(foreign, {"status": "running", "attempts": 7})
     original_foreign = foreign.read_bytes()
@@ -1983,6 +1985,9 @@ def _wait_cancel_cycle(tmp_path, monkeypatch, *, job_status="running", policy=No
         calls.append(list(spec["argv"]))
         if spec["argv"] == ["probe"]:
             return _result(observation)
+        if spec["argv"][:3] == ["systemctl", "--user", "show"]:
+            return {"returncode": 0, "stdout": "IPFS_TASKBOARD_REPAIR_BOARD_ID=spar "
+                    "IPFS_TASKBOARD_REPAIR_JOB_TOKEN=" + "a" * 32, "stderr": ""}
         assert spec["argv"][:3] == ["systemctl", "--user", "stop"]
         return {"returncode": 0, "stdout": "", "stderr": ""}
 
@@ -2006,8 +2011,10 @@ def test_wait_cancel_uses_configured_job_unit_and_preserves_foreign_job(tmp_path
     job_before = job.read_bytes()
     report = fleet.run_cycle(config, apply=True)
     assert report["boards"]["spar"]["stall_class"] == "missing_independent_clause_evidence"
-    assert calls == [["probe"], ["systemctl", "--user", "stop",
-                                unit or "ipfs-taskboard-repair-job.service"]]
+    selected_unit = unit or "ipfs-taskboard-repair-job.service"
+    assert calls == [["probe"], ["systemctl", "--user", "show", selected_unit,
+                                "--property=Environment", "--value"],
+                    ["systemctl", "--user", "stop", selected_unit]]
     assert foreign.read_bytes() == original
     assert job.read_bytes() == job_before
 
@@ -2044,3 +2051,149 @@ def test_wait_cancel_observation_only_cycle_does_not_stop_running_job(tmp_path, 
     fleet.run_cycle(config, apply=False)
     assert calls == [["probe"]]
     assert job.read_bytes() == before and foreign.read_bytes() == original
+
+
+# Opt-in observer recovery has a separate, durable action budget and no native authority.
+def _infrastructure_board(tmp_path):
+    return {"id": "legal-ir-scientific", "cwd": str(tmp_path),
+            "probe": {"argv": ["probe"]}, "repair": {"argv": ["repair"]},
+            "probe_profile": "native_catalogue", "hold_files": [],
+            "failure_grace_seconds": 0, "cooldown_seconds": 1, "max_backoff_seconds": 1,
+            "max_repair_attempts": 3,
+            "native_catalogue_binding": {"board_namespace": "scientific", "plan_root_cid": "plan",
+                "repository_tree_id": "tree", "population_sha256": "a" * 64, "max_age_seconds": 30},
+            "recovery_policy": {"profile": "infrastructure-only/v1",
+                "repairable_stalls": ["probe_failed", "native_catalogue_read_unavailable"],
+                "max_actions_per_window": 3, "window_seconds": 1000, "circuit_breaker_seconds": 100}}
+
+
+def _catalogue_sample(now=100, reason="native_catalogue_activation_missing", *, fresh=True):
+    return {"board_id": "legal-ir-scientific", "health": "blocked" if fresh else "unknown",
+            "complete": False, "completion_candidate": False, "reason_codes": [reason],
+            "details": {"native_catalogue": {"schema": "native-catalogue-diagnostic/v1",
+                "board_namespace": "scientific", "plan_root_cid": "plan", "repository_tree_id": "tree",
+                "population_sha256": "a" * 64, "checked_at_epoch": now if fresh else None, "probe_observed_at_epoch": now, "fresh_read": fresh,
+                "activation_state": "not_activated", "counts": {"blocked": 64},
+                "completion_authority": False}}}
+
+
+@pytest.mark.parametrize("reason", ["native_catalogue_activation_missing", "native_catalogue_expected_blocked",
+    "native_catalogue_provider_outcome_unknown", "native_catalogue_attempt_budget_exhausted",
+    "native_catalogue_scope_mismatch", "native_catalogue_population_invalid"])
+def test_infrastructure_scientific_waits_never_dispatch_recovery(tmp_path, monkeypatch, reason):
+    board = _infrastructure_board(tmp_path)
+    board["ensure"] = {"argv": ["forbidden-native-ensure"]}
+    calls = []
+    def runner(spec, **kwargs):
+        calls.append(spec["argv"])
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(_catalogue_sample(reason=reason))}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("no native command authorized"))
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=100)
+    assert state["health"] in {"blocked", "unknown"}
+    assert state["planned_action"] == ""
+    assert state["observation"]["complete"] is False
+    assert calls == [["probe"]]
+    assert not (tmp_path / board["id"] / "infrastructure-budget.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ["namespace", "future", "stale", "authority", "counts", "missing"])
+def test_infrastructure_invalid_catalogue_evidence_is_not_healthy(tmp_path, mutation):
+    board = _infrastructure_board(tmp_path)
+    sample = _catalogue_sample()
+    report = sample["details"]["native_catalogue"]
+    if mutation == "namespace": report["board_namespace"] = "other"
+    elif mutation == "future": report["checked_at_epoch"] = 101
+    elif mutation == "stale": report["checked_at_epoch"] = 1
+    elif mutation == "authority": report["completion_authority"] = True
+    elif mutation == "counts": report["counts"] = {"blocked": True}
+    else: sample["details"].clear()
+    sample.update(health="healthy", complete=True, completion_candidate=True)
+    state = fleet.assess(sample, {}, board, 100)
+    assert state["health"] == "unknown"
+    assert state["observation"]["complete"] is False
+    assert state["observation"]["completion_candidate"] is False
+    assert fleet.select_action(state, board, 100) == ""
+
+
+def test_infrastructure_action_budget_survives_symptoms_tokens_and_one_good_read(tmp_path):
+    board = _infrastructure_board(tmp_path)
+    calls = []
+    current = {"fresh": False}
+    def runner(spec, **kwargs):
+        if spec["argv"] == ["probe"]:
+            reason = "native_catalogue_activation_missing" if current["fresh"] else "native_catalogue_read_unavailable"
+            sample = _catalogue_sample(now=current["now"], reason=reason, fresh=current["fresh"])
+            sample["progress_token"] = str(current["now"])
+            return {"returncode": 0, "stdout": json.dumps(sample)}
+        calls.append(spec["argv"])
+        return {"returncode": 0, "stdout": "{}"}
+    for at in (100, 101):
+        current["now"] = at
+        fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=at)
+    current.update(now=102, fresh=True)
+    fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=102)
+    current.update(now=103, fresh=False)
+    fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=103)
+    current["now"] = 104
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=104)
+    assert len(calls) == 3
+    assert state["infrastructure_budget"]["status"] == "open"
+    assert fleet.read_json(tmp_path / board["id"] / "infrastructure-budget.json")["total_actions"] == 3
+
+
+def test_infrastructure_corrupt_budget_and_dangling_hold_do_not_repair(tmp_path):
+    board = _infrastructure_board(tmp_path)
+    directory = tmp_path / board["id"]
+    directory.mkdir()
+    budget = directory / "infrastructure-budget.json"
+    budget.write_text("{")
+    sample = _catalogue_sample(reason="native_catalogue_read_unavailable", fresh=False)
+    def runner(spec, **kwargs):
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(sample)}
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=100)
+    assert state["infrastructure_budget"]["reason"] == "infrastructure_budget_invalid"
+    assert budget.read_text() == "{"
+    hold = tmp_path / "HOLD"
+    hold.symlink_to(tmp_path / "absent")
+    board["hold_files"] = [str(hold)]
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=101)
+    assert state["health"] == "operator_hold"
+    assert hold.is_symlink() and budget.read_text() == "{"
+
+
+@pytest.mark.parametrize("change", ["profile", "unknown", "cap", "stall", "time"])
+def test_infrastructure_policy_is_closed_before_commands(tmp_path, change):
+    board = _infrastructure_board(tmp_path)
+    if change == "profile": board["recovery_policy"]["profile"] = "native-heal"
+    elif change == "unknown": board["recovery_policy"]["reset_attempts"] = True
+    elif change == "cap": board.pop("max_repair_attempts")
+    elif change == "stall": board["recovery_policy"]["repairable_stalls"] = ["native_catalogue_attempt_budget_exhausted"]
+    else: board["recovery_policy"]["window_seconds"] = float("nan")
+    with pytest.raises(ValueError): fleet.infrastructure_policy(board)
+
+
+
+def test_infrastructure_tick_assesses_after_real_probe_without_allowing_future_clocks(tmp_path, monkeypatch):
+    board = _infrastructure_board(tmp_path)
+    clock = [100.0]
+    monkeypatch.setattr(fleet.time, "time", lambda: clock[0])
+    def elapsed_probe(spec, **kwargs):
+        assert spec["argv"] == ["probe"]
+        clock[0] = 101.0
+        return {"returncode": 0, "stdout": json.dumps(_catalogue_sample(now=101.0))}
+    observed = fleet.tick_board(board, tmp_path, apply=True, runner=elapsed_probe)
+    assert observed["observed_at"] == 101.0
+    assert observed["health"] == "blocked"
+    assert observed["stall_class"] == "native_catalogue_activation_missing"
+    assert observed["planned_action"] == ""
+    clock[0] = 102.0
+    def future_probe(spec, **kwargs):
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(_catalogue_sample(now=103.0))}
+    future = fleet.tick_board(board, tmp_path, apply=True, runner=future_probe)
+    assert future["observed_at"] == 102.0
+    assert future["health"] == "unknown"
+    assert future["stall_class"] == "native_catalogue_probe_invalid"
+    assert future["planned_action"] == ""
