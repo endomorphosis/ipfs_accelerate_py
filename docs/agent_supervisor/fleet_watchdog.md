@@ -668,3 +668,46 @@ The read session controls resource lifetime only. It does not begin a read
 transaction, freeze task heads, grant authority, or replace native source/owner
 admission. The caller must retain the final snapshot comparison and retry only
 the typed observation drift that the native restart-check contract permits.
+
+## SAWM runtime path compatibility
+
+Bind the existing SAWM service through a persistent `90-sawm-runtime-path.conf`
+that takes precedence over a generated `81` overlay path. Keep its launcher,
+readiness helper, schema/migration modules and five declared SQL resources in a
+matched runtime bundle outside disposable Git worktrees. The bundle manifest
+uses `sawm/schema-compatibility-runtime@1`; pin its SHA256 in the service argv.
+Hash and retain every Python/shell body during staging and immediately before
+activation: `manifest.files` is reference metadata, while the launcher enforces
+the external manifest pin and SQL hashes. Code commitments require that external
+staging control. Do not silently replace an active content-addressed generation.
+
+The compatible invocation is:
+
+```sh
+bash "$runtime/ipfs_accelerate_py/agent_supervisor/rescue/sawm_supervise_with_heal_overlay.sh" \
+  "$runtime" "$sealed_sawm_checkout" \
+  "$runtime/ipfs_accelerate_py/agent_supervisor/rescue/sealed_board_supervisor_launch.py" \
+  --sealed-runtime "$manifest_sha256"
+```
+
+Only an exact SAWM `quack-start` invocation receives the two compatibility
+modules, installed in migration/schema order with frozen, hash-verified SQL.
+Scheduler/client commands retain the original sealed package, provider policy
+and capsule-origin checks. The previous default and `--pin-only` paths remain
+available. A newer scheduler's provider constants must not substitute for an
+older accepted SAWM configuration.
+
+Use cold help, shell/unit syntax checks, resource/launcher tests and native
+bootstrap/catalog readback before startup. A ready status file is a hint; verify
+`owner_ready` and `peer_authenticated_observation` through the original SAWM
+`status` API, then check fresh coordinator/lane process births and heartbeats.
+Startup and serving do not establish task, goal or semantic completion.
+
+M70 explicitly retains its live generation-48 owner. Do not stop or restart it
+to fix a client launcher, reset reservations, change generation or rewrite task
+budgets. A reviewed live entrypoint patch must preserve the owner identity,
+SQL/schema/native bodies and record the selected code-file drift separately;
+select a new complete bundle for subsequent starts. Preserve operator holds and
+use the existing per-board watchdog maintenance fence while recovery actors are
+being qualified. Fresh lane heartbeats alone do not prove useful task progress
+or authorize an external owner restart.
