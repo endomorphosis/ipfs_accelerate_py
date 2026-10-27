@@ -223,44 +223,49 @@ def _validation_command(payload: Mapping[str, Any]) -> tuple[list[str], str] | N
 
 
 def _inventory_board(board: Mapping[str, Any]) -> dict[str, Any]:
+    """Select one explicitly bound inventory row, never the operator's default."""
     probe = board.get("probe") if isinstance(board.get("probe"), dict) else {}
     argv = probe.get("argv") if isinstance(probe.get("argv"), list) else []
-    inventory_path = ""
-    board_id = str(board.get("id") or "")
-    for index, arg in enumerate(argv):
-        if arg == "--inventory" and index + 1 < len(argv) and isinstance(argv[index + 1], str):
-            inventory_path = argv[index + 1]
-        if arg == "--board" and index + 1 < len(argv) and isinstance(argv[index + 1], str):
-            board_id = argv[index + 1]
-    default_inventory = Path.home() / ".config/ipfs-taskboard-watchdog/inventory.json"
-    if not inventory_path:
-        inventory_path = str(default_inventory)
-
-    def _load(path: str) -> dict[str, Any]:
-        try:
-            payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            return {}
+    board_id, cwd = board.get("id"), board.get("cwd")
+    if (not isinstance(board_id, str) or not board_id.strip()
+            or not isinstance(cwd, str) or not cwd or not Path(cwd).is_absolute()):
+        return {}
+    positions = [index for index, arg in enumerate(argv) if arg == "--inventory"]
+    selected = [index for index, arg in enumerate(argv) if arg == "--board"]
+    if (len(positions) != 1 or positions[0] + 1 >= len(argv)
+            or len(selected) > 1
+            or (selected and (selected[0] + 1 >= len(argv)
+                             or argv[selected[0] + 1] != board_id))):
+        return {}
+    inventory_path = argv[positions[0] + 1]
+    if not isinstance(inventory_path, str) or not Path(inventory_path).is_absolute():
+        return {}
+    try:
+        payload = json.loads(Path(inventory_path).read_text(encoding="utf-8"))
         boards = payload.get("boards") if isinstance(payload, dict) else None
         if not isinstance(boards, list):
             return {}
-        for item in boards:
-            if not isinstance(item, dict):
-                continue
-            ident = str(item.get("id") or item.get("board_id") or "")
-            if ident.lower() == board_id.lower():
-                return item
+        matches = [item for item in boards if isinstance(item, dict)
+                   and (item.get("id") or item.get("board_id")) == board_id]
+        if len(matches) != 1:
+            return {}
+        found = matches[0]
+        native_cwd, database = found.get("cwd"), found.get("database_path")
+        if (not isinstance(native_cwd, str) or not Path(native_cwd).is_absolute()
+                or not isinstance(database, str) or not Path(database).is_absolute()
+                or Path(native_cwd).resolve() != Path(cwd).resolve()):
+            return {}
+    except (OSError, UnicodeError, ValueError, RuntimeError):
         return {}
+    return dict(found)
 
-    found = _load(inventory_path)
-    if str(found.get("cwd") or "") and str(found.get("database_path") or ""):
-        return found
-    if Path(inventory_path).resolve() != default_inventory.resolve() and default_inventory.is_file():
-        fallback = _load(str(default_inventory))
-        merged = dict(fallback)
-        merged.update({key: value for key, value in found.items() if value})
-        return merged
-    return found
+
+def _native_heal_binding_reason(board: Mapping[str, Any]) -> str:
+    from .fleet_watchdog import observation_only
+
+    if observation_only(board):
+        return "observation_only"
+    return "" if _inventory_board(board) else "explicit_inventory_required"
 
 
 def _objectives_path(cwd: Path, config_path: Any) -> Path | None:
@@ -1621,6 +1626,8 @@ def dump_board_before_owner_stop(
         "completion_authority": False,
         "completion_authoritative": False,
     }
+    if reason := _native_heal_binding_reason(board):
+        return {**empty, "reason": reason}
     inventory = _inventory_board(board)
     database = Path(str(inventory.get("database_path") or ""))
     status_path = Path(str(inventory.get("owner_status_path") or ""))
@@ -1664,7 +1671,13 @@ BOARD_OWNER_UNITS = {
 def _exclusive_owner_unit(
     board: Mapping[str, Any], observation: Mapping[str, Any] | None = None,
 ) -> str:
+    from .fleet_watchdog import observation_only
+
+    if observation_only(board):
+        return ""
     inventory = _inventory_board(board)
+    if not inventory:
+        return ""
     details = (observation or {}).get("details") if isinstance((observation or {}).get("details"), dict) else {}
     extra = details.get("extra_gate") if isinstance(details.get("extra_gate"), dict) else {}
     ensure = inventory.get("ensure_argv") if isinstance(inventory.get("ensure_argv"), list) else []
@@ -2549,6 +2562,8 @@ def attach_native_lanes(
         "supervisors": 0,
         "daemons": 0,
     }
+    if reason := _native_heal_binding_reason(board):
+        return {**empty, "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return {**empty, "reason": "retain_owner_not_relaunched"}
@@ -2661,6 +2676,8 @@ def run_board_dump_stop_repair_import_start(
         "completion_authority": False,
         "completion_authoritative": False,
     }
+    if reason := _native_heal_binding_reason(board):
+        return {**empty, "reason": reason}
     if dump_stop_repair_import_start_already_recorded(state or {}, observation):
         return {**empty, "reason": "dump_stop_repair_import_start_already_recorded"}
     board_id = str(board.get("id") or "").lower()
@@ -3008,6 +3025,8 @@ def collapse_extra_gate_recursion(
         "recipe": "collapse_extra_gate_recursion",
         "completion_authority": False,
     }
+    if reason := _native_heal_binding_reason(board):
+        return {**empty, "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return {**empty, "reason": "retain_owner_not_rewrapped"}
@@ -3306,6 +3325,8 @@ def relaunch_native_lanes_on_ready_owner(
         "recipe": "relaunch_native_lanes_on_ready_owner",
         "completion_authority": False,
     }
+    if reason := _native_heal_binding_reason(board):
+        return {**empty, "status": "skip", "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return {**empty, "reason": "retain_owner_not_rewrapped"}
@@ -3371,6 +3392,8 @@ def restart_native_owner_and_attach(
         "recipe": "restart_native_owner_and_attach",
         "completion_authority": False,
     }
+    if reason := _native_heal_binding_reason(board):
+        return {**empty, "reason": reason}
     board_id = str(board.get("id") or observation.get("board_id") or "").lower()
     if board_id in RETAIN_OWNER_BOARDS:
         return {**empty, "reason": "retain_owner_not_restarted"}
@@ -3477,6 +3500,8 @@ def _systemd_start_unit(unit: str) -> None:
 
 def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
     """Formal logic first. llm_router is the residual coding path."""
+    if reason := _native_heal_binding_reason(board):
+        return {"status": "skip", "reason": reason, "completion_authority": False}
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
     stall = str(state.get("stall_class") or "")
     dirty = restore_dirty_control_plane(board, observation)

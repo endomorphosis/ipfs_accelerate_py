@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .live_board_probe import COMPLETED, read_json_object
+from .live_board_probe import COMPLETED, native_population, read_json_object
 
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
@@ -58,6 +58,14 @@ PUBLICATION_AUTOHEAL_STALLS = {
 }
 # Reserved for holds that must not retry publish or enqueue LLM.
 PUBLICATION_STOP_STALLS = set()
+
+
+def observation_only(board: dict[str, Any]) -> bool:
+    """Read the operator policy, never a flag supplied by a probe or job."""
+    value = board.get("observation_only", False)
+    if type(value) is not bool:
+        raise ValueError("observation_only must be a Boolean")
+    return value
 
 
 def missing_board_checkout(board: dict[str, Any]) -> dict[str, Any] | None:
@@ -787,6 +795,8 @@ def reset_failed_ensure_unit(board: dict[str, Any]) -> bool:
 
 
 def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> str:
+    if observation_only(board):
+        return ""
     health = state["health"]
     diagnostic_stall = (isinstance(board.get("service_fleet_binding"), dict)
                         and state.get("stall_class") == "stalled_no_progress")
@@ -922,6 +932,7 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
 def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                runner=command, now: float | None = None,
                repair_unit: str | None = None) -> dict[str, Any]:
+    observe_only = observation_only(board)
     if repair_unit is not None:
         from .fleet_repair import repair_job_unit
         repair_unit = repair_job_unit({"repair_worker": {"job_unit": repair_unit}})
@@ -957,6 +968,22 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                     "action": "diagnostic_only", "diagnostics": diagnostics,
                 })
         state = assess(observation, previous, board, now)
+        if observe_only or "observation_only" in state:
+            state["observation_only"] = observe_only
+        if observe_only:
+            # Observation must precede every recovery path, including WAIT
+            # cancellation and hold review below. Keep existing recovery
+            # history byte-for-byte in value; healthy samples cannot reset it.
+            for key in ("attempts", "ensure_attempts", "ensure_owner_epoch",
+                        "next_action_at", "pending_action"):
+                if key in previous:
+                    state[key] = previous[key]
+                else:
+                    state.pop(key, None)
+            state.update(observation_only=True, observed_health=state["health"],
+                         planned_action="", holds=hold_paths(board))
+            write_json(path, state)
+            return state
         if apply and state.get("stall_class") in WAIT_STALLS:
             job = read_json(state_root / "repairs" / board_id / "job.json")
             if job.get("status") == "running":
@@ -1206,6 +1233,8 @@ def load_config(path: Path) -> dict[str, Any]:
         raise ValueError("at least one board is required")
     identifiers = set()
     for board in boards:
+        observation_only(board)
+        native_population(board)
         identifier = board.get("id", "")
         if not re.fullmatch(r"[A-Za-z0-9_-]+", identifier) or identifier in identifiers:
             raise ValueError("board identifiers must be unique safe directory names")

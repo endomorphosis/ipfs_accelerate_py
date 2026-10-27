@@ -23,7 +23,7 @@ from typing import Any
 
 from .fleet_watchdog import (
     WAIT_STALLS, _accepted_progress_counts, command, load_config, lock, read_json,
-    write_json, supervisor_pythonpath,
+    write_json, supervisor_pythonpath, observation_only,
 )
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
@@ -110,6 +110,7 @@ def _repair_limits(config: dict[str, Any]) -> dict[str, int | None]:
     _bound_implementation_route(config.get("repair_worker", {}))
     limits = {}
     for board in config["boards"]:
+        observation_only(board)
         limit = board.get("max_repair_attempts")
         if "max_repair_attempts" in board and (type(limit) is not int or limit < 1):
             raise ValueError(f"board {board['id']}: max_repair_attempts must be a positive integer")
@@ -273,6 +274,8 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
     root = Path(config["state_dir"])
     results = []
     for board in config["boards"]:
+        if observation_only(board):
+            continue
         path = root / "repairs" / board["id"] / "job.json"
         job = read_json(path)
         eligible_status = job.get("status")
@@ -469,6 +472,8 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
     board_id = incident.get("board_id")
     if board_id not in boards:
         raise ValueError("incident board is not authorized in fleet configuration")
+    if observation_only(boards[board_id]):
+        return {"status": "observation_only", "board_id": board_id}
     directory = Path(config["state_dir"]) / "repairs" / board_id
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
@@ -921,6 +926,8 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
     root = Path(config["state_dir"]) / "repairs"
     candidates = []
     for board in config["boards"]:
+        if observation_only(board):
+            continue
         path = root / board["id"] / "job.json"
         job = read_json(path)
         if job.get("status") not in {"queued", "running"}:
@@ -955,6 +962,11 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
             escalated.append(_budget_result(board["id"], job))
             continue
         if job.get("status") not in {"queued", "running"}:
+            continue
+        if observation_only(board):
+            held.append({"board_id": board["id"],
+                         "next_attempt_at": job.get("next_attempt_at", now),
+                         "reason": "observation_only"})
             continue
         if board_is_complete(config, board["id"]):
             continue
@@ -1186,6 +1198,12 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     unit = repair_job_unit(config)
     jobs = [(board, job) for board, job in _iter_repair_jobs(config)
             if job.get("repair_job_unit", DEFAULT_REPAIR_JOB_UNIT) == unit]
+    if any(observation_only(board) and job.get("status") == "running"
+           for board, job in jobs):
+        # Observation does not cancel an already-running worker, including
+        # when another board shares the dispatcher's single job unit.
+        return False
+    jobs = [(board, job) for board, job in jobs if not observation_only(board)]
     running = [(board, job) for board, job in jobs if job.get("status") == "running"]
     if running:
         return any(
@@ -1211,6 +1229,9 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     limits = _repair_limits(config)
     if board["id"] not in limits:
         raise ValueError("repair board is not authorized in fleet configuration")
+    configured = next(item for item in config["boards"] if item["id"] == board["id"])
+    if observation_only(configured):
+        return {"status": "observation_only", "board_id": board["id"]}
     limit = limits[board["id"]]  # A caller's copied board cannot remove the configured cap.
     policy = dict(config["repair_worker"])
     if hold_paths(board):
