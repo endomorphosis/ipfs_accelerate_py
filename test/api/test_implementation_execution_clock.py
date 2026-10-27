@@ -19,7 +19,7 @@ def _iso(value):
 
 
 def _execution(outer, native, task, state, child, tmp_path):
-    selected = time.time()
+    selected = datetime.now(timezone.utc).timestamp()
     state.active_task_started_at = _iso(selected)
     claim, lease = _claims(outer, native, task, state, child, age=0)
     for body in (claim, lease):
@@ -71,7 +71,7 @@ def test_cold_setup_does_not_end_existing_execution_budget_before_native_callbac
         assert asdict(state) == before and events.read_bytes() == raw
 
 
-@pytest.mark.parametrize("damage", ["cid", "key", "attempt", "worktree", "log", "namespace", "future", "replay", "outcome", "chain", "claim_birth", "repository", "alias"])
+@pytest.mark.parametrize("damage", ["cid", "key", "attempt", "worktree", "log", "namespace", "future", "replay", "outcome", "chain", "claim_birth", "repository", "alias", "joint_foreign_workspace", "joint_foreign_log"])
 def test_foreign_replayed_or_unfinished_clock_evidence_cannot_extend_old_bound(tmp_path, damage):
     outer, native, task, state = _scope(tmp_path)
     with _child(outer) as child:
@@ -83,6 +83,17 @@ def test_foreign_replayed_or_unfinished_clock_evidence_cannot_extend_old_bound(t
                 "log": ("log_path", str(tmp_path / "foreign.log")), "namespace": ("board_namespace", "foreign"),
                 "future": ("timestamp", _iso(observed + 5))}[damage]
             payload[key] = value
+            events.unlink(); events.with_name(events.name + ".manifest.json").unlink()
+            append_jsonl_event(events, "implementation_started", payload)
+        elif damage in {"joint_foreign_workspace", "joint_foreign_log"}:
+            if damage == "joint_foreign_workspace":
+                foreign = str(tmp_path / "foreign_workspace")
+                state.active_worktree_path = state.last_implementation_worktree_path = foreign
+                payload["worktree_path"] = foreign
+            else:
+                foreign = str(tmp_path / "foreign.log")
+                state.active_log_path = state.last_implementation_log_path = foreign
+                payload["log_path"] = foreign
             events.unlink(); events.with_name(events.name + ".manifest.json").unlink()
             append_jsonl_event(events, "implementation_started", payload)
         elif damage == "replay":
@@ -117,3 +128,21 @@ def test_cached_execution_clock_rechecks_live_claim_and_keeps_absolute_expiry(tm
         claim["owner_process_birth"]["start_time_ticks"] += 1
         outer._task_dispatch_claim_path(state).write_text(json.dumps(claim))
         assert current_execution_started_at(outer, state, now_ts=observed) is None
+
+
+
+def test_owned_start_survives_retained_native_segment_without_rebasing_its_clock(tmp_path):
+    outer, native, task, state = _scope(tmp_path)
+    with _child(outer) as child:
+        selected, events, payload, _ = _execution(outer, native, task, state, child, tmp_path)
+        events.unlink(); events.with_name(events.name + ".manifest.json").unlink()
+        for index in range(4):
+            append_jsonl_event(events, "synthetic_prior_observation", {"timestamp": _iso(selected + index)})
+        append_jsonl_event(events, "implementation_started", payload)
+        # Native retains original envelopes/sequence during rotation. Keep its
+        # genuine last row, without rewriting or inventing an event identity.
+        retained = events.read_bytes().splitlines()[-1] + b"\n"
+        events.write_bytes(retained)
+        assert current_execution_started_at(outer, state, now_ts=selected + 936) == selected + 51
+        assert outer._implementation_attempt_is_active(state, now_ts=selected + 936)
+        assert events.read_bytes() == retained
