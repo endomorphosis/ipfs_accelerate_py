@@ -1039,3 +1039,44 @@ def test_native_checkpoint_uses_child_events_and_refuses_resealed_parent_supervi
     _Store(path).materialize(projection,checkpoint["cursor"])
     refused=_native_emit(owner,daemon_pid=None,observed_at="now",supervisor_birth={})
     assert refused["safe"] is False and "native_checkpoint_scope_unproven" in refused["blockers"]
+
+
+@pytest.mark.parametrize("status_age", [None, 900])
+@pytest.mark.parametrize("reason,expected,restart", [
+    ("all_selectable_ready_tasks_blocked_on_attempt_accounting_evidence", "backpressure", False),
+    ("unknown_selection_contract_reason", "ready_backlog_stalled", True),
+])
+def test_accounting_evidence_fallback_preserves_fence_without_fresh_native_status(
+    config, monkeypatch, status_age, reason, expected, restart,
+):
+    calls = stub_runtime(monkeypatch, service(age=2000))
+    write_json(config["monitor_state_path"], {
+        "service": config["service"], "board_namespace": config["board_namespace"],
+        "first_seen_at_epoch": NOW - 2000, "ready_since_at_epoch": NOW - 1000,
+        "restart_attempts_at_epoch": [],
+    })
+    write_json(config["native_state_path"], {
+        "heartbeat_at": NOW - 900, "task_count": 1, "ready_count": 1,
+        "task_statuses": {"T1": "ready"}, "last_progress_at": NOW - 900,
+        "implementation_attempts": {"T1": 1},
+    })
+    if status_age is not None:
+        write_json(config["status_path"], {
+            "implementation_progress_status": "backpressure", "updated_at": NOW - status_age,
+        })
+    Path(config["event_path"]).write_text(json.dumps({
+        "type": "daemon_pass", "timestamp": NOW - 1, "ready_count": 1,
+        "selectable_ready_count": 1, "task_count": 1,
+        "selection_idle_reason": reason,
+        "execution_slice_task_statuses": {"T1": "ready"},
+    }))
+    original_native_state = Path(config["native_state_path"]).read_bytes()
+    result = monitor.monitor(config, apply=True)
+    assert result["status"] == expected
+    assert result["healthy"] is False and result["restart_eligible"] is restart
+    assert result["evidence"]["sharded"] is False
+    assert result["evidence"]["active"] is False
+    assert result["evidence"]["native_status_at_epoch"] is None or result["evidence"]["native_status_at_epoch"] < NOW - config["heartbeat_timeout_seconds"]
+    assert calls == ([["systemctl", "--user", "restart", config["service"]]] if restart else [])
+    assert result["action"] == ("restart_requested" if restart else "none")
+    assert Path(config["native_state_path"]).read_bytes() == original_native_state

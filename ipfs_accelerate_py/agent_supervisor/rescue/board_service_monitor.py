@@ -617,6 +617,7 @@ def evaluate_health(config: dict[str, Any], service: dict[str, Any], evidence: d
     idle_reason = str(evidence.get("selection_idle_reason") or "")
     if idle_reason.startswith(("implementation_retry_deferred:", "resource_claim_deferred:")) or idle_reason in {
         "provider_capacity_backoff", "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_blocked_on_attempt_accounting_evidence",
         "all_selectable_ready_tasks_deferred_by_resource_claim",
         "all_selectable_ready_tasks_deprioritized_as_off_mission",
         "no_eligible_ready_tasks_after_selection_filters", "virgin_transfer_rendezvous_pending",
