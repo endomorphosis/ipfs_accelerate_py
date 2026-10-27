@@ -4832,6 +4832,23 @@ def _stream_pipe(
         destination.flush()
 
 
+PROVIDER_STREAM_DRAIN_TIMEOUT_SECONDS = 5.0
+
+
+def _join_live_provider_streams(threads: Sequence[threading.Thread]) -> None:
+    """Bound post-exit pipe draining without declaring descendants fenced.
+
+    A descendant can inherit a provider pipe after its leader has exited.
+    Failure remains an unknown-effect execution error; the native parent must
+    fence its owned process tree before releasing custody or retrying.
+    """
+    deadline = time.monotonic() + PROVIDER_STREAM_DRAIN_TIMEOUT_SECONDS
+    for thread in threads:
+        thread.join(timeout=max(0.0, deadline - time.monotonic()))
+    if any(thread.is_alive() for thread in threads):
+        raise RuntimeError("provider stream drain unverified after leader exit")
+
+
 def _stream_provider_pipe_without_reserved_records(
     source: TextIO,
     destination: TextIO,
@@ -4941,8 +4958,7 @@ def _run_grok_with_typed_failure_capture(
     stdout_thread.start()
     stderr_thread.start()
     returncode = int(process.wait())
-    stdout_thread.join()
-    stderr_thread.join()
+    _join_live_provider_streams((stdout_thread, stderr_thread))
     return returncode
 
 

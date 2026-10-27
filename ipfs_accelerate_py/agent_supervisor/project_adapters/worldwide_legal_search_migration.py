@@ -132,6 +132,98 @@ def operator_rearm(config: CampaignConfig, *, task_alias: str, attempt_id: str, 
             daemon.close()
 
 
+def operator_rearm_interrupted_provider(config: CampaignConfig, *, task_alias: str, attempt_id: str,
+        watchdog_action_id: str, acknowledge_paid_attempt: bool, apply: bool = False,
+        fence_probe: Callable[[CampaignConfig], Mapping[str, Any]] = _registered_stopped_fence,
+        supersession_verifier: Callable[..., Mapping[str, Any]] | None = None) -> dict[str, Any]:
+    """Explicit retry of one locally fenced, interrupted native provider.
+
+    A failed watchdog operation is never relabeled recovered. Its later native
+    fence receipt must prove custody of that same old PID/birth, while the
+    canonical failed phase and final Portal event prove no accepted task effect.
+    """
+    from datetime import datetime
+    from .worldwide_legal_search_watchdog import WorldwideWatchdogBridge, read_owned_json
+    from ..todo_daemon.implementation_daemon import DatabaseImplementationDaemon
+    from ..merge.database_coordination import TASK_CLAIM_FAILURE_REARM_OPERATION
+    if not acknowledge_paid_attempt:
+        raise ValueError("interrupted provider retry requires explicit paid-attempt acknowledgment")
+    with owner_lock(config):
+        fence = dict(fence_probe(config))
+        if fence.get("owner_alive") is not False or fence.get("main_pid") != 0 or fence.get("cgroup_empty") is not True:
+            raise ValueError("interrupted provider retry requires the stopped registered owner")
+        verifier = supersession_verifier or WorldwideWatchdogBridge(repository=config.site_root, state_root=config.state_root, run_id=config.run_id).verify_host_supersession
+        proof = dict(verifier(watchdog_action_id, expected_task_id=task_alias, expected_stage="provider", require_owner_stopped=True))
+        request = proof.get("action", {})
+        if proof.get("schema") != "wwl.watchdog.verified-host-supersession@1" or request.get("kind") != "recover" or request.get("task_id") != task_alias or request.get("stage") != "provider" or request.get("run_id") != config.run_id:
+            raise ValueError("native watchdog interruption proof does not bind this task")
+        roots = config.state_root / "native/wwl_database_portal_attempts"
+        bindings = [path for path in roots.glob("*/database-attempt-binding.json") if read_owned_json(path).get("attempt_id") == attempt_id]
+        if len(bindings) != 1:
+            raise ValueError("interrupted provider has no exact retained native binding")
+        binding = read_owned_json(bindings[0])
+        event_path = bindings[0].parent / "portal-events.jsonl"
+        if event_path.is_symlink() or event_path.stat().st_uid != __import__("os").getuid() or event_path.stat().st_size > 1_048_576:
+            raise ValueError("interrupted provider event stream custody is invalid")
+        raw_events = event_path.read_bytes()
+        events = [json.loads(line) for line in raw_events.splitlines() if line.strip()]
+        finished = [event for event in events if event.get("type") == "implementation_finished" and event.get("task_id") == task_alias]
+        if not finished:
+            raise ValueError("interrupted provider has no durable native terminal observation")
+        last = finished[-1]
+        if (last.get("provider_dispatched") is not True or last.get("exception_result", {}).get("exception_type") != "ProcessGroupCleanupUnverified"
+                or last.get("validation_result", {}).get("attempted") is not False
+                or last.get("commit_result", {}).get("committed") is not False
+                or last.get("merge_result", {}).get("merged") is not False
+                or last.get("board_completion", {}).get("complete") is not False):
+            raise ValueError("native provider outcome is not an unaccepted interrupted implementation")
+        finished_at = datetime.fromisoformat(last["timestamp"]).timestamp()
+        issued_at = request.get("issued_at")
+        if type(issued_at) not in (int, float) or not 0 <= finished_at - issued_at <= 120:
+            raise ValueError("watchdog interruption does not precede this exact native terminal event")
+        daemon = DatabaseImplementationDaemon(database_path=config.database, coordination_path=config.state_root / "coordination.duckdb",
+            execution_path=config.state_root / "execution.duckdb", state_dir=config.state_root / "native", state_prefix="wwl",
+            owner_session_id=config.run_id, authority_mode="embedded_exclusive", require_real_execution=True, task_prefix="WWL-").open()
+        try:
+            if daemon.list_running_attempts():
+                raise ValueError("a running native attempt still owns execution")
+            attempt = daemon.get_attempt(attempt_id)
+            if (attempt is None or attempt.task_alias != task_alias or attempt.task_cid != binding.get("task_cid") or attempt.status != "failed"
+                    or attempt.attempt_number >= config.max_task_attempts or attempt.started_at_ms / 1000 > issued_at):
+                raise ValueError("native failed attempt identity or remaining retry budget differs")
+            phases = daemon.phase_history(attempt_id)
+            if any(phase.get("phase") in {"effect", "validation", "completed"} for phase in phases):
+                raise ValueError("accepted native effects prevent interrupted-provider retry")
+            failure = daemon._portal_failure_phase_receipt(attempt)
+            if failure is None or not daemon._portal_failure_matches_recoverable_reason(failure, attempt, "portal_provider_failed"):
+                raise ValueError("failed native phase does not bind the provider failure")
+            task = daemon.task_source.get_task(task_alias)
+            compact = {"operation": TASK_CLAIM_FAILURE_REARM_OPERATION, "settlement_id": failure["settlement_id"]}
+            historical = daemon.coordinator.observe_rearmed_failed_task_claim(daemon.coordinator.get_task_claim(attempt.claim_id), failure_receipt=failure)
+            report = {"schema": "wwl.operator-fenced-provider-retry@1", "evidence_kind": "fenced_interrupted_provider", "run_id": config.run_id,
+                "task_alias": task_alias, "attempt_id": attempt_id, "watchdog_action_id": watchdog_action_id,
+                "supersession_receipt": proof.get("supersession_receipt"), "native_failure_settlement": failure["settlement_id"],
+                "native_terminal_event": last.get("event_id"), "native_events_sha256": hashlib.sha256(raw_events).hexdigest(),
+                "attempt_number_preserved": attempt.attempt_number, "paid_provider_attempt_acknowledged": True,
+                "possible_external_effects": "unverified", "non_dispatch_claimed": False, "attempt_budget_reset": False, "completion_authority": False}
+            if historical is not None and task.status == "retrying" and dict(task.body.get("completion_receipt", {})) == compact:
+                return {**report, "applied": True, "replayed": True, "coordination_receipt": dict(historical)}
+            if task.status != "blocked" or task.revision != int(failure["control_expected_revision"]) + 1 or dict(task.body.get("completion_receipt", {})) != failure:
+                raise ValueError("operator retry requires the unchanged exact blocked failure CAS")
+            if not apply:
+                return {**report, "applied": False, "expected_revision": task.revision}
+            changed = daemon.task_source.rearm_blocked_task(task.task_cid, receipt=compact)
+            coordinated = daemon.coordinator.rearm_failed_task(failure_receipt=failure, control_task_observation=changed.to_dict())
+            retained = daemon.get_attempt(attempt_id)
+            if retained.status != "failed" or retained.attempt_number != attempt.attempt_number or daemon.phase_history(attempt_id) != phases:
+                raise RuntimeError("interrupted provider retry changed immutable native history")
+            output = {**report, "applied": True, "control_revision": changed.revision, "coordination_receipt": coordinated}
+            atomic_json(config.state_root / "maintenance" / ("operator-interrupted-retry-" + task_alias + ".json"), output)
+            return output
+        finally:
+            daemon.close()
+
+
 def migrate(config: CampaignConfig, *, apply: bool = False, fence_probe: Callable[[CampaignConfig], Mapping[str, Any]] = _registered_stopped_fence) -> dict[str, Any]:
     from ..planning import plan_revision_contracts as pc
     from ..task_sources.database_task_source import DatabaseTaskSource
@@ -264,17 +356,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--rearm-protected")
+    parser.add_argument("--rearm-interrupted-provider")
+    parser.add_argument("--watchdog-action-id")
     parser.add_argument("--attempt-id")
     parser.add_argument("--clearance", type=Path)
     parser.add_argument("--acknowledge-paid-attempt", action="store_true")
     args = parser.parse_args(argv)
     try:
         config = config_from_args(runtime_parser().parse_args(["status", "--config", str(args.config)]))
+        if args.rearm_protected and args.rearm_interrupted_provider:
+            raise ValueError("choose exactly one native operator retry operation")
         if args.rearm_protected:
             if not args.attempt_id or not args.clearance:
                 raise ValueError("operator retry requires --attempt-id and --clearance")
             output = operator_rearm(config, task_alias=args.rearm_protected, attempt_id=args.attempt_id,
                 clearance_path=args.clearance, acknowledge_paid_attempt=args.acknowledge_paid_attempt, apply=args.apply)
+        elif args.rearm_interrupted_provider:
+            if not args.attempt_id or not args.watchdog_action_id:
+                raise ValueError("interrupted provider retry requires --attempt-id and --watchdog-action-id")
+            output = operator_rearm_interrupted_provider(config, task_alias=args.rearm_interrupted_provider, attempt_id=args.attempt_id,
+                watchdog_action_id=args.watchdog_action_id, acknowledge_paid_attempt=args.acknowledge_paid_attempt, apply=args.apply)
         else:
             output = migrate(config, apply=args.apply)
         print(json.dumps(output, sort_keys=True, default=str))

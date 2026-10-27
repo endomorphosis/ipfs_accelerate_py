@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import signal
 import subprocess
@@ -242,6 +243,10 @@ def repair_pipeline_binding(config: CampaignConfig) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
         "ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py",
         "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
         "ipfs_accelerate_py/agent_supervisor/rescue/repair_dispatcher.py"]
     return {"schema": "wwl.native-repair-pipeline-binding@1", "interface": "wwl.native-repair-pipeline@1",
         "validator_sha256": hashlib.sha256(REPAIR_VALIDATOR.encode()).hexdigest(),
@@ -374,6 +379,14 @@ class CampaignRuntime:
         self._loaded_framework_revision = git(config.framework_root, "rev-parse", "HEAD") if config.framework_root.is_dir() else ""
         self._last_successful_pass: dict[str, Any] = {}
         self._native_terminal_result: dict[str, Any] = {}
+        self._provider_activity_binding: dict[str, Any] = {}
+        self._provider_activity_sequence = 0
+        self._provider_activity: dict[str, Any] = {}
+        self._reload_request: dict[str, Any] = {}
+        try:
+            self._loaded_pipeline = repair_pipeline_binding(config)
+        except (OSError, ValueError, KeyError):
+            self._loaded_pipeline = {}
         self._provider_callback_entered = False
         self._retained_attempt_before_pass = False
         self._pending_controls: list[str] = [key for key, value in self._actions.items()
@@ -468,6 +481,13 @@ class CampaignRuntime:
             return self.config.framework_root
         raise ValueError("read-only reference cannot own an execution task")
 
+    def _make_native_portal(self, **kwargs: Any) -> Any:
+        from ..todo_daemon.implementation_daemon import PortalImplementationDaemon
+        # Preserve exact native type identity for custody attestation.
+        kwargs["implementation_cancelled"] = self.cancel.is_set
+        kwargs["implementation_declared_outputs_only"] = bool(self.plan.get("operational_repair_binding"))
+        return PortalImplementationDaemon(**kwargs)
+
     def open(self) -> None:
         from ..todo_daemon.implementation_daemon import DatabaseImplementationDaemon, PortalImplementationDaemon, parse_args
         from ..todo_daemon.implementation_daemon_runner import bind_database_portal_execution_from_args
@@ -492,27 +512,11 @@ class CampaignRuntime:
                           "implementation_plan/worldwide_legal_search/watchdog_loop.py"):
             if (self.config.site_root / protected).is_file() and protected not in args.implementation_protected_path:
                 args.implementation_protected_path.append(protected)
-        parent = self
-
-        class CampaignPortal(PortalImplementationDaemon):
-            def __init__(self, **kwargs: Any):
-                kwargs["implementation_cancelled"] = parent.cancel.is_set
-                super().__init__(**kwargs)
-
-            def _proposal_scope_paths(self, task: Any, *, include_ast_companions: bool = True) -> tuple[str, ...]:
-                binding = parent.plan.get("operational_repair_binding")
-                if binding:
-                    # The immutable operational plan binds exact traced owners
-                    # and its new regression. Import companions may be read but
-                    # cannot expand autonomous repair write authority.
-                    return tuple(binding["allowed_paths"])
-                return super()._proposal_scope_paths(task, include_ast_companions=include_ast_companions)
-
         captured: dict[str, Any] = {}
         proxy = SimpleNamespace(task_source=self._daemon.task_source,
             authorize_superseded_portal_attempt_binding=self._daemon.authorize_superseded_portal_attempt_binding,
             bind_execution_callbacks=lambda **callbacks: captured.update(callbacks))
-        bridge = bind_database_portal_execution_from_args(proxy, args, repo_root=self.config.site_root, portal_daemon_class=CampaignPortal,
+        bridge = bind_database_portal_execution_from_args(proxy, args, repo_root=self.config.site_root, portal_daemon_class=self._make_native_portal,
             task_repo_root_resolver=self.repository_for_task)
         self._bridge = bridge
         callbacks = _ProgressCallbacks(self, bridge)
@@ -531,11 +535,12 @@ class CampaignRuntime:
             plans = source.plan_projection()["plans"]
             native_active = [plan for plan in plans if plan["status"] == "active"]
         running = self._daemon.list_running_attempts()
+        blockers = [self._native_blocker(record) for record in records if record.status == "blocked"]
         current = attempt or (running[0] if running else None)
         active = str(getattr(current, "task_alias", "") or "")
         phase = stage or str(getattr(current, "committed_phase", "") or "idle")
         signature = {"tasks": [(r.task_alias, r.status) for r in records], "verified": verified,
-                     "active": active, "phase": phase, "receipts": receipt_cids}
+                     "active": active, "attempt_id": str(getattr(current, "attempt_id", "") or ""), "phase": phase, "receipts": receipt_cids}
         token = identity(signature)
         if token != self._progress_token:
             self._progress_token, self._progress_at = token, time.time()
@@ -548,15 +553,100 @@ class CampaignRuntime:
                 "active_task_cid": str(getattr(current, "task_cid", "") or ""), "stage": phase,
                 "active_attempt_id": str(getattr(current, "attempt_id", "") or ""),
                 "stage_deadline_at": (int(getattr(current, "started_at_ms", 0)) / 1000 + self.config.task_timeout_seconds) if current else 0,
-                "source_snapshot": snapshot}
+                "source_snapshot": snapshot, "native_blocked_tasks": blockers}
             self._cached.update(native_active_plan_revision=native_active[0]["plan_cid"] if len(native_active) == 1 else "",
                 native_active_plan_revision_receipt=native_active[0].get("body", {}).get("revision_cid", "") if len(native_active) == 1 else "")
 
+    def _native_blocker(self, record: Any) -> dict[str, Any]:
+        """Project canonical blocked state and bounded native diagnostics."""
+        from .worldwide_legal_search_watchdog import read_owned_json
+        receipt = dict(record.body.get("completion_receipt") or {})
+        result = {"task_alias": record.task_alias, "task_cid": record.task_cid, "task_revision": record.revision,
+            "status": "blocked", "attempt_id": str(receipt.get("attempt_id") or ""),
+            "native_failure_receipt": str(receipt.get("settlement_id") or ""),
+            "reason": "native_task_blocked", "effects_unknown": False, "completion_authority": False}
+        attempt_id = result["attempt_id"]
+        if not attempt_id or receipt.get("task_cid") != record.task_cid:
+            return result
+        root = self.config.state_root / "native/wwl_database_portal_attempts" / hashlib.sha256(attempt_id.encode()).hexdigest()[:24]
+        try:
+            binding = read_owned_json(root / "database-attempt-binding.json")
+            if any(binding.get(key) != value for key, value in (("attempt_id", attempt_id), ("task_alias", record.task_alias), ("task_cid", record.task_cid))):
+                return result
+            events = root / "portal-events.jsonl"
+            if events.is_symlink() or events.stat().st_uid != os.getuid() or events.stat().st_size > 1_048_576:
+                return result
+            raw = events.read_bytes()
+            records = [json.loads(line) for line in raw.splitlines() if line.strip()]
+            finished = [event for event in records if event.get("type") == "implementation_finished" and event.get("task_id") == record.task_alias]
+            if not finished:
+                return result
+            last = finished[-1]
+            exception = last.get("exception_result") or {}
+            cleanup_unknown = exception.get("exception_type") == "ProcessGroupCleanupUnverified"
+            reason = "native_process_cleanup_unverified" if cleanup_unknown else "portal_provider_failed" if last.get("returncode") else "native_validation_or_acceptance_failed"
+            result.update(reason=reason, exception_type=exception.get("exception_type", ""),
+                effects_unknown=cleanup_unknown, provider_dispatched=last.get("provider_dispatched") is True,
+                native_event_receipt=str(last.get("event_id") or ""), native_events_sha256=hashlib.sha256(raw).hexdigest(),
+                diagnostic_source=str(events), native_binding_id=str(binding.get("binding_id") or ""))
+        except (OSError, ValueError, TypeError):
+            pass
+        return result
+
+    def _bind_provider_activity(self, attempt: Any) -> None:
+        """Observation binding only; the existing native bridge owns launch."""
+        self._provider_activity_binding, self._provider_activity_sequence, self._provider_activity = {}, 0, {}
+        try:
+            bridge = self._bridge._for_attempt(attempt)
+            record = bridge._record_for_attempt(bridge.task_source, attempt)
+            paths = bridge._paths(attempt)
+            portal = bridge._projection_task_identity(bridge._render_projection(attempt, record), projection_path=paths.task_projection,
+                task_alias=attempt.task_alias, board_namespace=bridge.board_namespace)
+            attempt_id = str(attempt.attempt_id)
+            binding = {"schema": "wwl.native-provider-activity-binding@1", "run_id": self.config.run_id,
+                "task_id": attempt.task_alias, "task_cid": attempt.task_cid, "portal_task_cid": portal["canonical_task_cid"],
+                "native_attempt_id": attempt_id, "portal_attempt_number": 1, "issued_at": time.time(),
+                "capability_nonce": secrets.token_hex(32),
+                "activity_path": str(self.config.state_root / "provider-activity" / (hashlib.sha256(attempt_id.encode()).hexdigest() + ".json"))}
+            binding["binding_id"] = identity(binding)
+            atomic_json(self.config.state_root / "provider-activity-binding.json", binding)
+            self._provider_activity_binding = binding
+        except Exception:
+            # Missing optional telemetry never changes routing or custody.
+            pass
+
+    def _consume_provider_activity(self) -> None:
+        from .worldwide_legal_search_watchdog import read_owned_json
+        binding = self._provider_activity_binding
+        if not binding or self._cached.get("stage") != "provider" or self._cached.get("active_attempt_id") != binding["native_attempt_id"]:
+            return
+        try:
+            path = Path(binding["activity_path"])
+            if path.stat().st_size > 4096 or path.stat().st_mode & 0o077:
+                return
+            value = read_owned_json(path)
+            keys = ("run_id", "task_id", "task_cid", "portal_task_cid", "native_attempt_id", "portal_attempt_number", "binding_id", "capability_nonce")
+            if value.get("schema") != "wwl.native-provider-activity@1" or any(value.get(key) != binding[key] for key in keys) or value.get("event_kind") != "tool_completed" or value.get("completion_authority") is not False:
+                return
+            sequence, observed = value.get("sequence"), value.get("observed_at")
+            if type(sequence) is not int or not self._provider_activity_sequence < sequence <= 100000 or type(observed) not in (int, float) or not binding["issued_at"] <= observed <= time.time() + 5 or not 0 <= time.time() - observed <= 120:
+                return
+            with self._cache_lock:
+                self._provider_activity_sequence = sequence
+                self._progress_at = max(self._progress_at, observed)
+                self._provider_activity = {key: value[key] for key in ("native_attempt_id", "sequence", "event_kind", "observed_at", "binding_id")}
+                self._cached["progress_token"] = identity({"native": self._progress_token, "activity_attempt": binding["native_attempt_id"], "completed_tools": sequence})
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+
     def publish(self, *, alive: bool = True) -> dict[str, Any]:
+        self._consume_provider_activity()
         now = time.time()
         with self._cache_lock:
             cached = dict(self._cached)
         failure = self._last_failure
+        blockers = cached.get("native_blocked_tasks", [])
+        native_unknown = any(item.get("effects_unknown") for item in blockers)
         repair_unknown = any(value.get("request", {}).get("kind") == "repair" and value.get("observation", {}).get("status") == "unknown" for value in self._actions.values())
         hold = any((self.config.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP"))
         verified = list(cached.get("verified_task_ids", []))
@@ -572,11 +662,12 @@ class CampaignRuntime:
             "completion_verified": completed, "completion_receipt": completion_receipt,
             "required_task_ids": required, "verified_task_ids": verified,
             "stage": str(cached.get("stage") or "startup"), "task_id": str(cached.get("active_task_id") or ""),
+            "active_attempt_id": str(cached.get("active_attempt_id") or ""),
             "progress_token": str(cached.get("progress_token") or self.bootstrap_receipt["receipt_id"]),
             "heartbeat_at": now, "owner_alive": alive, "owner_identity_verified": alive,
-            "runnable_count": len(cached.get("ready_task_ids", [])), "blocked_kind": "software_defect" if failure else ("permission" if self._native_terminal_result.get("reason") == "implementation_protected_path_mutated" else "none"),
+            "runnable_count": len(cached.get("ready_task_ids", [])), "blocked_kind": "software_defect" if failure else ("permission" if native_unknown or self._native_terminal_result.get("reason") == "implementation_protected_path_mutated" else "none"),
             "dependency_running": False, "stage_deadline_at": cached.get("stage_deadline_at", 0),
-            "effects_unknown": bool(failure.get("effects_unknown", False) or repair_unknown), "failure_key": failure.get("failure_key", ""),
+            "effects_unknown": bool(failure.get("effects_unknown", False) or repair_unknown or native_unknown), "failure_key": failure.get("failure_key", ""),
             "reproducer_receipt": failure.get("receipt_id", ""),
             "action_observations": [value["observation"] for value in self._actions.values() if value.get("observation")],
             "owner_pid": os.getpid(), "meaningful_progress_at_ms": int(self._progress_at * 1000),
@@ -590,6 +681,7 @@ class CampaignRuntime:
             original_admitted_plan_revision=self.bootstrap_receipt["admitted_plan_revision"],
             typed_goal_semantics_id=self.bootstrap_receipt.get("plan_definition_id", ""),
             last_native_pass_result=self._last_result, native_terminal_result=self._native_terminal_result)
+        snapshot.update(native_blocked_tasks=blockers, provider_activity=dict(self._provider_activity), source_reload=dict(self._reload_request))
         for name in ("campaign-status.json", "status.json"):
             atomic_json(self.config.state_root / name, snapshot)
         return snapshot
@@ -629,8 +721,13 @@ class CampaignRuntime:
             self._last_result = dict(self._daemon.run_once())
             self.capture()
             implementation = self._last_result.get("implementation_result") or {}
-            self._native_terminal_result = dict(implementation) if implementation.get("status") in {"blocked", "failed"} else {}
             selected = str(self._last_result.get("active_task_id") or implementation.get("task_alias") or "")
+            if implementation.get("status") in {"blocked", "failed"}:
+                self._native_terminal_result = {**dict(implementation), "task_alias": selected}
+            elif self._cached.get("native_blocked_tasks"):
+                self._native_terminal_result = dict(self._cached["native_blocked_tasks"][0])
+            elif self._native_terminal_result.get("task_alias") not in self._cached.get("task_statuses", {}) or self._cached["task_statuses"].get(self._native_terminal_result.get("task_alias")) != "blocked":
+                self._native_terminal_result = {}
             if selected and selected in self._cached.get("verified_task_ids", []):
                 self._last_successful_pass = {"owner_pid": os.getpid(), "framework_revision": self._loaded_framework_revision,
                     "completed_at": time.time(), "result": self._last_result, "authority_revision": self._cached.get("authority_revision"),
@@ -638,6 +735,7 @@ class CampaignRuntime:
             previous_task = str(self._last_failure.get("task_id") or "")
             if self._last_failure and (previous_task in self._cached.get("verified_task_ids", []) or (not previous_task and not self._cached.get("active_task_id"))):
                 self._last_failure = {}
+            self._check_accepted_source_reload(selected)
         except Exception as error:
             # The wrapper knows whether its only provider callback was ever
             # entered. A prior retained attempt can still have unknown effects,
@@ -684,9 +782,10 @@ class CampaignRuntime:
                     # Keep the reproducible defect visible for repair. Its
                     # pre-callback proof establishes known no-provider effects.
                     evidence["known_pre_provider_failure"] = self._last_failure["receipt_id"]
-                outcome = "succeeded" if not self._last_failure.get("effects_unknown", False) else "blocked"
+                unknown = self._last_failure.get("effects_unknown", False) or any(item.get("effects_unknown") for item in self._cached.get("native_blocked_tasks", []))
+                outcome = "succeeded" if not unknown else "blocked"
                 action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
-                    "status": outcome, "receipt": identity(evidence), "effects_verified": True}
+                    "status": outcome, "receipt": identity(evidence), "effects_verified": not unknown}
             except Exception as error:
                 action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
                     "status": "unknown", "receipt": identity([type(error).__name__, str(error)]), "effects_verified": False}
@@ -829,6 +928,29 @@ class CampaignRuntime:
                 return True
         return False
 
+    def _check_accepted_source_reload(self, task_alias: str) -> None:
+        """Reload changed framework code only behind actual native acceptance."""
+        task = self.tasks.get(task_alias)
+        receipt = self._cached.get("native_completion_receipts_by_alias", {}).get(task_alias)
+        if not task or task["repository"] != "accelerate" or not receipt or task_alias not in self._cached.get("verified_task_ids", []):
+            return
+        if self._last_failure.get("effects_unknown") or self._repair_requires_reconciliation():
+            return
+        current = repair_pipeline_binding(self.config)
+        if not self._loaded_pipeline or current["source_sha256"] == self._loaded_pipeline["source_sha256"]:
+            return
+        request = {"schema": "wwl.native-accepted-source-reload@1", "run_id": self.config.run_id, "task_id": task_alias,
+            "native_completion_receipt": receipt, "native_completion_projection": self._cached.get("native_completion_projection", ""),
+            "loaded_framework_revision": self._loaded_framework_revision,
+            "expected_framework_revision": git(self.config.framework_root, "rev-parse", "HEAD"),
+            "expected_framework_tree": git(self.config.framework_root, "rev-parse", "HEAD^{tree}"),
+            "old_pipeline_binding": self._loaded_pipeline, "new_pipeline_binding": current,
+            "exit_code": 75, "native_history_preserved": True, "completion_authority": False}
+        request["receipt_id"] = identity(request)
+        atomic_json(self.config.state_root / "accepted-source-reload.json", request)
+        self._reload_request = request
+        self.stop.set()
+
     def run(self, *, once: bool = False) -> dict[str, Any]:
         observation = wait_for_storage(self.config, self.stop)
         if self.stop.is_set():
@@ -884,6 +1006,7 @@ class _ProgressCallbacks:
     def run_provider(self, attempt: Any) -> Any:
         self.runtime._provider_callback_entered = True
         self.runtime.capture("provider", attempt)
+        self.runtime._bind_provider_activity(attempt)
         return self.bridge.run_provider(attempt)
 
     def apply_effect(self, attempt: Any, result: Any) -> Any:
@@ -963,6 +1086,9 @@ def main(argv: list[str] | None = None) -> int:
                 signal.signal(signal.SIGTERM, request_stop)
                 signal.signal(signal.SIGINT, request_stop)
                 output = runtime.run(once=args.once)
+                if runtime._reload_request:
+                    print(json.dumps(output, sort_keys=True, default=str), flush=True)
+                    return 75
         print(json.dumps(output, sort_keys=True, default=str), flush=True)
         return 0
     except Exception as error:

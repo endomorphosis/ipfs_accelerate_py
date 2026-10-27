@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import threading
+import contextlib
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -343,7 +344,8 @@ class RepairAdmissionBoundaries(unittest.TestCase):
             for relative in ("project_adapters/worldwide_legal_search_provider.py", "project_adapters/worldwide_legal_search_goals.py",
                              "todo_daemon/implementation_daemon_runner.py", "todo_daemon/implementation_daemon.py", "todo_daemon/database_portal_bridge.py", "rescue/repair_dispatcher.py",
                              "task_sources/board_control_plane.py", "task_sources/database_task_source.py", "task_sources/intent_repository.py",
-                             "validation/validation_runtime.py", "validation/validation_commands.py", "validation/project_dependency_preflight.py"):
+                             "validation/validation_runtime.py", "validation/validation_commands.py", "validation/project_dependency_preflight.py",
+                             "todo_daemon/supervisor_runtime.py", "grok_cli_runner.py", "runtime/grok_cli_runner.py", "provider_fallback_runner.py"):
                 path = config.framework_root / "ipfs_accelerate_py/agent_supervisor" / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("# pipeline fixture\n")
@@ -373,6 +375,121 @@ class RepairAdmissionBoundaries(unittest.TestCase):
             self.assertEqual(runtime._last_successful_pass, {})
             self.assertEqual(runtime.publish()["blocked_kind"], "permission")
             self.assertEqual(runtime._last_failure, {})
+            runtime._cached["task_statuses"] = {"WWL-000": "blocked"}
+            runtime._daemon.run_once = lambda: {"implementation_result": None, "selection_idle_reason": "no_ready_tasks"}
+            with patch.object(runtime, "capture"):
+                runtime._run_pass()
+            self.assertEqual(runtime._native_terminal_result["reason"], "implementation_protected_path_mutated")
+
+    def test_canonical_portal_factory_keeps_native_exit_attestation_and_narrows_repair_scope(self):
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import PortalImplementationDaemon, PortalTask
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DatabasePortalExecutionBridge
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            runtime.plan["operational_repair_binding"] = {"allowed_paths": ["allowed.py"]}
+            board = config.site_root / "fixture.todo.md"
+            board.write_text("# Fixture\n\n## WWL-000 Fixture\n- Status: ready\n- Outputs: allowed.py\n")
+            native = runtime._make_native_portal(todo_path=board, state_path=config.state_root / "portal.json",
+                strategy_path=config.state_root / "strategy.json", events_path=config.state_root / "events.jsonl", repo_root=config.site_root)
+            try:
+                self.assertIs(type(native), PortalImplementationDaemon)
+                task = PortalTask("WWL-000", "Fixture", "ready", "auto", "P1", "implementation", outputs=["allowed.py"],
+                    metadata={"allowed paths": "forbidden.py", "predicted files": "also-forbidden.py"})
+                self.assertEqual(native._proposal_scope_paths(task), ("allowed.py",))
+                self.assertFalse(native._implementation_cancel_requested())
+                runtime.cancel.set()
+                self.assertTrue(native._implementation_cancel_requested())
+                bridge = DatabasePortalExecutionBridge.__new__(DatabasePortalExecutionBridge)
+                paths = SimpleNamespace(state=native.state_path, events=native.events_path)
+                with patch.object(native, "_take_database_provider_exit", return_value=None) as taken:
+                    bridge._native_provider_exit_failure(attempt=None, paths=paths, binding={}, daemon=native, authority={}, implementation={}, summary={})
+                    taken.assert_called_once()
+            finally:
+                native.close_event_runtime()
+
+    def test_fresh_owner_reconstructs_native_cleanup_blocker_without_unblocking(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            runtime._last_failure = {}
+            attempt = "attempt:retained-provider"
+            root = config.state_root / "native/wwl_database_portal_attempts" / hashlib.sha256(attempt.encode()).hexdigest()[:24]
+            atomic_json(root / "database-attempt-binding.json", {"attempt_id": attempt, "task_alias": "WWL-000", "task_cid": "native-task", "binding_id": "native-binding"})
+            event = {"type": "implementation_finished", "task_id": "WWL-000", "event_id": "native-event", "provider_dispatched": True,
+                "returncode": 1, "exception_result": {"exception_type": "ProcessGroupCleanupUnverified"}}
+            (root / "portal-events.jsonl").write_text(json.dumps(event) + "\n")
+            task = SimpleNamespace(task_alias="WWL-000", task_cid="native-task", revision=4, status="blocked",
+                body={"completion_receipt": {"attempt_id": attempt, "task_cid": "native-task", "settlement_id": "native-failure"}})
+            source = SimpleNamespace(intent=SimpleNamespace(read_session=lambda: contextlib.nullcontext(),
+                completion_evidence_projection=lambda: {"completion_receipts": [], "projection_cid": "native-projection"}),
+                snapshot=lambda: SimpleNamespace(to_dict=lambda: {"revision": 9}), list_tasks=lambda **_kwargs: SimpleNamespace(tasks=[task]),
+                ready_tasks=lambda **_kwargs: SimpleNamespace(tasks=[]), plan_projection=lambda: {"plans": []})
+            runtime._daemon = SimpleNamespace(task_source=source, list_running_attempts=lambda: [])
+            runtime.capture()
+            snapshot = runtime.publish()
+            self.assertTrue(snapshot["effects_unknown"])
+            self.assertEqual(snapshot["native_blocked_tasks"][0]["reason"], "native_process_cleanup_unverified")
+            self.assertEqual(snapshot["blocked_kind"], "permission")
+            self.assertFalse(snapshot["completion_verified"])
+
+    def test_only_bound_completed_tools_renew_progress_and_no_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            binding = {"run_id": config.run_id, "task_id": "WWL-000", "task_cid": "native-task", "portal_task_cid": "portal-task",
+                "native_attempt_id": "attempt:active", "portal_attempt_number": 1, "binding_id": "owner-binding", "capability_nonce": "a" * 64,
+                "issued_at": time.time() - 10, "activity_path": str(config.state_root / "provider-activity/active.json")}
+            runtime._provider_activity_binding = binding
+            runtime._cached = {"stage": "provider", "active_attempt_id": binding["native_attempt_id"]}
+            activity = {"schema": "wwl.native-provider-activity@1", **{key: binding[key] for key in
+                ("run_id", "task_id", "task_cid", "portal_task_cid", "native_attempt_id", "portal_attempt_number", "binding_id", "capability_nonce")},
+                "sequence": 1, "event_kind": "thought", "observed_at": time.time(), "completion_authority": False}
+            previous = runtime._progress_at
+            atomic_json(Path(binding["activity_path"]), activity)
+            runtime._consume_provider_activity()
+            self.assertEqual(runtime._provider_activity_sequence, 0)
+            activity["event_kind"] = "tool_completed"
+            atomic_json(Path(binding["activity_path"]), activity)
+            runtime._consume_provider_activity()
+            self.assertEqual(runtime._provider_activity_sequence, 1)
+            self.assertGreaterEqual(runtime._progress_at, previous)
+            progress = runtime._progress_at
+            activity["observed_at"] += 1
+            atomic_json(Path(binding["activity_path"]), activity)
+            runtime._consume_provider_activity()
+            self.assertEqual(runtime._progress_at, progress)
+            activity.update(sequence=2, native_attempt_id="attempt:prior")
+            atomic_json(Path(binding["activity_path"]), activity)
+            runtime._consume_provider_activity()
+            self.assertEqual(runtime._provider_activity_sequence, 1)
+            self.assertNotIn("verified_task_ids", runtime._cached)
+
+    def test_only_accepted_changed_framework_sources_request_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            runtime._last_failure = {}
+            old = {"source_sha256": {"pipeline.py": "old"}}
+            new = {"source_sha256": {"pipeline.py": "new"}}
+            runtime._loaded_pipeline = old
+            with patch("ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime.repair_pipeline_binding", return_value=new):
+                runtime._check_accepted_source_reload("WWL-001")
+                self.assertFalse(runtime.stop.is_set())
+                runtime._cached.update(verified_task_ids=["WWL-001"], native_completion_receipts_by_alias={"WWL-001": "native-acceptance"}, native_completion_projection="native-projection")
+                runtime._last_failure = {"effects_unknown": True}
+                runtime._check_accepted_source_reload("WWL-001")
+                self.assertFalse(runtime.stop.is_set())
+                runtime._last_failure = {}
+                runtime._check_accepted_source_reload("WWL-001")
+                self.assertTrue(runtime.stop.is_set())
+                self.assertEqual(runtime._reload_request["exit_code"], 75)
+                self.assertEqual(runtime._reload_request["native_completion_receipt"], "native-acceptance")
+            runtime.stop.clear()
+            runtime._reload_request = {}
+            with patch("ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime.repair_pipeline_binding", return_value=old):
+                runtime._check_accepted_source_reload("WWL-001")
+                self.assertFalse(runtime.stop.is_set())
 
     def test_resource_wait_is_stoppable_and_resumes_without_native_work(self):
         with tempfile.TemporaryDirectory() as directory:

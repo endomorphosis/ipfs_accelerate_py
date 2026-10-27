@@ -181,13 +181,13 @@ def test_real_owned_descendant_is_reaped_before_return(tmp_path, ignore_term):
                 on_started=lambda process: leader_pid.append(process.pid),
             )
             assert result.returncode == 0
+            assert reaped.wait(0.05)
             try:
                 os.killpg(leader_pid[0], 0)
             except ProcessLookupError:
                 pass
             else:
                 raise AssertionError('owned group still exists after returned cleanup')
-            assert reaped.wait(0.05)
             print(json.dumps({'leader_returncode':result.returncode,'descendant_reaped':True,'group_absent':True}))
         finally:
             if child_pid and not reaped.is_set():
@@ -214,3 +214,37 @@ def test_real_owned_descendant_is_reaped_before_return(tmp_path, ignore_term):
         "descendant_reaped": True,
         "group_absent": True,
     }
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="isolated Linux zombie custody fixture")
+def test_non_executable_owned_zombie_does_not_require_init_to_reap(tmp_path):
+    harness = textwrap.dedent(
+        """
+        import ctypes,json,os,pathlib,signal,subprocess,sys,time
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import run_process_group_stream
+        assert ctypes.CDLL(None,use_errno=True).prctl(36,1,0,0,0)==0
+        root=pathlib.Path(sys.argv[1]);marker=root/'child.pid'
+        child_code='import os,pathlib,time; pathlib.Path('+repr(str(marker))+').write_text(str(os.getpid())); time.sleep(30)'
+        leader_code='import pathlib,subprocess,sys,time; subprocess.Popen([sys.executable,"-c",'+repr(child_code)+']); p=pathlib.Path('+repr(str(marker))+'); exec("while not p.exists(): time.sleep(0.001)")'
+        child=None
+        try:
+            result=run_process_group_stream([sys.executable,'-c',leader_code],cwd=root,stdout=subprocess.DEVNULL,timeout_seconds=5,termination_grace_seconds=0.05)
+            child=int(marker.read_text());stat=pathlib.Path('/proc')/str(child)/'stat'
+            state=stat.read_text().rsplit(')',1)[1].split()[0]
+            assert result.returncode==0 and state=='Z'
+            assert os.waitpid(child,0)[0]==child
+            child=None
+            print(json.dumps({'non_executable_zombie_observed':True,'reaped_exact_owned_child':True}))
+        finally:
+            if child is None and marker.exists():
+                child=int(marker.read_text())
+            if child:
+                try:os.kill(child,signal.SIGKILL)
+                except ProcessLookupError:pass
+                try:os.waitpid(child,0)
+                except ChildProcessError:pass
+        """
+    )
+    result = subprocess.run([sys.executable, "-c", harness, str(tmp_path)], cwd=Path(runtime.__file__).parents[3], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr[-4000:]
+    assert json.loads(result.stdout.splitlines()[-1])["non_executable_zombie_observed"] is True

@@ -543,35 +543,31 @@ def _run_provider(
     stderr_tail = ""
 
     def replay_stdout() -> None:
-        while True:
-            chunk = process.stdout.read(8192)
-            if not chunk:
-                final = stdout_sanitizer.finish()
-                if final:
-                    sys.stdout.write(final)
-                    sys.stdout.flush()
-                return
+        from ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner import _live_provider_text_chunks
+        for chunk in _live_provider_text_chunks(process.stdout):
             sanitized = stdout_sanitizer.feed(chunk)
             if sanitized:
                 sys.stdout.write(sanitized)
                 sys.stdout.flush()
+        final = stdout_sanitizer.finish()
+        if final:
+            sys.stdout.write(final)
+            sys.stdout.flush()
 
     def replay_stderr() -> None:
         nonlocal stderr_tail
-        while True:
-            chunk = process.stderr.read(8192)
-            if not chunk:
-                final = stderr_sanitizer.finish()
-                if final:
-                    sys.stderr.write(final)
-                    sys.stderr.flush()
-                    stderr_tail = (stderr_tail + final)[-(256 * 1024) :]
-                return
+        from ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner import _live_provider_text_chunks
+        for chunk in _live_provider_text_chunks(process.stderr):
             sanitized = stderr_sanitizer.feed(chunk)
             if sanitized:
                 sys.stderr.write(sanitized)
                 sys.stderr.flush()
                 stderr_tail = (stderr_tail + sanitized)[-(256 * 1024) :]
+        final = stderr_sanitizer.finish()
+        if final:
+            sys.stderr.write(final)
+            sys.stderr.flush()
+            stderr_tail = (stderr_tail + final)[-(256 * 1024) :]
 
     stdout_thread = threading.Thread(
         target=replay_stdout,
@@ -593,8 +589,8 @@ def _run_provider(
     finally:
         process.stdin.close()
     returncode = int(process.wait())
-    stdout_thread.join()
-    stderr_thread.join()
+    from ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner import _join_live_provider_streams
+    _join_live_provider_streams((stdout_thread, stderr_thread))
     trusted_receipt = (
         _read_private_failure_receipt(trusted_read_fd)
         if trusted_read_fd >= 0

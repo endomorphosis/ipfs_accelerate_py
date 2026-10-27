@@ -5160,6 +5160,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         board_namespace: str = "",
         worktree_submodule_paths: Any = None,
         implementation_protected_paths: Any = None,
+        implementation_declared_outputs_only: bool = False,
         manual_completion_authority_task_ids: Sequence[str] = (),
         manual_completion_authority_required_task_ids: Sequence[str] = (),
         manual_completion_authority_epoch_id: str = "",
@@ -5371,6 +5372,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             implementation_protected_paths,
             repo_root=self.repo_root,
         )
+        if type(implementation_declared_outputs_only) is not bool:
+            raise TypeError("implementation_declared_outputs_only must be a boolean")
+        self._implementation_declared_outputs_only = implementation_declared_outputs_only
         self.manual_completion_authority_required_task_ids = frozenset(
             str(task_id).strip()
             for task_id in manual_completion_authority_required_task_ids
@@ -19017,6 +19021,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 {"task_ids": sorted(revision_reset_task_ids)},
             )
         implementation_result: dict[str, Any] | None = None
+        retain_unverified_dispatch_intent = False
         try:
             if self.implement and selected is not None and resolved_statuses.get(selected.task_id) == "ready":
                 unresolved_for_selected = unresolved_merge_failures.get(selected.task_id)
@@ -19050,12 +19055,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     self._record_event("implementation_skipped", implementation_result)
                 else:
                     implementation_result = self._run_implementation(selected, state)
+        except ProcessGroupCleanupUnverified:
+            retain_unverified_dispatch_intent = True
+            raise
         finally:
             retain_selected_intent = bool(
-                selected is not None
-                and implementation_result is not None
-                and implementation_result.get("dispatch_intent_retained")
-                is True
+                retain_unverified_dispatch_intent
+                or (selected is not None
+                    and implementation_result is not None
+                    and implementation_result.get("dispatch_intent_retained") is True)
             )
             self._reconcile_unselected_implementation_dispatch_intents(
                 reusable_dispatch_intents,
@@ -21763,6 +21771,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return result
 
         acquired_lock = False
+        retain_unverified_process_custody = False
         log_path = self.implementation_log_dir / (
             f"{task.task_id.lower()}-attempt-{attempt}-{secrets.token_hex(16)}.log"
         )
@@ -23222,6 +23231,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
             self._record_event("implementation_finished", result)
             return result
+        except ProcessGroupCleanupUnverified:
+            # The owned provider tree may still execute. Keep active state,
+            # exact claims and its candidate; no terminal/exit is invented.
+            retain_unverified_process_custody = True
+            raise
         except Exception as exc:
             if isinstance(exc, provider_capacity_custody.RetentionError):
                 # Publication failure cannot become a settled callback failure.
@@ -23304,6 +23318,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._record_event("implementation_finished", result)
             return result
         finally:
+            if retain_unverified_process_custody:
+                acquired_lock = False
+                acquired_task_claim = False
+                # Keep physical claims occupied. The native process fence is
+                # required before any later caller may release or reuse them.
+                acquired_resource_claims = []
             try:
                 if acquired_lock and not self._release_implementation_lock(
                     lock_path,
@@ -23320,9 +23340,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     lock_path,
                     exc_info=True,
                 )
-            self._release_implementation_resource_claims(
-                acquired_resource_claims
-            )
+            if not retain_unverified_process_custody:
+                self._release_implementation_resource_claims(
+                    acquired_resource_claims
+                )
             acquired_resource_claims = []
             try:
                 if acquired_task_claim and not self._release_implementation_task_claim(
@@ -33903,6 +33924,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     attempt=attempt,
                     exception_result=timeout_result,
                 )
+        except ProcessGroupCleanupUnverified as exc:
+            # Do not clear the active protected-path fence, commit, validate,
+            # finalize lifecycle custody or delete an ambiguous live area.
+            try:
+                self._record_event("implementation_process_custody_retained", {
+                    "task_id": task.task_id, "attempt": attempt,
+                    "worktree_path": str(worktree_path), "branch": branch_name,
+                    "reason": exc.reason, "effects_unknown": True,
+                    "requires_native_process_fence": True,
+                    "quarantine_required": True, "candidate_retained": worktree_path.exists(),
+                    "provider_exit_verified": False, "completion_authority": False,
+                })
+            except Exception:
+                # Diagnostic append failure cannot transform unknown custody
+                # into an ordinary error that would release native claims.
+                pass
+            raise
         except Exception as exc:
             returncode = 1
             lifecycle_race_exception = (
@@ -40430,6 +40468,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             task,
             repo_root=self.repo_root if include_ast_companions else None,
             include_ast_companions=include_ast_companions,
+            declared_outputs_only=getattr(self, "_implementation_declared_outputs_only", False),
         )
 
     @staticmethod
@@ -40438,6 +40477,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         repo_root: Path | None = None,
         include_ast_companions: bool = True,
+        declared_outputs_only: bool = False,
     ) -> tuple[str, ...]:
         """Return task-owned paths, optionally expanded via AST import analysis.
 
@@ -40450,9 +40490,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """
 
         raw_paths: list[str] = list(task_declared_output_paths(task))
-        for metadata_name in ("predicted files", "allowed paths"):
-            raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
-        if include_ast_companions and repo_root is not None:
+        if not declared_outputs_only:
+            for metadata_name in ("predicted files", "allowed paths"):
+                raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
+        if include_ast_companions and not declared_outputs_only and repo_root is not None:
             try:
                 raw_paths.extend(
                     validation_ast_companion_paths(

@@ -7,14 +7,21 @@ It does not export or weaken the daemon's separately sealed route policy.
 from __future__ import annotations
 
 import argparse
+import codecs
 from dataclasses import asdict
+import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import shlex
 import shutil
+import stat
+import subprocess
 import sys
+import tempfile
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -24,6 +31,137 @@ MODEL = "grok-4.7"
 POLICY = "grok_quota_auth_or_unavailable"
 MODULE = "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_provider"
 _TASK_RE = re.compile(r"WWL-(?:[0-9]{3}|SRC-[0-9a-f]{16}-(?:normalize|index|geo|publish|verify)-[0-9]{4}|REPAIR-(?:[0-9a-f]{16}|[0-9a-f]{64}))")
+
+
+def _activity_binding(config: Mapping[str, Any], task_id: str, attempt: int) -> dict[str, Any] | None:
+    """Read optional owner-scoped observation metadata, never launch authority."""
+    try:
+        root = Path(str(config["state_root"])).resolve()
+        descriptor = os.open(root / "provider-activity-binding.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            observed = os.fstat(source.fileno())
+            if not stat.S_ISREG(observed.st_mode) or observed.st_uid != os.getuid() or observed.st_nlink != 1 or observed.st_mode & 0o077 or observed.st_size > 16384:
+                return None
+            binding = json.loads(source.read(16385))
+        if not isinstance(binding, dict):
+            return None
+        body = {key: value for key, value in binding.items() if key != "binding_id"}
+        identity = "sha256:" + hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+        native_id = str(binding.get("native_attempt_id") or "")
+        expected_path = root / "provider-activity" / (hashlib.sha256(native_id.encode()).hexdigest() + ".json")
+        if (binding.get("schema") != "wwl.native-provider-activity-binding@1" or binding.get("binding_id") != identity
+            or binding.get("run_id") != config.get("run_id", "worldwide-legal-search-v1") or binding.get("task_id") != task_id
+            or binding.get("portal_attempt_number") != attempt or binding.get("portal_task_cid") != os.environ.get("IPFS_ACCELERATE_AGENT_TASK_CID")
+            or not native_id or len(native_id) > 256 or not binding.get("task_cid")
+            or re.fullmatch(r"[0-9a-f]{64}", str(binding.get("capability_nonce") or "")) is None
+            or Path(str(binding.get("activity_path") or "")) != expected_path):
+            return None
+        issued = binding.get("issued_at", binding.get("started_at"))
+        if type(issued) not in (int, float) or not math.isfinite(issued) or not -15 <= time.time() - issued <= int(config.get("task_timeout_seconds", 5400)) + 120:
+            return None
+        return binding
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+class _SemanticActivity:
+    """Count matched completed tools; prose, bytes and repeated frames do not count."""
+
+    def __init__(self, binding: Mapping[str, Any]):
+        self.binding = dict(binding)
+        self.pending: dict[str, str] = {}
+        self.completed: set[str] = set()
+        self.sequence = 0
+        self.buffer = bytearray()
+        self.overlong = False
+
+    def event(self, event: Any) -> None:
+        if not isinstance(event, dict):
+            return
+        kind = event.get("type")
+        tool_id = event.get("toolCallId")
+        tool = event.get("toolName", event.get("title", "other"))
+        started = kind == "tool_call" and event.get("status") in ("pending", "in_progress")
+        finished = kind == "tool_call_update" and event.get("status") == "completed"
+        if kind in ("item.started", "item.completed"):
+            item = event.get("item", {})
+            if not isinstance(item, dict) or item.get("type") not in ("command_execution", "file_change", "mcp_tool_call", "web_search"):
+                return
+            tool_id, tool = item.get("id"), item["type"]
+            started, finished = kind == "item.started", kind == "item.completed"
+        if not isinstance(tool_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", tool_id):
+            return
+        if started and tool_id not in self.completed and len(self.pending) < 1024:
+            self.pending[tool_id] = str(tool)[:100]
+        if not finished or tool_id not in self.pending or tool_id in self.completed or len(self.completed) >= 100000:
+            return
+        self.pending.pop(tool_id)
+        self.completed.add(tool_id)
+        self.sequence += 1
+        self.publish(tool_id)
+
+    def publish(self, tool_id: str) -> None:
+        binding = self.binding
+        payload = {"schema": "wwl.native-provider-activity@1", **{key: binding[key] for key in
+            ("run_id", "task_id", "task_cid", "portal_task_cid", "native_attempt_id", "portal_attempt_number", "binding_id", "capability_nonce")},
+            "sequence": self.sequence, "event_kind": "tool_completed", "observed_at": time.time(),
+            "tool_id_sha256": hashlib.sha256(tool_id.encode()).hexdigest(), "completion_authority": False}
+        path = Path(binding["activity_path"])
+        temporary = ""
+        try:
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(prefix=".provider-activity-", dir=path.parent)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                json.dump(payload, output, sort_keys=True)
+                output.write("\n")
+            os.replace(temporary, path)
+        except OSError:
+            pass  # Optional observation cannot alter routing or execution.
+        finally:
+            if temporary:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+
+    def feed(self, chunk: bytes, *, final: bool = False) -> None:
+        for part in chunk.splitlines(keepends=True):
+            ended = part.endswith(b"\n")
+            if not self.overlong and len(self.buffer) + len(part) <= 1024 * 1024:
+                self.buffer.extend(part)
+            else:
+                self.overlong = True
+            if ended:
+                if not self.overlong:
+                    try:
+                        self.event(json.loads(self.buffer))
+                    except (ValueError, TypeError, RecursionError):
+                        pass
+                self.buffer.clear()
+                self.overlong = False
+        if final and self.buffer:
+            self.feed(b"\n")
+
+
+def _relay_with_activity(command: list[str], activity: _SemanticActivity) -> int:
+    """Preserve prompt/custody and route output while observing bounded JSON."""
+    process = subprocess.Popen(command, stdout=subprocess.PIPE)
+    assert process.stdout is not None
+    binary_output = getattr(sys.stdout, "buffer", None)
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    try:
+        while chunk := process.stdout.read1(64 * 1024):
+            if binary_output is not None:
+                binary_output.write(chunk)
+                binary_output.flush()
+            else:
+                sys.stdout.write(decoder.decode(chunk))
+                sys.stdout.flush()
+            activity.feed(chunk)
+        activity.feed(b"", final=True)
+        return int(process.wait())
+    finally:
+        process.stdout.close()
 
 
 def implementation_command(python_executable: str, config_path: Path | str) -> str:
@@ -151,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
         task_id = os.environ.get("IPFS_ACCELERATE_AGENT_TASK_ID", "")
         attempt = int(os.environ.get("IPFS_ACCELERATE_AGENT_TASK_ATTEMPT", "0"))
         command = build_provider_argv(config, workspace=Path.cwd(), task_id=task_id, attempt=attempt)
+        activity = _activity_binding(config, task_id, attempt)
         route_receipt_path(config, task_id, attempt).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         print(json.dumps({"schema": "worldwide-legal-search.provider-invocation@1", "task_id": task_id, "attempt": attempt,
                           "primary_provider": "grok_cli", "primary_model": MODEL, "fallback_provider": "codex_cli",
@@ -158,6 +297,8 @@ def main(argv: list[str] | None = None) -> int:
         # Preserve the exact prompt stdin and native parent's process custody.
         # The canonical adapter replays sanitized provider streams and enforces
         # unchanged-workspace/known-pre-effect emergency eligibility.
+        if activity is not None:
+            return _relay_with_activity(command, _SemanticActivity(activity))
         os.execv(command[0], command)
     except (OSError, ValueError, KeyError) as exc:
         print(json.dumps({"schema": "worldwide-legal-search.provider-error@1", "error": str(exc), "completion_authority": False}), file=sys.stderr)
