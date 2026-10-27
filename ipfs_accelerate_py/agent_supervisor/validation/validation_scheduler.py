@@ -1103,6 +1103,22 @@ def run_validation_command(
         }
 
 
+def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
+    """Keep both captured stream tails within 32K diagnostic characters."""
+    stream_limit = (32 * 1024 - 1) // 2
+    parts: list[str] = []
+    for stream in (exc.stdout, exc.stderr):
+        if stream is None:
+            continue
+        if isinstance(stream, bytes):
+            stream = stream[-stream_limit:].decode("utf-8", errors="replace")
+        else:
+            stream = str(stream)[-stream_limit:]
+        if stream:
+            parts.append(stream)
+    return "\n".join(parts)
+
+
 def _attempt_diagnostic_signature(result: Mapping[str, object]) -> str:
     output = str(result.get("output") or "")
     return _sha256_bytes(
@@ -5349,6 +5365,7 @@ class ValidationScheduler:
                         "error": cancellation_token.reason or "cancelled",
                     }
                 else:
+                    attempt_started_at = utc_now()
                     try:
                         runner_kwargs: dict[str, object] = {
                             "spec": spec,
@@ -5435,11 +5452,13 @@ class ValidationScheduler:
                                     cancellation_token.reason or "cancelled"
                                 ),
                             }
-                    except subprocess.TimeoutExpired:
+                    except subprocess.TimeoutExpired as exc:
                         attempt = {
+                            "started_at": attempt_started_at,
+                            "finished_at": utc_now(),
                             "returncode": 124,
                             "timed_out": True,
-                            "output": "",
+                            "output": _timeout_output(exc),
                         }
                     except Exception as exc:
                         attempt = {

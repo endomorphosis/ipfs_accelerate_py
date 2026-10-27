@@ -2921,3 +2921,99 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     )
     assert report["passed"] is True
     assert report["validation_plan_binding"]["graph_id"] == graph.graph_id
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "expected"),
+    [
+        ("completed test_one\n", "warning\n", "completed test_one\n\nwarning\n"),
+        (b"completed test_two\n", b"failure\xff\n", "completed test_two\n\nfailure\ufffd\n"),
+        ("completed test_three", b"stderr bytes", "completed test_three\nstderr bytes"),
+        (None, "stderr only\n", "stderr only\n"),
+        (None, None, ""),
+    ],
+)
+def test_custom_runner_timeout_preserves_partial_output(
+    tmp_path: Path, stdout, stderr, expected: str,
+) -> None:
+    def runner(*, spec, timeout_seconds, **_kwargs):
+        raise subprocess.TimeoutExpired(
+            spec.command, timeout_seconds, output=stdout, stderr=stderr,
+        )
+
+    report = ValidationScheduler(runner=runner).run(
+        ["pytest tests/test_alpha.py"], workspace_path=tmp_path,
+        changed_files=["src/alpha.py"], target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    result = report["results"][0]
+    assert result["output"] == expected
+    assert result["returncode"] == report["returncode"] == 124
+    assert result["timed_out"] is True
+    assert result["cache_hit"] is False
+    assert report["passed"] is False
+
+
+def test_custom_runner_timeout_bounds_both_stream_tails(tmp_path: Path) -> None:
+    def runner(*, spec, timeout_seconds, **_kwargs):
+        raise subprocess.TimeoutExpired(
+            spec.command, timeout_seconds,
+            output="discarded stdout prefix" + "\u03bb" * 40_000 + "last completed test",
+            stderr=b"discarded stderr prefix" + b"x" * 40_000 + b"stderr end",
+        )
+
+    report = ValidationScheduler(runner=runner).run(
+        ["pytest tests/test_alpha.py"], workspace_path=tmp_path,
+        changed_files=["src/alpha.py"], target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    output = report["results"][0]["output"]
+    assert len(output) <= 32 * 1024
+    assert "last completed test" in output
+    assert output.endswith("stderr end")
+    assert "discarded" not in output
+    assert report["returncode"] == 124
+    assert report["passed"] is False
+
+
+def test_custom_runner_timeout_records_real_boundaries_and_is_not_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.validation import validation_scheduler as module
+
+    clock = [100.0]
+    calls = []
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(
+        module, "utc_now",
+        lambda: "2026-10-27T00:00:00+00:00" if clock[0] == 100.0
+        else "2026-10-27T00:00:07.250000+00:00",
+    )
+
+    def runner(*, spec, timeout_seconds, **_kwargs):
+        calls.append(spec.command)
+        clock[0] += 7.25
+        raise subprocess.TimeoutExpired(spec.command, timeout_seconds, output=b"partial")
+
+    scheduler = ValidationScheduler(cache_dir=tmp_path / "cache", runner=runner)
+    kwargs = dict(workspace_path=tmp_path, changed_files=["src/alpha.py"],
+                  target_commit="same-commit", dependency_state="same-dependencies")
+    report = scheduler.run(["pytest tests/test_alpha.py"], **kwargs)
+    result = report["results"][0]
+    assert result["started_at"] == "2026-10-27T00:00:00+00:00"
+    assert result["finished_at"] == "2026-10-27T00:00:07.250000+00:00"
+    assert result["execution_elapsed_seconds"] == 7.25
+    assert report["passed"] is False
+    assert report["returncode"] == 124
+    assert result["timed_out"] is True
+    assert not report.get("completion_authoritative", False)
+    assert not report.get("proof_authoritative", False)
+    assert not report.get("merge_eligible", False)
+
+    replay = scheduler.run(["pytest tests/test_alpha.py"], **kwargs)
+    assert calls == ["pytest tests/test_alpha.py"] * 2
+    assert replay["results"][0]["cache_hit"] is False
+    assert replay["returncode"] == 124
+    assert replay["passed"] is False
