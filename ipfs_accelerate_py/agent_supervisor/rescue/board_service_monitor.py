@@ -1,12 +1,13 @@
 """Bounded external health monitor for one explicitly configured user service.
 
-Run this file directly with the system Python; it has no package dependencies::
+Run this file directly with the system Python and its sibling recovery policy::
 
     python3 board_service_monitor.py --config /absolute/board-monitor.json --apply
 
 Without ``--apply`` it only records observations and proposed actions. The only
 repair authority is ``systemctl --user restart <exact configured .service>``.
 Task state, dependencies, locks, and worker processes are never changed here.
+An explicit owner-retention policy or retained-attempt wait denies every restart.
 An active worker may emit logs to prove liveness, but logs cannot extend its
 absolute ``progress_timeout_seconds`` deadline. Polling is not task progress.
 """
@@ -18,6 +19,7 @@ from datetime import datetime, timezone
 import errno
 import fcntl
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -28,6 +30,23 @@ import subprocess
 import tempfile
 import time
 from typing import Any
+
+
+if __package__:
+    from .recovery_policy import owner_retention_required, recovery_denial, retained_attempt_wait
+else:
+    # Direct-file deployment loads only the adjacent policy, never an ambient
+    # package or another checkout selected through sys.path.
+    _policy_spec = importlib.util.spec_from_file_location(
+        "_board_monitor_recovery_policy", Path(__file__).with_name("recovery_policy.py")
+    )
+    if _policy_spec is None or _policy_spec.loader is None:
+        raise ImportError("adjacent recovery policy is unavailable")
+    _policy_module = importlib.util.module_from_spec(_policy_spec)
+    _policy_spec.loader.exec_module(_policy_module)
+    owner_retention_required = _policy_module.owner_retention_required
+    recovery_denial = _policy_module.recovery_denial
+    retained_attempt_wait = _policy_module.retained_attempt_wait
 
 
 _PROGRESS_EVENTS = frozenset({
@@ -480,7 +499,11 @@ def collect_evidence(config: dict[str, Any], now: float) -> dict[str, Any]:
         "task_shard_count": config.get("task_shard_count", 1), "waiting_count": count("waiting"),
         "blocked_count": count("blocked"), "completed_count": count("completed"),
         "task_count": native.get("task_count") or sum(counts.values()),
-        "selection_idle_reason": native.get("selection_idle_reason", ""),
+        "selection_idle_reason": (
+            "expired_attempt_settlement_unavailable"
+            if any(retained_attempt_wait(payload) for payload in (native, status, heartbeat))
+            else native.get("selection_idle_reason", "")
+        ),
         "unresolved_retry_deferrals": deferrals,
         "all_ready_tasks_retry_fenced": all_ready_fenced,
         "retry_fenced_ready_task_ids": sorted(fenced),
@@ -541,9 +564,34 @@ def _service_identity(service: dict[str, Any]) -> tuple[str, int, int] | None:
     return (state, pid, birth) if isinstance(state, str) and state else None
 
 
+def _retention_health(config: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a deny-only diagnosis; suggested review grants no native action."""
+    denial = recovery_denial(config, evidence)
+    if not denial:
+        return None
+    reasons = {
+        "retained_attempt_settlement_wait": "Retained attempt settlement is unavailable; preserve its owner and attempts",
+        "native_owner_retention_required": "Configured policy requires retaining the native owner",
+        "invalid_owner_retention_policy": "Owner-retention policy is invalid; restart is refused",
+    }
+    return {"healthy": False, "restart_eligible": False, "status": denial,
+            "reason": reasons[denial], "recovery_denial": denial,
+            "owner_retention_required": owner_retention_required(config),
+            "potential_repair_recommended": True,
+            "repair_recommendation": (
+                "Review the invalid owner-retention configuration"
+                if denial == "invalid_owner_retention_policy" else
+                "Review retained attempt custody through its authorized native owner; preserve attempt budgets"
+            ),
+            "repair_authorized": False, "completion_authority": False}
+
+
 def evaluate_health(config: dict[str, Any], service: dict[str, Any], evidence: dict[str, Any],
                     previous: dict[str, Any], now: float, monotonic: float) -> dict[str, Any]:
     """Separate liveness, useful progress, intentional idle, and repairability."""
+    retained = _retention_health(config, evidence)
+    if retained is not None:
+        return retained
     result = {"healthy": False, "restart_eligible": False, "status": "unknown", "reason": ""}
 
     def decision(status: str, reason: str, healthy: bool = False, restart: bool = False) -> dict[str, Any]:
@@ -774,6 +822,14 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
                 summary["action"] = "restart_suppressed_health_changed"
             else:
                 summary["action"] = "restart_revalidated"
+        if apply and summary["action"] == "restart_revalidated":
+            # Recheck the deny-only policy at the effect boundary as well as
+            # during health evaluation. Stale diagnoses cannot charge a restart
+            # or bypass retention even when their ordinary health checks pass.
+            retained = _retention_health(config, evidence)
+            if retained is not None:
+                health = retained
+                summary.update(**retained, action="restart_suppressed_retention")
         if apply and summary["action"] == "restart_revalidated":
             # Persist the charged attempt before its effect. A monitor crash
             # between these operations cannot erase the cooldown or budget.
