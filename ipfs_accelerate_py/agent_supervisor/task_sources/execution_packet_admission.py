@@ -156,7 +156,14 @@ def latest_spec_event_on(connection, task_cid):
         sequence, kind, raw = _values(row, ("global_sequence", "event_type", "body_json"))
         event = _decode(raw)
         body = event.get("body", {})
-        if body.get("execution_packet_previous_spec_cid") == body.get("execution_packet_spec_cid") and body.get("execution_packet_spec_cid"):
+        same_spec = (body.get("execution_packet_previous_spec_cid") == body.get("execution_packet_spec_cid")
+                     and bool(body.get("execution_packet_spec_cid")))
+        # A dependency-only event cannot change the plan; upserts can. Older
+        # upserts without explicit plan lineage are conservatively invalidating.
+        same_plan = ("execution_packet_previous_plan_cid" in body
+                     and type(body.get("execution_packet_plan_cid")) is str
+                     and body["execution_packet_previous_plan_cid"] == body["execution_packet_plan_cid"])
+        if same_spec and (kind == "intent.task_dependencies_set" or same_plan):
             continue
         return int(sequence)
     _need(len(rows) < 1025, "packet_spec_event_population_bound")

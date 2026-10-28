@@ -4215,10 +4215,8 @@ class IntentRepository:
                 packet_guarded = execution_packet_required(previous_body) or execution_packet_required(body_map)
             except ExecutionPacketAdmissionError as exc:
                 raise IntentRepositoryConflictError(str(exc)) from exc
-            previous_packet_spec = (
-                authority_spec_cid(task_record_on(connection, tcid))
-                if packet_guarded and existing else None
-            )
+            previous_packet_record = task_record_on(connection, tcid) if packet_guarded and existing else None
+            previous_packet_spec = authority_spec_cid(previous_packet_record) if previous_packet_record else None
             if "local_planning_contract" in previous_body or "local_planning_contract" in body_map:
                 from ..runtime.local_planning_admission import guard_local_task_update
 
@@ -4362,6 +4360,8 @@ class IntentRepository:
                 packet_record = task_record_on(connection, tcid)
                 event_body["execution_packet_previous_spec_cid"] = previous_packet_spec
                 event_body["execution_packet_spec_cid"] = authority_spec_cid(packet_record)
+                event_body["execution_packet_previous_plan_cid"] = previous_packet_record["plan_cid"] if previous_packet_record else None
+                event_body["execution_packet_plan_cid"] = packet_record["plan_cid"]
                 if status_text in DISPATCH_STATUSES:
                     try:
                         require_execution_packet_on(connection, tcid, record=packet_record)

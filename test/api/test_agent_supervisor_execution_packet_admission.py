@@ -502,3 +502,15 @@ def test_nested_authored_requirement_cannot_be_removed_under_true_top_flag(scena
     with pytest.raises(IntentRepositoryConflictError, match="requirement_cannot_be_removed"):
         _upsert(s, body=body)
     assert _snapshot(s) == before
+
+
+def test_plan_reversion_does_not_replay_old_acceptance(scenario):
+    s = scenario
+    _accept(s)
+    s.intent.upsert_plan(plan_cid="plan:other", plan_alias="OTHER-P", goal_cid="goal:packet", status="active")
+    _upsert(s, plan_cid="plan:other")
+    _upsert(s, plan_cid="plan:packet")
+    before = _snapshot(s)
+    with pytest.raises(IntentRepositoryConflictError, match="native_spec_changed"):
+        _cas(s, "ready")
+    assert _snapshot(s) == before
