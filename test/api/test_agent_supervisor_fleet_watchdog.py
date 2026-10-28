@@ -34,7 +34,7 @@ import importlib.util, json, pathlib, sys, types
 package = types.ModuleType('isolated_fleet')
 package.__path__ = []
 sys.modules[package.__name__] = package
-for name in ('live_board_probe', 'fleet_watchdog'):
+for name in ('recovery_policy', 'live_board_probe', 'fleet_watchdog'):
     spec = importlib.util.spec_from_file_location(
         'isolated_fleet.' + name, pathlib.Path(sys.argv[1]) / (name + '.py'))
     module = importlib.util.module_from_spec(spec)
