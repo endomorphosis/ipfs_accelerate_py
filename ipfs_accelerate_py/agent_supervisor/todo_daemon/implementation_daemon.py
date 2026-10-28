@@ -27188,6 +27188,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 relative,
             ],
             cwd=repo,
+            # Git's inherited author/committer variables override -c user.*.
+            # Generated commits must carry the same producer identity that the
+            # protected release proof verifies, even under a caller's CI env.
+            env={
+                **os.environ,
+                "GIT_AUTHOR_NAME": "Implementation Daemon",
+                "GIT_AUTHOR_EMAIL": "implementation-daemon@example.invalid",
+                "GIT_COMMITTER_NAME": "Implementation Daemon",
+                "GIT_COMMITTER_EMAIL": "implementation-daemon@example.invalid",
+            },
             text=True,
             capture_output=True,
             check=False,
