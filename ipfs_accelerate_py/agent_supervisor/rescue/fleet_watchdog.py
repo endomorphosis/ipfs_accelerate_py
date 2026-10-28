@@ -1020,21 +1020,16 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
         stall = state.get("stall_class") or classify_stall(state.get("observation") or {})
         observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
         details = observation.get("details") if isinstance(observation.get("details"), dict) else {}
-        # A ready exclusive owner after ensure is not a 1h launch backoff.
-        # Receipt materialization and unstall retry on cooldown.
+        # A ready exclusive owner after ensure may hand off once to receipt
+        # healing. Unchanged missing/stalled owners and native heal waits retain
+        # their durable cooldown, including after a crash or queued coding repair.
         if not (
             (
                 stall == "blocked_without_independent_work"
                 and details.get("owner_ready") is True
                 and state.get("last_action") == "ensure"
+                and not state.get("pending_action")
             )
-            or stall in {
-                "owner_missing",
-                "owner_live_status_unreadable",
-                "independent_todos_unclaimed",
-                "ready_owner_missing_lanes",
-                "stalled_no_progress",
-            }
         ):
             return ""
     if health == "complete" or state["observation"].get("complete") is True:
