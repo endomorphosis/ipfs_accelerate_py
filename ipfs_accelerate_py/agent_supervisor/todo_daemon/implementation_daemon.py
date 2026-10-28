@@ -61003,26 +61003,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         root = self.repo_root.resolve()
         metadata = dict(lease.metadata)
-        require(self._current_checkout_mutation_lease() is None, "current_checkout_transaction")
-        require(self._find_live_inflight_implementation() is None, "implementation_worker_active")
+        activity_error = self._protected_checkout_recovery_activity_error()
+        require(not activity_error, activity_error)
         implementation_path = self._implementation_lock_path()
         if os.path.lexists(implementation_path):
-            implementation = read_record(implementation_path)
-            implementation_pid = int(implementation.get("pid") or 0)
-            require(implementation_pid > 0, "implementation_lease_owner_unknown")
-            if process_is_running(implementation_pid):
-                # Supervisor preflight already owns an exclusive maintenance
-                # lease. It is not a provider/validation worker. Every other
-                # live lease, including provider-free attempt zero, blocks.
-                own_maintenance = (
-                    implementation_pid == os.getpid()
-                    and implementation.get("kind") == "implementation"
-                    and implementation.get("lease_role") == "supervisor_maintenance"
-                    and bool(implementation.get("lease_id"))
-                    and Path(str(implementation.get("repo_root") or "")).resolve() == root
-                    and Path(str(implementation.get("state_path") or "")).resolve() == self.state_path.resolve()
-                    and Path(str(implementation.get("state_dir") or "")).resolve() == self.state_path.resolve().parent)
-                require(own_maintenance, "implementation_worker_active")
+            read_record(implementation_path)
         require(metadata.get("protected_recovery_owner") == "implementation_daemon"
                 and metadata.get("protected_recovery_required") is True
                 and metadata.get("operation") == "mark_tasks_completed", "journal_owner_or_operation")
@@ -61188,13 +61173,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "successor_publication": publication, "train_path": str(train_path)})
         require(len(matches) == 1, "successor_missing_or_ambiguous")
         require(read_record(lease.lock_path) == metadata, "journal_preimage_changed")
+        raw_journal = lease.lock_path.read_bytes()
+        require(hashlib.sha256(raw_journal).hexdigest() == observations[str(lease.lock_path)]["sha256"]
+                and json.loads(raw_journal) == metadata, "journal_preimage_changed")
         queue = PersistentTaskQueue.load(Path(str(sink["task_queue_path"])))
         queue_entry = queue.entries.get(queue.resolve_key(str(old_completion["queue_task_cid"])))
         require(queue_entry is not None and queue_entry.last_completed_at > 0, "successor_queue_ack_missing")
         return {"schema": "ipfs_accelerate_py.agent_supervisor.obsolete-completion-journal-settlement@1",
             "repository_id": checkout_repository_id(root), "old_lease_id": lease.lease_id,
             "old_lease_device": lease.device, "old_lease_inode": lease.inode,
-            "old_journal": metadata, "old_guard_trusted": False,
+            "old_journal": metadata, "old_journal_raw_hex": raw_journal.hex(), "old_guard_trusted": False,
             "members": members, "current_head": head, "successor": matches[0],
             "observations": observations, "completion_authority": False, "attempt_refunded": False}
 
@@ -61234,11 +61222,45 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         except (OSError, ValueError, TypeError, KeyError, RuntimeError, subprocess.SubprocessError, TaskSourceError) as exc:
             return {**blocked, "blocked": True, "reason": "obsolete_completion_journal_unsettled", "error": str(exc)[-1000:]}
 
+    def _protected_checkout_recovery_activity_error(self) -> str:
+        """Observe real workers, allowing only this caller's maintenance lease."""
+        if self._current_checkout_mutation_lease() is not None:
+            return "current_checkout_transaction"
+        if self._find_live_inflight_implementation() is not None:
+            return "implementation_worker_active"
+        path = self._implementation_lock_path()
+        if not os.path.lexists(path):
+            return ""
+        implementation = load_json_dict(path)
+        if not isinstance(implementation, Mapping):
+            return "implementation_lease_owner_unknown"
+        pid = int(implementation.get("pid") or 0)
+        if pid <= 0:
+            return "implementation_lease_owner_unknown"
+        if not process_is_running(pid):
+            return ""
+        # An exclusive supervisor maintenance lease is not a provider or
+        # validation worker. In particular, a live attempt-zero lease is not
+        # inferred idle merely because paid-attempt events do not include it.
+        own_maintenance = (
+            pid == os.getpid()
+            and implementation.get("kind") == "implementation"
+            and implementation.get("lease_role") == "supervisor_maintenance"
+            and bool(implementation.get("lease_id"))
+            and Path(str(implementation.get("repo_root") or "")).resolve() == self.repo_root.resolve()
+            and Path(str(implementation.get("state_path") or "")).resolve() == self.state_path.resolve()
+            and Path(str(implementation.get("state_dir") or "")).resolve() == self.state_path.resolve().parent)
+        return "" if own_maintenance else "implementation_worker_active"
+
     def reconcile_protected_checkout_recovery(self) -> dict[str, Any]:
         """Resolve the Native owner's retained journal before other recovery."""
-        if self._current_checkout_mutation_lease() is not None:
+        try:
+            error = self._protected_checkout_recovery_activity_error()
+        except (OSError, ValueError, TypeError, RuntimeError, TaskSourceError):
+            error = "implementation_activity_unavailable"
+        if error:
             return {"required": True, "blocked": True, "recovered": False,
-                    "reason": "current_checkout_transaction", "checkout_mutation_lease_retained": True}
+                    "reason": error, "checkout_mutation_lease_retained": True}
         return self._recover_protected_checkout_mutation()
 
     def _recover_protected_checkout_mutation(self) -> dict[str, Any]:

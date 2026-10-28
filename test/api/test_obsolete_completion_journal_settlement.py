@@ -10,6 +10,7 @@ accepted queue, callback, validation, or publication record is manufactured.
 from __future__ import annotations
 
 from dataclasses import asdict
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -137,6 +138,59 @@ def _hold_actual_implementation_lease(directory: Path) -> None:
         assert daemon._release_implementation_lock(path, metadata)
 
 
+def _produce_trusted_ordinary_journal(directory: Path) -> None:
+    daemon = daemon_for(directory)
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    native.PortalTaskState(implementation_attempts={TASK: 3},
+        implementation_attempts_by_cid={identity.canonical_task_cid: 3}).save(daemon.state_path)
+    releases = []
+    def fail_final_release(lease):
+        releases.append(lease)
+        return False
+    daemon._release_checkout_mutation_lease = fail_final_release
+    result = daemon._mark_tasks_completed_in_todo([TASK], primary_task_id=TASK,
+        completion_reason="validated", expected_task_cids={TASK: identity.canonical_task_cid},
+        expected_task_statuses={TASK: "todo"})
+    assert releases, result
+    path = checkout_mutation_lock_path(directory / "repo")
+    journal = json.loads(path.read_text())
+    assert journal["protected_recovery_required"] is True
+    proof = daemon._protected_checkout_release_proof(journal["protected_release_guard"])
+    assert proof["trusted"] is True and proof["clean"] is True, proof
+    (directory / "trusted-producer.json").write_text(json.dumps(result, default=str))
+
+
+@contextmanager
+def live_implementation_child(directory):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (
+        str(Path(native.__file__).parents[3]), env.get("PYTHONPATH", ""))))
+    child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                              "--hold-implementation-lease", str(directory)],
+                             env=env, text=True, stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        ready = directory / "live-implementation-ready.json"
+        deadline = time.monotonic() + 25
+        while not ready.exists():
+            assert child.poll() is None, child.communicate(timeout=5)
+            assert time.monotonic() < deadline, "owned child did not publish its lease"
+            time.sleep(.02)
+        metadata = json.loads(ready.read_text())
+        assert metadata["pid"] == child.pid and metadata["attempt"] == 0
+        yield metadata
+    finally:
+        if child.poll() is None:
+            try:
+                out, err = child.communicate("x", timeout=15)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.communicate(timeout=5)
+                raise
+            assert child.returncode == 0, (out[-2000:], err[-3000:])
+
+
 @pytest.fixture
 def successor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Real failed train request followed by a real accepted idempotent retry."""
@@ -251,6 +305,7 @@ def test_real_superseded_completion_journal_retires_without_completion_replay(su
     settlement = json.loads(Path(result["settlement_path"]).read_text())
     assert settlement["retired"] is True
     assert settlement["proof"]["old_guard_trusted"] is False
+    assert bytes.fromhex(settlement["proof"]["old_journal_raw_hex"]) == successor["old_bytes"]
 
 
 @pytest.mark.parametrize("damage", ["missing_publication", "foreign_publication", "board_edit", "committed_board_history"])
@@ -388,29 +443,10 @@ def test_supervisor_preflight_delegates_real_native_owned_journal(successor):
 def test_settlement_refuses_a_real_live_attempt_zero_implementation_lease(successor):
     daemon = successor["daemon"]
     daemon._obsolete_protected_completion_proof(read_checkout_mutation_lease(successor["lock"]))
-    env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(filter(None, (
-        str(Path(native.__file__).parents[3]), env.get("PYTHONPATH", ""))))
-    child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
-                              "--hold-implementation-lease", str(successor["directory"])],
-                             env=env, text=True, stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        ready = successor["directory"] / "live-implementation-ready.json"
-        deadline = time.monotonic() + 25
-        while not ready.exists():
-            assert child.poll() is None, child.communicate(timeout=5)
-            assert time.monotonic() < deadline, "owned child did not publish its lease"
-            time.sleep(.02)
-        metadata = json.loads(ready.read_text())
-        assert metadata["pid"] == child.pid and metadata["attempt"] == 0
+    with live_implementation_child(successor["directory"]):
         result = daemon.reconcile_obsolete_protected_completion_journal()
         assert result.get("checkout_mutation_lease_recovered") is not True, result
         _assert_preserved(successor)
-    finally:
-        if child.poll() is None:
-            out, err = child.communicate("x", timeout=15)
-            assert child.returncode == 0, (out[-2000:], err[-3000:])
 
 
 def test_settlement_accepts_its_real_current_supervisor_maintenance_lease(successor):
@@ -429,9 +465,47 @@ def test_settlement_accepts_its_real_current_supervisor_maintenance_lease(succes
         supervisor._release_implementation_maintenance_lease(lease)
 
 
+def test_public_recovery_refuses_live_worker_even_when_ordinary_journal_is_trusted(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-b", "main")
+    git(repo, "config", "user.name", "Fixture")
+    git(repo, "config", "user.email", "fixture@example.invalid")
+    (repo / "todo.md").write_text("# Tasks\n\n## EX-007 Trusted ordinary completion\n\n"
+        "- Status: todo\n- Completion: manual\n- Priority: P0\n- Track: ops\n")
+    git(repo, "add", "todo.md")
+    git(repo, "commit", "-m", "seed ordinary completion")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (
+        str(Path(native.__file__).parents[3]), env.get("PYTHONPATH", ""))))
+    producer = subprocess.run([sys.executable, str(Path(__file__).resolve()),
+        "--produce-trusted-journal", str(tmp_path)], env=env, text=True,
+        capture_output=True, timeout=60)
+    assert producer.returncode == 0, (producer.stdout[-2000:], producer.stderr[-4000:])
+    daemon = daemon_for(tmp_path)
+    path = checkout_mutation_lock_path(repo)
+    before = path.read_bytes()
+    journal = json.loads(before)
+    assert not Path("/proc", str(journal["pid"])).exists()
+    proof = daemon._protected_checkout_release_proof(journal["protected_release_guard"])
+    assert proof["trusted"] is True and proof["clean"] is True, proof
+    state = asdict(native.PortalTaskState.load(daemon.state_path))
+    # The old generic journal validator interprets its legacy empty repo_root
+    # against cwd. Use the real bound checkout so an unrelated path refusal
+    # cannot conceal public-wrapper fallthrough into ordinary recovery.
+    monkeypatch.chdir(repo)
+    with live_implementation_child(tmp_path):
+        result = daemon.reconcile_protected_checkout_recovery()
+        assert result.get("checkout_mutation_lease_recovered") is not True, result
+        assert path.read_bytes() == before
+        assert asdict(native.PortalTaskState.load(daemon.state_path)) == state
+
+
 if __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--produce-bad-completion":
     _produce_bad_completion(Path(sys.argv[2]))
 elif __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--baseline-recover":
     _try_baseline_recovery(Path(sys.argv[2]))
 elif __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--hold-implementation-lease":
     _hold_actual_implementation_lease(Path(sys.argv[2]))
+elif __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--produce-trusted-journal":
+    _produce_trusted_ordinary_journal(Path(sys.argv[2]))
