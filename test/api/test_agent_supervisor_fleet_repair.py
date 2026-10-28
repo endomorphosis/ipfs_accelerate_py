@@ -3864,143 +3864,294 @@ def test_diagnostic_repair_workspace_binds_policy_and_preserves_native_board_pri
     assert repair.repair_workspace_is_stale(job, board, policy) is False
 
 
-# Existing repair queue/worker must enforce the diagnostic scope independently.
-def _diagnostic_board(tmp_path):
-    return {"id": "science", "cwd": str(tmp_path), "hold_files": [], "probe_profile": "native_catalogue",
-        "max_repair_attempts": 3,
-        "native_catalogue_binding": {"board_namespace": "science", "plan_root_cid": "plan",
-            "repository_tree_id": "tree", "population_sha256": "a" * 64, "max_age_seconds": 30},
-        "recovery_policy": {"profile": "infrastructure-only/v1", "repairable_stalls": ["native_catalogue_read_unavailable"],
-            "max_actions_per_window": 3, "window_seconds": 1000, "circuit_breaker_seconds": 100}}
-
-
-def _diagnostic_observation(reason="native_catalogue_activation_missing", fresh=True):
-    return {"board_id": "science", "health": "blocked" if fresh else "unknown", "complete": False,
-        "reason_codes": [reason], "details": {"native_catalogue": {
-            "schema": "native-catalogue-diagnostic/v1", "board_namespace": "science",
-            "plan_root_cid": "plan", "repository_tree_id": "tree", "population_sha256": "a" * 64,
-            "checked_at_epoch": time.time() if fresh else None, "probe_observed_at_epoch": time.time(), "fresh_read": fresh, "activation_state": "not_activated",
-            "counts": {"blocked": 64}, "completion_authority": False}}}
-
-
-def test_infrastructure_enqueue_cannot_turn_review_wait_into_coding(tmp_path):
-    board = _diagnostic_board(tmp_path)
-    cfg = {"state_dir": str(tmp_path), "boards": [board], "repair_worker": {"cwd": str(tmp_path)}}
+@pytest.mark.parametrize("status", [None, "queued", "running"])
+def test_observation_only_enqueue_preserves_existing_queue_and_ignores_incident_policy(
+        tmp_path, status):
+    cfg = config(tmp_path)
+    cfg["boards"][0]["observation_only"] = True
     incident = tmp_path / "incident.json"
-    write_json(incident, {"board_id": "science", "observation": _diagnostic_observation()})
-    assert enqueue(cfg, incident)["status"] == "policy_wait"
-    assert not (tmp_path / "repairs/science/job.json").exists()
-    hold = tmp_path / "HOLD"
-    hold.symlink_to(tmp_path / "missing")
-    board["hold_files"] = [str(hold)]
-    write_json(incident, {"board_id": "science", "observation": _diagnostic_observation("native_catalogue_read_unavailable", False)})
-    assert enqueue(cfg, incident)["status"] == "operator_hold"
-    assert not (tmp_path / "repairs/science/job.json").exists()
+    write_json(incident, {"board_id": "spar", "observation_only": False,
+                          "signature": "untrusted-repair-request"})
+    path = tmp_path / "repairs/spar/job.json"
+    if status is not None:
+        write_json(path, {"status": status, "attempts": 9, "next_attempt_at": 9999,
+                          "pending_action": "retained"})
+    before = path.read_bytes() if path.exists() else None
+    assert enqueue(cfg, incident)["status"] == "observation_only"
+    assert (path.read_bytes() if path.exists() else None) == before
+    if status is None:
+        assert not path.parent.exists()
 
 
-def test_infrastructure_worker_rebinds_policy_and_stops_before_native_commands(tmp_path, monkeypatch):
-    board = _diagnostic_board(tmp_path)
-    cfg = {"state_dir": str(tmp_path), "boards": [board], "repair_worker": {"cwd": str(tmp_path)}}
-    write_json(tmp_path / "science/state.json", {"observation": _diagnostic_observation()})
-    path = tmp_path / "repairs/science/job.json"
-    write_json(path, {"status": "queued", "attempts": 2})
-    untrusted_copy = {"id": "science", "cwd": str(tmp_path)}
-    monkeypatch.setattr(repair, "command", lambda *a, **k: pytest.fail("no native commands authorized"))
-    assert repair.run_job(cfg, untrusted_copy, path)["status"] == "retired_wait"
-    assert read_json(path)["attempts"] == 2
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_observation_only_stale_jobs_are_visible_held_without_blocking_other_boards(
+        tmp_path, status):
+    cfg = config(tmp_path)
+    cfg["boards"][0].update(observation_only=True, max_repair_attempts=1)
+    observed = tmp_path / "repairs/spar/job.json"
+    write_json(observed, {"status": status, "attempts": 9, "queued_at": 1,
+                          "last_started_at": 1, "next_attempt_at": 0})
+    # A stale completion projection must not hide retained observation-only jobs.
+    write_json(tmp_path / "spar/state.json", {"health": "complete",
+                                              "observation": {"complete": True}})
+    normal = tmp_path / "repairs/sawm/job.json"
+    write_json(normal, {"status": "queued", "queued_at": 2, "last_started_at": 2,
+                       "next_attempt_at": 0})
+    before = {path: path.read_bytes() for path in (observed, normal)}
+    selected = next_job(cfg, 100)
+    assert selected is not None and selected[0]["id"] == "sawm"
+    summary = repair.queue_status(cfg, 100)
+    held = [row for row in summary["held"] if row["board_id"] == "spar"]
+    assert len(held) == 1 and held[0]["reason"] == "observation_only"
+    assert not any(row["board_id"] == "spar" for row in summary["waiting"])
+    assert all(path.read_bytes() == raw for path, raw in before.items())
 
 
-def test_infrastructure_verification_accepts_observer_not_scientific_completion(tmp_path):
-    board = _diagnostic_board(tmp_path)
-    result = repair.verify_job_recovery(board, {}, _diagnostic_observation(), tmp_path)
-    assert result["observer_verified"] is True and result["wait"] is True
-    assert result["scope"] == "infrastructure_observer" and result["task_health"] == "blocked"
-    assert all(result[key] is False for key in ("native_admission", "completion_authority", "task_completion_authority", "goal_completion_authority", "complete"))
-    broken = _diagnostic_observation()
-    broken["details"]["native_catalogue"]["board_namespace"] = "foreign"
-    assert repair.verify_job_recovery(board, {}, broken, tmp_path)["verified"] is False
-
-
-@pytest.mark.parametrize("owner,token,stops", [("other", "a" * 32, False), ("science", "b" * 32, False), ("science", "a" * 32, True)])
-def test_wait_cancellation_is_board_and_attempt_bound(tmp_path, owner, token, stops):
-    board = {"id": "science", "hold_files": []}
-    path = tmp_path / "repairs/science/job.json"
-    unit = repair.repair_job_unit({})
-    write_json(path, {"board_id": "science", "status": "running", "attempts": 2,
-                     "repair_job_unit": unit, "repair_unit_token": "a" * 32})
-    calls = []
-    def runner(spec, **kwargs):
-        calls.append(spec["argv"])
-        return {"returncode": 0, "stdout": f"IPFS_TASKBOARD_REPAIR_BOARD_ID={owner} IPFS_TASKBOARD_REPAIR_JOB_TOKEN={token}"}
-    result = repair.cancel_waiting_repair_job(tmp_path, board, runner=runner)
-    assert (result["status"] == "stopped") is stops
-    assert sum("stop" in argv for argv in calls) == int(stops)
-    assert read_json(path)["attempts"] == 2
-
-
-def test_new_operator_hold_prevents_wait_cancellation(tmp_path):
-    hold = tmp_path / "HOLD"
-    board = {"id": "science", "hold_files": [str(hold)]}
-    unit = repair.repair_job_unit({})
-    write_json(tmp_path / "repairs/science/job.json", {"board_id": "science", "status": "running",
-        "repair_job_unit": unit, "repair_unit_token": "a" * 32})
-    def runner(spec, **kwargs):
-        assert "show" in spec["argv"]
-        hold.touch()
-        return {"returncode": 0, "stdout": "IPFS_TASKBOARD_REPAIR_BOARD_ID=science IPFS_TASKBOARD_REPAIR_JOB_TOKEN=" + "a" * 32}
-    assert repair.cancel_waiting_repair_job(tmp_path, board, runner=runner)["status"] == "repair_unit_identity_mismatch"
-    assert hold.exists()
-
-
-def test_infrastructure_prompt_excludes_native_repair_authority(tmp_path):
-    board = _diagnostic_board(tmp_path)
-    prompt = repair_prompt(board, {}, {}, tmp_path / "report.json")
-    assert "Do not create, replace, modify or repair any native catalogue database or WAL" in prompt
-    assert "reset attempts" in prompt and "preserve" in prompt.lower()
-    assert "persistent repair worker for the user's DuckDB taskboard" not in prompt
-
-
-
-def test_infrastructure_stalled_engineering_recovery_requires_actual_work_progress(tmp_path, monkeypatch):
-    import copy
-    cfg, board, sample = _diagnostic_repair_case(tmp_path, "runnable_work")
-    board["recovery_policy"] = dict(_diagnostic_board(tmp_path)["recovery_policy"],
-                                    repairable_stalls=["stalled_no_progress"])
-    monkeypatch.setattr(repair.time, "time", lambda: 1000)
-    baseline = copy.deepcopy(sample)
-    baseline.update(health="stalled", reason_codes=["no_task_progress"])
-    incident = {"stall_class": "stalled_no_progress", "observation": baseline}
-    stagnant = repair.verify_job_recovery(board, incident, sample, tmp_path)
-    assert stagnant["verified"] is False
-    assert stagnant["reason"] == "service_fleet_stall_without_work_progress"
-    assert stagnant["scope"] == "infrastructure_observer"
-    progressed = copy.deepcopy(sample)
-    progressed["details"]["service_fleet"]["lanes"][0].update(completed_count=2, task_count=3)
-    result = repair.verify_job_recovery(board, incident, progressed, tmp_path)
-    assert result["verified"] is True and result["observer_verified"] is True
-    assert result["completion_authority"] is False and result["native_admission"] is False
-
-
-def test_infrastructure_repair_workspace_never_falls_back_to_catalogue_checkout(tmp_path):
-    board = _diagnostic_board(tmp_path)
-    engine = tmp_path / "engine"
-    engine.mkdir()
-    assert repair.repair_workspace(board, {"cwd": str(engine)}) == engine
-    with pytest.raises(ValueError):
-        repair.repair_workspace(board, {})
-
-
-@pytest.mark.parametrize("missing", ["board_id", "repair_job_unit", "repair_unit_token"])
-def test_wait_cancellation_unbound_attempt_cannot_stop_shared_unit(tmp_path, missing):
-    unit = repair.repair_job_unit({})
-    job = {"board_id": "science", "status": "running", "repair_job_unit": unit,
-           "repair_unit_token": "a" * 32, "attempts": 2}
-    job.pop(missing)
-    path = tmp_path / "repairs/science/job.json"
-    write_json(path, job)
+@pytest.mark.parametrize("status", ["queued", "running"])
+@pytest.mark.parametrize("copied_policy", [None, False])
+def test_observation_only_direct_job_uses_configured_policy_before_any_command(
+        tmp_path, monkeypatch, status, copied_policy):
+    cfg = config(tmp_path)
+    configured = cfg["boards"][0]
+    configured["observation_only"] = True
+    copied = {key: value for key, value in configured.items() if key != "observation_only"}
+    if copied_policy is not None:
+        copied["observation_only"] = copied_policy
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": status, "attempts": 7, "next_attempt_at": 9999})
     before = path.read_bytes()
-    def runner(*args, **kwargs):
-        pytest.fail("unbound attempt cannot inspect or stop a systemd unit")
-    result = repair.cancel_waiting_repair_job(tmp_path, {"id": "science"}, runner=runner)
-    assert result["status"] == "unbound_repair_attempt"
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("configured observation-only policy must precede command or queue mutation")
+
+    monkeypatch.setattr(repair, "command", forbidden)
+    monkeypatch.setattr(repair.subprocess, "Popen", forbidden)
+    monkeypatch.setattr(repair, "_launch_preflight", forbidden)
+    monkeypatch.setattr(repair, "_storage_preflight", forbidden)
+    monkeypatch.setattr(repair, "verify_job_recovery", forbidden)
+    assert repair.run_job(cfg, copied, path)["status"] == "observation_only"
     assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("status", ["queued", "running", "escalated"])
+def test_observation_only_reconciliation_cannot_retire_or_rearm_old_jobs(
+        tmp_path, monkeypatch, status):
+    cfg = config(tmp_path)
+    cfg["boards"][0].update(observation_only=True, max_repair_attempts=1)
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": status, "attempts": 9, "next_attempt_at": 9999,
+                      "latest_incident": {"board_id": "spar", "observation_only": False}})
+    write_json(tmp_path / "spar/state.json", {"health": "complete",
+                                              "observation": {"complete": True}})
+    before = path.read_bytes()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("observation-only reconciliation cannot probe, publish or launch")
+
+    monkeypatch.setattr(repair, "command", forbidden)
+    monkeypatch.setattr(repair.subprocess, "Popen", forbidden)
+    monkeypatch.setattr(repair, "verify_job_recovery", forbidden)
+    assert repair.reconcile_queued_jobs(cfg, 100, runner=forbidden) == []
+    assert path.read_bytes() == before
+
+
+def test_explicit_false_observation_policy_keeps_normal_enqueue_and_selection(tmp_path):
+    cfg = config(tmp_path)
+    cfg["boards"][0]["observation_only"] = False
+    incident = tmp_path / "incident.json"
+    write_json(incident, {"board_id": "spar"})
+    assert enqueue(cfg, incident)["status"] == "queued"
+    selected = next_job(cfg, time.time())
+    assert selected is not None and selected[0]["id"] == "spar"
+
+
+def _private_native_heal_inventory(tmp_path):
+    entry = {"id": "private-owned", "cwd": str(tmp_path),
+             "database_path": str(tmp_path / "never-open.duckdb"),
+             "existing_service": "private-owned-supervisor.service"}
+    inventory = tmp_path / "private-inventory.json"
+    inventory.write_text(json.dumps({"boards": [entry]}))
+    board = {"id": entry["id"], "cwd": str(tmp_path), "probe": {"argv": [
+        "private-probe", "--inventory", str(inventory), "--board", entry["id"]]}}
+    return board, entry, inventory
+
+
+@pytest.mark.parametrize("fault", [
+    "missing_flag", "relative_inventory", "duplicate_flag", "foreign_probe_id",
+    "duplicate_probe_board", "missing_board_id", "missing_cwd", "malformed",
+    "foreign_entry", "duplicate_entry", "partial_entry", "relative_native_cwd",
+    "relative_database", "cwd_mismatch",
+])
+def test_native_heal_inventory_requires_explicit_exact_binding(tmp_path, monkeypatch, fault):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals as heals
+
+    board, entry, inventory = _private_native_heal_inventory(tmp_path)
+    argv = board["probe"]["argv"]
+    entries = [entry]
+    if fault == "missing_flag":
+        argv[1:3] = []
+    elif fault == "relative_inventory":
+        argv[2] = "private-inventory.json"
+    elif fault == "duplicate_flag":
+        argv.extend(["--inventory", str(inventory)])
+    elif fault == "foreign_probe_id":
+        argv[-1] = "foreign"
+    elif fault == "duplicate_probe_board":
+        argv.extend(["--board", entry["id"]])
+    elif fault == "missing_board_id":
+        board.pop("id")
+    elif fault == "missing_cwd":
+        board.pop("cwd")
+    elif fault == "foreign_entry":
+        entry["id"] = "foreign"
+    elif fault == "duplicate_entry":
+        entries.append(dict(entry))
+    elif fault == "partial_entry":
+        entry.pop("database_path")
+    elif fault == "relative_native_cwd":
+        entry["cwd"] = "."
+    elif fault == "relative_database":
+        entry["database_path"] = "never-open.duckdb"
+    elif fault == "cwd_mismatch":
+        entry["cwd"] = str(tmp_path / "another-checkout")
+    inventory.write_text("{" if fault == "malformed" else json.dumps({"boards": entries}))
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("missing or invalid explicit ownership cannot consult the home inventory")
+
+    monkeypatch.setattr(Path, "home", forbidden)
+    monkeypatch.setattr(heals.subprocess, "run", forbidden)
+    assert heals._inventory_board(board) == {}
+
+
+def test_native_heal_inventory_accepts_private_explicit_bound_control(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals as heals
+
+    board, entry, _ = _private_native_heal_inventory(tmp_path)
+    monkeypatch.setattr(Path, "home", lambda: pytest.fail("explicit selection cannot read home"))
+    assert heals._inventory_board(board) == entry
+    forged = {"details": {"extra_gate": {"live_owner_unit": "foreign.service",
+                                           "inventory_owner_unit": "foreign.service"}}}
+    assert heals._exclusive_owner_unit(board, forged) == entry["existing_service"]
+    assert not (tmp_path / "never-open.duckdb").exists()
+
+
+@pytest.mark.parametrize("board_id", ["spar", "sawm", "doep", "private-owned"])
+def test_native_heal_unbound_observation_cannot_select_named_owner(
+        tmp_path, monkeypatch, board_id):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals as heals
+
+    board = {"id": board_id, "cwd": str(tmp_path), "probe": {"argv": ["private-probe"]}}
+    forged = {"details": {"extra_gate": {"live_owner_unit": "foreign.service",
+                                           "inventory_owner_unit": "foreign.service"}}}
+    monkeypatch.setattr(Path, "home", lambda: pytest.fail("board names cannot select home inventory"))
+    assert heals._exclusive_owner_unit(board, forged) == ""
+
+
+@pytest.mark.parametrize("entrypoint", [
+    "apply_supervisor_heal", "collapse_extra_gate_recursion", "restart_native_owner_and_attach",
+    "relaunch_native_lanes_on_ready_owner", "run_board_dump_stop_repair_import_start",
+    "attach_native_lanes", "dump_board_before_owner_stop",
+])
+@pytest.mark.parametrize("observation_only", [False, True])
+def test_native_heal_direct_entrypoints_fence_before_effects(
+        tmp_path, monkeypatch, entrypoint, observation_only):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals as heals
+
+    board, _, _ = _private_native_heal_inventory(tmp_path)
+    board["observation_only"] = observation_only
+    if not observation_only:
+        board["probe"]["argv"] = ["private-probe"]
+    observation = {"board_id": board["id"], "health": "stopped", "details": {
+        "source_integrity": {"reason": "configured_control_plane_dirty"},
+        "extra_gate": {"live_owner_unit": "foreign.service"}}}
+    state = {"stall_class": "owner_missing", "observation": observation}
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("native entrypoint must refuse before commands, home access or recipes")
+
+    monkeypatch.setattr(Path, "home", forbidden)
+    monkeypatch.setattr(heals.subprocess, "run", forbidden)
+    monkeypatch.setattr(heals.subprocess, "Popen", forbidden)
+    monkeypatch.setattr(heals.shutil, "copy2", forbidden)
+    monkeypatch.setattr(heals, "restore_dirty_control_plane", forbidden)
+    monkeypatch.setattr(heals, "restore_native_owner_execstart", forbidden)
+    function = getattr(heals, entrypoint)
+    if entrypoint == "apply_supervisor_heal":
+        result = function(board, state)
+    elif entrypoint == "dump_board_before_owner_stop":
+        result = function(board)
+    elif entrypoint in {"collapse_extra_gate_recursion", "attach_native_lanes"}:
+        result = function(board, observation)
+    else:
+        result = function(board, observation, state)
+    assert result["status"] == "skip"
+    assert result["reason"] == ("observation_only" if observation_only else "explicit_inventory_required")
+    assert result["completion_authority"] is False
+    assert not (tmp_path / "never-open.duckdb").exists()
+
+
+@pytest.mark.parametrize("status,same_unit,expected", [
+    ("running", True, False), ("running", False, True),
+    ("queued", True, True), ("escalated", True, True),
+])
+@pytest.mark.parametrize("unit", [repair.DEFAULT_REPAIR_JOB_UNIT,
+                                  "ipfs-taskboard-legal-ir-repair-job.service"])
+def test_observation_only_reclaim_respects_running_custody_and_exact_unit(
+        tmp_path, monkeypatch, status, same_unit, expected, unit):
+    cfg = config(tmp_path)
+    cfg["repair_worker"]["job_unit"] = unit
+    cfg["boards"][0]["observation_only"] = True
+    observed = tmp_path / "repairs/spar/job.json"
+    write_json(observed, {"status": status, "observation_only": False,
+                          "repair_job_unit": unit if same_unit else "foreign-repair.service",
+                          "last_started_at": 9999, "repair_workspace": "/untrusted/old/tree"})
+    normal = tmp_path / "repairs/sawm/job.json"
+    write_json(normal, {"status": "running", "repair_job_unit": unit,
+                       "last_started_at": 10, "repair_workspace": str(tmp_path / "stale")})
+    before = {path: path.read_bytes() for path in (observed, normal)}
+    checked = []
+
+    def stale(job, board, policy):
+        checked.append(board["id"])
+        assert board["id"] == "sawm", "observation-only records cannot select reclamation"
+        return True
+
+    monkeypatch.setattr(repair, "repair_workspace_is_stale", stale)
+    monkeypatch.setattr(repair, "command", lambda *a, **k: pytest.fail("reclaim decision cannot signal"))
+    assert repair.should_reclaim_repair_unit(cfg) is expected
+    assert checked == (["sawm"] if expected else [])
+    assert all(path.read_bytes() == raw for path, raw in before.items())
+
+
+@pytest.mark.parametrize("unit", [repair.DEFAULT_REPAIR_JOB_UNIT,
+                                  "ipfs-taskboard-legal-ir-repair-job.service"])
+def test_observation_only_running_job_fences_mixed_normal_board_dispatch(
+        tmp_path, monkeypatch, unit):
+    cfg = config(tmp_path)
+    cfg["repair_worker"].update(job_unit=unit, argv=["private-repair-worker"])
+    cfg["boards"][0]["observation_only"] = True
+    observed = tmp_path / "repairs/spar/job.json"
+    write_json(observed, {"status": "running", "repair_job_unit": unit,
+                          "attempts": 3, "repair_workspace": "/untrusted/old/tree"})
+    normal = tmp_path / "repairs/sawm/job.json"
+    write_json(normal, {"status": "queued", "repair_job_unit": unit, "attempts": 0})
+    before = {path: path.read_bytes() for path in (observed, normal)}
+    calls = []
+
+    def command(spec, **kwargs):
+        calls.append(spec["argv"])
+        assert spec["argv"] == ["systemctl", "--user", "is-active", unit]
+        return {"returncode": 0, "stdout": "active", "stderr": ""}
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("another board cannot stop, replace or launch over observed running custody")
+
+    monkeypatch.setattr(repair, "command", command)
+    monkeypatch.setattr(repair.subprocess, "Popen", forbidden)
+    monkeypatch.setattr(repair, "_launch_preflight", forbidden)
+    monkeypatch.setattr(repair, "_storage_preflight", forbidden)
+    result = repair.run_job(cfg, cfg["boards"][1], normal)
+    assert result["status"] == "existing_repair_job_running"
+    assert calls == [["systemctl", "--user", "is-active", unit]]
+    assert all(path.read_bytes() == raw for path, raw in before.items())

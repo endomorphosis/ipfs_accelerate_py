@@ -169,6 +169,34 @@ def _age(value: Any, now: float) -> float | None:
         return None
 
 
+def read_retained_pass_heartbeat(board: Mapping[str, Any], lane_index: int,
+                                 daemon: Mapping[str, Any], now: float) -> dict[str, Any]:
+    """Read a configured current daemon's deny-only settlement diagnostic.
+
+    This metadata path works without a task-state database adapter. No counts,
+    progress or native authority are imported from the heartbeat.
+    """
+    paths = board.get("daemon_pass_heartbeat_paths")
+    count = board.get("max_lanes")
+    if (type(count) is not int or not 1 <= count <= 512
+            or type(paths) is not list or len(paths) != count
+            or type(lane_index) is not int or not 0 <= lane_index < count):
+        return {}
+    path = paths[lane_index]
+    if type(path) is not str or not path or not Path(path).is_absolute():
+        return {}
+    payload = read_json(Path(path))
+    age = _age(payload.get("completed_at"), now)
+    if (payload.get("schema") != "ipfs_accelerate_py/agent-supervisor/database-daemon-pass-heartbeat@1"
+            or payload.get("selection_idle_reason") != "expired_attempt_settlement_unavailable"
+            or not birth_matches(daemon, _object(payload.get("process_birth")))
+            or age is None or not 0 <= age <= 120):
+        return {}
+    return {"selection_idle_reason": "expired_attempt_settlement_unavailable",
+            "settlement_observation_source": "configured_daemon_pass_heartbeat",
+            "settlement_heartbeat_age_seconds": age}
+
+
 def process_identity(pid: Any, *, proc_root: Path = Path("/proc")) -> dict[str, Any]:
     """Capture Linux birth identity and reject zombies and racing PID reuse."""
     try:
@@ -610,9 +638,14 @@ def _readiness(authority: Mapping[str, Any], projections: list[Mapping[str, Any]
     ready = next((value for sample in samples if (value := _nonneg_int(sample.get("ready_count"))) is not None), None)
     eligible = next((value for sample in samples
                      if (value := _nonneg_int(sample.get("eligible_ready_count"))) is not None), None)
-    idle = next((str(sample.get("selection_idle_reason") or "") for sample in samples
-                 if isinstance(sample.get("selection_idle_reason"), str)
-                 and sample.get("selection_idle_reason")), "")
+    idle_reasons = [sample["selection_idle_reason"] for sample in samples
+                    if isinstance(sample.get("selection_idle_reason"), str)
+                    and sample["selection_idle_reason"]]
+    # A first idle lane must not hide another lane's unresolved callback. This
+    # is a deny-only diagnostic; projections confer no settlement authority.
+    idle = ("expired_attempt_settlement_unavailable"
+            if "expired_attempt_settlement_unavailable" in idle_reasons
+            else next(iter(idle_reasons), ""))
     return {"ready_count": ready, "eligible_ready_count": eligible, "selection_idle_reason": idle}
 
 
@@ -873,6 +906,7 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
     lanes = []
     fresh_projections = []
     readiness_projections: list[dict[str, Any]] = []
+    custody_projections: list[dict[str, Any]] = []
     for index in range(int(board["max_lanes"])):
         lane_dir = Path(board["state_root"]) / f"lane-{index}"
         prefix = f"{board_id}_lane_{index}"
@@ -889,6 +923,10 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
                 "status": status.get("status", "absent"), "last_exit_code": status.get("last_exit_code"),
                 "last_recycle_reason": status.get("last_recycle_reason", ""),
                 "stalled_without_active_worker": status.get("stalled_without_active_worker", False)}
+        retained_heartbeat = read_retained_pass_heartbeat(board, index, daemon, now)
+        if retained_heartbeat:
+            lane.update(retained_heartbeat)
+            custody_projections.append(retained_heartbeat)
         lanes.append(lane)
         extra_gate_deferred = (
             status.get("status") in {
@@ -930,6 +968,10 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         projection = read_task_state_projection(lane_dir, prefix)
         if projection:
             readiness_projections.append(projection)
+            idle_reason = projection.get("selection_idle_reason")
+            if (not retained_heartbeat and isinstance(idle_reason, str)
+                    and len(idle_reason) <= 256):
+                lane["selection_idle_reason"] = idle_reason
         projection_age = _age(projection.get("heartbeat_at"), now)
         if (supervisor and daemon and projection.get("projection_complete") is True
                 and projection_age is not None and projection_age <= 120):
@@ -1024,8 +1066,10 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("board_has_blocked_or_quarantined_tasks")
     elif native_unhealthy:
         reasons.append("native_operator_reports_unhealthy")
-    readiness = _readiness(authority, [] if "native_population" in board
-                           else readiness_projections or fresh_projections)
+    readiness = _readiness(authority, [
+        *([] if "native_population" in board else readiness_projections or fresh_projections),
+        *custody_projections,
+    ])
     if blocked and int(counts.get("in_progress") or 0) == 0 and (
         readiness.get("ready_count") == 0
         or readiness.get("selection_idle_reason") == "no_ready_tasks"
