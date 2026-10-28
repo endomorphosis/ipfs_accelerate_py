@@ -546,3 +546,30 @@ def test_readonly_repository_identity_matches_existing_bridge(scenario):
     assert s.mirrors == before
     with pytest.raises(ValueError, match="exact repository metadata mirroring control"):
         _repository(s.workspace, mirror=1)
+
+
+@pytest.mark.parametrize("location", ["body", "authored_task"])
+@pytest.mark.parametrize("value", [True, 0, 1, "true", None],
+                         ids=["required", "integer-zero", "integer-one", "string", "null"])
+def test_metadata_contract_cannot_admit_unbound_implementation_scope(scenario, location, value):
+    s = scenario
+    body = deepcopy(s.body)
+    body["requires_product_change_scope"] = False
+    target = body if location == "body" else body.setdefault("authored_task", {})
+    target["requires_product_change_scope"] = value
+    _upsert(s, body=body)
+    before = _snapshot(s)
+    with pytest.raises(ExecutionPacketAdmissionError, match="packet_implementation_scope_"):
+        _accept(s)
+    assert _snapshot(s) == before
+
+
+@pytest.mark.parametrize("location", ["body", "authored_task"])
+def test_explicit_false_implementation_requirement_preserves_metadata_admission(scenario, location):
+    s = scenario
+    body = deepcopy(s.body)
+    target = body if location == "body" else body.setdefault("authored_task", {})
+    target["requires_product_change_scope"] = False
+    _upsert(s, body=body)
+    _accept(s)
+    assert _check(s)

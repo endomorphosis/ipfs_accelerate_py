@@ -253,6 +253,15 @@ def _policy(record, cwd):
 
 
 def _packet_current(packet, record):
+    # This profile admits metadata operations only. An implementation card
+    # cannot acquire edit/test/lease authority by relabelling a metadata job.
+    implementation_required = False
+    for value in (record["body"], record["body"].get("authored_task", {})):
+        if isinstance(value, Mapping) and "requires_product_change_scope" in value:
+            flag = value["requires_product_change_scope"]
+            _need(type(flag) is bool, "packet_implementation_scope_requirement_malformed")
+            implementation_required = implementation_required or flag
+    _need(not implementation_required, "packet_implementation_scope_not_selected")
     _need(type(packet) is dict and set(packet) == PACKET_FIELDS and packet["purpose"] in PURPOSES, "packet_contract_shape_or_purpose")
     cwd = Path(packet["cwd"]) if _text(packet.get("cwd")) else Path(".")
     _need(cwd.is_absolute() and str(cwd) == os.path.abspath(cwd) and cwd.is_dir() and not any(p.is_symlink() for p in (cwd, *cwd.parents)), "packet_workspace_not_exact")
