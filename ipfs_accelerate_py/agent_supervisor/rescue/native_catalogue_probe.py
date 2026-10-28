@@ -397,6 +397,9 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
         tasks = data["tasks"]
         counts = dict(collections.Counter(task["status"] for task in tasks))
         # A later independent factual completion does not settle older provider actions.
+        # Keep those observations, but do not present a completed task's history as
+        # the current frontier's blocker. This observer still cannot admit retries,
+        # establish an executor, or infer claimability from catalogue status.
         retry_not_admitted, exhausted, external_unknown, retained_unknown = [], [], [], []
         provider_unknown = {row[0] for row in data["provider_status_rows"]
                             if "unknown" in str(row[2]).lower()}
@@ -421,15 +424,26 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
                     external_unknown.append(cid)
             if any("unknown" in str(outcome["failure_kind"]).lower() for outcome in retained):
                 retained_unknown.append(cid)
+        # Only the native completed status separates accepted factual work from
+        # unresolved execution history. Other statuses (including cancellation or
+        # failure) remain conservative blockers. These lists never authorize reuse
+        # or replay of the historical attempt of a completed task.
+        nonterminal = {task["task_cid"] for task in tasks if task["status"] != "completed"}
+        current_blockers = {
+            "retry_not_admitted_task_cids": sorted(nonterminal.intersection(retry_not_admitted)),
+            "exhausted_receipt_task_cids": sorted(nonterminal.intersection(exhausted)),
+            "provider_outcome_unknown_task_cids": sorted(nonterminal.intersection(provider_unknown)),
+            "external_outcome_unknown_task_cids": sorted(nonterminal.intersection(external_unknown)),
+        }
         codes = ["native_catalogue_activation_missing"]
         if counts.get("blocked") == len(tasks):
             codes.append("native_catalogue_expected_blocked")
         else:
             codes.append("native_catalogue_executor_unverified")
-        if retry_not_admitted: codes.append("native_catalogue_retry_not_admitted")
-        if exhausted: codes.append("native_catalogue_attempt_budget_exhausted")
-        if provider_unknown: codes.append("native_catalogue_provider_outcome_unknown")
-        if external_unknown: codes.append("native_catalogue_outcome_unknown")
+        if current_blockers["retry_not_admitted_task_cids"]: codes.append("native_catalogue_retry_not_admitted")
+        if current_blockers["exhausted_receipt_task_cids"]: codes.append("native_catalogue_attempt_budget_exhausted")
+        if current_blockers["provider_outcome_unknown_task_cids"]: codes.append("native_catalogue_provider_outcome_unknown")
+        if current_blockers["external_outcome_unknown_task_cids"]: codes.append("native_catalogue_outcome_unknown")
         diagnostic = {"schema": DIAGNOSTIC_SCHEMA, **{key: arguments[key] for key in
             ("board_namespace", "plan_root_cid", "repository_tree_id", "population_sha256")},
             "probe_observed_at_epoch": time.time(),
@@ -452,6 +466,7 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
             "retry_not_admitted_task_cids": retry_not_admitted,
             "exhausted_receipt_task_cids": exhausted,
             "retained_unknown_outcome_task_cids": retained_unknown,
+            "current_nonterminal_blockers": current_blockers,
             "historical_outcomes_are_separate_from_current_completion": True}
         token = hashlib.sha256(json.dumps([data["event_cursor"],
             [[task["task_cid"], task["status"], task["revision"]] for task in tasks]],

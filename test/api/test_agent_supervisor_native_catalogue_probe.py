@@ -318,11 +318,13 @@ def test_optional_goal_objective_rejects_nonstring_or_invalid_nonempty_identifie
 
 
 # A current independently verified task completion must not hide a prior UNKNOWN.
-def _complete_with_retained_outcome(catalogue, *, mutate=None):
+def _complete_with_retained_outcome(catalogue, *, mutate=None, exhausted=False):
     receipt = {"task_cid": "baguqeerataska", "attempt_number": 2,
                "automatic_retry_admitted": False,
                "failure_kind": "administrative_operator_stop_outcome_unknown",
                "provider_invocation_count": 1}
+    if exhausted:
+        receipt.update(max_task_attempts=2, attempt_budget_exhausted=True)
     entry = {"task_cid": "baguqeerataska", "task_revision": 13,
              "completion_receipt": receipt,
              "sha256": hashlib.sha256(json.dumps(receipt, sort_keys=True,
@@ -354,6 +356,94 @@ def test_completed_factual_work_retains_prior_unknown_without_retry_authority(ca
     assert result["complete"] is result["completion_candidate"] is False
     assert diagnostic["completion_authority"] is False
     assert "recovery_action" not in result
+
+
+def _bound_scientific_board(catalogue, tmp_path):
+    return {"id": "legal-ir-scientific", "cwd": str(tmp_path), "hold_files": [],
+        "probe_profile": "native_catalogue", "probe": {"argv": ["probe"]},
+        "max_repair_attempts": 3, "failure_grace_seconds": 0,
+        "native_catalogue_binding": {"board_namespace": NAMESPACE, "plan_root_cid": ROOT,
+            "repository_tree_id": TREE,
+            "population_sha256": hashlib.sha256(catalogue[1].read_bytes()).hexdigest(),
+            "max_age_seconds": 180},
+        "recovery_policy": {"profile": "infrastructure-only/v1",
+            "repairable_stalls": ["native_catalogue_read_unavailable"],
+            "max_actions_per_window": 3, "window_seconds": 1000, "circuit_breaker_seconds": 100}}
+
+
+@pytest.mark.parametrize("peer_status", ["blocked", "todo"])
+def test_completed_history_exposes_current_activation_wait_and_keeps_recovery_budget(catalogue, tmp_path, monkeypatch, peer_status):
+    import time
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog as fleet
+
+    _complete_with_retained_outcome(catalogue, exhausted=True)
+    change_database(catalogue, "UPDATE tasks SET status=? WHERE task_alias='LIR-9002'", [peer_status])
+    change_database(catalogue, "INSERT INTO provider_invocations VALUES ('baguqeerataska','old-attempt-a','unknown')")
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    assert diagnostic["provider_outcome_knowledge"] == diagnostic["external_outcome_knowledge"] == "unknown_observed"
+    assert diagnostic["exhausted_receipt_task_cids"] == diagnostic["retry_not_admitted_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["tasks"][0]["retained_execution_outcomes"][0]["attempt_budget_exhausted"] is True
+    assert all(not cids for cids in diagnostic["current_nonterminal_blockers"].values())
+    assert diagnostic["ready_status_count"] == (1 if peer_status == "todo" else 0)
+    assert diagnostic["normalized_provider_status_rows"] == [["baguqeerataska", "old-attempt-a", "unknown"]]
+    assert set(result["reason_codes"]) == {"native_catalogue_activation_missing", "native_catalogue_executor_unverified"}
+    board = _bound_scientific_board(catalogue, tmp_path)
+    previous = {"attempts": 2, "ensure_attempts": 1,
+                "infrastructure_budget": {"status": "open", "total_actions": 3}}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("history cannot authorize recovery"))
+    now = time.time()
+    state = fleet.assess(result, previous, board, now)
+    assert state["health"] == "blocked" and state["stall_class"] == "native_catalogue_activation_missing"
+    assert fleet.select_action(state, board, now) == ""
+    for field in ("attempts", "ensure_attempts", "infrastructure_budget"):
+        assert state[field] == previous[field]
+    assert diagnostic["activation_state"] == "not_activated" and diagnostic["executor_health"] == "not_established"
+    assert diagnostic["completion_authority"] is result["complete"] is result["completion_candidate"] is False
+    assert "recovery_action" not in result
+
+
+@pytest.mark.parametrize("source", ["current_receipt", "normalized_provider_row"])
+def test_completed_history_does_not_mask_an_unresolved_current_peer(catalogue, tmp_path, source):
+    import time
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog as fleet
+
+    _complete_with_retained_outcome(catalogue)
+    if source == "current_receipt":
+        change_database(catalogue, "UPDATE tasks SET body_json=? WHERE task_alias='LIR-9002'",
+            [json.dumps({"board_namespace": NAMESPACE, "completion_receipt": {
+                "attempt_number": 1, "max_task_attempts": 1,
+                "automatic_retry_admitted": False, "attempt_budget_exhausted": True,
+                "failure_kind": "provider_outcome_unknown", "provider_invocation_count": 1}})])
+    else:
+        change_database(catalogue, "INSERT INTO provider_invocations VALUES ('baguqeerataskb','attempt-b','unknown')")
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    current = diagnostic["current_nonterminal_blockers"]
+    assert current["provider_outcome_unknown_task_cids"] == ["baguqeerataskb"]
+    assert diagnostic["retained_unknown_outcome_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["tasks"][0]["retained_execution_outcomes"][0]["automatic_retry_admitted"] is False
+    if source == "current_receipt":
+        assert current["retry_not_admitted_task_cids"] == current["exhausted_receipt_task_cids"] == ["baguqeerataskb"]
+        assert set(diagnostic["retry_not_admitted_task_cids"]) == {"baguqeerataska", "baguqeerataskb"}
+    board = _bound_scientific_board(catalogue, tmp_path)
+    now = time.time()
+    state = fleet.assess(result, {}, board, now)
+    assert state["stall_class"] == "native_catalogue_provider_outcome_unknown"
+    assert fleet.select_action(state, board, now) == ""
+    assert diagnostic["completion_authority"] is result["complete"] is result["completion_candidate"] is False
+
+
+@pytest.mark.parametrize("status", ["blocked", "todo", "cancelled", "failed", "complete", "done"])
+def test_only_exact_native_completion_separates_retained_unknown_from_current_wait(catalogue, status):
+    _complete_with_retained_outcome(catalogue, exhausted=True)
+    change_database(catalogue, "UPDATE tasks SET status=? WHERE task_alias='LIR-9001'", [status])
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    assert all(cids == ["baguqeerataska"] for cids in diagnostic["current_nonterminal_blockers"].values())
+    assert {"native_catalogue_provider_outcome_unknown", "native_catalogue_outcome_unknown",
+            "native_catalogue_retry_not_admitted", "native_catalogue_attempt_budget_exhausted"} <= set(result["reason_codes"])
+    assert result["complete"] is diagnostic["completion_authority"] is False
 
 
 @pytest.mark.parametrize("damage", ["digest", "wrong_task", "future_revision", "boolean_revision", "receipt_identity", "malformed"])
