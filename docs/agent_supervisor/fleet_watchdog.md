@@ -1032,3 +1032,127 @@ attest runtime rollout, actual provider/model work, legal fidelity or native tas
 completion. Stale `in_progress` automatic unstall remains unchanged and outside
 this blocked-task fix. LIR-9001 requires its separate independent native
 verification.
+
+## Native catalogue continuation lineage
+
+The existing `legal-ir-native-task-population/v1` diagnostic profile keeps its
+single-root contract. A native `steer` amendment preserves existing tasks'
+original plan CIDs and attaches additions to a continuation root. Rewriting
+historical task roots to satisfy the v1 observer would destroy that lineage.
+
+The opt-in `legal-ir-native-task-population/v2` profile observes this layout
+through the same bounded read-only catalogue worker. Select it by supplying a
+new immutable population file and its exact SHA256 through the existing CLI;
+the configured plan root and repository tree bind the active tip. Existing
+CLI arguments and v1 behavior are unchanged. An arbitrary `lineage` key in a
+v1 plan record cannot select v2 validation.
+
+The v2 population has exactly `schema`, `board_namespace`, `plan_root_cid`,
+`repository_tree_id`, `tasks`, `goals` and `plans`. Each task binds its exact
+CID, alias, goal, original plan, objective and dependencies. Each goal binds
+its CID, alias, objective and parent. Plans are ordered from genesis to the
+active tip and bind their CID, goal, native status, revision, raw `body_json`
+SHA256 and these body fields:
+
+```text
+repository_tree_id, continuation_of, continued_by,
+revision_cid, delta_cid, idempotency_key
+```
+
+JSON null in one of these manifest body bindings means that the key is
+literally absent from the native body. It does not match a native null value
+or act as a wildcard. Genesis may lack historical fields; continuation bodies
+must carry their tree/revision/delta/idempotency bindings. Each predecessor
+must be `continued`, the final plan `active`, and every continuation must name
+the exact predecessor and unchanged root goal. At most 64 roots are accepted.
+An amendment-only active tip may have no tasks born under it.
+
+Validation refuses undeclared task origins, unrelated or forked roots, cycles,
+extra/missing scoped plans or goals, body/revision drift and dependency changes.
+The worker checks all rows in one existing read-only SQL snapshot with bounded
+rows, disabled external access and before/after database/WAL metadata checks.
+The v2 profile retains the original unknown-outcome, retry and incomplete
+attempt-history diagnostics. It still reports `not_activated` and
+`not_established`; a lineage match is no executor-health or task-admission grant.
+
+Build the selected diagnostic population from the responsible native owner's
+post-amendment readback, then qualify its configuration/binding cutover. A pure
+amendment preview cannot supply the new native plan revisions or body hashes.
+Keep the current deployed population selected until that readback exists;
+adding this profile never applies an amendment, rearms a task, clears a budget,
+replaces an owner or modifies a live database.
+
+### Current-main publisher and native binding follow-up
+
+The current generation reuses merged PR308's publisher fix: an unavailable
+required hosted check retains the exact candidate PR for retry; local checks and
+billing diagnosis cannot authorize an administrative merge. It also preserves
+current-main's explicit inventory fence before native heal. The retained-owner
+tests now supply a real private inventory and exercise the production read before
+asserting the independent policy denial.
+
+A separate focused cohort passed 268 parents / 804 phases, without subtests, in
+8.622 JUnit seconds: 112 publisher cases, 78 native-heal binding cases, 59 shared
+policy cases and 19 watchdog integration cases. All 14 immutable-runtime source
+modules are bound among 210 source inputs; 42 installed Git/Python/helper inputs
+remain separately typed. All 1,061 audited private subprocesses reached terminal
+states. Original native tracking observed at most eight processes; its resources,
+source custody and storage closed positively. Private fixtures retain 66 genuine
+hardlinked regular paths without repacking or cleanup.
+
+Full phase and subprocess records remain in separate hash-bound exports listed
+in the source evidence capsule. Earlier 630-parent/456-subtest and 22-physical
+qualifications retain their own source/resource generations. Focused attempts
+v01--v03 retain their failed qualification and storage dispositions, including
+the earlier raw passing tests whose closing source audit failed. They supply no
+additional passing credit. Runtime activation and fresh acceptance require their
+separate closed control receipts; this qualification supplies no provider/model
+work, legal fidelity or native task-completion authority.
+
+Fresh read-only acceptance subsequently verified the deployed d4d227c1e0 source
+and immutable release `0e549c8e1fc814fe82e9`, including all 14 runtime modules,
+both service process births, configured/proc argv and environment, four exact
+configuration files, preserved histories and two fresh samples. Both units stayed
+at PIDs 2377224/2377225. Engineering was healthy and idle at 145/145; four
+concurrent completed engineering cards are separately attributed work. Science
+remained 1 completed / 63 blocked at cursor 217, with UNKNOWN and retry refusal
+retained and no budget reset.
+
+The first cutover check failed after applying its files and starting the units
+because it compared volatile systemctl `ExecStart` display fields. A first
+read-only check also retained its outdated 141-card expectation. Both failures
+remain recorded. The later read-only acceptance performed no restart, service
+mutation, provider/model invocation or native task mutation. Its receipt is new
+evidence, rather than a rewrite of either failure.
+
+The restored PR307 lineage extension belongs to the separate publication
+worktree and requires its own fresh qualification. It has not changed the active
+runtime source or selected population; the accepted deployment above does not
+qualify that new extension or admit a native plan amendment.
+
+### Publication-only continuation qualification
+
+The restored continuation observer passed its separate current-source cohort:
+54 new lineage cases plus 33 existing nonphysical observer cases, 87 parents /
+261 phases without subtests, in 19.660 JUnit seconds. Its 29 bounded private
+reader invocations comprise 28 established legacy reads and one new isolated
+lineage worker. Parent SQL fixtures and the isolated worker used pinned
+DuckDB 1.4.3 / NumPy 2.1.3; Pytest 9 reporting was loaded separately. The unchanged
+original regular validation owner closed source, native processes and storage
+with zero guard denials.
+
+The earlier missing-attempt pre-owner refusal and the overly narrow one-worker
+harness failure remain recorded with their original dispositions. Their results
+are not pooled into the passing cohort. This qualifies the publication source's
+lineage diagnostics; the active d4d227c1e0 runtime and its selected population
+remain unchanged. A native continuation amendment or later runtime cutover still
+requires its own owner readback and admission.
+
+Independent review binds the exact APUB probe/test bytes, all 203 request pins
+and six separately typed installed inputs to that original positive closeout.
+The evidence capsule retains the source, record and review hashes for this scope.
+
+The publication branch also merges upstream `ea6ebfa29e` without changing any of
+the 29 observed source origins from the 87-case cohort. The changed router and
+documentation inputs were unused by that cohort and retain no new qualification
+credit. The accepted active checkout and release remain unchanged.

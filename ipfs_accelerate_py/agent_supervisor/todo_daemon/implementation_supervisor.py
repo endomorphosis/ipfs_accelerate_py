@@ -14792,6 +14792,14 @@ class PortalImplementationSupervisor:
             str, dict[str, Any]
         ] = {}
 
+        def load_reconciliation_context() -> None:
+            nonlocal reconciliation_daemon, reconciliation_tasks_by_id
+            nonlocal reconciliation_task_ids_by_branch, reconciliation_outcome_keys, reconciliation_provenance_by_branch
+            if reconciliation_daemon is None:
+                reconciliation_daemon = self._build_worktree_reconciliation_daemon()
+                (reconciliation_tasks_by_id, reconciliation_task_ids_by_branch,
+                    reconciliation_outcome_keys, reconciliation_provenance_by_branch) = self._reconciliation_task_context(reconciliation_daemon)
+
         def candidate_main_status(
             branch: str,
             head: str,
@@ -14878,7 +14886,7 @@ class PortalImplementationSupervisor:
                 classification = str(cached_entry.get("classification") or "")
                 payload = dict(cached_entry.get("payload") or {})
                 if classification == "skip":
-                    if payload.get("reason") == "dirty_worktree":
+                    if payload.get("reason") in {"dirty_worktree", "already_merged_cleanup_pass"}:
                         pass
                     else:
                         skipped.append({**payload, "cached": True})
@@ -14957,21 +14965,50 @@ class PortalImplementationSupervisor:
             branch_merged = self._git_ref_is_ancestor(repo_root, branch, target_ref)
             head_merged = bool(head) and self._git_ref_is_ancestor(repo_root, head, target_ref)
             if branch_merged or head_merged:
-                skip = {**detail, "reason": "already_merged_cleanup_pass"}
-                skipped.append(skip)
-                self._store_worktree_scan_cache_entry(
-                    scan_cache,
-                    phase="reconciliation",
-                    path=path_resolved,
-                    branch=branch,
-                    head=head,
-                    target_signature=target_signature,
-                    classification="skip",
-                    payload=skip,
-                )
-                continue
+                # An integrated Git object is not a task completion receipt.
+                # Keep completed/unknown legacy lanes on their normal cleanup
+                # path; only current pending aliases can request fresh proof.
+                try:
+                    hints = {} if self.config.database_program is not None else {
+                        task.task_id: task for task in parse_task_file(self.config.todo_path, self.config.task_prefix)}
+                except (OSError, ValueError, UnicodeError):
+                    hints = {}
+                matches = self._integrated_candidate_task_matches(branch, hints)
+                if any(normalize_status(task.status) != "completed" for task in matches):
+                    load_reconciliation_context()
+                    matches = self._integrated_candidate_task_matches(branch, reconciliation_tasks_by_id)
+                    self._remember_pending_integrated_candidate(path=path_resolved, branch=branch, head=head, tasks=matches)
+                    current = matches[0] if len(matches) == 1 else None
+                    mapped = reconciliation_task_ids_by_branch.get(branch)
+                    binding = (self._pending_integrated_candidate_binding(
+                        daemon=reconciliation_daemon, path=path, branch=branch, head=head, task=current,
+                        provenance=reconciliation_provenance_by_branch.get(branch))
+                        if current is not None and normalize_status(current.status) in {"todo", "ready", "needed", "pending"}
+                            and (not mapped or mapped == current.task_id)
+                        else {"ready": False, "reason": "integrated_candidate_task_ambiguous_or_not_pending"})
+                    if not binding.get("ready"):
+                        processed.append({**detail, "merged": False, "merge_result": {
+                            "attempted": False, "merged": False, "reason": binding["reason"],
+                            "provider_dispatched": False, "attempt_consumed": False}})
+                        continue
+                    detail["integrated_pending_candidate"] = binding
+                else:
+                    skip = {**detail, "reason": "already_merged_cleanup_pass"}
+                    skipped.append(skip)
+                    self._store_worktree_scan_cache_entry(scan_cache, phase="reconciliation",
+                        path=path_resolved, branch=branch, head=head, target_signature=target_signature,
+                        classification="skip", payload=skip)
+                    continue
             dirty = self._git_status_short(path) if path.exists() else []
             if dirty:
+                if detail.get("integrated_pending_candidate"):
+                    # The reviewed immutable HEAD cannot authorize a new
+                    # rescue commit containing unreviewed working-tree data.
+                    processed.append({**detail, "merged": False, "merge_result": {
+                        "attempted": False, "merged": False,
+                        "reason": "integrated_candidate_workspace_dirty",
+                        "provider_dispatched": False, "attempt_consumed": False}})
+                    continue
                 rescue_result = self._rescue_dirty_worktree(
                     path,
                     branch=branch,
@@ -15100,16 +15137,7 @@ class PortalImplementationSupervisor:
                         continue
                     preflight_resolver_escalated = True
 
-            if reconciliation_daemon is None:
-                reconciliation_daemon = self._build_worktree_reconciliation_daemon()
-                (
-                    reconciliation_tasks_by_id,
-                    reconciliation_task_ids_by_branch,
-                    reconciliation_outcome_keys,
-                    reconciliation_provenance_by_branch,
-                ) = self._reconciliation_task_context(
-                    reconciliation_daemon
-                )
+            load_reconciliation_context()
             current_task = self._current_reconciliation_task(
                 branch=branch,
                 rescued_from_branch=str(
@@ -15171,18 +15199,15 @@ class PortalImplementationSupervisor:
                 task_identity = reconciliation_daemon._identity_for_task(
                     current_task
                 )
-                baseline_ref = self._git_merge_base(
-                    repo_root,
-                    target_ref,
-                    head or branch,
-                )
+                integrated_binding = detail.get("integrated_pending_candidate") or {}
+                baseline_ref = str(integrated_binding.get("baseline_ref") or "") or self._git_merge_base(repo_root, target_ref, head or branch)
                 recovery_key = (
                     self._worktree_reconciliation_recovery_key(
                         task_cid=task_identity.canonical_task_cid,
                         baseline_ref=baseline_ref,
                         candidate_commit=head,
                         target_commit=target_signature,
-                        mode="pre_merge",
+                        mode="integrated_pending" if integrated_binding else "pre_merge",
                     )
                     if baseline_ref and head
                     else ""
@@ -15254,6 +15279,11 @@ class PortalImplementationSupervisor:
                 merge_result = dict(
                     recovery_result.get("merge_result") or {}
                 )
+                if integrated_binding:
+                    retained = self._pending_integrated_candidates[str(path_resolved)]
+                    update = merge_result.get("todo_update_result")
+                    retained["completed_by_callback"] = bool(merge_result.get("merged") is True
+                        and isinstance(update, Mapping) and reconciliation_daemon._todo_completion_is_durable(update))
                 cleanup_result = self._reconciliation_cleanup_result(
                     merge_result
                 )
@@ -16328,6 +16358,118 @@ class PortalImplementationSupervisor:
             task_shard_index=self.config.task_shard_index,
             strict_task_sharding=self.config.strict_task_sharding,
         )
+
+    @staticmethod
+    def _integrated_candidate_task_matches(
+        branch: str, tasks_by_id: Mapping[str, PortalTask],
+    ) -> list[PortalTask]:
+        """Resolve named task aliases without choosing between ambiguous names."""
+        return [task for task_id, task in tasks_by_id.items() if re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(task_id)}(?![A-Za-z0-9])", branch, re.IGNORECASE)]
+
+    def _remember_pending_integrated_candidate(
+        self, *, path: Path, branch: str, head: str, tasks: Sequence[PortalTask],
+    ) -> None:
+        # This in-memory observation grants only retention, never completion or
+        # deletion. Cache files cannot hydrate its callback-verification bit.
+        retained = getattr(self, "_pending_integrated_candidates", None)
+        if retained is None:
+            retained = self._pending_integrated_candidates = {}
+        retained[str(path)] = {"branch": branch, "head": head,
+            "task_cids": {task.task_id: task.canonical_task_cid for task in tasks},
+            "completed_by_callback": False}
+
+    def _pending_integrated_candidate_binding(
+        self, *, daemon: PortalImplementationDaemon, path: Path, branch: str,
+        head: str, task: PortalTask, provenance: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Review an immutable nonempty proposal before any validator repair."""
+        def refused(reason: str) -> dict[str, Any]:
+            return {"ready": False, "reason": reason}
+        try:
+            root = self.config.worktree_root
+            if (root is None or root.resolve(strict=True) != root
+                    or path.resolve(strict=True) != path or not path.is_relative_to(root)
+                    or path == root):
+                return refused("integrated_candidate_workspace_unconfined")
+            for directory in (root, path):
+                info = directory.lstat()
+                if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o002:
+                    return refused("integrated_candidate_workspace_unowned")
+            marker = (path / ".git").lstat()
+            if not stat.S_ISREG(marker.st_mode) or marker.st_uid != os.getuid() or marker.st_nlink != 1 or marker.st_mode & 0o002:
+                return refused("integrated_candidate_git_marker_unowned")
+            common = []
+            for repo in (self.config.repo_root, path):
+                observed = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=repo,
+                    text=True, capture_output=True, check=False)
+                if observed.returncode or not observed.stdout.strip():
+                    return refused("integrated_candidate_repository_unproved")
+                common.append((repo / observed.stdout.strip()).resolve(strict=True))
+            if (common[0] != common[1] or self._git_current_branch(path) != branch
+                    or self._git_ref_commit(path, "HEAD") != head
+                    or self._git_ref_commit(self.config.repo_root, branch) != head):
+                return refused("integrated_candidate_identity_changed")
+            identity = daemon._identity_for_task(task)
+            if provenance is not None:
+                expected = {"task_id": task.task_id, "canonical_task_cid": identity.canonical_task_cid,
+                    "canonical_task_key": identity.canonical_task_key, "board_namespace": identity.board_namespace,
+                    "worktree_path": str(path)}
+                if (any(str(provenance.get(key) or "") != value for key, value in expected.items())
+                        or str(provenance.get("branch") or "").removeprefix("refs/heads/") != branch):
+                    return refused("integrated_candidate_provenance_mismatch")
+                baseline = str(provenance.get("baseline_ref") or "")
+                source = "exact_native_start"
+            else:
+                parents = self._git_commit_parents(self.config.repo_root, head)
+                if len(parents) != 1:
+                    return refused("integrated_candidate_baseline_ambiguous")
+                baseline, source = parents[0], "single_parent_candidate"
+            if (not baseline or self._git_ref_commit(self.config.repo_root, baseline) != baseline
+                    or baseline == head or not self._git_ref_is_ancestor(self.config.repo_root, baseline, head)):
+                return refused("integrated_candidate_baseline_unproved")
+            changed = subprocess.run(["git", "diff", "--no-renames", "--name-only", "-z", baseline, head, "--"],
+                cwd=self.config.repo_root, capture_output=True, check=False)
+            if changed.returncode:
+                return refused("integrated_candidate_delta_unavailable")
+            paths = tuple(part.decode("utf-8") for part in changed.stdout.split(b"\0") if part)
+            allowed = daemon._proposal_scope_paths(task, include_ast_companions=False)
+            if not paths:
+                return refused("integrated_candidate_delta_empty")
+            if (not allowed or any(not any(daemon._path_matches_prefix(relative, prefix) for prefix in allowed)
+                    or daemon._overlaps_implementation_protected_path(relative) for relative in paths)):
+                return refused("integrated_candidate_delta_outside_task_scope")
+            return {"ready": True, "baseline_ref": baseline, "baseline_source": source,
+                "task_cid": identity.canonical_task_cid, "changed_paths": list(paths)}
+        except TimeoutError:
+            raise
+        except (OSError, RuntimeError, UnicodeError, ValueError, TypeError, AttributeError):
+            return refused("integrated_candidate_observation_unavailable")
+
+    def _pending_integrated_cleanup_retention(
+        self, *, path: Path, branch: str, head: str,
+    ) -> dict[str, Any] | None:
+        retained = getattr(self, "_pending_integrated_candidates", {})
+        binding = retained.get(str(path))
+        if not isinstance(binding, Mapping):
+            return None
+        result = {"path": str(path), "branch": branch,
+            "reason": "pending_integrated_candidate_retained"}
+        try:
+            tasks = {task.task_id: task for task in parse_task_file(self.config.todo_path, self.config.task_prefix)}
+            expected = binding["task_cids"]
+            if (not binding.get("completed_by_callback") or not expected
+                    or path.resolve(strict=True) != path or binding["branch"] != branch or binding["head"] != head
+                    or self._git_ref_commit(path, "HEAD") != head
+                    or self._git_ref_commit(self.config.repo_root, branch) != head
+                    or any(task_id not in tasks or tasks[task_id].canonical_task_cid != cid
+                        or normalize_status(tasks[task_id].status) != "completed" for task_id, cid in expected.items())):
+                return result
+        except TimeoutError:
+            raise
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            return result
+        return None
 
     @staticmethod
     def _worktree_reconciliation_recovery_key(
@@ -17862,6 +18004,10 @@ class PortalImplementationSupervisor:
 
             branch = str(record.get("branch") or "").removeprefix("refs/heads/")
             head = str(record.get("HEAD") or "")
+            retention = self._pending_integrated_cleanup_retention(path=path_resolved, branch=branch, head=head)
+            if retention is not None:
+                skipped.append(retention)
+                continue
             cached_entry = self._worktree_scan_cache_entry(
                 scan_cache,
                 phase="cleanup",
@@ -17966,6 +18112,12 @@ class PortalImplementationSupervisor:
                     )
                     continue
 
+            # Dirt/submodule observations can be slow. A recognized pending
+            # candidate still needs its exact callback/CID/ref at deletion.
+            retention = self._pending_integrated_cleanup_retention(path=path_resolved, branch=branch, head=head)
+            if retention is not None:
+                skipped.append(retention)
+                continue
             remove = subprocess.run(
                 ["git", "worktree", "remove", "--force", str(path)],
                 cwd=repo_root,
@@ -17978,6 +18130,7 @@ class PortalImplementationSupervisor:
                 remove.returncode == 0
                 and self._worktree_branch_can_delete_after_merge(branch)
                 and branch_merged
+                and self._git_ref_commit(repo_root, branch) == head
             ):
                 delete = subprocess.run(
                     ["git", "branch", "-D", branch],
@@ -17993,6 +18146,8 @@ class PortalImplementationSupervisor:
                     "stdout": delete.stdout[-4000:],
                     "stderr": delete.stderr[-4000:],
                 }
+            if remove.returncode == 0:
+                getattr(self, "_pending_integrated_candidates", {}).pop(str(path_resolved), None)
             removed.append(
                 {
                     "path": str(path),
@@ -20817,6 +20972,19 @@ class PortalImplementationSupervisor:
         """Autonomously clean a retained generated-output transaction."""
 
         if not self._retained_generated_checkout_lease():
+            existing = read_checkout_mutation_lease(checkout_mutation_lock_path(self.config.repo_root))
+            if (existing is not None
+                    and existing.metadata.get("protected_recovery_required") is True
+                    and existing.metadata.get("protected_recovery_owner") == "implementation_daemon"):
+                # Owner-tagged journals are a union, not interchangeable guard
+                # schemas. Let Native validate/settle its own exact journal
+                # before supervisor snapshots or worktree maintenance run.
+                native = self._build_worktree_reconciliation_daemon()
+                recovery = native.reconcile_protected_checkout_recovery()
+                recovered = recovery.get("checkout_mutation_lease_recovered") is True
+                return {"attempted": True, "recovered": recovered,
+                        "retained_lease": not recovered, "native_checkout_recovery": recovery,
+                        "reason": str(recovery.get("reason") or "native_checkout_recovery_required")}
             adoption = self._adopt_supervisor_protected_recovery()
             if adoption.get("required") and adoption.get("blocked"):
                 return {

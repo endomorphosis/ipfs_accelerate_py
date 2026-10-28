@@ -23,10 +23,12 @@ from typing import Any
 SCHEMA = "agent-supervisor/native-catalogue-probe@1"
 DIAGNOSTIC_SCHEMA = "native-catalogue-diagnostic/v1"
 POPULATION_SCHEMA = "legal-ir-native-task-population/v1"
+LINEAGE_POPULATION_SCHEMA = "legal-ir-native-task-population/v2"
 MAX_POPULATION_BYTES = 2 * 1024 * 1024
 MAX_REPORT_BYTES = 512 * 1024
 MAX_BODY_BYTES = 262_144
 MAX_TASKS = 1_000
+MAX_PLAN_ROOTS = 64
 MAX_RUNTIME_ROWS = 4_096
 READY_STATUSES = frozenset({"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"})
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,511}\Z")
@@ -87,6 +89,122 @@ def _file_metadata(path: Path):
             "bytes": info.st_size, "mtime_ns": info.st_mtime_ns}
 
 
+_PLAN_BODY_BINDINGS = ("repository_tree_id", "continuation_of", "continued_by",
+                       "revision_cid", "delta_cid", "idempotency_key")
+
+
+class _LineagePlan(dict):
+    """Internal v2 provenance; a caller's JSON key cannot select this profile."""
+
+
+def _lineage_population(population, selected, goals, plan_root, tree):
+    """Validate an explicitly pinned diagnostic profile, not a revision grant.
+
+    Native steer retains existing tasks' original plan CIDs. Its continuation
+    has the same root goal, stores continuation_of, and adds continued_by to the
+    predecessor. None in a declared body binding means literal key absence.
+    """
+    if set(population) != {"schema", "board_namespace", "plan_root_cid",
+                            "repository_tree_id", "tasks", "goals", "plans"}:
+        raise InvalidCatalogue("population_lineage_invalid")
+    task_fields = {"task_cid", "task_alias", "goal_cid", "plan_cid",
+                   "objective_id", "dependencies"}
+    goal_fields = {"goal_cid", "goal_alias", "objective_id", "parent_goal_cid"}
+    if (any(set(task) != task_fields for task in selected.values())
+            or any(set(goal) != goal_fields for goal in goals.values())
+            or len({task["task_alias"] for task in selected.values()}) != len(selected)
+            or len({goal["goal_alias"] for goal in goals.values()}) != len(goals)):
+        raise InvalidCatalogue("population_lineage_invalid")
+    plans = population["plans"]
+    fields = {"plan_cid", "goal_cid", "status", "revision", "body_sha256",
+              *_PLAN_BODY_BINDINGS}
+    if type(plans) is not list or not 1 <= len(plans) <= MAX_PLAN_ROOTS:
+        raise InvalidCatalogue("population_lineage_invalid")
+    by_id = {}
+    for plan in plans:
+        if type(plan) is not dict or set(plan) != fields:
+            raise InvalidCatalogue("population_lineage_invalid")
+        for key in ("plan_cid", "goal_cid"):
+            _identifier(plan[key])
+        if (plan["plan_cid"] in by_id or plan["goal_cid"] not in goals
+                or type(plan["revision"]) is not int or plan["revision"] < 1
+                or type(plan["body_sha256"]) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", plan["body_sha256"]) is None):
+            raise InvalidCatalogue("population_lineage_invalid")
+        for key in _PLAN_BODY_BINDINGS:
+            if plan[key] is not None:
+                _identifier(plan[key])
+        by_id[plan["plan_cid"]] = plan
+    root_goal = plans[0]["goal_cid"]
+    for index, plan in enumerate(plans):
+        previous = plans[index - 1]["plan_cid"] if index else None
+        following = plans[index + 1]["plan_cid"] if index + 1 < len(plans) else None
+        if (plan["continuation_of"] != previous or plan["continued_by"] != following
+                or plan["goal_cid"] != root_goal
+                or plan["status"] != ("continued" if following else "active")
+                or index and any(plan[key] is None for key in
+                    ("repository_tree_id", "revision_cid", "delta_cid", "idempotency_key"))):
+            raise InvalidCatalogue("population_lineage_invalid")
+    if (plans[-1]["plan_cid"] != plan_root
+            or plans[-1]["repository_tree_id"] != tree
+            or any(task["plan_cid"] not in by_id for task in selected.values())):
+        raise InvalidCatalogue("population_lineage_invalid")
+    # Goal parent rows are exact native fields. Every declared goal must reach
+    # the unchanged native root goal; unrelated roots and cycles are refused.
+    for goal in goals.values():
+        seen = set()
+        current = goal["goal_cid"]
+        while current != root_goal:
+            if current in seen or current not in goals:
+                raise InvalidCatalogue("population_lineage_invalid")
+            seen.add(current)
+            current = goals[current]["parent_goal_cid"]
+        if goals[root_goal]["parent_goal_cid"] != "":
+            raise InvalidCatalogue("population_lineage_invalid")
+    return _LineagePlan(plan_cid=plan_root, goal_cid=root_goal, lineage=plans)
+
+
+def _read_plan_lineage(connection, expected, expected_goals):
+    plans = expected["lineage"]
+    by_id = {plan["plan_cid"]: plan for plan in plans}
+    # Exact native scope, including unexpected continuations/forks under the
+    # same immutable goal. A selected subset cannot hide an undeclared root.
+    goal_rows = _bounded_rows(connection,
+        "WITH RECURSIVE selected_goals(goal_cid) AS ("
+        "SELECT goal_cid FROM goals WHERE goal_cid = ? UNION "
+        "SELECT g.goal_cid FROM goals g JOIN selected_goals s "
+        "ON g.parent_goal_cid = s.goal_cid) SELECT goal_cid FROM selected_goals",
+        [expected["goal_cid"]], maximum=MAX_TASKS)
+    if (len(goal_rows) != len(expected_goals)
+            or {row[0] for row in goal_rows} != set(expected_goals)):
+        raise InvalidCatalogue("native_goal_mismatch")
+    goal_ids = sorted(expected_goals)
+    rows = _bounded_rows(connection,
+        "SELECT plan_cid, goal_cid, status, revision, body_json FROM plans "
+        "WHERE goal_cid IN (" + ",".join("?" for _ in goal_ids) + ") ORDER BY plan_cid",
+        goal_ids,
+        maximum=MAX_PLAN_ROOTS)
+    if len(rows) != len(plans):
+        raise InvalidCatalogue("native_plan_lineage_mismatch")
+    observed = set()
+    for cid, goal, status, revision, raw in rows:
+        plan = by_id.get(cid)
+        if (plan is None or cid in observed
+                or (goal, status, revision) != (plan["goal_cid"], plan["status"], plan["revision"])
+                or type(revision) is not int or type(raw) is not str
+                or len(raw.encode()) > MAX_BODY_BYTES
+                or hashlib.sha256(raw.encode()).hexdigest() != plan["body_sha256"]):
+            raise InvalidCatalogue("native_plan_lineage_mismatch")
+        observed.add(cid)
+        body = _decode(raw)
+        if type(body) is not dict:
+            raise InvalidCatalogue("native_plan_lineage_mismatch")
+        for key in _PLAN_BODY_BINDINGS:
+            value = plan[key]
+            if (key in body if value is None else key not in body or body[key] != value):
+                raise InvalidCatalogue("native_plan_lineage_mismatch")
+
+
 def _population(arguments):
     namespace = _identifier(arguments["board_namespace"])
     plan_root = _identifier(arguments["plan_root_cid"])
@@ -98,7 +216,9 @@ def _population(arguments):
     if hashlib.sha256(raw).hexdigest() != digest:
         raise InvalidCatalogue("population_digest_mismatch")
     population = _decode(raw)
-    if (not isinstance(population, dict) or population.get("schema") != POPULATION_SCHEMA
+    lineage = isinstance(population, dict) and population.get("schema") == LINEAGE_POPULATION_SCHEMA
+    if (not isinstance(population, dict)
+            or population.get("schema") not in (POPULATION_SCHEMA, LINEAGE_POPULATION_SCHEMA)
             or population.get("board_namespace") != namespace
             or population.get("plan_root_cid") != plan_root
             or population.get("repository_tree_id") != tree):
@@ -113,7 +233,7 @@ def _population(arguments):
             raise InvalidCatalogue("population_task_invalid")
         for key in ("task_cid", "task_alias", "goal_cid", "plan_cid", "objective_id"):
             _identifier(task.get(key))
-        if task["task_cid"] in selected or task["plan_cid"] != plan_root:
+        if task["task_cid"] in selected or not lineage and task["plan_cid"] != plan_root:
             raise InvalidCatalogue("population_task_invalid")
         selected[task["task_cid"]] = task
     goal_map = {}
@@ -132,7 +252,7 @@ def _population(arguments):
     if any(task["goal_cid"] not in goal_map for task in selected.values()):
         raise InvalidCatalogue("population_goal_invalid")
     plans = population.get("plans")
-    if (not isinstance(plans, list) or len(plans) != 1
+    if not lineage and (not isinstance(plans, list) or len(plans) != 1
             or not isinstance(plans[0], dict) or plans[0].get("plan_cid") != plan_root
             or plans[0].get("goal_cid") not in goal_map):
         raise InvalidCatalogue("population_plan_invalid")
@@ -142,7 +262,9 @@ def _population(arguments):
                 or any(not isinstance(cid, str) or cid not in selected for cid in dependencies)
                 or len(set(dependencies)) != len(dependencies)):
             raise InvalidCatalogue("population_dependencies_invalid")
-    return selected, goal_map, plans[0]
+    expected_plan = (_lineage_population(population, selected, goal_map, plan_root, tree)
+                     if lineage else plans[0])
+    return selected, goal_map, expected_plan
 
 
 def _bounded_rows(connection, sql, parameters=(), *, maximum=MAX_RUNTIME_ROWS):
@@ -287,10 +409,13 @@ def _read_catalogue(arguments):
                     or type(revision) is not int or revision < 0):
                 raise InvalidCatalogue("native_goal_mismatch")
             _identifier(status)
-        plan_rows = _bounded_rows(connection,
-            "SELECT plan_cid, goal_cid FROM plans WHERE plan_cid = ?", [arguments["plan_root_cid"]], maximum=1)
-        if plan_rows != [(expected_plan["plan_cid"], expected_plan["goal_cid"])]:
-            raise InvalidCatalogue("native_plan_mismatch")
+        if isinstance(expected_plan, _LineagePlan):
+            _read_plan_lineage(connection, expected_plan, expected_goals)
+        else:
+            plan_rows = _bounded_rows(connection,
+                "SELECT plan_cid, goal_cid FROM plans WHERE plan_cid = ?", [arguments["plan_root_cid"]], maximum=1)
+            if plan_rows != [(expected_plan["plan_cid"], expected_plan["goal_cid"])]:
+                raise InvalidCatalogue("native_plan_mismatch")
         attempts = _bounded_rows(connection,
             "SELECT task_cid, attempt_id, attempt_number, status FROM task_attempts "
             f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, attempt_number", task_ids)
@@ -327,6 +452,8 @@ def _read_catalogue(arguments):
     if before != after:
         raise InvalidCatalogue("native_store_changed_during_read")
     return {"tasks": tasks, "goal_count": len(goal_rows), "dependency_count": dependencies,
+            **({"population_schema": LINEAGE_POPULATION_SCHEMA,
+                "plan_lineage": expected_plan["lineage"]} if isinstance(expected_plan, _LineagePlan) else {}),
             "attempt_rows": attempts, "provider_status_rows": providers, "claim_state_rows": claims,
             "event_cursor": cursor, "store_generation": generation[0],
             "store_schema_revision": generation[1], "database_uuid": generation[2],
@@ -468,6 +595,9 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
             "retained_unknown_outcome_task_cids": retained_unknown,
             "current_nonterminal_blockers": current_blockers,
             "historical_outcomes_are_separate_from_current_completion": True}
+        if data.get("population_schema") == LINEAGE_POPULATION_SCHEMA:
+            diagnostic.update(population_schema=LINEAGE_POPULATION_SCHEMA,
+                              plan_lineage=data["plan_lineage"])
         token = hashlib.sha256(json.dumps([data["event_cursor"],
             [[task["task_cid"], task["status"], task["revision"]] for task in tasks]],
             separators=(",", ":")).encode()).hexdigest()
