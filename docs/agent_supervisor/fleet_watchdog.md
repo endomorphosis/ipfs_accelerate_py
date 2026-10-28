@@ -1129,3 +1129,30 @@ The restored PR307 lineage extension belongs to the separate publication
 worktree and requires its own fresh qualification. It has not changed the active
 runtime source or selected population; the accepted deployment above does not
 qualify that new extension or admit a native plan amendment.
+
+### Publication-only continuation qualification
+
+The restored continuation observer passed its separate current-source cohort:
+54 new lineage cases plus 33 existing nonphysical observer cases, 87 parents /
+261 phases without subtests, in 19.660 JUnit seconds. Its 29 bounded private
+reader invocations comprise 28 established legacy reads and one new isolated
+lineage worker. Parent SQL fixtures and the isolated worker used pinned
+DuckDB 1.4.3 / NumPy 2.1.3; Pytest 9 reporting was loaded separately. The unchanged
+original regular validation owner closed source, native processes and storage
+with zero guard denials.
+
+The earlier missing-attempt pre-owner refusal and the overly narrow one-worker
+harness failure remain recorded with their original dispositions. Their results
+are not pooled into the passing cohort. This qualifies the publication source's
+lineage diagnostics; the active d4d227c1e0 runtime and its selected population
+remain unchanged. A native continuation amendment or later runtime cutover still
+requires its own owner readback and admission.
+
+Independent review binds the exact APUB probe/test bytes, all 203 request pins
+and six separately typed installed inputs to that original positive closeout.
+The evidence capsule retains the source, record and review hashes for this scope.
+
+The publication branch also merges upstream `ea6ebfa29e` without changing any of
+the 29 observed source origins from the 87-case cohort. The changed router and
+documentation inputs were unused by that cohort and retain no new qualification
+credit. The accepted active checkout and release remain unchanged.

@@ -246,11 +246,132 @@
     "same_Accelerate_product_hashes_as_regular": true,
     "subtests": 0
   },
+  "post_qualification_upstream_integration": {
+    "active_runtime_source_or_release_changed": false,
+    "changed_unused_request_inputs": [
+      {
+        "after": {
+          "bytes": 71492,
+          "sha256": "41e1cbc340f15ba80639c9ca4b2446f0c874e314ac253410cd1757bef9beff5e"
+        },
+        "before": {
+          "bytes": 70185,
+          "sha256": "9ccbf6fb00437df4e193629a4b97dc6af0c2defce1160c44b052463b1eb81380"
+        },
+        "loaded_or_executed_by_87_case_cohort": false,
+        "path": "/home/barberb/lift_coding/.worktrees/legal-ir-supervisor-recovery-publish-20261028/docs/agent_supervisor/fleet_watchdog.md"
+      },
+      {
+        "after": {
+          "bytes": 595371,
+          "sha256": "b21e94ce2aee1c5f10a866d34bc30f2f20570906ec0b0b9ceecba7b02514687b"
+        },
+        "before": {
+          "bytes": 594581,
+          "sha256": "eaebc6b09999732e8a815b1a2c1f40d4d6f7b3a4c27f89dbb85bb6063a705e89"
+        },
+        "loaded_or_executed_by_87_case_cohort": false,
+        "path": "/home/barberb/lift_coding/.worktrees/legal-ir-supervisor-recovery-publish-20261028/ipfs_accelerate_py/llm_router.py"
+      }
+    ],
+    "integration": "normal merge preserving all peer source changes",
+    "no_qualification_transfer_to_new_router_code": true,
+    "observed_source_origins_unchanged": 29,
+    "schema": "legal-ir-post-qualification-upstream-integration/v1",
+    "upstream_commit": "ea6ebfa29eafaaeb5e34d1e43e86474af8d60e84"
+  },
   "publication_only_peer307": {
     "active_runtime_acceptance_transferred_to_new_lineage_source": false,
     "active_source_or_selected_native_population_changed": false,
     "feature_branch_merge_commit": "2cf42ccc76c38c927fa7fed663bceb29d7a0825f",
-    "fresh_lineage_qualification_pending": true,
+    "fresh_lineage_qualification_pending": false,
+    "fresh_qualification": {
+      "APUB_probe_sha256": "6c6d2a6735280e5650f2089ea43b75a792093dd95b4dc46321e982900c0c3e16",
+      "JUnit": {
+        "errors": 0,
+        "failures": 0,
+        "seconds": 19.66,
+        "skipped": 0,
+        "tests": 87
+      },
+      "actual_private_worker_invocations": 29,
+      "all_private_worker_processes_terminal": true,
+      "configured_DuckDB": "1.4.3",
+      "configured_NumPy": "2.1.3",
+      "evidence": {
+        "attempt-v01/exports/phase-observations.json": {
+          "bytes": 109868,
+          "path": "publication-lineage-regular-v05/attempt-v01/exports/phase-observations.json",
+          "sha256": "f945c957f5085fc83d06fde63d6ecc23dd478ec5a5b9382dd341ee9a05e8dc32"
+        },
+        "attempt-v01/exports/qualification-result.json": {
+          "bytes": 239234,
+          "path": "publication-lineage-regular-v05/attempt-v01/exports/qualification-result.json",
+          "sha256": "23b3214d07a12f1e97da9b87a9e26973a05d7989ae1a7b46cb64b52dd4ed96d9"
+        },
+        "derived-closeout-audit-v01.json": {
+          "bytes": 4771,
+          "path": "publication-lineage-regular-v05/derived-closeout-audit-v01.json",
+          "sha256": "00ac693da3312445be6e82ca7639c8b08038ae73dc3233971cd632c79d95a860"
+        },
+        "request-v01.json": {
+          "bytes": 52246,
+          "path": "publication-lineage-regular-v05/request-v01.json",
+          "sha256": "3e5bcea01ed1180661d621ddf490cbdeb87c51b298721e397413a66a537247a1"
+        },
+        "root-source-closeout-v01.json": {
+          "bytes": 14855,
+          "path": "publication-lineage-regular-v05/root-source-closeout-v01.json",
+          "sha256": "7af49aefa5e7e8b63fecb0d0a6742dafdb03818ac9e2077a1325f1a6bf136e25"
+        },
+        "scope-v01.json": {
+          "bytes": 83529,
+          "path": "publication-lineage-regular-v05/scope-v01.json",
+          "sha256": "d618ee97898d6b2d9874dad4e0a2d00b4fba9be357429a397ad62eee3e2ff6d6"
+        }
+      },
+      "guard_denials": 0,
+      "independent_review": {
+        "bytes": 6298,
+        "path": "publication-lineage-regular-v05/independent-lineage-v05-binding-v01.json",
+        "sha256": "880066dfd5c5d10fd2d2b6a0e85548a536c4f3ccbb6b693cfacc8bb39b2b1f43"
+      },
+      "installed_input_binding_scope": "Selected package/interpreter metadata and actual private-worker compatibility, not whole installed ABI attestation.",
+      "isolated_worker_installed_inputs": 6,
+      "legacy_private_worker_reads": 28,
+      "new_lineage_private_worker_reads": 1,
+      "parent_cases": 87,
+      "parent_phases": 261,
+      "profile_counts": {
+        "legacy_retained_observer": 33,
+        "new_lineage": 54
+      },
+      "scope_source_count_excluding_scope_itself": 202,
+      "source_input_count": 203,
+      "source_native_process_and_storage_closures_positive": true,
+      "storage_status": "released",
+      "subtests": 0
+    },
+    "preserved_lineage_failures": [
+      {
+        "classification": "Original immutable pre-owner refusal; no native grant or child; retained root controller closed after original typed classification.",
+        "receipt": {
+          "bytes": 813,
+          "path": "publication-lineage-regular-v03/root-original-pre-owner-refusal-closure-binding-v01.json",
+          "sha256": "34f58307b5aba1db0a3ce995c06e7fb5589cb08f8d8d4087036e57d72e56ebcc"
+        },
+        "scope": "publication-lineage-regular-v03"
+      },
+      {
+        "classification": "Qualification failed on the harness assumption of only one worker; existing legacy observer cases require28 established private reads. Failed status and retained storage remain.",
+        "receipt": {
+          "bytes": 19143,
+          "path": "publication-lineage-regular-v04/root-source-closeout-v01.json",
+          "sha256": "55dc631a55416bc5e9f2456459cb5be7a484b269cde2ad80708b28f378ba0e2e"
+        },
+        "scope": "publication-lineage-regular-v04"
+      }
+    ],
     "restored_to_publication_worktree_only": true,
     "source_commit": "8c512d045ab479dd454c8036453a56ab4ced4060"
   },
