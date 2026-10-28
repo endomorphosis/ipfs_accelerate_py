@@ -396,6 +396,23 @@ ordinary push. Conflicts, stale evidence, changed gitlinks without dependencies,
 dirty validation output or failed tests produce a retained hold for repair.
 There are no force pushes, resets of live checkouts or automatic branch deletion.
 
+Publication uses an exact-head pull request and ordinary GitHub merge rules.
+Required hosted checks and reviews must pass, with the candidate head checked
+again immediately before merging. Local validation does not replace a missing
+required hosted result. The publisher never uses administrative merge rights
+when billing, quota or another service outage prevents a check from running.
+
+A confirmed GitHub Actions billing lock retains the tested candidate and its
+pull request as a retryable publication hold. Billing diagnosis uses bounded
+check-run annotations from GitHub Actions on that exact candidate; failures on
+another commit or repository do not establish this candidate's state. The
+watchdog waits with its publication backoff instead of launching a code repair
+for the account outage. After checks recover, the next publication attempt
+reuses the retained candidate and rechecks GitHub readiness. An already merged
+pull request at the exact candidate remains idempotent. Restoring account
+eligibility requires the account owner's action; neither a billing observation
+nor local test success authorizes changing billing or branch protection.
+
 ## Install and inspect
 
 From a tested supervisor checkout, provide a host-specific inventory and a
