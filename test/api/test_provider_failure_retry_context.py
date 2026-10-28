@@ -29,6 +29,8 @@ def test_cold_retry_retains_intent_and_failure_without_promoting_candidate(tmp_p
             "Semantic context sha256": artifact["worker_payload_sha256"],
             "Semantic context refresh": "true",
         })
+    # Ordinary run_once registers identities before writing provider history.
+    daemon._register_task_identities([task])
     checkpoint_dir = daemon._ensure_implementation_checkpoint_dir(task)
     # Worker checkpoint prose is retained as evidence, never as completion.
     (checkpoint_dir / "progress.json").write_text(json.dumps({"status": "complete"}))
@@ -51,8 +53,8 @@ def test_cold_retry_retains_intent_and_failure_without_promoting_candidate(tmp_p
     assert persisted.last_implementation_returncode == 17
     assert task.task_id not in persisted.completed_task_ids
     assert not persisted.implementation_in_progress
-    seed = restarted._prior_attempt_seed_plan(state=persisted, attempt=2)
-    assert seed["reuse_prior_attempt"] is True
+    seed = restarted._prior_attempt_seed_plan(task=task, state=persisted, attempt=2)
+    assert seed["reuse_prior_attempt"] is True, seed
     assert seed["seed_ref"] == commit
     # Selection of a retained commit is distinct from authorizing its replay.
     assert restarted._prior_seed_proposal_authority(task)["ok"] is False

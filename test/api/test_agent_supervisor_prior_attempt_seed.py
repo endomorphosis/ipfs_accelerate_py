@@ -304,7 +304,16 @@ def test_prior_attempt_seed_plan_reuses_unmerged_commit(
         last_implementation_branch="implementation/lig-016-attempt-1",
         last_implementation_returncode=78,
     )
-    plan = daemon._prior_attempt_seed_plan(state=state, attempt=2)
+    task = _task("allowed.txt")
+    identity = daemon._identity_for_task(task)
+    state.last_implementation_task_id = task.task_id
+    state.last_implementation_task_cid = identity.canonical_task_cid
+    state.last_implementation_task_key = identity.canonical_task_key
+    daemon._record_event("failed_validation_worktree_preserved", {"task_id": task.task_id,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "canonical_task_key": identity.canonical_task_key, "board_namespace": identity.board_namespace,
+        "implementation_commit": "abc123prior", "preserved": True})
+    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=2)
     assert plan["reuse_prior_attempt"] is True
     assert plan["seed_ref"] == "abc123prior"
     assert plan["reason"] == "prior_failed_attempt_commit"
@@ -328,7 +337,12 @@ def test_prior_attempt_seed_plan_skips_when_already_on_target(
         lambda ancestor, descendant: ancestor == "abc123prior",
     )
     state = PortalTaskState(last_implementation_commit="abc123prior")
-    plan = daemon._prior_attempt_seed_plan(state=state, attempt=3)
+    task = _task("allowed.txt")
+    identity = daemon._identity_for_task(task)
+    state.last_implementation_task_id = task.task_id
+    state.last_implementation_task_cid = identity.canonical_task_cid
+    state.last_implementation_task_key = identity.canonical_task_key
+    plan = daemon._prior_attempt_seed_plan(task=task, state=state, attempt=3)
     assert plan["reuse_prior_attempt"] is False
     assert plan["reason"] == "prior_already_on_merge_target"
 
@@ -339,7 +353,7 @@ def test_prior_attempt_seed_plan_first_attempt_uses_baseline(
     daemon = _daemon(tmp_path)
     monkeypatch.setattr(daemon, "_main_branch_name", lambda: "feature/x")
     state = PortalTaskState(last_implementation_commit="abc123prior")
-    plan = daemon._prior_attempt_seed_plan(state=state, attempt=1)
+    plan = daemon._prior_attempt_seed_plan(task=_task("allowed.txt"), state=state, attempt=1)
     assert plan["reuse_prior_attempt"] is False
     assert plan["seed_ref"] == "feature/x"
     assert plan["reason"] == "merge_target_baseline"
