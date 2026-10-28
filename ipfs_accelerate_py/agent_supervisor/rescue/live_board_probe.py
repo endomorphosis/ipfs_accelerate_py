@@ -458,6 +458,25 @@ def _status_with_receipt_retry(
     return native, "native_receipt_unavailable_after_retry", attempts
 
 
+def native_population(board: Mapping[str, Any]) -> tuple[set[str], set[str]] | None:
+    """Validate an optional exact population selected by the operator."""
+    if "native_population" not in board:
+        return None
+    population = board["native_population"]
+    if not isinstance(population, dict) or set(population) != {"task_cids", "goal_cids"}:
+        raise ValueError("native_population requires task_cids and goal_cids")
+    result = []
+    for key in ("task_cids", "goal_cids"):
+        values = population[key]
+        if (not isinstance(values, list) or not 1 <= len(values) <= 512
+                or any(not isinstance(value, str) or not value.strip()
+                       or len(value) > 256 for value in values)
+                or len(set(values)) != len(values)):
+            raise ValueError(f"native_population {key} must contain 1..512 unique identities")
+        result.append(set(values))
+    return result[0], result[1]
+
+
 def _database_board_authority(native: Mapping[str, Any], board: Mapping[str, Any],
                               owner_status: Mapping[str, Any], now: float) -> dict[str, Any]:
     """Accept only a fresh native observation bound to the current ready owner.
@@ -501,6 +520,14 @@ def _database_board_authority(native: Mapping[str, Any], board: Mapping[str, Any
                 or sorted(identities) != sorted(expected)
                 or not isinstance(goals, list) or len(goals) != control.get("goal_count")):
             return {}
+        population = native_population(board)
+        if population is not None:
+            task_cids, goal_cids = population
+            observed_goals = [row["goal_cid"] for row in goals]
+            if ({row[0] for row in identities} != task_cids
+                    or len(set(observed_goals)) != len(observed_goals)
+                    or set(observed_goals) != goal_cids):
+                return {}
         unsettled = [row["goal_cid"] for row in goals if row["status"] not in COMPLETED]
         receipts = projection["completion_receipts"]
         if not isinstance(receipts, list):
@@ -944,7 +971,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         if unsettled is not None:
             authority["unsettled_goal_count"] = unsettled
     database_authority = _database_board_authority(native, board, owner_status, now)
-    if native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1":
+    if (native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1"
+            or "native_population" in board):
         if database_authority:
             authority = database_authority
         else:
@@ -963,13 +991,15 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         # for any claim of current authenticated state or completion authority.
         authenticated = False
         source = "native_cached_projection_non_authoritative"
-    if fresh_projections and (not authority or (board_id == "pcpr" and not authenticated)):
+    if ("native_population" not in board and fresh_projections
+            and (not authority or (board_id == "pcpr" and not authenticated))):
         # PCPR's checkpoint replica can lag by dozens of completions. Fresh
         # daemon projections are preferable for observing activity, never gates.
         authority = max(fresh_projections, key=lambda value: _age(value.get("heartbeat_at"), now) * -1)
         source = "fresh_daemon_database_projection_non_authoritative"
         authenticated = False
-    elif (not authority or not _counts(authority)) and readiness_projections:
+    elif ("native_population" not in board
+            and (not authority or not _counts(authority)) and readiness_projections):
         # Native status can be unhealthy (D-state journal, receipt gap) while
         # extra-gate lanes still publish task_state. Observational only.
         authority = max(
@@ -994,7 +1024,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("board_has_blocked_or_quarantined_tasks")
     elif native_unhealthy:
         reasons.append("native_operator_reports_unhealthy")
-    readiness = _readiness(authority, readiness_projections or fresh_projections)
+    readiness = _readiness(authority, [] if "native_population" in board
+                           else readiness_projections or fresh_projections)
     if blocked and int(counts.get("in_progress") or 0) == 0 and (
         readiness.get("ready_count") == 0
         or readiness.get("selection_idle_reason") == "no_ready_tasks"
@@ -1070,7 +1101,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             owner_writer_custody.get("verified") is True and owner_writer_custody.get("held") is True))
         and all(key in COMPLETED for key in counts))
     native_complete = bool(
-        native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1"
+        database_authority
+        and native.get("schema") == "ipfs_accelerate_py/agent-supervisor/database-board-status@1"
         and native.get("authoritative_task_observation") is True
         and native.get("completion_authority") is True
         and native.get("complete") is True
@@ -1099,7 +1131,8 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
             "selection_idle_reason": readiness.get("selection_idle_reason") or "",
             "source_heads": _source_heads(board),
             "source_integrity": source_integrity,
-            "native_completion_authority": native.get("completion_authority") is True,
+            "native_completion_authority": bool(database_authority
+                and native.get("completion_authority") is True),
             "completion_gate": (
                 native.get("completion_gate")
                 or "separate_authoritative_closeout_verification_required"

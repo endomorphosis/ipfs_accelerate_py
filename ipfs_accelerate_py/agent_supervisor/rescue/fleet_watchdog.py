@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .live_board_probe import COMPLETED, read_json_object
+from .live_board_probe import COMPLETED, native_population, read_json_object
 
 SCHEMA = "agent-supervisor/fleet-watchdog@1"
 HEALTH = {"healthy", "degraded", "blocked", "stalled", "stopped", "unknown", "complete"}
@@ -1156,6 +1156,7 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
 def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
                runner=command, now: float | None = None,
                repair_unit: str | None = None) -> dict[str, Any]:
+    observe_only = observation_only(board)
     if repair_unit is not None:
         from .fleet_repair import repair_job_unit
         repair_unit = repair_job_unit({"repair_worker": {"job_unit": repair_unit}})
@@ -1465,6 +1466,8 @@ def load_config(path: Path) -> dict[str, Any]:
         raise ValueError("at least one board is required")
     identifiers = set()
     for board in boards:
+        observation_only(board)
+        native_population(board)
         identifier = board.get("id", "")
         if not re.fullmatch(r"[A-Za-z0-9_-]+", identifier) or identifier in identifiers:
             raise ValueError("board identifiers must be unique safe directory names")

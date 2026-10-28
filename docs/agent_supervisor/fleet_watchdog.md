@@ -129,6 +129,56 @@ The report probe validates regular bounded JSON, freshness, namespace, exact lan
 
 The completed135-task legacy engineering board and the separate34-goal/64-task LegalIR programme retain distinct scopes. Before corpus-worker cutover, reviewed execution packets and authenticated native task/goal scope must be admitted through the existing owners. This diagnostic profile does not rematerialize that population, rearm attempts, approve legal meanings or declare the US Code formalized.
 
+### Observe the scientific programme before enabling recovery
+
+An additional entry in the existing fleet can set `"observation_only": true`.
+This is a strict Boolean operator policy, not a probe result. The watchdog
+continues its configured status probe, health/progress assessment and local
+observation writes, including while holds are present. It selects no recovery
+action and preserves retained recovery counters, pending intent and cooldown.
+It does not review holds, stop a repair unit, heal an owner, enqueue a coding
+job or publish. Existing queued/running repair records remain unchanged and
+appear as held with reason `observation_only`; direct enqueue and job execution
+also enforce the configured policy. Other fleet entries retain their policy.
+This does not cancel workers that were already running.
+
+Native healing also requires exactly one explicit absolute `--inventory` in
+the configured probe, with any `--board` matching the configured identity.
+The selected inventory must contain exactly one matching entry with absolute
+checkout/database paths, and its checkout must match the configured `cwd`.
+Missing, malformed, foreign or incomplete inventories do not fall back to
+`~/.config/ipfs-taskboard-watchdog/inventory.json`. Board names and observed
+unit names alone cannot establish ownership. Unbound fleet heals and direct
+dump/attach/collapse/restart paths refuse before their first effect. Tests of
+these paths must supply a private inventory or assert that refusal.
+
+Use an admitted read-only native status command as the probe. The policy does
+not make an arbitrary operator-configured command read-only. Keep the native
+owner's `bind_database_status_scope` binding to the exact board namespace,
+plan root, repository tree and complete task CID population. Its status-only
+grant has no command operations. Do not open the live database or substitute
+saved `status`/`ready` projections for that authenticated read.
+
+The corresponding `live_board_probe` inventory entry can additionally pin
+`native_population`, an object with exactly `task_cids` and `goal_cids`.
+Each is a complete list of 1–512 unique nonblank identities, at most256
+characters each. Copy the accepted inventories, not aliases, counts or a sample.
+The probe checks both sets against the admitted database status and completion
+projection. Missing, added, substituted or duplicate identities reject the
+observation. A pinned entry cannot fall back to daemon task/readiness counts;
+rejected native completion flags cannot close the board. Omitting the pin
+preserves the existing unpinned adapters.
+
+For LegalIR, retain distinct entry identities for the legacy engineering fleet
+and the `legal-ir-span-graph-lean-refinement-20261016` scientific programme.
+The latter's retained inventory is34 goals/64 tasks; its historical blocked
+snapshot is not current status. Reuse the existing G090/LIR-9004 handoff and
+scientific observation controls. A fresh owner/status binding and compatible
+probe must be qualified before enrollment. This policy adds no LIR launcher,
+task population, credential or execution packet. Enable recovery only through
+an explicit subsequent operator configuration after its native capability,
+retry/resource budgets and independent verification are admitted.
+
 ## Operation
 
 Each board may explicitly configure read-only active-storage checks:

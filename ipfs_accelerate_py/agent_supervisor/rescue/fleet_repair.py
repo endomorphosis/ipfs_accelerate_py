@@ -340,6 +340,8 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
     root = Path(config["state_dir"])
     results = []
     for board in config["boards"]:
+        if observation_only(board):
+            continue
         path = root / "repairs" / board["id"] / "job.json"
         job = read_json(path)
         eligible_status = job.get("status")
@@ -1027,6 +1029,8 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
     root = Path(config["state_dir"]) / "repairs"
     candidates = []
     for board in config["boards"]:
+        if observation_only(board):
+            continue
         path = root / board["id"] / "job.json"
         job = read_json(path)
         if job.get("status") not in {"queued", "running"}:
@@ -1064,6 +1068,11 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
             escalated.append(_budget_result(board["id"], job))
             continue
         if job.get("status") not in {"queued", "running"}:
+            continue
+        if observation_only(board):
+            held.append({"board_id": board["id"],
+                         "next_attempt_at": job.get("next_attempt_at", now),
+                         "reason": "observation_only"})
             continue
         if board_is_complete(config, board["id"]):
             continue
@@ -1307,6 +1316,12 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     unit = repair_job_unit(config)
     jobs = [(board, job) for board, job in _iter_repair_jobs(config)
             if job.get("repair_job_unit", DEFAULT_REPAIR_JOB_UNIT) == unit]
+    if any(observation_only(board) and job.get("status") == "running"
+           for board, job in jobs):
+        # Observation does not cancel an already-running worker, including
+        # when another board shares the dispatcher's single job unit.
+        return False
+    jobs = [(board, job) for board, job in jobs if not observation_only(board)]
     running = [(board, job) for board, job in jobs if job.get("status") == "running"]
     if running:
         return any(
