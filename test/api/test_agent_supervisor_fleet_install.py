@@ -47,6 +47,87 @@ def inputs(tmp_path, monkeypatch):
     return source, inventory, board_root, home
 
 
+def _unit_conditions(unit):
+    """Extract real systemd predicates for read-only condition evaluation."""
+    section = ""
+    conditions = []
+    for line in unit.splitlines():
+        if line.startswith("["):
+            section = line
+        elif section == "[Unit]" and line.startswith("Condition"):
+            conditions.append(line)
+    return conditions
+
+
+@pytest.mark.parametrize("suffix,module,mode", [("watchdog", "fleet_watchdog", ["--apply"]),
+                                                 ("repair", "fleet_repair", ["run"])])
+def test_generic_units_require_only_selected_immutable_runtime_and_config(tmp_path, suffix, module, mode):
+    release = tmp_path / "runtime %n with spaces"
+    source = tmp_path / "mutable %u checkout"
+    config = tmp_path / "configuration %i.json"
+    unit = installer.generic_service_unit(sys.executable, source, release, config, suffix, module, mode).decode()
+    assert _unit_conditions(unit) == [
+        "ConditionPathIsDirectory=" + installer.unit_directory(str(release)),
+        "ConditionFileNotEmpty=" + installer.unit_directory(str(release / "ipfs_accelerate_py/agent_supervisor/rescue" / (module + ".py"))),
+        "ConditionFileNotEmpty=" + installer.unit_directory(str(config)),
+    ]
+    assert all(str(source) not in line and str(source).replace("%", "%%") not in line
+               for line in _unit_conditions(unit))
+    assert "runtime %%n with spaces" in unit and "configuration %%i.json" in unit
+    assert "Restart=always" in unit and "KillMode=control-group" in unit
+
+
+@pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="systemd is unavailable")
+@pytest.mark.parametrize("missing", ["release", "module", "empty_module", "module_directory",
+                                      "config", "empty_config", "config_directory"])
+def test_systemd_conditions_refuse_unusable_runtime_without_starting_service(tmp_path, missing):
+    release = tmp_path / "runtime"
+    selected = release / "ipfs_accelerate_py/agent_supervisor/rescue/fleet_watchdog.py"
+    selected.parent.mkdir(parents=True)
+    selected.write_text("# selected immutable runtime\n")
+    config = tmp_path / "fleet.json"
+    config.write_text("{}")
+    unit = installer.generic_service_unit(sys.executable, tmp_path / "absent-source", release,
+                                         config, "watchdog", "fleet_watchdog", ["--apply"]).decode()
+    command = ["systemd-analyze", "condition", *_unit_conditions(unit)]
+    ready = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, timeout=15)
+    assert ready.returncode == 0, ready.stderr
+    if missing == "release":
+        shutil.rmtree(release)
+    else:
+        target = selected if "module" in missing else config
+        if missing.startswith("empty_"):
+            target.write_text("")
+        else:
+            target.unlink()
+            if missing.endswith("_directory"):
+                target.mkdir()
+    blocked = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, timeout=15)
+    assert blocked.returncode != 0
+    # Only systemd's read-only predicate evaluator ran; no unit was installed,
+    # started, stopped or restarted to prove this prerequisite failure.
+
+
+@pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="systemd is unavailable")
+def test_released_unit_remains_runnable_after_mutable_source_deletion(inputs):
+    source, inventory, board_root, home = inputs
+    result = installer.install(source, inventory, board_root, enable=False)
+    unit = (home / ".config/systemd/user/ipfs-taskboard-watchdog.service").read_text()
+    release = Path(result["release"])
+    shutil.rmtree(source)
+    conditions = subprocess.run(["systemd-analyze", "condition", *_unit_conditions(unit)],
+                               cwd=board_root, capture_output=True, text=True, timeout=15)
+    assert conditions.returncode == 0, conditions.stderr
+    command = [sys.executable, "-P", "-m", "ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog",
+               "--apply", "--config", result["config"]]
+    loaded = subprocess.run(command, cwd=release,
+        env={**os.environ, "PYTHONPATH": str(source) + ":" + str(release), "PYTHONDONTWRITEBYTECODE": "1"},
+        capture_output=True, text=True, timeout=15)
+    assert loaded.returncode == 0, loaded.stderr
+    assert str(release) in loaded.stdout
+    assert not source.exists()
+
+
 def test_installed_release_contains_route_validator_and_binds_without_source(tmp_path):
     source = SCRIPT.parents[3]
     release, contents = installer._enrollment_runtime(source, tmp_path / "staged-home")
@@ -92,6 +173,10 @@ def test_install_uses_safe_python_path_and_separate_native_ensure_unit(inputs):
     assert "KillMode=process" in native
     assert "TimeoutStartSec=360" in native
     assert "native.py" in native
+    assert _unit_conditions(native) == [
+        "ConditionPathIsDirectory=" + installer.unit_directory(str(board_root)),
+        "ConditionFileNotEmpty=" + installer.unit_directory(str(board_root / "board.json")),
+    ]
     assert result["ensure_services"] == ["ipfs-taskboard-spar-ensure.service"]
 
 
@@ -216,6 +301,7 @@ def test_existing_service_ensure_stays_direct(inputs):
     config = json.loads(Path(result["config"]).read_text())
     assert config["boards"][0]["ensure"]["argv"] == argv
     assert result["ensure_services"] == []
+    assert not (_home / ".config/systemd/user/ipfs-taskboard-spar-ensure.service").exists()
 
 
 def test_job_can_stage_upgrade_without_restarting_its_dispatcher(inputs, monkeypatch):

@@ -409,7 +409,20 @@ python3 scripts/ops/agent_supervisor/install_fleet_watchdog.py \
 
 The installer creates a content-addressed standalone runtime under
 `~/.local/lib/ipfs-taskboard-watchdog/releases/`, avoiding optional provider
-imports and sealed-checkout module shadowing. It writes:
+imports and sealed-checkout module shadowing.
+
+Generated watchdog and repair units check that their immutable release directory,
+selected module and configuration exist before starting. Missing prerequisites
+skip startup instead of entering a restart loop. A released unit does not require
+the original development checkout. Generated native ensure units check their
+own working directory and configuration; externally owned service units retain
+their original launch contract.
+
+These path checks do not recreate deleted source, databases or native authority.
+Restore and admit the original prerequisites before requesting the existing
+launcher again. Preserve maintenance holds and unresolved attempt history.
+
+The installer writes:
 
 * Configuration: `~/.config/ipfs-taskboard-watchdog/fleet.json`
 * Inventory: `~/.config/ipfs-taskboard-watchdog/inventory.json`
