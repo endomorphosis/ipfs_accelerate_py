@@ -7246,6 +7246,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         active = load_json_dict(active_path)
         if active is None:
             return denied("active_snapshot_missing_or_malformed")
+        marker_preimage = {
+            "active": self._protected_clearance_marker_preimage(active_path),
+            "incident": self._protected_clearance_marker_preimage(incident_path),
+        }
         for field_name in ("task_id", "attempt", "workspace_path"):
             if active.get(field_name) != incident.get(field_name):
                 return denied(
@@ -7496,7 +7500,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ) != rollback_proof
         ):
             return denied("shared_checkout_rollback_changed_during_clearance")
-
         clearance_basis = {
             "incident": incident,
             "before_head": before_head,
@@ -7539,6 +7542,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 f"{clearance_id.removeprefix('sha256:')[:16]}.json"
             )
         )
+        if rollback_proof.get("history_kind") == "forward_head_without_protected_history":
+            observed_markers = {
+                "active": self._protected_clearance_marker_preimage(active_path),
+                "incident": self._protected_clearance_marker_preimage(incident_path),
+            }
+            if (
+                any(value is None for value in marker_preimage.values())
+                or marker_preimage["active"]["body"] != active
+                or marker_preimage["incident"]["body"] != incident
+                or observed_markers != marker_preimage
+            ):
+                return denied("protected_clearance_inputs_changed")
         write_json_atomic(receipt_path, receipt)
         incident_path.unlink()
         try:
@@ -7587,6 +7602,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result,
         )
         return result
+
+    @staticmethod
+    def _protected_clearance_marker_preimage(path: Path) -> dict[str, Any] | None:
+        """Capture one owned marker generation for explicit forward clearance."""
+        import stat
+
+        descriptor = -1
+        try:
+            if path.resolve(strict=True) != path:
+                return None
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid()
+                or before.st_nlink != 1 or before.st_mode & 0o022
+                or not 0 < before.st_size <= 1_048_576
+            ):
+                return None
+            raw = os.read(descriptor, 1_048_577)
+            identity = lambda value: tuple(getattr(value, key) for key in (
+                "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+                "st_size", "st_mtime_ns", "st_ctime_ns"))
+            expected = identity(before)
+            if (
+                len(raw) != before.st_size
+                or identity(os.fstat(descriptor)) != expected
+                or identity(path.lstat()) != expected
+            ):
+                return None
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                return None
+            return {"identity": expected, "sha256": hashlib.sha256(raw).hexdigest(), "body": body}
+        except (OSError, ValueError, UnicodeError, RuntimeError):
+            return None
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
 
     def _implementation_protected_shared_checkout_rollback_proof(
         self,

@@ -187,3 +187,33 @@ def test_forward_clearance_rechecks_complete_proof_before_receipt(forward_case,m
     assert c.daemon._implementation_protected_active_snapshot_path().exists()
     assert c.daemon._implementation_protected_incident_path().exists()
     assert _preserved(c)==before
+
+
+@pytest.mark.parametrize('marker',['active','incident'])
+@pytest.mark.parametrize('replacement',['new_body','identical_bytes'])
+def test_forward_clearance_preserves_replacement_marker_generation(forward_case,monkeypatch,marker,replacement):
+    c=forward_case;original=c.daemon._implementation_protected_shared_checkout_rollback_proof;calls=[]
+    path=(c.daemon._implementation_protected_active_snapshot_path() if marker=='active'
+          else c.daemon._implementation_protected_incident_path())
+    replaced={}
+    def racing(**kwargs):
+        value=original(**kwargs);calls.append(value)
+        if len(calls)==1:
+            assert value
+            raw=path.read_bytes()
+            if replacement=='new_body':
+                body=json.loads(raw);body['task_id']='FOREIGN-REPLACEMENT-TASK'
+                raw=(json.dumps(body,sort_keys=True)+'\n').encode()
+            temporary=path.with_name('replacement-marker.json')
+            temporary.write_bytes(raw);temporary.chmod(0o600);temporary.replace(path)
+            replaced.update(raw=raw,inode=path.stat().st_ino)
+        return value
+    monkeypatch.setattr(c.daemon,'_implementation_protected_shared_checkout_rollback_proof',racing)
+    before=_preserved(c)
+    result=c.daemon.clear_implementation_protected_path_incident(operator_note='Require the captured marker generation.')
+    assert result['cleared'] is False and result['reason']=='protected_clearance_inputs_changed',result
+    assert path.read_bytes()==replaced['raw'] and path.stat().st_ino==replaced['inode']
+    assert c.daemon._implementation_protected_active_snapshot_path().exists()
+    assert c.daemon._implementation_protected_incident_path().exists()
+    assert not list(path.parent.glob('implementation-protected-path-clearance-*.json'))
+    assert _preserved(c)==before
