@@ -32084,6 +32084,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 {"reuse_prior_attempt": False}
                 if retry_no_change_probe_only
                 else self._prior_attempt_seed_plan(
+                    task=task,
                     state=state,
                     attempt=attempt,
                 )
@@ -35831,6 +35832,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _prior_attempt_seed_plan(
         self,
         *,
+        task: PortalTask,
         state: PortalTaskState,
         attempt: int,
     ) -> dict[str, Any]:
@@ -35840,6 +35842,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ``_preserve_failed_validation_worktree``. Retries should start from that
         commit when it is not yet on the merge target so implementers do not
         re-discover work from git history (LIG-016 attempt-2 class failures).
+        Lane-wide state and the preserved commit's Native event must both bind
+        the current canonical task before any path-overlap replay is selected.
         """
 
         target = self._main_branch_name()
@@ -35852,6 +35856,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "prior_branch": "",
         }
         if int(attempt or 0) <= 1:
+            return plan
+        identity = self._identity_for_task(task)
+        if (state.last_implementation_task_id != task.task_id
+                or state.last_implementation_task_cid != identity.canonical_task_cid
+                or state.last_implementation_task_key != identity.canonical_task_key):
+            plan["reason"] = "prior_attempt_task_identity_mismatch"
             return plan
         prior_commit = str(state.last_implementation_commit or "").strip()
         prior_branch = str(state.last_implementation_branch or "").strip()
@@ -35874,6 +35884,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return plan
         if self._git_ref_is_ancestor(candidate, target):
             plan["reason"] = "prior_already_on_merge_target"
+            return plan
+        # Lane-wide last-commit fields can describe a different task. A
+        # historical same-task path receipt does not authorize bytes from
+        # that other commit, even when the declared output paths overlap.
+        owners = [event for event in self._iter_events()
+            if event.get("type") in {"implementation_finished", "failed_validation_worktree_preserved",
+                "provider_failed_worktree_preserved", "timed_out_worktree_preserved"}
+            and any(event.get(key) == candidate for key in ("implementation_commit", "preserved_commit"))]
+        if (not owners or any(event.get("task_id") != task.task_id
+                or event.get("canonical_task_cid") != identity.canonical_task_cid
+                or event.get("canonical_task_key") != identity.canonical_task_key
+                or event.get("board_namespace") != identity.board_namespace for event in owners)):
+            plan["reason"] = "prior_seed_commit_task_identity_unproved"
             return plan
         plan["seed_ref"] = candidate
         plan["reuse_prior_attempt"] = True

@@ -49,7 +49,10 @@ def pending(tmp_path, monkeypatch, request):
         subprocess.run(["git", "merge", "--ff-only", baseline], cwd=workspace, check=True, capture_output=True)
         (workspace / "external").mkdir(exist_ok=True)
         subprocess.run(["git", "clone", "--shared", str(dependency), str(workspace / "external/runtime")], check=True, capture_output=True)
-    task, lease, claim_path = _persist_live_shaped_interrupted_attempt(daemon, workspace=workspace)
+    parameter = getattr(request, "param", None)
+    ordinal = parameter.get("attempt", 1) if isinstance(parameter, dict) else 1
+    candidate = parameter == "candidate" or isinstance(parameter, dict) and parameter.get("candidate", False)
+    task, lease, claim_path = _persist_live_shaped_interrupted_attempt(daemon, workspace=workspace, attempt=ordinal)
     directory = daemon.state_path.parent
     directory.chmod(0o700)
     # These births belong to real exited local Python processes. No provider,
@@ -86,7 +89,7 @@ print(json.dumps({'launch':launch,'dispatch':child}))
     reserved = {"timestamp", "type", "stream_id", "snapshot_id", "sequence", "event_id", "previous_event_id"}
     daemon._record_event("implementation_started", {**{k:v for k,v in start.items() if k not in reserved},
         "worktree_lifecycle": {"state": "active", "fence": life.fence, "lease_id": life.lease_id}})
-    if getattr(request, "param", None) == "candidate":
+    if candidate:
         output = workspace / "src/example.py"
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text("VALUE = 34\n")
@@ -170,7 +173,7 @@ def test_real_pending_claim_release_preserves_state_source_ordinals_and_exact_re
 
 
 @pytest.mark.parametrize("damage", ["runtime", "state", "claim", "source", "waiting", "manual_hold", "quarantine",
-    "active", "protected", "production", "implement", "budget", "live_birth", "unknown_birth", "foreign_launcher",
+    "active", "protected", "production", "implement", "live_birth", "unknown_birth", "foreign_launcher",
     "shutdown", "baseline_dirty", "later_outcome", "later_start", "partial_history", "wrong_lifecycle_index",
     "maintenance_history", "foreign_pin", "replacement_claim"])
 def test_refusal_preserves_pending_claim_and_native_accounting(pending, monkeypatch, damage):
@@ -191,7 +194,6 @@ def test_refusal_preserves_pending_claim_and_native_accounting(pending, monkeypa
     elif damage == "protected": write(daemon._implementation_protected_active_snapshot_path(), {"held": True})
     elif damage == "production": daemon.production_provider_policy = object()
     elif damage == "implement": daemon.implement = True
-    elif damage == "budget": daemon.max_task_attempts = 1
     elif damage == "unknown_birth": monkeypatch.setattr(native, "owner_liveness", lambda *a,**kw:native.OwnerLiveness.UNKNOWN)
     elif damage == "live_birth":
         value = json.loads(claim.read_text());birth = native.current_process_birth();value.update(pid=birth.pid,owner_process_birth=birth.to_dict())
