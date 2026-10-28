@@ -7468,7 +7468,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     cwd=self.repo_root,
                     check=False,
                 )
-                if unchanged.returncode != 0 or not mirrored_workspace_proof:
+                if unchanged.returncode != 0 or not (
+                    mirrored_workspace_proof or rollback_proof
+                ):
                     return denied(
                         "protected_path_history_empty",
                         protected_path_diff_returncode=unchanged.returncode,
@@ -7488,6 +7490,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         if self._implementation_protected_git_head(self.repo_root) != after_head:
             return denied("shared_checkout_changed_during_clearance")
+        if rollback_proof and (
+            self._implementation_protected_shared_checkout_rollback_proof(
+                active=active, incident=incident
+            ) != rollback_proof
+        ):
+            return denied("shared_checkout_rollback_changed_during_clearance")
 
         clearance_basis = {
             "incident": incident,
@@ -7638,6 +7646,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }
 
         restored: dict[str, dict[str, Any]] = {}
+        observed_shared: dict[str, dict[str, Any]] = {}
         for relative in sorted(protected_paths):
             baseline = baseline_paths.get(relative)
             if not isinstance(baseline, Mapping):
@@ -7653,6 +7662,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ):
                 return {}
             restored[relative] = stable_identity(current)
+            observed_shared[relative] = dict(current)
 
         for item in mutations:
             if not isinstance(item, Mapping):
@@ -7669,12 +7679,94 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         baseline_head = str(shared.get("git_head") or "")
         current_head = self._implementation_protected_git_head(self.repo_root)
-        if not baseline_head or baseline_head != current_head:
+        if not baseline_head or not current_head:
             return {}
+        forward_proof: dict[str, Any] = {}
+        if baseline_head != current_head:
+            # Explicit operator clearance may follow unrelated maintenance
+            # commits. It cannot approve a changed-and-reverted protected path,
+            # a foreign checkout, or changed workspace inputs. This proof is
+            # intentionally not used by automatic fence reconciliation.
+            if (
+                not re.fullmatch(r"[0-9a-f]{40}", baseline_head)
+                or not re.fullmatch(r"[0-9a-f]{40}", current_head)
+                or str(shared.get("root") or "") != str(self.repo_root.resolve())
+                or self._find_live_inflight_implementation() is not None
+            ):
+                return {}
+            try:
+                workspace = Path(str(active.get("workspace_path") or ""))
+                if (
+                    not workspace.is_absolute()
+                    or workspace.resolve(strict=True) != workspace
+                    or workspace == self.repo_root.resolve()
+                    or not workspace.is_relative_to(self.worktree_root.resolve())
+                ):
+                    return {}
+            except (OSError, RuntimeError):
+                return {}
+            workspace_before = snapshot.get("workspace")
+            workspace_paths = (
+                workspace_before.get("paths")
+                if isinstance(workspace_before, Mapping) else None
+            )
+            if (
+                not isinstance(workspace_paths, Mapping)
+                or set(workspace_paths) != set(protected_paths)
+                or str(workspace_before.get("root") or "") != str(workspace)
+            ):
+                return {}
+            observed_workspace: dict[str, dict[str, Any]] = {}
+            for relative in sorted(protected_paths):
+                baseline = baseline_paths[relative]
+                current = observed_shared[relative]
+                if (
+                    current.get("kind") != "regular_file"
+                    or baseline.get("kind") != "regular_file"
+                    or baseline.get("links") != 1
+                    or current.get("links") != 1
+                    or current.get("device") != baseline.get("device")
+                    or current.get("uid") != os.getuid()
+                ):
+                    return {}
+                actual_workspace = self._implementation_protected_path_identity(
+                    workspace, relative
+                )
+                if actual_workspace != workspace_paths.get(relative):
+                    return {}
+                observed_workspace[relative] = dict(actual_workspace)
+            for arguments in (
+                ["merge-base", "--is-ancestor", baseline_head, current_head],
+                ["diff", "--quiet", baseline_head, current_head, "--", *sorted(protected_paths)],
+                ["log", "--full-history", "--format=%H", f"{baseline_head}..{current_head}", "--", *sorted(protected_paths)],
+            ):
+                checked = subprocess.run(
+                    ["git", *arguments], cwd=self.repo_root, text=True,
+                    capture_output=True, check=False,
+                )
+                if checked.returncode != 0 or checked.stdout.strip():
+                    return {}
+            if self._implementation_protected_git_head(self.repo_root) != current_head:
+                return {}
+            for relative in sorted(protected_paths):
+                if (
+                    self._implementation_protected_path_identity(self.repo_root, relative)
+                    != observed_shared[relative]
+                    or self._implementation_protected_path_identity(workspace, relative)
+                    != observed_workspace[relative]
+                ):
+                    return {}
+            forward_proof = {
+                "baseline_git_head": baseline_head,
+                "history_kind": "forward_head_without_protected_history",
+                "observed_shared_identities": observed_shared,
+                "observed_workspace_identities": observed_workspace,
+            }
         return {
             "schema": "implementation-protected-path-rollback-proof-v1",
             "git_head": current_head,
             "restored_paths": restored,
+            **forward_proof,
         }
 
     def _mirrored_ephemeral_workspace_clearance_proof(
@@ -9085,6 +9177,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result,
         )
         return result
+
+    def _auto_clear_shared_checkout_incident_when_head_clean(
+        self,
+        incident: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> None:
+        """Keep unproved head-clean incidents latched for explicit clearance.
+
+        A clean Git HEAD is not authorization to retire a protected identity
+        change. The operator API supplies the separate, freshly checked proof.
+        """
+        return None
 
     def _recover_authorized_latched_protected_path_incident(
         self,
