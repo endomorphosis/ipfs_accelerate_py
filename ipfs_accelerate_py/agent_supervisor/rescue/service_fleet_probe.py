@@ -58,6 +58,52 @@ def _binding(board_id: str, namespace: str, units: Mapping[str, str], age: float
         raise InvalidReport("invalid_probe_binding")
 
 
+BACKPRESSURE_IDLE_REASONS = frozenset({
+    "provider_capacity_backoff", "all_selectable_ready_tasks_reached_max_task_attempts",
+    "all_selectable_ready_tasks_blocked_on_attempt_accounting_evidence",
+    "all_selectable_ready_tasks_deferred_by_resource_claim",
+    "all_selectable_ready_tasks_deprioritized_as_off_mission",
+    "no_eligible_ready_tasks_after_selection_filters", "virgin_transfer_rendezvous_pending",
+})
+
+
+def retry_backpressure_lane(lane: Any) -> bool:
+    """Recognize an explicit live monitor pause, after scope/freshness checks.
+
+    This is scheduling evidence, never task completion or permission to reset
+    retries. A missing/dead worker, active task or restart-eligible diagnosis
+    cannot become an intentional pause merely by supplying an idle string.
+    """
+    if (not isinstance(lane, dict) or lane.get("healthy") is not False
+            or lane.get("status") != "backpressure" or lane.get("action") != "none"
+            or lane.get("restart_eligible") is not False or lane.get("active") is not False
+            or lane.get("native_daemon_pid_alive") is not True):
+        return False
+    idle = lane.get("selection_idle_reason")
+    if (not isinstance(idle, str) or len(idle) > 256
+            or any(ord(character) < 32 for character in idle)):
+        return False
+    return (lane.get("native_progress_status") == "backpressure"
+            or idle in BACKPRESSURE_IDLE_REASONS
+            or any(idle.startswith(prefix) and len(idle) > len(prefix)
+                   for prefix in ("implementation_retry_deferred:", "resource_claim_deferred:")))
+
+
+def backpressure_monitor_issues(healthy: Any, issues: Any, paused: set[str]) -> bool:
+    """Do not conceal any fleet issue other than these exact paused lanes."""
+    if healthy is not False or not paused or not isinstance(issues, list) or len(issues) != len(paused):
+        return False
+    seen = set()
+    for issue in issues:
+        if (not isinstance(issue, dict) or set(issue) != {"code", "lane_id", "status"}
+                or issue.get("code") != "lane_unhealthy" or issue.get("status") != "backpressure"
+                or not _text(issue.get("lane_id")) or issue["lane_id"] not in paused
+                or issue["lane_id"] in seen):
+            return False
+        seen.add(issue["lane_id"])
+    return seen == paused
+
+
 def _lane(row: Any, units: Mapping[str, str], namespace: str,
           now: float, age: float) -> dict[str, Any]:
     if not isinstance(row, dict) or row.get("lane_id") not in units:
@@ -102,6 +148,14 @@ def _lane(row: Any, units: Mapping[str, str], namespace: str,
     if not isinstance(idle, str) or len(idle) > 256 or any(ord(c) < 32 for c in idle):
         raise InvalidReport("invalid_idle_reason")
     normalized["selection_idle_reason"] = idle
+    restart = health.get("restart_eligible")
+    if "restart_eligible" in health and type(restart) is not bool:
+        raise InvalidReport("invalid_restart_eligibility")
+    normalized["restart_eligible"] = restart
+    progress_status = evidence.get("native_progress_status")
+    if progress_status is not None and not _text(progress_status):
+        raise InvalidReport("invalid_native_progress_status")
+    normalized["native_progress_status"] = progress_status
     return normalized
 
 
@@ -147,7 +201,14 @@ def observe_service_fleet(report_path: Path, *, board_id: str, board_namespace: 
             raise InvalidReport("lane_population_mismatch")
         lanes.sort(key=lambda lane: lane["lane_id"])
         service_fleet["lanes"] = lanes
-        if not report["healthy"] or not all(lane["healthy"] for lane in lanes):
+        paused = {lane["lane_id"] for lane in lanes if retry_backpressure_lane(lane)}
+        paused_issues_only = (all(lane["healthy"] or lane["lane_id"] in paused for lane in lanes)
+                             and backpressure_monitor_issues(report["healthy"], report.get("issues"), paused))
+        service_fleet["monitor_healthy"] = report["healthy"]
+        service_fleet["monitor_issues"] = ([{"code": "lane_unhealthy", "lane_id": lane,
+                                             "status": "backpressure"} for lane in sorted(paused)]
+                                            if paused_issues_only else [])
+        if (not report["healthy"] or not all(lane["healthy"] for lane in lanes)) and not paused_issues_only:
             result.update(health="degraded", reason_codes=["service_fleet_unhealthy"])
             return result
         if not all(lane["native_daemon_pid_alive"] for lane in lanes):
@@ -163,6 +224,13 @@ def observe_service_fleet(report_path: Path, *, board_id: str, board_namespace: 
         active = any(lane["active"] for lane in lanes)
         ready = any(any(lane[key] > 0 for key in NO_WORK_COUNTS[:3]) for lane in lanes)
         waiting = any(lane["blocked_count"] or lane["waiting_count"] for lane in lanes)
+        independent_ready = any(lane["lane_id"] not in paused
+                                and (lane["ready_count"] or lane["selectable_ready_count"]) for lane in lanes)
+        if paused and not active and not independent_ready:
+            service_fleet["work_availability"] = "backpressure_wait"
+            result.update(health="blocked", reason_codes=["service_fleet_backpressure_wait"])
+            result["details"]["wait"] = {"kind": "native_retry_or_resource_fence", "completion_authority": False}
+            return result
         if not active and not ready and waiting:
             service_fleet["work_availability"] = "dependency_wait"
             result.update(health="blocked", reason_codes=["external_dependency_wait"])

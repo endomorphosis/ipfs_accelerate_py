@@ -1763,7 +1763,7 @@ def _service_fleet_case(now=1000.0, *, ready=0):
                  service_fleet_binding=dict(board_namespace="legal-ir-autoencoder-v1",
                                             max_age_seconds=180, lanes=units))
     lanes = [dict(lane_id=k, service=v, healthy=True, checked_at_epoch=now,
-                  native_status_at_epoch=now, active=False, ready_count=ready,
+                  native_status_at_epoch=now, native_daemon_pid_alive=True, active=False, ready_count=ready,
                   selectable_ready_count=ready, global_ready_count=ready,
                   blocked_count=0, waiting_count=0, task_count=135 + ready,
                   completed_count=135) for k, v in units.items()]
@@ -1971,7 +1971,9 @@ def _wait_cancel_cycle(tmp_path, monkeypatch, *, job_status="running", policy=No
         config["repair_worker"] = policy
     job = root / "repairs/spar/job.json"
     if job_status is not None:
-        fleet.write_json(job, {"status": job_status, "attempts": 2})
+        fleet.write_json(job, {"board_id": "spar", "status": job_status, "attempts": 2,
+                              "repair_job_unit": (policy or {}).get("job_unit", "ipfs-taskboard-repair-job.service"),
+                              "repair_unit_token": "a" * 32})
     foreign = root / "repairs/foreign/job.json"
     fleet.write_json(foreign, {"status": "running", "attempts": 7})
     original_foreign = foreign.read_bytes()
@@ -1983,6 +1985,9 @@ def _wait_cancel_cycle(tmp_path, monkeypatch, *, job_status="running", policy=No
         calls.append(list(spec["argv"]))
         if spec["argv"] == ["probe"]:
             return _result(observation)
+        if spec["argv"][:3] == ["systemctl", "--user", "show"]:
+            return {"returncode": 0, "stdout": "IPFS_TASKBOARD_REPAIR_BOARD_ID=spar "
+                    "IPFS_TASKBOARD_REPAIR_JOB_TOKEN=" + "a" * 32, "stderr": ""}
         assert spec["argv"][:3] == ["systemctl", "--user", "stop"]
         return {"returncode": 0, "stdout": "", "stderr": ""}
 
@@ -2006,8 +2011,10 @@ def test_wait_cancel_uses_configured_job_unit_and_preserves_foreign_job(tmp_path
     job_before = job.read_bytes()
     report = fleet.run_cycle(config, apply=True)
     assert report["boards"]["spar"]["stall_class"] == "missing_independent_clause_evidence"
-    assert calls == [["probe"], ["systemctl", "--user", "stop",
-                                unit or "ipfs-taskboard-repair-job.service"]]
+    selected_unit = unit or "ipfs-taskboard-repair-job.service"
+    assert calls == [["probe"], ["systemctl", "--user", "show", selected_unit,
+                                "--property=Environment", "--value"],
+                    ["systemctl", "--user", "stop", selected_unit]]
     assert foreign.read_bytes() == original
     assert job.read_bytes() == job_before
 
