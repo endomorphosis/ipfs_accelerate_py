@@ -908,6 +908,7 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
         state["observation"] = observation
     state["stall_class"] = ("external_dependency_wait" if availability == "dependency_wait"
                              else "service_fleet_backpressure_wait" if availability == "backpressure_wait"
+                             and not retained_attempt_wait(observation)
                              else classify_stall(observation, previous))
     if policy_observation is not None:
         if availability == "runnable_work" and health == "stalled":

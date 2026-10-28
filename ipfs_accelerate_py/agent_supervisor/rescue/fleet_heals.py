@@ -3553,6 +3553,8 @@ def _systemd_start_unit(unit: str) -> None:
 
 def apply_supervisor_heal(board: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
     """Formal logic first. llm_router is the residual coding path."""
+    if reason := _native_heal_binding_reason(board):
+        return {"status": "skip", "reason": reason, "completion_authority": False}
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
     if reason := _recovery_denial(board, observation):
         return {"status": "wait", "recipe": "retain_native_owner", "reason": reason,

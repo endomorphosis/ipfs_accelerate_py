@@ -7250,6 +7250,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         active = load_json_dict(active_path)
         if active is None:
             return denied("active_snapshot_missing_or_malformed")
+        marker_preimage = {
+            "active": self._protected_clearance_marker_preimage(active_path),
+            "incident": self._protected_clearance_marker_preimage(incident_path),
+        }
         for field_name in ("task_id", "attempt", "workspace_path"):
             if active.get(field_name) != incident.get(field_name):
                 return denied(
@@ -7472,7 +7476,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     cwd=self.repo_root,
                     check=False,
                 )
-                if unchanged.returncode != 0 or not mirrored_workspace_proof:
+                if unchanged.returncode != 0 or not (
+                    mirrored_workspace_proof or rollback_proof
+                ):
                     return denied(
                         "protected_path_history_empty",
                         protected_path_diff_returncode=unchanged.returncode,
@@ -7492,7 +7498,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         if self._implementation_protected_git_head(self.repo_root) != after_head:
             return denied("shared_checkout_changed_during_clearance")
-
+        if rollback_proof and (
+            self._implementation_protected_shared_checkout_rollback_proof(
+                active=active, incident=incident
+            ) != rollback_proof
+        ):
+            return denied("shared_checkout_rollback_changed_during_clearance")
         clearance_basis = {
             "incident": incident,
             "before_head": before_head,
@@ -7535,6 +7546,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 f"{clearance_id.removeprefix('sha256:')[:16]}.json"
             )
         )
+        if rollback_proof.get("history_kind") == "forward_head_without_protected_history":
+            observed_markers = {
+                "active": self._protected_clearance_marker_preimage(active_path),
+                "incident": self._protected_clearance_marker_preimage(incident_path),
+            }
+            if (
+                any(value is None for value in marker_preimage.values())
+                or marker_preimage["active"]["body"] != active
+                or marker_preimage["incident"]["body"] != incident
+                or observed_markers != marker_preimage
+            ):
+                return denied("protected_clearance_inputs_changed")
         write_json_atomic(receipt_path, receipt)
         incident_path.unlink()
         try:
@@ -7583,6 +7606,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result,
         )
         return result
+
+    @staticmethod
+    def _protected_clearance_marker_preimage(path: Path) -> dict[str, Any] | None:
+        """Capture one owned marker generation for explicit forward clearance."""
+        import stat
+
+        descriptor = -1
+        try:
+            if path.resolve(strict=True) != path:
+                return None
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid()
+                or before.st_nlink != 1 or before.st_mode & 0o022
+                or not 0 < before.st_size <= 1_048_576
+            ):
+                return None
+            raw = os.read(descriptor, 1_048_577)
+            identity = lambda value: tuple(getattr(value, key) for key in (
+                "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+                "st_size", "st_mtime_ns", "st_ctime_ns"))
+            expected = identity(before)
+            if (
+                len(raw) != before.st_size
+                or identity(os.fstat(descriptor)) != expected
+                or identity(path.lstat()) != expected
+            ):
+                return None
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                return None
+            return {"identity": expected, "sha256": hashlib.sha256(raw).hexdigest(), "body": body}
+        except (OSError, ValueError, UnicodeError, RuntimeError):
+            return None
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
 
     def _implementation_protected_shared_checkout_rollback_proof(
         self,
@@ -7642,6 +7703,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }
 
         restored: dict[str, dict[str, Any]] = {}
+        observed_shared: dict[str, dict[str, Any]] = {}
         for relative in sorted(protected_paths):
             baseline = baseline_paths.get(relative)
             if not isinstance(baseline, Mapping):
@@ -7657,6 +7719,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ):
                 return {}
             restored[relative] = stable_identity(current)
+            observed_shared[relative] = dict(current)
 
         for item in mutations:
             if not isinstance(item, Mapping):
@@ -7673,12 +7736,94 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         baseline_head = str(shared.get("git_head") or "")
         current_head = self._implementation_protected_git_head(self.repo_root)
-        if not baseline_head or baseline_head != current_head:
+        if not baseline_head or not current_head:
             return {}
+        forward_proof: dict[str, Any] = {}
+        if baseline_head != current_head:
+            # Explicit operator clearance may follow unrelated maintenance
+            # commits. It cannot approve a changed-and-reverted protected path,
+            # a foreign checkout, or changed workspace inputs. This proof is
+            # intentionally not used by automatic fence reconciliation.
+            if (
+                not re.fullmatch(r"[0-9a-f]{40}", baseline_head)
+                or not re.fullmatch(r"[0-9a-f]{40}", current_head)
+                or str(shared.get("root") or "") != str(self.repo_root.resolve())
+                or self._find_live_inflight_implementation() is not None
+            ):
+                return {}
+            try:
+                workspace = Path(str(active.get("workspace_path") or ""))
+                if (
+                    not workspace.is_absolute()
+                    or workspace.resolve(strict=True) != workspace
+                    or workspace == self.repo_root.resolve()
+                    or not workspace.is_relative_to(self.worktree_root.resolve())
+                ):
+                    return {}
+            except (OSError, RuntimeError):
+                return {}
+            workspace_before = snapshot.get("workspace")
+            workspace_paths = (
+                workspace_before.get("paths")
+                if isinstance(workspace_before, Mapping) else None
+            )
+            if (
+                not isinstance(workspace_paths, Mapping)
+                or set(workspace_paths) != set(protected_paths)
+                or str(workspace_before.get("root") or "") != str(workspace)
+            ):
+                return {}
+            observed_workspace: dict[str, dict[str, Any]] = {}
+            for relative in sorted(protected_paths):
+                baseline = baseline_paths[relative]
+                current = observed_shared[relative]
+                if (
+                    current.get("kind") != "regular_file"
+                    or baseline.get("kind") != "regular_file"
+                    or baseline.get("links") != 1
+                    or current.get("links") != 1
+                    or current.get("device") != baseline.get("device")
+                    or current.get("uid") != os.getuid()
+                ):
+                    return {}
+                actual_workspace = self._implementation_protected_path_identity(
+                    workspace, relative
+                )
+                if actual_workspace != workspace_paths.get(relative):
+                    return {}
+                observed_workspace[relative] = dict(actual_workspace)
+            for arguments in (
+                ["merge-base", "--is-ancestor", baseline_head, current_head],
+                ["diff", "--quiet", baseline_head, current_head, "--", *sorted(protected_paths)],
+                ["log", "--full-history", "--format=%H", f"{baseline_head}..{current_head}", "--", *sorted(protected_paths)],
+            ):
+                checked = subprocess.run(
+                    ["git", *arguments], cwd=self.repo_root, text=True,
+                    capture_output=True, check=False,
+                )
+                if checked.returncode != 0 or checked.stdout.strip():
+                    return {}
+            if self._implementation_protected_git_head(self.repo_root) != current_head:
+                return {}
+            for relative in sorted(protected_paths):
+                if (
+                    self._implementation_protected_path_identity(self.repo_root, relative)
+                    != observed_shared[relative]
+                    or self._implementation_protected_path_identity(workspace, relative)
+                    != observed_workspace[relative]
+                ):
+                    return {}
+            forward_proof = {
+                "baseline_git_head": baseline_head,
+                "history_kind": "forward_head_without_protected_history",
+                "observed_shared_identities": observed_shared,
+                "observed_workspace_identities": observed_workspace,
+            }
         return {
             "schema": "implementation-protected-path-rollback-proof-v1",
             "git_head": current_head,
             "restored_paths": restored,
+            **forward_proof,
         }
 
     def _mirrored_ephemeral_workspace_clearance_proof(
@@ -9089,6 +9234,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result,
         )
         return result
+
+    def _auto_clear_shared_checkout_incident_when_head_clean(
+        self,
+        incident: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> None:
+        """Keep unproved head-clean incidents latched for explicit clearance.
+
+        A clean Git HEAD is not authorization to retire a protected identity
+        change. The operator API supplies the separate, freshly checked proof.
+        """
+        return None
 
     def _recover_authorized_latched_protected_path_incident(
         self,
@@ -32084,6 +32243,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 {"reuse_prior_attempt": False}
                 if retry_no_change_probe_only
                 else self._prior_attempt_seed_plan(
+                    task=task,
                     state=state,
                     attempt=attempt,
                 )
@@ -35831,6 +35991,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _prior_attempt_seed_plan(
         self,
         *,
+        task: PortalTask,
         state: PortalTaskState,
         attempt: int,
     ) -> dict[str, Any]:
@@ -35840,6 +36001,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ``_preserve_failed_validation_worktree``. Retries should start from that
         commit when it is not yet on the merge target so implementers do not
         re-discover work from git history (LIG-016 attempt-2 class failures).
+        Lane-wide state and the preserved commit's Native event must both bind
+        the current canonical task before any path-overlap replay is selected.
         """
 
         target = self._main_branch_name()
@@ -35852,6 +36015,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "prior_branch": "",
         }
         if int(attempt or 0) <= 1:
+            return plan
+        identity = self._identity_for_task(task)
+        if (state.last_implementation_task_id != task.task_id
+                or state.last_implementation_task_cid != identity.canonical_task_cid
+                or state.last_implementation_task_key != identity.canonical_task_key):
+            plan["reason"] = "prior_attempt_task_identity_mismatch"
             return plan
         prior_commit = str(state.last_implementation_commit or "").strip()
         prior_branch = str(state.last_implementation_branch or "").strip()
@@ -35874,6 +36043,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return plan
         if self._git_ref_is_ancestor(candidate, target):
             plan["reason"] = "prior_already_on_merge_target"
+            return plan
+        # Lane-wide last-commit fields can describe a different task. A
+        # historical same-task path receipt does not authorize bytes from
+        # that other commit, even when the declared output paths overlap.
+        owners = [event for event in self._iter_events()
+            if event.get("type") in {"implementation_finished", "failed_validation_worktree_preserved",
+                "provider_failed_worktree_preserved", "timed_out_worktree_preserved"}
+            and any(event.get(key) == candidate for key in ("implementation_commit", "preserved_commit"))]
+        if (not owners or any(event.get("task_id") != task.task_id
+                or event.get("canonical_task_cid") != identity.canonical_task_cid
+                or event.get("canonical_task_key") != identity.canonical_task_key
+                or event.get("board_namespace") != identity.board_namespace for event in owners)):
+            plan["reason"] = "prior_seed_commit_task_identity_unproved"
             return plan
         plan["seed_ref"] = candidate
         plan["reuse_prior_attempt"] = True
