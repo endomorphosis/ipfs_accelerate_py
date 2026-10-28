@@ -68,10 +68,18 @@ def _header_prefix(value: str) -> str:
     return prefix
 
 
+def _fair_dispatch_sequence(record: Mapping[str, Any]) -> int:
+    value = record.get("fair_dispatch_sequence", 0)
+    if type(value) is not int or not 0 <= value < 2**63:
+        raise ValueError("invalid persistent fair dispatch sequence")
+    return value
+
+
 def _order_explicit_task_priorities(
-    task_ids: Sequence[str], blocks: Mapping[str, Mapping[str, str]],
+    task_ids: Sequence[str], blocks: Mapping[str, Mapping[str, str]], *,
+    fixed_points: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[str]:
-    """Honor P0/P1/... among selectable tasks, stably within each tier.
+    """Honor P0/P1/...; equal priorities yield to less recently dispatched work.
 
     Unspecified or differently encoded priorities keep their document slots;
     a numeric/Fibonacci value must not acquire invented urgency semantics.
@@ -89,7 +97,9 @@ def _order_explicit_task_priorities(
                 # Extremely long numeric input has no established priority.
                 continue
     for (index, _task_id, _rank), (_old_index, task_id, _priority) in zip(
-        annotated, sorted(annotated, key=lambda item: item[2]),
+        annotated, sorted(annotated, key=lambda item: (
+            item[2], _fair_dispatch_sequence((fixed_points or {}).get(item[1]) or {}), item[0],
+        )),
     ):
         ordered[index] = task_id
     return ordered
@@ -849,6 +859,7 @@ def _run_argv(
     cwd: Path | None = None,
     cleanup_descendants_on_success: bool = False,
     env: Mapping[str, str] | None = None,
+    on_spawn: Callable[[], None] | None = None,
 ) -> int:
     """Run a command, containing failures and optionally its successful children.
 
@@ -873,6 +884,8 @@ def _run_argv(
         deadline = time.monotonic() + timeout
         completed = False
         try:
+            if on_spawn is not None:
+                on_spawn()
             while True:
                 descendants.snapshot()
                 heartbeat()
@@ -1707,8 +1720,8 @@ def run_resume_cycle(
             todo_text, task_header_prefix=task_header_prefix
         )
     }
-    selected = _order_explicit_task_priorities(selected, blocks)
     attempts, retry_after, fixed_points, command_evidence = _load_attempt_state(attempt_path)
+    selected = _order_explicit_task_priorities(selected, blocks, fixed_points=fixed_points)
     gate_recovery = GateRecovery(attempt_path)
 
     def save_attempts() -> None:
@@ -1720,6 +1733,15 @@ def run_resume_cycle(
         history = list(task.get("resource_wait_history") or [])
         task["resource_wait_history"] = [*history[-15:], {**record, "ended_at_ms": int(time.time() * 1000),
                                                         "end_reason": reason}]
+
+    def record_dispatch(task_id: str) -> None:
+        # Task-level ordering survives source-contract rearming. Only an
+        # actually spawned producer may rotate its equal-priority peers.
+        last = max((_fair_dispatch_sequence(record) for record in fixed_points.values()), default=0)
+        if last >= 2**63 - 1:
+            raise ValueError("persistent fair dispatch sequence exhausted")
+        fixed_points.setdefault(task_id, {})["fair_dispatch_sequence"] = last + 1
+        save_attempts()
 
     def run_producer(
         task_id: str, fields: Mapping[str, str], command: Sequence[str],
@@ -1785,7 +1807,7 @@ def run_resume_cycle(
                 producer_invoked = True
                 failed_stage = "command"
                 producer_log_start = log_path.stat().st_size if log_path.is_file() else 0
-                code = _run_argv(command, **options)
+                code = _run_argv(command, **options, on_spawn=lambda: record_dispatch(task_id))
             else:
                 held = hold_result()
                 if held:
@@ -1804,7 +1826,8 @@ def run_resume_cycle(
                             producer_invoked = True
                             failed_stage = "command"
                             producer_log_start = log_path.stat().st_size if log_path.is_file() else 0
-                            code = _run_argv(command, **{**options, "timeout": remaining})
+                            code = _run_argv(command, **{**options, "timeout": remaining},
+                                             on_spawn=lambda: record_dispatch(task_id))
                         else:
                             code = _COMMAND_TIMEOUT_EXIT
         if code == 0 and hooks:
