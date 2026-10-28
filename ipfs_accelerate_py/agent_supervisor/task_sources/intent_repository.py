@@ -4205,6 +4205,20 @@ class IntentRepository:
             # Its pending checks survive all ordinary task upserts; universal
             # admission and legacy task behavior are unchanged.
             previous_body = _decode_json(existing[2], noun="task body") if existing else {}
+            from .execution_packet_admission import (
+                execution_packet_required, preserve_execution_packet_requirement,
+                authority_spec_cid, task_record_on, require_execution_packet_on,
+                DISPATCH_STATUSES, ExecutionPacketAdmissionError,
+            )
+            try:
+                preserve_execution_packet_requirement(previous_body, body_map)
+                packet_guarded = execution_packet_required(previous_body) or execution_packet_required(body_map)
+            except ExecutionPacketAdmissionError as exc:
+                raise IntentRepositoryConflictError(str(exc)) from exc
+            previous_packet_spec = (
+                authority_spec_cid(task_record_on(connection, tcid))
+                if packet_guarded and existing else None
+            )
             if "local_planning_contract" in previous_body or "local_planning_contract" in body_map:
                 from ..runtime.local_planning_admission import guard_local_task_update
 
@@ -4344,6 +4358,15 @@ class IntentRepository:
                     else (dict(item) if isinstance(item, Mapping) else item)
                     for item in validations
                 ]
+            if packet_guarded:
+                packet_record = task_record_on(connection, tcid)
+                event_body["execution_packet_previous_spec_cid"] = previous_packet_spec
+                event_body["execution_packet_spec_cid"] = authority_spec_cid(packet_record)
+                if status_text in DISPATCH_STATUSES:
+                    try:
+                        require_execution_packet_on(connection, tcid, record=packet_record)
+                    except ExecutionPacketAdmissionError as exc:
+                        raise IntentRepositoryConflictError(str(exc)) from exc
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_UPSERTED,
@@ -4514,7 +4537,20 @@ class IntentRepository:
             contract = body.get("local_planning_contract")
             if contract is not None and list(dependencies) != contract["payload"]["dependencies"]:
                 raise IntentRepositoryIntegrityError("local pending dependencies are immutable")
+            from .execution_packet_admission import (
+                execution_packet_required, task_record_on, require_execution_packet_on,
+                DISPATCH_STATUSES, ExecutionPacketAdmissionError, authority_spec_cid,
+            )
+            packet_guarded = execution_packet_required(body)
+            previous_packet_spec = authority_spec_cid(task_record_on(connection, tcid)) if packet_guarded else None
             self._set_dependencies_on(connection, tcid, dependencies)
+            if packet_guarded:
+                current = task_record_on(connection, tcid)
+                if current["status"] in DISPATCH_STATUSES:
+                    try:
+                        require_execution_packet_on(connection, tcid, record=current)
+                    except ExecutionPacketAdmissionError as exc:
+                        raise IntentRepositoryConflictError(str(exc)) from exc
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_DEPENDENCIES_SET,
@@ -4527,6 +4563,8 @@ class IntentRepository:
                         for item in dependencies
                     ],
                     "revision": int(row[0]),
+                    **({"execution_packet_previous_spec_cid": previous_packet_spec,
+                        "execution_packet_spec_cid": authority_spec_cid(current)} if packet_guarded else {}),
                 },
             )
 
@@ -5065,6 +5103,19 @@ class IntentRepository:
                     raise IntentRepositoryIntegrityError("database claim has no owning goal")
                 if str(goal[0]) == "analysis_inconclusive":
                     raise IntentRepositoryConflictError("database claim goal is analysis_inconclusive")
+            from .execution_packet_admission import (
+                execution_packet_required, require_execution_packet_on,
+                task_record_on, DISPATCH_STATUSES, ExecutionPacketAdmissionError,
+            )
+            packet_record = None
+            try:
+                if status_text in DISPATCH_STATUSES and execution_packet_required(
+                    _decode_json(task_row[5], noun="task body")
+                ):
+                    packet_record = task_record_on(connection, resolved_cid)
+                    require_execution_packet_on(connection, resolved_cid, record=packet_record)
+            except ExecutionPacketAdmissionError as exc:
+                raise IntentRepositoryConflictError(str(exc)) from exc
             if previous_status == status_text:
                 return IntentReceipt(
                     event_id="",
@@ -5130,6 +5181,12 @@ class IntentRepository:
                 # Completion evidence must retain the exact supplied receipt.
                 body_map["completion_receipt"] = receipt_map if completing else retained
                 _apply_task_receipt_auxiliary_fields(body_map, receipt_map)
+            if packet_record is not None:
+                packet_record["body"] = body_map
+                try:
+                    require_execution_packet_on(connection, resolved_cid, record=packet_record)
+                except ExecutionPacketAdmissionError as exc:
+                    raise IntentRepositoryConflictError(str(exc)) from exc
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
