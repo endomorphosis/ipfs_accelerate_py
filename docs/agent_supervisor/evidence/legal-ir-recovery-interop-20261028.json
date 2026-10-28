@@ -46,6 +46,147 @@
     "both_original_storage_reservations_released": true,
     "both_source_READ_custodies_closed": true
   },
+  "focused_current_main_qualification": {
+    "JUnit": {
+      "errors": 0,
+      "failures": 0,
+      "seconds": 8.622,
+      "skipped": 0,
+      "tests": 268
+    },
+    "actual_audited_private_Git_Python_subprocesses": 1061,
+    "actual_runtime_activation_or_acceptance_attested": false,
+    "all_audited_subprocesses_terminal": true,
+    "case_counts": {
+      "native_heal_binding": 78,
+      "publisher": 112,
+      "shared_policy": 59,
+      "watchdog_policy_integration": 19
+    },
+    "evidence": {
+      "attempt-v01/exports/focused-qualification-result.json": {
+        "bytes": 18554,
+        "path": "publisher-focused-main-interop-v04/attempt-v01/exports/focused-qualification-result.json",
+        "sha256": "c9c551c61acbae8de1fb06592d0741eca7ac2618617c8a21316a270e111e2a6f"
+      },
+      "attempt-v01/exports/phase-observations.json": {
+        "bytes": 2761008,
+        "path": "publisher-focused-main-interop-v04/attempt-v01/exports/phase-observations.json",
+        "sha256": "6c76a9e8b493d93a62eaa89701c48dacb439655f74932a4d96adb3b334303320"
+      },
+      "attempt-v01/exports/private-fixture-lstat-inventory.json": {
+        "bytes": 1061646,
+        "path": "publisher-focused-main-interop-v04/attempt-v01/exports/private-fixture-lstat-inventory.json",
+        "sha256": "aee7d3f1e0cf909b7f60adecaecda0caa25aae6f3fd038d753070eeb30e3569a"
+      },
+      "attempt-v01/exports/private-subprocess-observations.json": {
+        "bytes": 1177583,
+        "path": "publisher-focused-main-interop-v04/attempt-v01/exports/private-subprocess-observations.json",
+        "sha256": "7082243ba39aa4514ca18dfa8e205ade26601afceae3e9c5e20ddb9f1626fd92"
+      },
+      "derived-closeout-audit-v01.json": {
+        "bytes": 4429,
+        "path": "publisher-focused-main-interop-v04/derived-closeout-audit-v01.json",
+        "sha256": "ede1f2334f166c823a790bf5010d1e50a0d1a3b70ea8d6aadcfa57375bbffefc"
+      },
+      "request-v01.json": {
+        "bytes": 49779,
+        "path": "publisher-focused-main-interop-v04/request-v01.json",
+        "sha256": "99ee71317b174531800dc79954cd7ab871f3593d058ff2355e3bfd1b8bbe2d8d"
+      },
+      "root-capture-closeout-v01.json": {
+        "bytes": 75867,
+        "path": "publisher-focused-main-interop-v04/root-capture-closeout-v01.json",
+        "sha256": "14573ce44471b577bfcf155018f2dfd9d6194d34ffeaf2d3f2efee76569feb29"
+      },
+      "scope-v01.json": {
+        "bytes": 87207,
+        "path": "publisher-focused-main-interop-v04/scope-v01.json",
+        "sha256": "7e86e1a24ba05b576755ee6cfc08d771b4e914f9c4f755586c299f5b20408a9d"
+      }
+    },
+    "guard_denials": 0,
+    "independent_review": {
+      "bytes": 8769,
+      "path": "publisher-focused-main-interop-v04/independent-v04-runtime-source-binding-v01.json",
+      "sha256": "e1ba06f3ea7372b863e6e3c77282960902290e28047912aa01449d51ae9c9b6f"
+    },
+    "normal_Datasets_or_native_task_semantics_qualified": false,
+    "original_native_observed_peak_processes": 8,
+    "original_owner": "VALIDATION root/phase and ParentedPhaseResourceReservation leaf; original retained native descendant tracker; private external Git fixtures with32MiB precharge.",
+    "original_resource_source_sha256": "4c351874ac6725bfdaf43b9e16b1ceba70d283044e9d59a4588c35f83f1142c0",
+    "parent_cases": 268,
+    "parent_phases": 804,
+    "private_external_fixture_bytes": 2148040,
+    "resources_released": true,
+    "retained_hardlinked_regular_paths": 66,
+    "runtime_module_count": 14,
+    "runtime_module_sources": {
+      "ipfs_accelerate_py/agent_implementation_route.py": {
+        "bytes": 343559,
+        "sha256": "5bd7370190448b9adc3446207ba58b2241b2ced50e5210362126e4dd6ec52f14"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/canonical_writer_custody.py": {
+        "bytes": 6059,
+        "sha256": "1d579269401e4679c6e7857b9a9028cf84feb5ce9078133e781042996f9178e6"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/diagnostic_handoff.py": {
+        "bytes": 12375,
+        "sha256": "893a21e9f4f4632d3222ddca829450e194b0b71c7313fc0cf74746aed59f58d5"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/fleet_completion.py": {
+        "bytes": 38198,
+        "sha256": "a8a60902a7aa75bd2cd75f9c72c8006309f1b3c4bc6fbc28568044100b86dcdb"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/fleet_heals.py": {
+        "bytes": 153217,
+        "sha256": "a0a2eb4d9127bdfdc5e81e010354337d2eb446d5f7dadf1c56cc500972dc2d5e"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/fleet_holds.py": {
+        "bytes": 4412,
+        "sha256": "148976f2a699bf62a87f5485e73aa2fdff73918911c58b9382ffbafa9a592f65"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/fleet_repair.py": {
+        "bytes": 98001,
+        "sha256": "2edc8be1c3d54f8a0e0312a027d1400c3fce980366df6f213d72e4891e468ffb"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/fleet_watchdog.py": {
+        "bytes": 78939,
+        "sha256": "3c996e4e320877c49056a1559fe9c996a105f93b4fc46440a4a8ddbc0bdd3bce"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/live_board_probe.py": {
+        "bytes": 59716,
+        "sha256": "bb9a54894acb9d13f8f5349cda3d930b2b391b96a909deeb2d2fe690081a2f9b"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/native_catalogue_probe.py": {
+        "bytes": 28235,
+        "sha256": "e6c071aee8fa89095021d21bd4d4122d9aaae1a6f5b30b00a0d901086893d368"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/recovery_policy.py": {
+        "bytes": 6874,
+        "sha256": "094e7ebc8fd50c46e17ccda4269f41e7a57b5eafec641a9264063967569e90e1"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/runtime_assets.py": {
+        "bytes": 1483,
+        "sha256": "69a9c0419f1f7837cfcbebfa4fc224bbb9e10a1936a204988daca7024cc65c12"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/service_fleet_probe.py": {
+        "bytes": 14655,
+        "sha256": "eb96876a4a45610ba90097b3b566f24ae9245cbf33e87789199b27cdbbd9af9e"
+      },
+      "ipfs_accelerate_py/agent_supervisor/rescue/storage_diagnostics.py": {
+        "bytes": 7927,
+        "sha256": "8b94832d3b11df7fbb4c57c160d9cc07ca62fd4bd6bf3732825d98ae697cbeb3"
+      }
+    },
+    "scope_source_count_excluding_scope_itself": 209,
+    "separate_installed_tool_inputs": 42,
+    "source_READ_native_process_and_storage_closures_positive": true,
+    "source_input_count": 210,
+    "subtest_count": 0
+  },
+  "historical_limits_note": "The original limits and source hashes describe the initial qualification scopes. Actual later runtime adoption is recorded separately below and grants no scientific or native task completion.",
+  "historical_source_hashes_note": "Top-level accelerate_source_sha256 remains the original630regular+22physical source attribution. The fresh current-main scoped qualification below binds its14runtime modules separately; earlier generations are neither pooled nor silently updated.",
   "independent_review_receipts": {
     "physical": {
       "bytes": 5028,
@@ -105,6 +246,14 @@
     "same_Accelerate_product_hashes_as_regular": true,
     "subtests": 0
   },
+  "publication_only_peer307": {
+    "active_runtime_acceptance_transferred_to_new_lineage_source": false,
+    "active_source_or_selected_native_population_changed": false,
+    "feature_branch_merge_commit": "2cf42ccc76c38c927fa7fed663bceb29d7a0825f",
+    "fresh_lineage_qualification_pending": true,
+    "restored_to_publication_worktree_only": true,
+    "source_commit": "8c512d045ab479dd454c8036453a56ab4ced4060"
+  },
   "recorded_date_utc": "2026-10-28",
   "regular_qualification": {
     "JUnit_seconds": 20.804,
@@ -137,6 +286,125 @@
     "directory": "workspace/test-logs/federal-corpus-audits/legal-ir-programme-review-20261022-05/supervisor-programme-v01/current-plan-refresh-v01/watchdog-dual-namespace-v01/recovery-interop-20261028-v01",
     "not_embedded": "Existing retained results and source/owner receipts remain with their original owners; no logs or duplicate plans copied.",
     "repository": "ipfs_datasets_py"
+  },
+  "retained_failed_focused_attempts": [
+    {
+      "cohort": "publisher-focused-main-interop-v01",
+      "original_closeout": {
+        "bytes": 9721,
+        "path": "publisher-focused-main-interop-v01/root-capture-closeout-v01.json",
+        "sha256": "15719249900579a8ab6bfaf3f51302c0bef1240f07cfdd3a5e1697248cc19c66"
+      },
+      "original_storage_status": "retained",
+      "qualification_passed": false,
+      "reason": "25 stdlib DEVNULL filesystem-audit refusals",
+      "result": {
+        "bytes": 2806765,
+        "path": "publisher-focused-main-interop-v01/attempt-v01/exports/focused-qualification-result.json",
+        "sha256": "7b533e41008692210fdcb086012ed338d741121e0ad84a3664cc584f136d4905"
+      },
+      "source_native_processes_closed": true
+    },
+    {
+      "cohort": "publisher-focused-main-interop-v02",
+      "original_closeout": {
+        "bytes": 9727,
+        "path": "publisher-focused-main-interop-v02/root-capture-closeout-v01.json",
+        "sha256": "73a845d6d0e57abb1668716b843c5366d44a45ee042909a86e4543afab6ac10a"
+      },
+      "original_storage_status": "retained",
+      "qualification_passed": false,
+      "reason": "2 missing literal Git verbs",
+      "result": {
+        "bytes": 3900568,
+        "path": "publisher-focused-main-interop-v02/attempt-v01/exports/focused-qualification-result.json",
+        "sha256": "4f7882cf7fbf7a2dd04f333ec6ab528819fa07d01fcc7a3618fe1b9e0bf8322a"
+      },
+      "source_native_processes_closed": true
+    },
+    {
+      "cohort": "publisher-focused-main-interop-v03",
+      "original_closeout": {
+        "bytes": 9733,
+        "path": "publisher-focused-main-interop-v03/root-capture-closeout-v01.json",
+        "sha256": "7866dd9949092f952a86e579204d7ec91360311f47c6385ed96c4f530540f4ef"
+      },
+      "original_storage_status": "retained",
+      "qualification_passed": false,
+      "reason": "All authored cases passed, but closing source audit refused the missing publisher owning-test input pin",
+      "result": {
+        "bytes": 19024,
+        "path": "publisher-focused-main-interop-v03/attempt-v01/exports/focused-qualification-result.json",
+        "sha256": "2bcfc2f467ebd108912967f1654661f345a5d69c7817d20547e5764b5cde7527"
+      },
+      "source_native_processes_closed": true
+    }
+  ],
+  "runtime_adoption": {
+    "acceptance": "PASSED_TWO_FRESH_POST_START_SAMPLES",
+    "accepted_deployed_generation_only": true,
+    "concurrent_engineering_progress_root_observation": {
+      "bytes": 6160,
+      "path": "/tmp/legal-ir-recovery-runtime-adoption-20261028-v01/concurrent-engineering-progress-v01.json",
+      "sha256": "cc63c8c18dcf614bd675763a5bed494b716aff396fd5a8b45be7fe76cc837106"
+    },
+    "engineering_snapshot": {
+      "completed": 145,
+      "four_concurrent_engineering_card_completions_not_credited_to_this_cutover": true,
+      "healthy_idle": true,
+      "total": 145
+    },
+    "fresh_samples": [
+      {
+        "bytes": 65233,
+        "path": "runtime-readonly-acceptance-v02/fresh-sample-01.json",
+        "sha256": "841de1613f1ed3f2a24b0564d5a4b83e3d7e745f742dffb6c4f41e83fc5c04b1"
+      },
+      {
+        "bytes": 65229,
+        "path": "runtime-readonly-acceptance-v02/fresh-sample-02.json",
+        "sha256": "983865a0b3edccc772ff9ea02c6e527dba97d6a3c2fafdb85a7db98b08f1829e"
+      }
+    ],
+    "immutable_release_id": "0e549c8e1fc814fe82e9",
+    "independent_acceptance": {
+      "bytes": 15616,
+      "path": "runtime-readonly-acceptance-v02/independent-runtime-acceptance-v01.json",
+      "sha256": "af4c2130635daf36ce125f0c7e24b73131f6cea2174c4f8d5283e22ed86b74b0"
+    },
+    "legal_autoformalization_or_new_provider_training_success_attested": false,
+    "partial_cutover_effects_preserved": "Four exact files applied and both units started; first check failed on volatile systemctl ExecStart display equality. Separate read-only acceptance verified stable configured/proc argv, environment, births and two fresh samples without a duplicate cutover or restart.",
+    "preserved_failed_cutover": {
+      "bytes": 49058,
+      "path": "runtime-adoption-v01/root-runtime-apply-capture.json",
+      "sha256": "beb23b67fd8f7075ea0b5cf62c1ca1bcf1882b9ce26994ff82295f46920e1767"
+    },
+    "preserved_first_readonly_failure": {
+      "bytes": 7324,
+      "path": "runtime-readonly-acceptance-v01/independent-runtime-acceptance-v01.json",
+      "sha256": "cca7a3dcf5715edc0c30d0dac838356fa25c3d817fd9476bdb553974bafe152f"
+    },
+    "prior_failed_controls_rewritten_or_reclassified": false,
+    "read_only_acceptance_native_database_opens": 0,
+    "read_only_acceptance_native_task_mutations": 0,
+    "read_only_acceptance_provider_model_calls": 0,
+    "read_only_acceptance_service_actions": 0,
+    "scientific_snapshot": {
+      "blocked": 63,
+      "budgets_reset": false,
+      "completed": 1,
+      "cursor": 217,
+      "retained_UNKNOWN_and_retry_refusal_preserved": true,
+      "total": 64
+    },
+    "source_READ_closed": true,
+    "source_commit_context": "d4d227c1e0",
+    "source_pins_unchanged": true,
+    "source_worktree": ".worktrees/legal-ir-supervisor-recovery-interop-20261028",
+    "unit_PIDs": {
+      "ipfs-taskboard-legal-ir-repair.service": 2377225,
+      "ipfs-taskboard-legal-ir-watchdog.service": 2377224
+    }
   },
   "schema": "legal-ir-recovery-interop-source-evidence/v1",
   "scope": "Integrated supervisor policy, current-reason rearm guard, retained UNKNOWN observer, repair queue deadline and cold release assets."
