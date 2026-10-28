@@ -12,6 +12,8 @@ import json
 import os
 import re
 import shutil
+import shlex
+import uuid
 import signal
 import stat
 import subprocess
@@ -23,7 +25,8 @@ from typing import Any
 
 from .fleet_watchdog import (
     WAIT_STALLS, _accepted_progress_counts, command, load_config, lock, read_json,
-    write_json, supervisor_pythonpath,
+    write_json, supervisor_pythonpath, infrastructure_policy, infrastructure_classification,
+    infrastructure_repair_allowed, NATIVE_CATALOGUE_WAITS,
 )
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
@@ -31,6 +34,69 @@ DEFAULT_REPAIR_JOB_UNIT = "ipfs-taskboard-repair-job.service"
 DEFAULT_REPAIR_DISK_AVAILABLE_BYTES = 8 * 1024 ** 3
 LLM_ROUTER_ROUTE = "llm_router_grok_then_codex"
 DEFAULT_REPAIR_DISK_AVAILABLE_INODES = 50_000
+
+
+def cancel_waiting_repair_job(state_root: Path, board: dict[str, Any], *,
+                              repair_unit: str | None = None, runner=command) -> dict[str, Any]:
+    """Stop only this exact attempt; a stale job cannot cancel another board."""
+    if hold_paths(board):
+        return {"status": "operator_hold"}
+    unit = repair_job_unit({"repair_worker": {"job_unit": repair_unit}}) if repair_unit else repair_job_unit({})
+    path = Path(state_root) / "repairs" / board["id"] / "job.json"
+    with lock(path.parent / "queue.lock") as acquired:
+        if not acquired:
+            return {"status": "queue_busy"}
+        job = read_json(path)
+        token = job.get("repair_unit_token")
+        if (job.get("board_id") != board["id"] or job.get("status") != "running"
+                or job.get("repair_job_unit") != unit or not isinstance(token, str)
+                or not re.fullmatch(r"[0-9a-f]{32}", token)):
+            return {"status": "unbound_repair_attempt"}
+        identity = runner({"argv": ["systemctl", "--user", "show", unit,
+                                    "--property=Environment", "--value"]}, cwd="/", timeout=10)
+        if identity.get("returncode") != 0:
+            return {"status": "repair_unit_identity_unavailable"}
+        try:
+            fields = shlex.split(identity.get("stdout", ""))
+        except ValueError:
+            return {"status": "repair_unit_identity_unavailable"}
+        expected = {f"IPFS_TASKBOARD_REPAIR_BOARD_ID={board['id']}",
+                    f"IPFS_TASKBOARD_REPAIR_JOB_TOKEN={token}"}
+        selected = [x for x in fields if x.startswith(("IPFS_TASKBOARD_REPAIR_BOARD_ID=",
+                                                      "IPFS_TASKBOARD_REPAIR_JOB_TOKEN="))]
+        if len(selected) != 2 or set(selected) != expected or hold_paths(board):
+            return {"status": "repair_unit_identity_mismatch"}
+        # The per-board queue lock fences completion; the original global worker
+        # lock then prevents unit reuse for another board until this stop returns.
+        result = runner({"argv": ["systemctl", "--user", "stop", unit]}, cwd="/", timeout=45)
+        return {"status": "stopped" if result.get("returncode") == 0 else "stop_failed",
+                "board_id": board["id"], "attempt": job.get("attempts"),
+                "repair_unit_token": token}
+
+
+def infrastructure_verification(board: dict[str, Any], incident: dict[str, Any], observation: dict[str, Any],
+                                now: float) -> dict[str, Any] | None:
+    if infrastructure_policy(board) is None:
+        return None
+    if "service_fleet_binding" in board:
+        diagnostic = _service_fleet_recovery(board, incident, observation, now)
+        if diagnostic is not None:
+            return dict(diagnostic, scope="infrastructure_observer",
+                        observer_verified=diagnostic["verified"], task_health=observation.get("health"))
+    sample, stall = infrastructure_classification(observation, board, now)
+    report = sample.get("details", {}).get("native_catalogue", {})
+    native = board.get("probe_profile") == "native_catalogue"
+    observer = (native and report.get("fresh_read") is True
+                and stall in NATIVE_CATALOGUE_WAITS - {"native_catalogue_scope_mismatch",
+                    "native_catalogue_population_invalid", "native_catalogue_probe_invalid"})
+    healthy = not native and sample.get("health") == "healthy" and stall == "none"
+    waiting = not infrastructure_repair_allowed(board, observation, now)
+    return {"verified": bool(observer or healthy), "observer_verified": bool(observer or healthy),
+            "wait": waiting, "reason": "observer_readback_verified" if observer else
+            "infrastructure_health_verified" if healthy else stall,
+            "scope": "infrastructure_observer", "task_health": sample.get("health"),
+            "native_admission": False, "task_completion_authority": False,
+            "goal_completion_authority": False, "completion_authority": False, "complete": False}
 
 
 def _bound_implementation_route(policy: dict[str, Any]):
@@ -110,6 +176,7 @@ def _repair_limits(config: dict[str, Any]) -> dict[str, int | None]:
     _bound_implementation_route(config.get("repair_worker", {}))
     limits = {}
     for board in config["boards"]:
+        infrastructure_policy(board)
         limit = board.get("max_repair_attempts")
         if "max_repair_attempts" in board and (type(limit) is not int or limit < 1):
             raise ValueError(f"board {board['id']}: max_repair_attempts must be a positive integer")
@@ -273,6 +340,8 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
     root = Path(config["state_dir"])
     results = []
     for board in config["boards"]:
+        if observation_only(board):
+            continue
         path = root / "repairs" / board["id"] / "job.json"
         job = read_json(path)
         eligible_status = job.get("status")
@@ -350,16 +419,17 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                             root / board["id"] / "publication") if admitted_healthy or diagnostic
                             else {"verified": False})
             if verification.get("wait") is True:
-                current.update(status="retired_wait", wait_stall="external_dependency_wait",
+                current.update(status="retired_wait", wait_stall=verification.get("wait_stall", "external_dependency_wait"),
                                verification=verification, latest_probe=fresh, retired_at=time.time())
                 results.append({"board_id": board["id"], "status": "retired_wait",
-                                "wait_stall": "external_dependency_wait"})
+                                "wait_stall": current["wait_stall"]})
             elif verification["verified"]:
                 current.update(status="verified_healthy", verification=verification,
                                latest_probe=fresh, next_attempt_at=0, reconciled_at=now,
                                reconciled_evidence=evidence,
                                prior_attempts=current.get("attempts", 0))
-                if limits[board["id"]] is None and not diagnostic:
+                if (limits[board["id"]] is None and not diagnostic
+                        and infrastructure_policy(board) is None):
                     current["attempts"] = 0
                 results.append({"board_id": board["id"], "status": "verified_healthy"})
             elif _escalate_repair_budget(current, limits[board["id"]], now):
@@ -367,9 +437,10 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                 # but cannot buy another coding attempt or shorten its backoff.
                 current.update(latest_probe=fresh, reconciled_evidence=evidence, reconciled_at=now)
                 results.append(_budget_result(board["id"], current))
-            elif ((productive and evidence == progress["after"])
-                  or ((healthy or changed) and _new_repair_evidence(baseline, evidence)
-                      and evidence != current.get("reconciled_evidence"))):
+            elif (infrastructure_policy(board) is None
+                  and ((productive and evidence == progress["after"])
+                       or ((healthy or changed) and _new_repair_evidence(baseline, evidence)
+                           and evidence != current.get("reconciled_evidence")))):
                 # Never change native task budgets. Retain the coding attempt
                 # count and a minimum five-minute gap after the preceding job.
                 prior_finish = current.get("finished_at") or current.get("last_started_at") or now
@@ -394,6 +465,12 @@ def board_wait_stall(config: dict[str, Any], board_id: str) -> str | None:
     """Stalls that native workers already own. Do not launch another coding job."""
     state = read_json(Path(config["state_dir"]) / board_id / "state.json")
     board = next((item for item in config["boards"] if item["id"] == board_id), None)
+    if board is not None and infrastructure_policy(board) is not None:
+        sample = state.get("observation")
+        if not isinstance(sample, dict):
+            return "infrastructure_observation_unavailable"
+        _, classified = infrastructure_classification(sample, board, time.time())
+        return None if infrastructure_repair_allowed(board, sample, time.time()) else classified
     if board is not None and "service_fleet_binding" in board:
         from .fleet_watchdog import _service_fleet_availability
         sample = state.get("observation")
@@ -413,6 +490,9 @@ def board_wait_stall(config: dict[str, Any], board_id: str) -> str | None:
 
 
 def board_is_complete(config: dict[str, Any], board_id: str) -> bool:
+    board = next((x for x in config["boards"] if x["id"] == board_id), None)
+    if board is not None and infrastructure_policy(board) is not None:
+        return False  # Diagnostic health cannot settle a native board.
     """Native complete or a published receipt is not a coding-repair stall."""
     state = read_json(Path(config["state_dir"]) / board_id / "state.json")
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
@@ -429,7 +509,8 @@ def repair_workspace_is_stale(job: dict[str, Any], board: dict[str, Any],
                               policy: dict[str, Any] | None = None) -> bool:
     """Bind diagnostic engine repairs to policy; native repairs to board dirt."""
     cwd = board.get("cwd")
-    if isinstance(board.get("service_fleet_binding"), dict):
+    if (isinstance(board.get("service_fleet_binding"), dict)
+            or infrastructure_policy(board) is not None):
         try:
             cwd = str(repair_workspace(board, policy or {}))
         except (OSError, ValueError):
@@ -469,10 +550,21 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
     board_id = incident.get("board_id")
     if board_id not in boards:
         raise ValueError("incident board is not authorized in fleet configuration")
+    board = boards[board_id]
+    if infrastructure_policy(board) is not None:
+        if hold_paths(board):
+            return {"status": "operator_hold", "board_id": board_id}
+        observation = incident.get("observation")
+        if (not isinstance(observation, dict)
+                or not infrastructure_repair_allowed(board, observation, time.time())):
+            return {"status": "policy_wait", "board_id": board_id,
+                    "reason": "infrastructure_repair_not_authorized"}
     directory = Path(config["state_dir"]) / "repairs" / board_id
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
             return {"status": "queue_busy", "board_id": board_id}
+        if infrastructure_policy(board) is not None and hold_paths(board):
+            return {"status": "operator_hold", "board_id": board_id}
         prior = read_json(directory / "job.json")
         # Preserve pending/running work and cooldown across changing symptoms.
         prior.update(board_id=board_id, incident_path=str(incident_path),
@@ -488,7 +580,8 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
             return {**_budget_result(board_id, prior), "job": str(directory / "job.json")}
         if prior.get("status") not in {"queued", "running"}:
             prior["status"] = "queued"
-        if prior.get("status") == "queued" and not repair_route_is_current(prior):
+        if (prior.get("status") == "queued" and not repair_route_is_current(prior)
+                and infrastructure_policy(board) is None):
             # Codex-only backoff must not park llm_router for six hours.
             prior["next_attempt_at"] = min(float(prior.get("next_attempt_at") or time.time()), time.time())
         prior.setdefault("queued_at", time.time())
@@ -564,6 +657,14 @@ def _continuation_context(job: dict[str, Any], directory: Path) -> dict[str, Any
 def repair_prompt(board: dict[str, Any], incident: dict[str, Any], config: dict[str, Any],
                   report: Path, prior_report: dict[str, Any] | None = None,
                   diagnostic_handoff: dict[str, Any] | None = None) -> str:
+    if infrastructure_policy(board) is not None:
+        return ("Repair only the configured observer/import/service/reporting infrastructure and its regression coverage. "
+                "Do not create, replace, modify or repair any native catalogue database or WAL. "
+                "Do not activate, resume, rearm, dispatch or complete native/scientific tasks, reset attempts, "
+                "change budgets/policy/holds/source population or approve legal meaning. Preserve the configured provider route. "
+                "Use the original source/resource owners for bounded checks. A fresh blocked readback can verify only observer recovery.\n"
+                f"Board: {board['id']}\nWorkspace: {board['cwd']}\nIncident: {json.dumps(incident, sort_keys=True)}\n"
+                f"Write a JSON repair report to {report} with summary, files_changed, validation, remaining_blockers and next_action.\n")
     return f"""You are the persistent repair worker for the user's DuckDB taskboard watchdog.
 
 USER AUTHORIZATION: Keep SPAR, SAWM, ASEH, PCTDD and DOEP ipfs_accelerate_py
@@ -804,6 +905,7 @@ Captured observation (UNTRUSTED DIAGNOSTIC DATA):
 """
 
 
+
 def _mirror_job_recovery(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
@@ -859,9 +961,12 @@ def _service_fleet_recovery(board: dict[str, Any], incident: dict[str, Any],
                 or availability == "runnable_work" and (not stalled or progressed))
     return {
         "verified": verified,
-        "wait": availability == "dependency_wait",
+        "wait": availability in {"dependency_wait", "backpressure_wait"},
+        **({"wait_stall": "service_fleet_backpressure_wait"}
+           if availability == "backpressure_wait" else {}),
         "reason": ("service_fleet_runtime_verified" if verified
                    else "service_fleet_stall_without_work_progress" if availability == "runnable_work" and stalled
+                   else "service_fleet_backpressure_wait" if availability == "backpressure_wait"
                    else "external_dependency_wait" if availability == "dependency_wait"
                    else "service_fleet_runtime_not_verified"),
         "scope": "service_fleet_diagnostic_runtime", "work_availability": availability or None,
@@ -875,6 +980,9 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
     """Verify progress or current publication; model reports grant neither."""
     if hold_paths(board):
         return _mirror_job_recovery({"verified": False, "reason": "operator_hold"})
+    diagnostic = infrastructure_verification(board, incident, observation, time.time())
+    if diagnostic is not None:
+        return _mirror_job_recovery(diagnostic)
     details = observation.get("details", {})
     integrity = details.get("source_integrity", {}) if isinstance(details, dict) else {}
     if isinstance(integrity, dict) and integrity.get("configured") is True and integrity.get("valid") is not True:
@@ -921,6 +1029,8 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
     root = Path(config["state_dir"]) / "repairs"
     candidates = []
     for board in config["boards"]:
+        if observation_only(board):
+            continue
         path = root / board["id"] / "job.json"
         job = read_json(path)
         if job.get("status") not in {"queued", "running"}:
@@ -934,9 +1044,12 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
                 board["id"], path, limits[board["id"]], now) is not None:
             continue
         due = float(job.get("next_attempt_at") or 0)
-        if (due > now and not repair_route_is_stale(job)
-                and not repair_launch_failed_immediately(job, now)
-                and not repair_workspace_is_stale(job, board, config.get("repair_worker", {}))):
+        # Explicit infrastructure recovery retains its original durable delay;
+        # route/workspace churn and quick failures cannot rearm it early.
+        if (due > now and (infrastructure_policy(board) is not None
+                or (not repair_route_is_stale(job)
+                    and not repair_launch_failed_immediately(job, now)
+                    and not repair_workspace_is_stale(job, board, config.get("repair_worker", {}))))):
             continue
         candidates.append((job.get("last_started_at", 0), job.get("queued_at", 0), board, path))
     if not candidates:
@@ -955,6 +1068,11 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
             escalated.append(_budget_result(board["id"], job))
             continue
         if job.get("status") not in {"queued", "running"}:
+            continue
+        if observation_only(board):
+            held.append({"board_id": board["id"],
+                         "next_attempt_at": job.get("next_attempt_at", now),
+                         "reason": "observation_only"})
             continue
         if board_is_complete(config, board["id"]):
             continue
@@ -996,6 +1114,11 @@ def repair_workspace(board: dict[str, Any], policy: dict[str, Any]) -> Path:
     or gitlink pins. Supervisor-code heals still belong in that tree when the
     board checkout is missing.
     """
+    if infrastructure_policy(board) is not None:
+        value = policy.get("cwd")
+        if not isinstance(value, str) or not Path(value).is_absolute() or not Path(value).is_dir():
+            raise ValueError("infrastructure repair requires an explicit engine workspace")
+        return Path(value)
     # Diagnostic service-fleet incidents repair the configured engine source,
     # not the older legal-data board checkout. An invalid policy fails closed.
     candidates = ((policy.get("cwd"),) if isinstance(board.get("service_fleet_binding"), dict)
@@ -1025,9 +1148,12 @@ def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: P
     route = _bound_implementation_route(policy)
     fallback = [*policy["argv"], "-C", str(workspace),
                 "--output-last-message", str(last_message), "-"]
-    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner as grok_adapter
+    # The public grok_cli_runner name resolves to the domain runtime runner.
+    # This outer fallback protocol uses the existing physical adapter's private
+    # failure-receipt channel and strict terminal-frame parser instead.
+    grok_adapter = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     primary = [
-        sys.executable, "-P", str(Path(grok_adapter.__file__).resolve()),
+        sys.executable, "-P", str(grok_adapter.resolve(strict=True)),
         "--workspace", str(workspace),
     ]
     if route is not None:
@@ -1144,8 +1270,9 @@ def _launch_selection(job: dict[str, Any]) -> dict[str, Any]:
 def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
                         *, selection: dict[str, Any] | None = None,
                         attempt: dict[str, Any] | None = None,
-                        storage: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Retry a known pre-exec failure; never infer non-execution from job text."""
+                        storage: dict[str, Any] | None = None,
+                        board: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Retry a known pre-exec failure without shortening infrastructure delay."""
     with lock(path.parent / "queue.lock") as acquired:
         if not acquired:
             return {"status": "queue_busy"}
@@ -1164,7 +1291,10 @@ def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
         failure = {"reason": reason, "observed_at": now, "attempt": attempt}
         if storage is not None:
             failure["storage"] = storage
-        job.update(status="queued", next_attempt_at=now + retry,
+        due = now + retry
+        if board is not None and infrastructure_policy(board) is not None:
+            due = max(float(job.get("next_attempt_at") or 0), due)
+        job.update(status="queued", next_attempt_at=due,
                    launch_failures=job.get("launch_failures", 0) + 1,
                    last_launch_failure=failure)
         write_json(path, job)
@@ -1186,6 +1316,12 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     unit = repair_job_unit(config)
     jobs = [(board, job) for board, job in _iter_repair_jobs(config)
             if job.get("repair_job_unit", DEFAULT_REPAIR_JOB_UNIT) == unit]
+    if any(observation_only(board) and job.get("status") == "running"
+           for board, job in jobs):
+        # Observation does not cancel an already-running worker, including
+        # when another board shares the dispatcher's single job unit.
+        return False
+    jobs = [(board, job) for board, job in jobs if not observation_only(board)]
     running = [(board, job) for board, job in jobs if job.get("status") == "running"]
     if running:
         return any(
@@ -1211,7 +1347,10 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     limits = _repair_limits(config)
     if board["id"] not in limits:
         raise ValueError("repair board is not authorized in fleet configuration")
-    limit = limits[board["id"]]  # A caller's copied board cannot remove the configured cap.
+    configured_board = next(item for item in config["boards"] if item["id"] == board["id"])
+    if infrastructure_policy(configured_board) is not None:
+        board = configured_board
+    limit = limits[board["id"]]  # A caller's copied board cannot remove policy or the cap.
     policy = dict(config["repair_worker"])
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
@@ -1231,6 +1370,10 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             return denied
     if selection.get("status") not in {"queued", "running"}:
         return {"status": "completion_superseded"}
+    if (infrastructure_policy(board) is not None and selection.get("status") == "queued"
+            and float(selection.get("next_attempt_at") or 0) > time.time()):
+        return {"status": "repair_backoff", "board_id": board["id"],
+                "next_attempt_at": selection["next_attempt_at"]}
     unit = repair_job_unit(config)
     # On worker restart, adopt the still-running bounded cgroup rather than
     # launching another coding process. The fixed unit name is also a mutex.
@@ -1252,7 +1395,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         return denied
     unavailable = _launch_preflight(policy)
     if unavailable:
-        return _defer_unstarted_job(path, policy, unavailable, selection=selection)
+        return _defer_unstarted_job(path, policy, unavailable, selection=selection, board=board)
     try:
         # Bind one temporary root across all samples and argv construction,
         # including an environment change during the native probe.
@@ -1262,7 +1405,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     storage = _storage_preflight(policy, path, config["state_dir"])
     if storage:
         return _defer_unstarted_job(path, policy, storage["reason"],
-                                   selection=selection, storage=storage)
+                                   selection=selection, storage=storage, board=board)
     # A worker report cannot supply its own productive-repair baseline.
     from .fleet_watchdog import normalize_probe
     try:
@@ -1270,7 +1413,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     except Exception:
         initial = {"board_id": board["id"], "health": "unknown"}
     initial_at = time.time()
-    if "service_fleet_binding" in board:
+    if "service_fleet_binding" in board or infrastructure_policy(board) is not None:
         verification = verify_job_recovery(board, read_json(path).get("latest_incident", {}), initial,
                             Path(config["state_dir"]) / board["id"] / "publication")
         if verification["verified"] or verification.get("wait") is True:
@@ -1284,20 +1427,22 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                 job.update(status=status, verification=verification, latest_probe=initial,
                            reconciled_at=initial_at, reconciled_evidence=repair_evidence(initial))
                 if status == "retired_wait":
-                    job.update(wait_stall="external_dependency_wait", retired_at=initial_at)
+                    job.update(wait_stall=verification.get("wait_stall", "external_dependency_wait"), retired_at=initial_at)
                 else:
                     job["next_attempt_at"] = 0
                 write_json(path, job)
-            return {"board_id": board["id"], "status": status, "verification": verification}
+            return {"board_id": board["id"], "status": status, "verification": verification,
+                    **({"wait_stall": job["wait_stall"]}
+                       if status == "retired_wait" and "wait_stall" in verification else {})}
     # Native probes can take up to 90 seconds. Recheck immediately before
     # claiming the slot, since a package upgrade may occur during that read.
     unavailable = _launch_preflight(policy)
     if unavailable:
-        return _defer_unstarted_job(path, policy, unavailable, selection=selection)
+        return _defer_unstarted_job(path, policy, unavailable, selection=selection, board=board)
     storage = _storage_preflight(policy, path, config["state_dir"])
     if storage:
         return _defer_unstarted_job(path, policy, storage["reason"],
-                                   selection=selection, storage=storage)
+                                   selection=selection, storage=storage, board=board)
     directory = path.parent
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
@@ -1308,11 +1453,18 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         if _launch_selection(job) != selection:
             return {"status": "completion_superseded"}
         now = time.time()
+        # Slow source/native probes cannot authorize an infrastructure attempt
+        # earlier than its durable due time, including a backwards clock step.
+        if (infrastructure_policy(board) is not None and job.get("status") == "queued"
+                and float(job.get("next_attempt_at") or 0) > now):
+            return {"status": "repair_backoff", "board_id": board["id"],
+                    "next_attempt_at": job["next_attempt_at"]}
         limit = _repair_limits(config)[board["id"]]
         if _escalate_repair_budget(job, limit, now):
             write_json(path, job)
             return _budget_result(board["id"], job)
-        if limit is None and repair_launch_failed_immediately(job, now):
+        if (limit is None and infrastructure_policy(board) is None
+                and repair_launch_failed_immediately(job, now)):
             attempts = 1
         else:
             attempts = job.get("attempts", 0) + 1
@@ -1326,7 +1478,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         workspace = str(repair_workspace(board, policy))
         job.update(status="running", last_started_at=now, attempts=attempts,
                    repair_route=LLM_ROUTER_ROUTE, repair_workspace=workspace, repair_job_unit=unit,
-                   report_path=str(report), log_path=str(log_path),
+                   report_path=str(report), log_path=str(log_path), repair_unit_token=uuid.uuid4().hex,
                    next_attempt_at=now + min(policy.get("max_backoff_seconds", 21600),
                                              policy.get("retry_seconds", 1800) * 2 ** min(attempts - 1, 4)))
         attempt = _attempt_identity(job)
@@ -1352,6 +1504,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             *(f"--setenv={key}={_repair_temporary_directory(policy)}"
               for key in ("TMPDIR", "TEMP", "TMP")),
             f"--setenv=PYTHONPATH={supervisor_pythonpath()}",
+            f"--setenv=IPFS_TASKBOARD_REPAIR_BOARD_ID={board['id']}",
+            f"--setenv=IPFS_TASKBOARD_REPAIR_JOB_TOKEN={job['repair_unit_token']}",
             *inner]
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
@@ -1361,13 +1515,13 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         if storage:
             return _defer_unstarted_job(path, policy, storage["reason"],
                                        attempt=attempt, selection=claimed_selection,
-                                       storage=storage)
+                                       storage=storage, board=board)
         try:
             process = subprocess.Popen(argv, stdin=inp, stdout=log, stderr=log)
         except OSError as exc:
             return _defer_unstarted_job(path, policy,
                                        f"launcher_spawn_failed:{type(exc).__name__}",
-                                       attempt=attempt, selection=claimed_selection)
+                                       attempt=attempt, selection=claimed_selection, board=board)
         try:
             returncode = process.wait(timeout=policy.get("timeout_seconds", 2400) + 90)
         except subprocess.TimeoutExpired:
@@ -1423,22 +1577,25 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                    finished_at=finished_at, returncode=returncode,
                    latest_probe=observation, report_path=str(report), log_path=str(log_path))
         if waiting:
-            job.update(wait_stall="external_dependency_wait", retired_at=finished_at)
+            job.update(wait_stall=verification.get("wait_stall", "external_dependency_wait"), retired_at=finished_at)
         elif verified:
             job["next_attempt_at"] = 0
             # Optional finite budgets are cumulative. Recovery is observed,
             # not permission to erase the coding calls that were already spent.
-            if limit is None and "service_fleet_binding" not in board:
+            if (limit is None and "service_fleet_binding" not in board
+                    and infrastructure_policy(board) is None):
                 job["attempts"] = 0
         else:
             # Finish cadence applies even when a long job outlived its backoff.
             job["next_attempt_at"] = max(job.get("next_attempt_at", 0), finished_at + 300)
-            if not _escalate_repair_budget(job, limit, finished_at):
+            if (not _escalate_repair_budget(job, limit, finished_at)
+                    and infrastructure_policy(board) is None):
                 progress = _completed_attempt_progress(job, finished_at)
                 if progress is not None and not hold_paths(board):
                     _record_productive_continuation(job, progress, finished_at, finished_at + 300)
         write_json(path, job)
-    return {"board_id": board["id"], "status": job["status"], "returncode": returncode}
+    return {"board_id": board["id"], "status": job["status"], "returncode": returncode,
+            **({"wait_stall": job["wait_stall"]} if waiting and "wait_stall" in verification else {})}
 
 
 def main(argv: list[str] | None = None) -> int:

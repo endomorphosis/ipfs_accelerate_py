@@ -3862,3 +3862,145 @@ def test_diagnostic_repair_workspace_binds_policy_and_preserves_native_board_pri
     board.pop("service_fleet_binding")
     assert repair.repair_workspace(board, policy) == board_root
     assert repair.repair_workspace_is_stale(job, board, policy) is False
+
+
+# Existing repair queue/worker must enforce the diagnostic scope independently.
+def _diagnostic_board(tmp_path):
+    return {"id": "science", "cwd": str(tmp_path), "hold_files": [], "probe_profile": "native_catalogue",
+        "max_repair_attempts": 3,
+        "native_catalogue_binding": {"board_namespace": "science", "plan_root_cid": "plan",
+            "repository_tree_id": "tree", "population_sha256": "a" * 64, "max_age_seconds": 30},
+        "recovery_policy": {"profile": "infrastructure-only/v1", "repairable_stalls": ["native_catalogue_read_unavailable"],
+            "max_actions_per_window": 3, "window_seconds": 1000, "circuit_breaker_seconds": 100}}
+
+
+def _diagnostic_observation(reason="native_catalogue_activation_missing", fresh=True):
+    return {"board_id": "science", "health": "blocked" if fresh else "unknown", "complete": False,
+        "reason_codes": [reason], "details": {"native_catalogue": {
+            "schema": "native-catalogue-diagnostic/v1", "board_namespace": "science",
+            "plan_root_cid": "plan", "repository_tree_id": "tree", "population_sha256": "a" * 64,
+            "checked_at_epoch": time.time() if fresh else None, "probe_observed_at_epoch": time.time(), "fresh_read": fresh, "activation_state": "not_activated",
+            "counts": {"blocked": 64}, "completion_authority": False}}}
+
+
+def test_infrastructure_enqueue_cannot_turn_review_wait_into_coding(tmp_path):
+    board = _diagnostic_board(tmp_path)
+    cfg = {"state_dir": str(tmp_path), "boards": [board], "repair_worker": {"cwd": str(tmp_path)}}
+    incident = tmp_path / "incident.json"
+    write_json(incident, {"board_id": "science", "observation": _diagnostic_observation()})
+    assert enqueue(cfg, incident)["status"] == "policy_wait"
+    assert not (tmp_path / "repairs/science/job.json").exists()
+    hold = tmp_path / "HOLD"
+    hold.symlink_to(tmp_path / "missing")
+    board["hold_files"] = [str(hold)]
+    write_json(incident, {"board_id": "science", "observation": _diagnostic_observation("native_catalogue_read_unavailable", False)})
+    assert enqueue(cfg, incident)["status"] == "operator_hold"
+    assert not (tmp_path / "repairs/science/job.json").exists()
+
+
+def test_infrastructure_worker_rebinds_policy_and_stops_before_native_commands(tmp_path, monkeypatch):
+    board = _diagnostic_board(tmp_path)
+    cfg = {"state_dir": str(tmp_path), "boards": [board], "repair_worker": {"cwd": str(tmp_path)}}
+    write_json(tmp_path / "science/state.json", {"observation": _diagnostic_observation()})
+    path = tmp_path / "repairs/science/job.json"
+    write_json(path, {"status": "queued", "attempts": 2})
+    untrusted_copy = {"id": "science", "cwd": str(tmp_path)}
+    monkeypatch.setattr(repair, "command", lambda *a, **k: pytest.fail("no native commands authorized"))
+    assert repair.run_job(cfg, untrusted_copy, path)["status"] == "retired_wait"
+    assert read_json(path)["attempts"] == 2
+
+
+def test_infrastructure_verification_accepts_observer_not_scientific_completion(tmp_path):
+    board = _diagnostic_board(tmp_path)
+    result = repair.verify_job_recovery(board, {}, _diagnostic_observation(), tmp_path)
+    assert result["observer_verified"] is True and result["wait"] is True
+    assert result["scope"] == "infrastructure_observer" and result["task_health"] == "blocked"
+    assert all(result[key] is False for key in ("native_admission", "completion_authority", "task_completion_authority", "goal_completion_authority", "complete"))
+    broken = _diagnostic_observation()
+    broken["details"]["native_catalogue"]["board_namespace"] = "foreign"
+    assert repair.verify_job_recovery(board, {}, broken, tmp_path)["verified"] is False
+
+
+@pytest.mark.parametrize("owner,token,stops", [("other", "a" * 32, False), ("science", "b" * 32, False), ("science", "a" * 32, True)])
+def test_wait_cancellation_is_board_and_attempt_bound(tmp_path, owner, token, stops):
+    board = {"id": "science", "hold_files": []}
+    path = tmp_path / "repairs/science/job.json"
+    unit = repair.repair_job_unit({})
+    write_json(path, {"board_id": "science", "status": "running", "attempts": 2,
+                     "repair_job_unit": unit, "repair_unit_token": "a" * 32})
+    calls = []
+    def runner(spec, **kwargs):
+        calls.append(spec["argv"])
+        return {"returncode": 0, "stdout": f"IPFS_TASKBOARD_REPAIR_BOARD_ID={owner} IPFS_TASKBOARD_REPAIR_JOB_TOKEN={token}"}
+    result = repair.cancel_waiting_repair_job(tmp_path, board, runner=runner)
+    assert (result["status"] == "stopped") is stops
+    assert sum("stop" in argv for argv in calls) == int(stops)
+    assert read_json(path)["attempts"] == 2
+
+
+def test_new_operator_hold_prevents_wait_cancellation(tmp_path):
+    hold = tmp_path / "HOLD"
+    board = {"id": "science", "hold_files": [str(hold)]}
+    unit = repair.repair_job_unit({})
+    write_json(tmp_path / "repairs/science/job.json", {"board_id": "science", "status": "running",
+        "repair_job_unit": unit, "repair_unit_token": "a" * 32})
+    def runner(spec, **kwargs):
+        assert "show" in spec["argv"]
+        hold.touch()
+        return {"returncode": 0, "stdout": "IPFS_TASKBOARD_REPAIR_BOARD_ID=science IPFS_TASKBOARD_REPAIR_JOB_TOKEN=" + "a" * 32}
+    assert repair.cancel_waiting_repair_job(tmp_path, board, runner=runner)["status"] == "repair_unit_identity_mismatch"
+    assert hold.exists()
+
+
+def test_infrastructure_prompt_excludes_native_repair_authority(tmp_path):
+    board = _diagnostic_board(tmp_path)
+    prompt = repair_prompt(board, {}, {}, tmp_path / "report.json")
+    assert "Do not create, replace, modify or repair any native catalogue database or WAL" in prompt
+    assert "reset attempts" in prompt and "preserve" in prompt.lower()
+    assert "persistent repair worker for the user's DuckDB taskboard" not in prompt
+
+
+
+def test_infrastructure_stalled_engineering_recovery_requires_actual_work_progress(tmp_path, monkeypatch):
+    import copy
+    cfg, board, sample = _diagnostic_repair_case(tmp_path, "runnable_work")
+    board["recovery_policy"] = dict(_diagnostic_board(tmp_path)["recovery_policy"],
+                                    repairable_stalls=["stalled_no_progress"])
+    monkeypatch.setattr(repair.time, "time", lambda: 1000)
+    baseline = copy.deepcopy(sample)
+    baseline.update(health="stalled", reason_codes=["no_task_progress"])
+    incident = {"stall_class": "stalled_no_progress", "observation": baseline}
+    stagnant = repair.verify_job_recovery(board, incident, sample, tmp_path)
+    assert stagnant["verified"] is False
+    assert stagnant["reason"] == "service_fleet_stall_without_work_progress"
+    assert stagnant["scope"] == "infrastructure_observer"
+    progressed = copy.deepcopy(sample)
+    progressed["details"]["service_fleet"]["lanes"][0].update(completed_count=2, task_count=3)
+    result = repair.verify_job_recovery(board, incident, progressed, tmp_path)
+    assert result["verified"] is True and result["observer_verified"] is True
+    assert result["completion_authority"] is False and result["native_admission"] is False
+
+
+def test_infrastructure_repair_workspace_never_falls_back_to_catalogue_checkout(tmp_path):
+    board = _diagnostic_board(tmp_path)
+    engine = tmp_path / "engine"
+    engine.mkdir()
+    assert repair.repair_workspace(board, {"cwd": str(engine)}) == engine
+    with pytest.raises(ValueError):
+        repair.repair_workspace(board, {})
+
+
+@pytest.mark.parametrize("missing", ["board_id", "repair_job_unit", "repair_unit_token"])
+def test_wait_cancellation_unbound_attempt_cannot_stop_shared_unit(tmp_path, missing):
+    unit = repair.repair_job_unit({})
+    job = {"board_id": "science", "status": "running", "repair_job_unit": unit,
+           "repair_unit_token": "a" * 32, "attempts": 2}
+    job.pop(missing)
+    path = tmp_path / "repairs/science/job.json"
+    write_json(path, job)
+    before = path.read_bytes()
+    def runner(*args, **kwargs):
+        pytest.fail("unbound attempt cannot inspect or stop a systemd unit")
+    result = repair.cancel_waiting_repair_job(tmp_path, {"id": "science"}, runner=runner)
+    assert result["status"] == "unbound_repair_attempt"
+    assert path.read_bytes() == before
