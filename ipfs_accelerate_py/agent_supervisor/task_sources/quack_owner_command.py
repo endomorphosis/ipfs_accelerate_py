@@ -47,6 +47,129 @@ FALSE_TERMINAL_BLOCKED_REASON_MARKERS = (
     "database_task_state_projection_incomplete",
 )
 
+
+# These current failures need their own disposition or fresh native admission.
+# Keep the public legacy vocabulary above for receipt/history compatibility.
+_AUTOMATIC_REARM_DENIED_MARKERS = frozenset({
+    "typed_portal_deferral_budget_exhausted",
+    "database_portal_typed_deferral_budget_exhausted",
+    "inflight_process_deferral_budget_unstall",
+    "implementation_protected_path_mutated", "identity_changed", "identity changed",
+    "database_portal_terminal_failure", "grok_quota_exhausted",
+    "callback_authority_incomplete_blocked", "database_unknown_outcome_blocked",
+    "administrative_operator_stop_outcome_unknown",
+})
+
+
+def false_terminal_blocked_rearm_reason(
+    body: Any, *, candidate_ready: bool = False,
+) -> str | None:
+    """Classify current failure metadata without treating history as authority.
+
+    This grants no claim, attempt budget, completion or provider authority.
+    Explicit UNKNOWN, retained-custody and retry denials also withhold the
+    local-candidate route. Arbitrary descriptions, authored inputs and history
+    are deliberately not searched for positive recovery markers.
+    """
+    if not isinstance(body, Mapping) or type(candidate_ready) is not bool:
+        return None
+    def matches(text: str, marker: str) -> bool:
+        return text == marker or text.startswith(marker + ":")
+    reasons: list[str] = []
+    for value in (body, body.get("completion_receipt")):
+        if value is None:
+            continue
+        if not isinstance(value, Mapping):
+            return None
+        for key in ("blocked_reason", "reason", "failure_kind", "error_code", "operation"):
+            text = value.get(key)
+            if text is not None:
+                if type(text) is not str:
+                    return None
+                if text.strip():
+                    reasons.append(text.strip())
+                    break
+        if reasons:
+            break
+    selected = ("completion_receipt", "details", "state", "summary", "task_state",
+                "last_cycle_result", "observation", "retention_observation",
+                "custody", "custody_observation", "attempt_budget", "retry_budget", "attempt_history")
+    pending: list[Any] = [body]
+    seen: set[int] = set()
+    while pending:
+        value = pending.pop()
+        if value is None:
+            continue
+        if not isinstance(value, Mapping):
+            return None
+        if id(value) in seen:
+            return None
+        seen.add(id(value))
+        if len(seen) > 4096:
+            return None
+        if any(key in value and value[key] is not True for key in (
+            "automatic_retry_admitted", "retry_admitted", "rearm_admitted",
+            "rearm_authorized", "automatic_recovery_admitted")):
+            return None
+        for key in ("blocked_reason", "reason", "failure_kind", "error_code", "operation"):
+            text = value.get(key)
+            if type(text) is str and any(matches(text.strip(), marker)
+                                        for marker in _AUTOMATIC_REARM_DENIED_MARKERS):
+                return None
+        if (value.get("retained_attempt_settlement_required") is True
+                or value.get("cleanup_pending") is True
+                or value.get("selection_idle_reason") == "expired_attempt_settlement_unavailable"
+                or value.get("reason") == "production_attempt_settlement_required"
+                or any(value.get(key) is True for key in (
+                    "attempt_budget_exhausted", "retry_budget_exhausted"))):
+            return None
+        for key in ("provider_outcome", "callback_outcome", "provider_effect_state", "callback_state"):
+            if key in value:
+                state = value[key]
+                if (type(state) is not str or state.strip().casefold() not in {
+                    "succeeded", "success", "completed", "complete", "closed",
+                    "cancelled", "canceled", "failed", "not_started", "not_invoked",
+                    "not_reached", "resolved", "abandoned", "none",
+                }):
+                    return None
+        for key in ("remaining_attempts", "remaining_retries"):
+            if key in value and (type(value[key]) is not int or value[key] <= 0):
+                return None
+        counters = ("attempt_number", "native_attempt_number", "spent_native_ordinal", "attempts_used", "attempts")
+        # A malformed spent counter cannot establish that another attempt is available,
+        # including when the selected metadata omits its maximum.
+        if any(key in value and (type(value[key]) is not int or value[key] < 0)
+               for key in counters):
+            return None
+        maximum = value.get("max_task_attempts", value.get("max_attempts"))
+        if maximum is not None:
+            if type(maximum) is not int or maximum < 1:
+                return None
+            if any(key in value and value[key] >= maximum for key in counters):
+                return None
+        pending.extend(value[key] for key in selected if key in value)
+        if "retained_execution_outcomes" in value:
+            retained = value["retained_execution_outcomes"]
+            if (type(retained) is not list or len(retained) > 16
+                    or any(not isinstance(item, Mapping) for item in retained)):
+                return None
+            pending.extend(retained)
+    # A marker must be the current reason/code, optionally followed by detail.
+    # Merely quoting a historical marker in prose cannot make a task runnable.
+    if any(matches(reason, marker) for reason in reasons
+           for marker in _AUTOMATIC_REARM_DENIED_MARKERS):
+        return None
+    allowed = tuple(marker for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
+                    if marker not in _AUTOMATIC_REARM_DENIED_MARKERS)
+    if any(matches(reason, marker) for reason in reasons for marker in allowed):
+        return "false_terminal_blocked_supervisor_bug"
+    if candidate_ready and any(reason in {
+        "local_validation_pending_native_admission", "current_tree_validation_required",
+    } for reason in reasons):
+        return "local_validation_pending_native_admission"
+    return None
+
+
 QUACK_OWNER_COMMAND_REQUEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/quack-owner-command-request@1"
 )

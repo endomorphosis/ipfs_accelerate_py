@@ -988,3 +988,95 @@ def test_block_and_unblock_use_revision_predicates(tmp_path: Path) -> None:
         )
         ready = repository.get_task("task:typed-owner-test")
         assert ready is not None and ready["status"] == "ready"
+
+
+# Current-reason recovery controls are pure fixtures, not live task authority.
+def _false_terminal_guard_cases():
+    repair = "false_terminal_blocked_supervisor_bug"
+    local = "local_validation_pending_native_admission"
+    return [
+        ("current-infrastructure", {"blocked_reason": "quack_transport_unavailable: socket closed"}, repair, repair),
+        ("current-process-absence", {"reason": "ProcessLookupError: original child exited"}, repair, repair),
+        ("historical-positive-only", {"blocked_reason": "waiting for reviewed definition",
+            "history": [{"reason": "quack_transport_unavailable"}]}, None, None),
+        ("description-positive-only", {"description": "fix quack_transport_unavailable later"}, None, None),
+        ("current-reason-precedes-receipt", {"blocked_reason": "waiting for reviewed definition",
+            "completion_receipt": {"operation": "quack_transport_unavailable"}}, None, None),
+        ("current-UNKNOWN", {"blocked_reason": "quack_transport_unavailable",
+            "completion_receipt": {"failure_kind": "administrative_operator_stop_outcome_unknown",
+                "automatic_retry_admitted": False}}, None, None),
+        ("current-callback-UNKNOWN", {"blocked_reason": "quack_transport_unavailable",
+            "custody_observation": {"callback_outcome": "unknown"}}, None, None),
+        ("explicit-retry-denial", {"blocked_reason": "quack_transport_unavailable",
+            "automatic_retry_admitted": False}, None, None),
+        ("malformed-retry-denial", {"blocked_reason": "quack_transport_unavailable",
+            "automatic_retry_admitted": "false"}, None, None),
+        ("exhausted-counter", {"blocked_reason": "quack_transport_unavailable",
+            "attempt_budget": {"spent_native_ordinal": 2, "max_task_attempts": 2}}, None, None),
+        ("exhausted-current-reason", {"blocked_reason": "typed_portal_deferral_budget_exhausted"}, None, None),
+        ("retained-owner", {"blocked_reason": "quack_transport_unavailable",
+            "details": {"retained_attempt_settlement_required": True}}, None, None),
+        ("protected-path", {"blocked_reason": "implementation_protected_path_mutated"}, None, None),
+        ("local-validation", {"blocked_reason": "local_validation_pending_native_admission"}, None, local),
+        ("history-negative-is-not-current", {"blocked_reason": "quack_transport_unavailable",
+            "history": [{"provider_outcome": "unknown", "automatic_retry_admitted": False}]}, repair, repair),
+        ("selected-retained-UNKNOWN", {"blocked_reason": "quack_transport_unavailable",
+            "retained_execution_outcomes": [{"task_cid": "task:authored", "task_revision": 13,
+                "completion_receipt": {"failure_kind": "administrative_operator_stop_outcome_unknown",
+                    "automatic_retry_admitted": False}, "sha256": "0" * 64}]}, None, None),
+        ("uppercase-provider-UNKNOWN", {"blocked_reason": "quack_transport_unavailable", "provider_outcome": " UNKNOWN "}, None, None),
+        ("uppercase-callback-UNKNOWN", {"blocked_reason": "quack_transport_unavailable", "callback_outcome": "UNKNOWN"}, None, None),
+        ("uppercase-effect-UNKNOWN", {"blocked_reason": "quack_transport_unavailable", "provider_effect_state": "UNKNOWN"}, None, None),
+        ("uppercase-state-UNKNOWN", {"blocked_reason": "quack_transport_unavailable", "callback_state": "STARTED_OUTCOME_UNKNOWN"}, None, None),
+        ("malformed-provider-outcome", {"blocked_reason": "quack_transport_unavailable", "provider_outcome": False}, None, None),
+        ("unrecognized-provider-outcome", {"blocked_reason": "quack_transport_unavailable", "provider_outcome": "ambiguous_pending"}, None, None),
+        ("exhausted-attempts-counter", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": 2}}, None, None),
+        ("exhausted-selected-attempt-history", {"blocked_reason": "quack_transport_unavailable", "attempt_history": {"max_attempts": 2, "attempts": 2}}, None, None),
+        ("settled-provider-metadata", {"blocked_reason": "quack_transport_unavailable", "provider_outcome": " SUCCEEDED "}, repair, repair),
+        ("negative-attempt_number", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempt_number": -1}}, None, None),
+        ("negative-native_attempt_number", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "native_attempt_number": -1}}, None, None),
+        ("negative-spent_native_ordinal", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "spent_native_ordinal": -1}}, None, None),
+        ("negative-attempts_used", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts_used": -1}}, None, None),
+        ("negative-attempts", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": -1}}, None, None),
+        ("negative-counter-without-maximum", {"blocked_reason": "quack_transport_unavailable", "attempt_history": {"attempts": -1}}, None, None),
+        ("zero-unspent-counter", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": 0}}, repair, repair),
+        ("positive-unspent-counter", {"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": 1}}, repair, repair),
+        ("malformed-body", None, None, None),
+    ]
+
+
+@pytest.mark.parametrize("candidate_ready", [False, True])
+@pytest.mark.parametrize("case", _false_terminal_guard_cases(), ids=lambda case: case[0])
+def test_false_terminal_rearm_uses_current_reason_and_preserves_denials(case, candidate_ready):
+    from copy import deepcopy
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_command import (
+        false_terminal_blocked_rearm_reason,
+    )
+    _, body, without_candidate, with_candidate = case
+    before = deepcopy(body)
+    expected = with_candidate if candidate_ready else without_candidate
+    assert false_terminal_blocked_rearm_reason(body, candidate_ready=candidate_ready) == expected
+    assert body == before
+
+
+@pytest.mark.parametrize("case", _false_terminal_guard_cases(), ids=lambda case: case[0])
+def test_false_terminal_database_recovery_cannot_borrow_history_or_denied_retry(case):
+    from copy import deepcopy
+    from types import SimpleNamespace
+    _, body, expected, _ = case
+    before = deepcopy(body)
+    record = SimpleNamespace(task_alias="FIXTURE-1", task_cid="task:authored", revision=4, body=body)
+    calls = []
+    def rearm(subject, *, receipt):
+        assert subject is record
+        calls.append(receipt)
+        return SimpleNamespace(changed=True, revision=5)
+    source = SimpleNamespace(
+        _intent=SimpleNamespace(uses_quack_transport=True),
+        list_tasks=lambda **_kwargs: SimpleNamespace(tasks=(record,)),
+        rearm_blocked_task=rearm,
+    )
+    result = DatabaseTaskSource.unstall_stale_in_progress_tasks(source, skip_stale_in_progress=True)
+    assert calls == ([] if expected is None else [{"operation": expected}])
+    assert len(result["unstalled"]) == (0 if expected is None else 1)
+    assert body == before

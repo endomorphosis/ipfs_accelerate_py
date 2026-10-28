@@ -29,10 +29,11 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
 from .command_processes import CommandProcessTree
-from .storage_pressure import MINIMUM_FREE_BYTES, StorageGuard, is_storage_pressure, persist_text, publish_emergency_status, open_command_log
+from .storage_pressure import MINIMUM_FREE_BYTES, StorageGuard, is_storage_pressure, persist_text, publish_emergency_status, open_command_log, check_storage_capacity
 import tempfile
 from .gate_recovery import GATE_REPEAT_LIMIT, GateRecovery, gate_evidence, gate_source_contract, _is_source_path
 from .vdg_pre_command_recovery import RecoveryPolicyError, recovery_commands, recovery_contract, recovery_environment
+from . import semantic_recovery
 
 _PROVIDER_BASENAMES = frozenset(
     {"grok", "codex", "claude", "muse", "gemini", "mistral"}
@@ -42,6 +43,8 @@ _SHELL_META = set(";|&$`<>\n")
 _COMPLETABLE_STATUSES = frozenset({"pending", "ready", "in_progress"})
 _ATTEMPT_LIMIT = 3
 _GATE_WITHHELD_EXIT = 75
+_RESOURCE_RETRY_LIMIT = 6
+_RESOURCE_RETRY_BASE_MS = 30_000
 _EXHAUSTED_RETRY_MS = 900_000
 _RETRY_AFTER_KEY = "_retry_after_ms"
 _FIXED_POINT_KEY = "_validation_fixed_points"
@@ -63,6 +66,43 @@ def _header_prefix(value: str) -> str:
     if prefix and not prefix.startswith("## "):
         prefix = f"## {prefix}"
     return prefix
+
+
+def _fair_dispatch_sequence(record: Mapping[str, Any]) -> int:
+    value = record.get("fair_dispatch_sequence", 0)
+    if type(value) is not int or not 0 <= value < 2**63:
+        raise ValueError("invalid persistent fair dispatch sequence")
+    return value
+
+
+def _order_explicit_task_priorities(
+    task_ids: Sequence[str], blocks: Mapping[str, Mapping[str, str]], *,
+    fixed_points: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[str]:
+    """Honor P0/P1/...; equal priorities yield to less recently dispatched work.
+
+    Unspecified or differently encoded priorities keep their document slots;
+    a numeric/Fibonacci value must not acquire invented urgency semantics.
+    Dependency selection, refusal checks and retry cooldowns stay separate.
+    """
+
+    ordered = list(task_ids)
+    annotated: list[tuple[int, str, int]] = []
+    for index, task_id in enumerate(ordered):
+        match = re.fullmatch(r"[Pp]([0-9]+)", str((blocks.get(task_id) or {}).get("priority") or "").strip())
+        if match:
+            try:
+                annotated.append((index, task_id, int(match.group(1))))
+            except ValueError:
+                # Extremely long numeric input has no established priority.
+                continue
+    for (index, _task_id, _rank), (_old_index, task_id, _priority) in zip(
+        annotated, sorted(annotated, key=lambda item: (
+            item[2], _fair_dispatch_sequence((fixed_points or {}).get(item[1]) or {}), item[0],
+        )),
+    ):
+        ordered[index] = task_id
+    return ordered
 
 
 def parse_deterministic_command(raw: str, *, repo_root: Path) -> list[str] | None:
@@ -219,6 +259,172 @@ def _store_attempt_state(
     _atomic_write(path, json.dumps(payload, indent=2) + "\n")
 
 
+def _unresolved_execution_failure(
+    task: Mapping[str, Any], previous_evidence: Mapping[str, Any] | None = None,
+) -> bool:
+    """Keep task health separate from the current contract's retry budget.
+
+    Historical records are newest last. Only a later semantic validation can
+    resolve an earlier failure; changing source bytes or starting a PID cannot.
+    This also migrates journals written before the explicit health flag.
+    """
+    current = task.get("execution_progress") or {}
+    history = task.get("execution_progress_history") or []
+    records = [current, *reversed(history[-8:] if isinstance(history, list) else [])]
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        if record.get("state") == "validated":
+            return False
+        if (record.get("unresolved_prior_failure") is True
+                or int(record.get("semantic_failures") or 0) > 0):
+            return True
+    evidence = previous_evidence or {}
+    return type(evidence.get("exit_code")) is int and evidence["exit_code"] not in (0, _GATE_WITHHELD_EXIT)
+
+
+def _begin_execution_progress(
+    fixed_points: dict[str, dict[str, Any]], task_id: str, contract: str, *,
+    now_ms: int, previous_evidence: Mapping[str, Any], previous_attempts: int,
+) -> None:
+    """Retain semantic failure history before an invocation can be interrupted."""
+    task = fixed_points.setdefault(task_id, {})
+    unresolved = _unresolved_execution_failure(task, previous_evidence)
+    prior = task.get("execution_progress") or {}
+    if prior.get("contract") != contract:
+        if prior:
+            history = list(task.get("execution_progress_history") or [])
+            task["execution_progress_history"] = [*history[-7:], prior]
+        qualified_legacy = (previous_evidence.get("retry_contract", previous_evidence.get("contract")) == contract
+                            and type(previous_evidence.get("exit_code")) is int
+                            and previous_evidence["exit_code"] not in (0, _GATE_WITHHELD_EXIT))
+        prior = {"schema": "agent-supervisor/execution-progress@1", "contract": contract,
+                 "first_started_at_ms": now_ms, "attempts_started": 0,
+                 "semantic_failures": max(0, previous_attempts) if qualified_legacy else 0,
+                 "abandoned_attempts": 0, "gate_refusals": 0}
+        if qualified_legacy:
+            prior["legacy_failures_qualified"] = True
+    else:
+        prior = dict(prior)
+        if prior.get("state") in {"running", "produced"}:
+            prior["abandoned_attempts"] = int(prior.get("abandoned_attempts") or 0) + 1
+    prior.update(state="running", started_at_ms=now_ms,
+                 attempts_started=int(prior.get("attempts_started") or 0) + 1,
+                 unresolved_prior_failure=unresolved, completion_authority=False)
+    if unresolved:
+        prior["unresolved_prior_failure_reason"] = "prior_semantic_failure_not_validated"
+    else:
+        prior.pop("unresolved_prior_failure_reason", None)
+    task["execution_progress"] = prior
+
+
+def _finish_execution_progress(
+    fixed_points: dict[str, dict[str, Any]], task_id: str, *, code: int, stage: str,
+    contract: str, now_ms: int, validated: bool = False, resource_refusal: str = "",
+) -> None:
+    task = fixed_points.setdefault(task_id, {})
+    progress = dict(task.get("execution_progress") or {})
+    if not progress:
+        return
+    progress.update(contract=contract, last_exit_code=code, last_stage=stage,
+                    finished_at_ms=now_ms, completion_authority=False)
+    if validated:
+        progress.update(state="validated", semantic_failures=0, abandoned_attempts=0,
+                        gate_refusals=0, validated_at_ms=now_ms, unresolved_prior_failure=False)
+        progress.pop("escalated", None)
+        progress.pop("unresolved_prior_failure_reason", None)
+    elif code == _GATE_WITHHELD_EXIT and resource_refusal:
+        progress.update(state="resource_wait", resource_refusal=resource_refusal,
+                        resource_refusals=int(progress.get("resource_refusals") or 0) + 1)
+    elif code == _GATE_WITHHELD_EXIT:
+        progress.update(state="gate_withheld", gate_refusals=int(progress.get("gate_refusals") or 0) + 1)
+    elif code:
+        progress.update(state="failed", semantic_failures=int(progress.get("semantic_failures") or 0) + 1,
+                        unresolved_prior_failure=True,
+                        unresolved_prior_failure_reason="prior_semantic_failure_not_validated")
+        progress.setdefault("first_failure_at_ms", now_ms)
+    else:
+        progress["state"] = "produced"
+    task["execution_progress"] = progress
+
+
+def execution_progress_snapshot(path: Path, task_id: str) -> dict[str, Any]:
+    """Read bounded, body-free invocation history; clocks never count as work."""
+    _attempts, _retry, fixed_points, _evidence = _load_attempt_state(path)
+    task = fixed_points.get(task_id) or {}
+    record = dict(task.get("execution_progress") or {})
+    if record:
+        record["unresolved_prior_failure"] = _unresolved_execution_failure(task)
+        if record["unresolved_prior_failure"]:
+            record["unresolved_prior_failure_reason"] = "prior_semantic_failure_not_validated"
+        else:
+            record.pop("unresolved_prior_failure_reason", None)
+    keys = ("schema", "contract", "state", "first_started_at_ms", "started_at_ms", "finished_at_ms",
+            "attempts_started", "semantic_failures", "abandoned_attempts", "gate_refusals", "last_stage",
+            "last_exit_code", "first_failure_at_ms", "validated_at_ms", "escalated",
+            "unresolved_prior_failure", "unresolved_prior_failure_reason", "resource_refusal", "resource_refusals")
+    result = {key: record[key] for key in keys if key in record}
+    if "resource_refusals_total" in task:
+        result["resource_refusals_total"] = task["resource_refusals_total"]
+    try:
+        recovery = semantic_recovery.summary(path, task_id)
+        if recovery.get("spent"):
+            result["semantic_recovery"] = recovery
+    except semantic_recovery.SemanticRecoveryError:
+        result["semantic_recovery"] = {"state": "blocked", "reason": "recovery_journal_invalid", "completion_authority": False}
+    return result
+
+
+def lane_execution_health(
+    *, repo_root: Path, todo_path: Path, task_header_prefix: str, attempt_path: Path,
+) -> dict[str, Any]:
+    """Pending failures belong to the lane even while another task runs well.
+
+    Keep this separate from the active task's execution_progress: its own new
+    attempt has not inherited another task's failure count or retry budget.
+    Historical completed tasks do not degrade the current pending frontier.
+    """
+    from .supervisor_watchdog import parse_todo_task_fields
+
+    base = {"schema": "agent-supervisor/lane-execution-health@1", "observation_only": True,
+            "work_complete": False, "completion_authority": False}
+    try:
+        fields_by_id = dict(parse_todo_task_fields(todo_path.read_text(encoding="utf-8"),
+                                                 task_header_prefix=task_header_prefix))
+        if attempt_path.exists():
+            payload = json.loads(attempt_path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("invalid attempt state")
+        attempts, _retry, fixed, evidence = _load_attempt_state(attempt_path)
+        failures = []
+        for task_id, fields in fields_by_id.items():
+            if str(fields.get("status") or "").strip().casefold() in {"completed", "complete", "done"}:
+                continue
+            record, proof = fixed.get(task_id) or {}, evidence.get(task_id) or {}
+            progress = record.get("execution_progress") or {}
+            unresolved = _unresolved_execution_failure(record, proof)
+            unqualified = bool(attempts.get(task_id, 0) > 0 and not progress and not proof)
+            if not unresolved and not unqualified:
+                continue
+            command = parse_deterministic_command(fields.get("deterministic_command") or fields.get("deterministic_repair") or "", repo_root=repo_root)
+            validation = parse_deterministic_command(fields.get("validation") or "", repo_root=repo_root)
+            contract = _command_contract(fields, command, validation, repo_root=repo_root) if command else ""
+            qualified = bool(contract and progress.get("contract") == contract)
+            count = int(progress.get("semantic_failures") or 0)
+            failures.append({"task_id": task_id, "semantic_failures": count,
+                             "current_contract_qualified": qualified,
+                             "unqualified_prior_attempts": unqualified,
+                             "exhausted": qualified and count >= semantic_failure_limit(fields)})
+        return {**base, "health": "degraded" if failures else "operational",
+                "pending_failure_count": len(failures), "pending_failure_task_ids": [item["task_id"] for item in failures[:32]],
+                "exhausted_failure_count": sum(item["exhausted"] for item in failures),
+                "pending_failures": failures[:32], "unresolved_prior_failure": bool(failures)}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {**base, "health": "degraded", "reason": "lane_failure_history_unavailable",
+                "pending_failure_count": 0, "pending_failure_task_ids": [], "pending_failures": [],
+                "exhausted_failure_count": 0, "unresolved_prior_failure": False}
+
+
 def _load_attempts(path: Path) -> dict[str, int]:
     attempts, _retry_after, _fixed, _evidence = _load_attempt_state(path)
     return attempts
@@ -302,6 +508,36 @@ def _runtime_contract_code(code: CodeType) -> CodeType:
     )
 
 
+def _execution_input_contract(raw: str, *, repo_root: Path) -> dict[str, dict[str, str | None]]:
+    """Fingerprint explicitly declared read-only inputs without expanding edits.
+
+    Missing in-repository files remain bound as None. Invalid/outside paths
+    have deterministic markers and never reach the content reader, including
+    symlinks whose resolved target escapes this repository.
+    """
+
+    root = repo_root.resolve()
+    inputs: dict[str, dict[str, str | None]] = {}
+    for name in (part.strip() for part in raw.split(",")):
+        if not name:
+            continue
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            inputs[name] = {"sha256": None, "invalid": "not_repo_relative"}
+            continue
+        try:
+            resolved = (root / relative).resolve()
+            canonical = resolved.relative_to(root).as_posix()
+            if resolved.exists() and not resolved.is_file():
+                inputs[name] = {"sha256": None, "invalid": "not_a_file"}
+                continue
+        except (OSError, ValueError, RuntimeError):
+            inputs[name] = {"sha256": None, "invalid": "unresolvable_or_outside_repo"}
+            continue
+        inputs[name] = {"path": canonical, "sha256": _file_digest(resolved)}
+    return inputs
+
+
 def _command_contract(
     fields: Mapping[str, str], command: Sequence[str], validation: Sequence[str] | None,
     *, repo_root: Path,
@@ -333,8 +569,18 @@ def _command_contract(
                "command": list(command), "validation": list(validation or []), "scripts": scripts,
                "declared_sources": {
                    name: digest for name, digest in _declared_evidence(fields, repo_root=root, excluded=[]).items()
-                   if _is_source_path(Path(name))
+                   if _is_source_path(Path(name)) or semantic_recovery.is_authored_scenario_source(Path(name))
                }}
+    if str(fields.get("retry_on_changed_evidence") or "").strip():
+        # Preserve every existing lane's contract and attempt ledger.
+        payload["retry_on_changed_evidence"] = str(fields["retry_on_changed_evidence"])
+    if str(fields.get("semantic_failure_limit") or "").strip():
+        payload["semantic_failure_limit"] = semantic_failure_limit(fields)
+    execution_inputs = str(fields.get("execution_inputs") or "").strip()
+    if execution_inputs:
+        # Absent/blank declarations must retain legacy fingerprints and retry
+        # budgets. These read-only bindings are never writable predicted files.
+        payload["execution_inputs"] = _execution_input_contract(execution_inputs, repo_root=root)
     if any(Path(argument).name == "run-vdg-all-families.mjs" for argument in command):
         recovery = recovery_contract(command, repo_root=root)
         if recovery is not None:
@@ -443,6 +689,26 @@ def _task_timeout(fields: Mapping[str, str]) -> float:
     resource = str(fields.get("resource_class") or "")
     cap = 50400.0 if resource == "cpu-browser" else 1800.0
     return max(1.0, min(timeout, cap))
+
+
+def _validation_timeout(fields: Mapping[str, str]) -> float:
+    """Honor an explicitly registered budget; preserve the legacy 300s default."""
+    try:
+        declared = float(fields.get("implementation_timeout_seconds") or "")
+        explicit = 0 < declared < float("inf")
+    except (TypeError, ValueError):
+        explicit = False
+    return min(_task_timeout(fields), float("inf") if explicit else 300.0)
+
+
+def _dependency_validation_timeout(fields: Mapping[str, str]) -> float:
+    """Honor an explicit bounded validator budget; keep legacy quick defaults."""
+    try:
+        declared = float(fields.get("implementation_timeout_seconds") or "")
+        explicit = 0 < declared < float("inf")
+    except (TypeError, ValueError):
+        explicit = False
+    return min(_task_timeout(fields), float("inf") if explicit else 30.0)
 
 
 def _stop_command_group(process: subprocess.Popen[Any]) -> None:
@@ -593,6 +859,7 @@ def _run_argv(
     cwd: Path | None = None,
     cleanup_descendants_on_success: bool = False,
     env: Mapping[str, str] | None = None,
+    on_spawn: Callable[[], None] | None = None,
 ) -> int:
     """Run a command, containing failures and optionally its successful children.
 
@@ -617,6 +884,8 @@ def _run_argv(
         deadline = time.monotonic() + timeout
         completed = False
         try:
+            if on_spawn is not None:
+                on_spawn()
             while True:
                 descendants.snapshot()
                 heartbeat()
@@ -1190,6 +1459,223 @@ def _bounded_outputs_material(validation: str, *, repo_root: Path) -> bool:
     return bool(files) and all(path.is_file() and path.stat().st_size >= 128 for path in files)
 
 
+def _recovery_source_snapshot(fields: Mapping[str, str], *, repo_root: Path) -> dict[str, str | None]:
+    """Production source only: receipts, feedback and runtime churn cannot rearm."""
+    names = [part.strip() for key in ("predicted_files", "execution_inputs")
+             for part in str(fields.get(key) or "").split(",") if part.strip()]
+    selected = []
+    for name in names:
+        item = Path(name)
+        if ({"data", "test-results", "evidence", "logs", "model-inputs", "model-invocations"}.intersection(item.parts)
+                or not (_is_source_path(item) or semantic_recovery.is_authored_scenario_source(item))):
+            continue
+        selected.append(name)
+    contract = _execution_input_contract(",".join(selected), repo_root=repo_root)
+    if any(value.get("invalid") for value in contract.values()):
+        raise semantic_recovery.SemanticRecoveryError("recovery_source_path_invalid")
+    return {**{name: value["sha256"] for name, value in contract.items()},
+            **semantic_recovery.fixture_inputs(repo_root, fields)}
+
+
+def semantic_failure_limit(fields: Mapping[str, str]) -> int:
+    """A canary may use a smaller real failure budget; ordinary tasks keep six."""
+    value = fields.get("semantic_failure_limit")
+    raw = "" if value is None else str(value).strip()
+    if not raw:
+        return 6
+    try:
+        limit = int(raw)
+    except ValueError as exc:
+        raise ValueError("semantic_failure_limit_invalid") from exc
+    if not 1 <= limit <= 6:
+        raise ValueError("semantic_failure_limit_invalid")
+    return limit
+
+
+def _recovery_protected_scripts(command: Sequence[str], validation: Sequence[str] | None,
+                                recovery: Sequence[str], *, repo_root: Path) -> dict[str, str | None]:
+    result = {}
+    for argv in (command, validation or [], recovery):
+        for name in argv:
+            if Path(name).suffix.lower() not in {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}:
+                continue
+            relative = Path(name)
+            if relative.is_absolute():
+                try:
+                    relative = relative.relative_to(repo_root)
+                except ValueError:
+                    continue
+            binding = _execution_input_contract(str(relative), repo_root=repo_root)
+            result[str(relative)] = binding[str(relative)].get("sha256")
+    return result
+
+
+def _recovery_storage_wait(task_id: str, *, repo_root: Path, attempt_path: Path,
+                           log_path: Path) -> dict[str, Any] | None:
+    """Fresh durable admission before reserving recovery or starting its work.
+
+    Do not write a pressure refusal to the full filesystem or refund an earlier
+    admission. Existing journals and all repair/phase budgets remain untouched.
+    """
+    capacity = check_storage_capacity((repo_root, attempt_path.parent, log_path.parent))
+    if capacity["ok"]:
+        return None
+    return {"state": "degraded", "phase": "resource_retry_wait", "active_task_id": "",
+            "resource_task_id": task_id, "resource_code": "storage_pressure", "storage_pressure": True,
+            "terminal_reason": "", "backpressure_reasons": [f"{task_id}:storage_pressure"],
+            "storage_reason": capacity["reason"],
+            "next_retry_at_ms": int(time.time() * 1000) + _RESOURCE_RETRY_BASE_MS,
+            "busy": False, "work_complete": False, "completion_authority": False}
+
+
+def _run_semantic_recovery(
+    task_id: str, fields: Mapping[str, str], command: Sequence[str], validation: Sequence[str] | None, *,
+    repo_root: Path, todo_path: Path, attempt_path: Path, log_path: Path,
+    progress: Mapping[str, Any], heartbeat: Callable[..., None], hold_result: Callable[[], dict[str, Any] | None],
+) -> dict[str, Any] | None:
+    """One finite, task-declared repair; never reset attempts or complete work."""
+    policy = semantic_recovery.policy(fields, root=repo_root, task_id=task_id,
+                                      parse_command=parse_deterministic_command, task_timeout=_task_timeout(fields))
+    if policy is None:
+        return None
+    held = hold_result()
+    if held:
+        return held
+    storage_wait = _recovery_storage_wait(task_id, repo_root=repo_root, attempt_path=attempt_path,
+                                          log_path=log_path)
+    if storage_wait:
+        return storage_wait
+    contract = _command_contract(fields, command, validation, repo_root=repo_root)
+    ledger = semantic_recovery.Journal(semantic_recovery.journal_path(attempt_path), _atomic_write)
+    ledger.reconcile(task_id, contract, int(time.time() * 1000))
+    before = _recovery_source_snapshot(fields, repo_root=repo_root)
+    if not before:
+        raise semantic_recovery.SemanticRecoveryError("recovery_has_no_declared_production_source")
+    fingerprint = semantic_recovery.digest({"task_id": task_id, "contract": contract, "source": before,
+                                             "policy": policy["policy_fingerprint"], "feedback": policy["qualification_inputs"]})
+    spent = ledger.summary(task_id)["spent"]
+    safe_id = re.sub(r"[^a-zA-Z0-9_.-]", "_", task_id)[:128]
+    packet = attempt_path.with_name(f"semantic-recovery-{safe_id}-{spent + 1}.context.json")
+    try:
+        packet_relative = packet.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError as exc:
+        raise semantic_recovery.SemanticRecoveryError("recovery_runtime_outside_repo") from exc
+    row = ledger.admit(task_id, contract=contract, fingerprint=fingerprint, limit=policy["limit"],
+                       context_path=packet_relative, now_ms=int(time.time() * 1000))
+    row["timeout_seconds"] = policy["timeout"]
+    row["recovery_limit"] = policy["limit"]
+    row["source_before"] = before
+    ledger.save()
+    context = {"schema": "agent-supervisor/semantic-recovery-context@1", "task_id": task_id,
+               "producer_contract": contract, "qualification_fingerprint": fingerprint,
+               "admission_index": spent + 1, "recovery_limit": policy["limit"], "feedback_inputs": policy["inputs"],
+               "source_before": before, "failure_summary": {key: progress[key] for key in (
+                   "semantic_failures", "attempts_started", "last_stage", "last_exit_code") if key in progress},
+               "requires_inherited_lease_validation": True, "observation_only": True,
+               "work_complete": False, "completion_authority": False}
+    _atomic_write(packet, json.dumps(context, sort_keys=True, indent=2) + "\n")
+    protected = _recovery_protected_scripts(command, validation, policy["argv"], repo_root=repo_root)
+    board_before = _file_digest(todo_path)
+    env = dict(os.environ)
+    env[semantic_recovery.CONTEXT_ENV] = str(packet.resolve())
+
+    class RecoveryHeld(Exception):
+        pass
+
+    def beat() -> None:
+        if hold_result():
+            raise RecoveryHeld
+        heartbeat(active_task_id=task_id, state="degraded", phase="semantic_recovery")
+
+    code = 1
+    error = None
+    held_after = None
+    try:
+        code = _run_argv(policy["argv"], repo_root=repo_root, timeout=policy["timeout"], log_path=log_path,
+                         heartbeat=beat, cleanup_descendants_on_success=True, env=env)
+        held_after = hold_result()
+    except Exception as exc:
+        error = exc
+    after_contract = _command_contract(fields, command, validation, repo_root=repo_root)
+    after = _recovery_source_snapshot(fields, repo_root=repo_root)
+    protected_after = _recovery_protected_scripts(command, validation, policy["argv"], repo_root=repo_root)
+    changed = [name for name in before if before[name] != after.get(name)]
+    forbidden = protected != protected_after or _file_digest(todo_path) != board_before
+    if forbidden:
+        state, reason = "blocked", "recovery_changed_controller_validator_or_taskboard"
+    elif error is not None or held_after:
+        state, reason = "interrupted", "recovery_operator_hold" if held_after or isinstance(error, RecoveryHeld) else "recovery_owner_interrupted"
+    elif code:
+        state, reason = "failed", "recovery_command_failed"
+    elif not changed or after_contract == contract:
+        state, reason = "noop", "recovery_no_material_production_source_change"
+    elif any(after.get(name) is None for name in changed):
+        state, reason = "blocked", "recovery_removed_production_source"
+    else:
+        state, reason = "applied", "recovery_production_source_changed_requires_original_validation"
+    row.update(state=state, reason=reason, exit_code=code, finished_at_ms=int(time.time() * 1000),
+               source_before=before, source_after=after)
+    row["approved_contract" if state == "applied" else "blocked_contract"] = after_contract
+    ledger.save()
+    with open_command_log(log_path, f"semantic recovery {task_id}: {state} ({reason}); spent={spent + 1}/{policy['limit']}\n"):
+        pass
+    if isinstance(error, _LaneResumeInterrupted):
+        raise error
+    if held_after or isinstance(error, RecoveryHeld):
+        return hold_result() or {"state": "degraded", "phase": "operator_hold", "active_task_id": "", "busy": False,
+                                "work_complete": False, "completion_authority": False}
+    return {"state": "degraded", "phase": "semantic_recovery_" + state, "active_task_id": task_id,
+            "terminal_reason": "", "backpressure_reasons": [f"{task_id}:{reason}"],
+            "busy": False, "work_complete": False, "completion_authority": False}
+
+
+def _transient_resource_refusal(log_path: Path, start: int, task_id: str) -> str:
+    """Typed refusal, or fresh parent measurement when full storage lost stdout.
+
+    The caller restricts this to exit 75 from the current producer. A readable
+    current-task diagnostic remains authoritative; unrelated failures never
+    become storage errors merely because a message contains pressure wording.
+    """
+    def measured_pressure() -> str:
+        capacity = check_storage_capacity((log_path,))
+        return "storage_pressure" if not capacity["ok"] else ""
+
+    try:
+        with log_path.open("rb") as stream:
+            stream.seek(start)
+            data = stream.read(131073)
+        if len(data) > 131072:
+            return measured_pressure()
+        for line in reversed(data.decode("utf-8", errors="replace").splitlines()):
+            try:
+                value = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(value, dict) or value.get("task_id") != task_id:
+                continue
+            error = value.get("error")
+            code = error.get("code") if isinstance(error, dict) else value.get("code")
+            if code == "browser_contention":
+                return code
+            if (code == "storage_pressure" and isinstance(error, dict)
+                    and value.get("retryable") is True
+                    and value.get("work_complete") is False
+                    and value.get("completion_authority") is False
+                    and "errno" in error):
+                reason, number = error.get("reason"), error["errno"]
+                if ((reason == "insufficient_free_bytes" and number is None)
+                        or (reason == "ENOSPC" and type(number) is int and number == 28)
+                        or (reason == "EDQUOT" and type(number) is int and number == 122)):
+                    return code
+            return ""
+    except OSError as error:
+        if not is_storage_pressure(error) and not isinstance(error, FileNotFoundError):
+            return ""
+    # The child's write may fail even though the parent successfully opened its
+    # log earlier. This reports our actual measurement, not a fabricated errno.
+    return measured_pressure()
+
+
 def run_resume_cycle(
     *,
     repo_root: Path,
@@ -1235,6 +1721,7 @@ def run_resume_cycle(
         )
     }
     attempts, retry_after, fixed_points, command_evidence = _load_attempt_state(attempt_path)
+    selected = _order_explicit_task_priorities(selected, blocks, fixed_points=fixed_points)
     gate_recovery = GateRecovery(attempt_path)
 
     def save_attempts() -> None:
@@ -1242,20 +1729,37 @@ def run_resume_cycle(
 
     evidence_exclusions = (todo_path, attempt_path, log_path, gate_recovery.path)
 
+    def archive_resource_window(task: dict[str, Any], record: Mapping[str, Any], reason: str) -> None:
+        history = list(task.get("resource_wait_history") or [])
+        task["resource_wait_history"] = [*history[-15:], {**record, "ended_at_ms": int(time.time() * 1000),
+                                                        "end_reason": reason}]
+
+    def record_dispatch(task_id: str) -> None:
+        # Task-level ordering survives source-contract rearming. Only an
+        # actually spawned producer may rotate its equal-priority peers.
+        last = max((_fair_dispatch_sequence(record) for record in fixed_points.values()), default=0)
+        if last >= 2**63 - 1:
+            raise ValueError("persistent fair dispatch sequence exhausted")
+        fixed_points.setdefault(task_id, {})["fair_dispatch_sequence"] = last + 1
+        save_attempts()
+
     def run_producer(
         task_id: str, fields: Mapping[str, str], command: Sequence[str],
         validation: Sequence[str] | None, **options: Any,
     ) -> int:
         # Invalidate first: an interrupted or later failed invocation cannot
         # inherit evidence produced by an earlier invocation.
-        command_evidence.pop(task_id, None)
-        save_attempts()
+        previous_evidence = command_evidence.pop(task_id, None) or {}
         before = _declared_evidence(fields, repo_root=repo_root, excluded=evidence_exclusions)
         contract = _command_contract(fields, command, validation, repo_root=repo_root)
+        _begin_execution_progress(fixed_points, task_id, contract, now_ms=int(time.time() * 1000),
+                                  previous_evidence=previous_evidence, previous_attempts=attempts.get(task_id, 0))
+        save_attempts()
         timeout = float(options["timeout"])
         code = 0
         preflight_attempted = False
         producer_invoked = False
+        producer_log_start = log_path.stat().st_size if log_path.is_file() else 0
         failed_stage = "pre_command_recovery"
         try:
             hooks = recovery_commands(task_id, command, repo_root=repo_root)
@@ -1302,7 +1806,8 @@ def run_resume_cycle(
                 # Preserve the ordinary runner path when no policy applies.
                 producer_invoked = True
                 failed_stage = "command"
-                code = _run_argv(command, **options)
+                producer_log_start = log_path.stat().st_size if log_path.is_file() else 0
+                code = _run_argv(command, **options, on_spawn=lambda: record_dispatch(task_id))
             else:
                 held = hold_result()
                 if held:
@@ -1320,7 +1825,9 @@ def run_resume_cycle(
                         if remaining > 0:
                             producer_invoked = True
                             failed_stage = "command"
-                            code = _run_argv(command, **{**options, "timeout": remaining})
+                            producer_log_start = log_path.stat().st_size if log_path.is_file() else 0
+                            code = _run_argv(command, **{**options, "timeout": remaining},
+                                             on_spawn=lambda: record_dispatch(task_id))
                         else:
                             code = _COMMAND_TIMEOUT_EXIT
         if code == 0 and hooks:
@@ -1381,6 +1888,32 @@ def run_resume_cycle(
                     producer_invoked=producer_invoked,
                     failed_stage=failed_stage,
                 )
+        resource_code = (_transient_resource_refusal(log_path, producer_log_start, task_id)
+                         if code == _GATE_WITHHELD_EXIT and producer_invoked and failed_stage == "command" else "")
+        finished_at = int(time.time() * 1000)
+        if resource_code:
+            task_record = fixed_points.setdefault(task_id, {})
+            old = task_record.get("resource_wait") or {}
+            if old.get("contract") != contract:
+                old = {}
+            refusals = int(old.get("refusals") or 0) + 1
+            first = int(old.get("first_at_ms") or finished_at)
+            task_record["resource_refusals_total"] = int(task_record.get("resource_refusals_total") or 0) + 1
+            task_record["resource_wait"] = {"contract": contract, "code": resource_code,
+                "refusals": refusals, "first_at_ms": first,
+                "deadline_at_ms": int(old.get("deadline_at_ms") or first + min(timeout, 1200) * 1000),
+                "next_retry_at_ms": finished_at + min(300_000, _RESOURCE_RETRY_BASE_MS * 2 ** min(refusals - 1, 4))}
+            waiting = task_record["resource_wait"]
+            if refusals >= _RESOURCE_RETRY_LIMIT or finished_at >= waiting["deadline_at_ms"]:
+                waiting.update(window_closed=True, next_retry_at_ms=finished_at + 300_000)
+        else:
+            task_record = fixed_points.setdefault(task_id, {})
+            old = task_record.pop("resource_wait", None)
+            if old:
+                archive_resource_window(task_record, old, "producer_reacquired" if code == 0 else "producer_exit")
+        _finish_execution_progress(fixed_points, task_id, code=code, stage=failed_stage,
+                                   contract=_command_contract(fields, command, validation, repo_root=repo_root),
+                                   now_ms=finished_at, resource_refusal=resource_code)
         save_attempts()
         return code
 
@@ -1396,6 +1929,9 @@ def run_resume_cycle(
         current = _command_contract(fields, command, validation, repo_root=repo_root)
         if record.get("retry_contract") != current:
             record["retry_contract"] = current
+            progress = (fixed_points.get(task_id) or {}).get("execution_progress")
+            if isinstance(progress, dict):
+                progress["contract"] = current
             save_attempts()
 
     validation_commands = {
@@ -1410,7 +1946,27 @@ def run_resume_cycle(
     }
     skipped: list[str] = []
     gate_waits: list[dict[str, Any]] = []
+    semantic_waits: list[str] = []
+    timeout_revalidation_ids: list[str] = []
     now_ms = int(time.time() * 1000)
+
+    def resource_result(task_id: str) -> dict[str, Any] | None:
+        record = (fixed_points.get(task_id) or {}).get("resource_wait") or {}
+        if not record:
+            return None
+        exhausted = bool(record.get("window_closed"))
+        return {"state": "degraded", "phase": "resource_retry_wait",
+                "active_task_id": "", "resource_task_id": task_id,
+                "terminal_reason": "",
+                "backpressure_reasons": [f"{task_id}:{record['code']}"],
+                "next_retry_at_ms": record["next_retry_at_ms"], "resource_window_exhausted": exhausted,
+                "resource_refusals": record["refusals"], "resource_retry_limit": _RESOURCE_RETRY_LIMIT,
+                "resource_refusals_total": (fixed_points.get(task_id) or {}).get("resource_refusals_total", 0),
+                "busy": False, "work_complete": False, "completion_authority": False}
+
+    def withheld_result(task_id: str, fields: Mapping[str, str], command: Sequence[str],
+                        validation: Sequence[str] | None = None) -> dict[str, Any]:
+        return resource_result(task_id) or gate_result(task_id, fields, command, validation)
 
     def gate_result(
         task_id: str, fields: Mapping[str, str], command: Sequence[str],
@@ -1420,6 +1976,10 @@ def run_resume_cycle(
         held = hold_result()
         if held:
             return held
+        storage_wait = _recovery_storage_wait(task_id, repo_root=repo_root, attempt_path=attempt_path,
+                                              log_path=log_path)
+        if storage_wait:
+            return storage_wait
         # Exit 75 is a valid refusal, not permission to complete the task or
         # erase the evidence that this same refusal has repeated for days.
         attempts.pop(task_id, None)
@@ -1431,7 +1991,16 @@ def run_resume_cycle(
         source_contract = gate_source_contract(
             evidence, _command_contract(fields, command, validation_commands.get(task_id), repo_root=repo_root),
         )
+        previous = gate_recovery.records.get(task_id) or {}
         record = gate_recovery.observe(task_id, fingerprint, now_ms=int(time.time() * 1000), source_contract=source_contract)
+        if str(fields.get("retry_on_changed_evidence") or "").casefold() == "true":
+            # A probe can discover new evidence without executing the producer.
+            # Keep the last producer's refusal fingerprint across that probe,
+            # including restarts; only a real producer consumes the new guard.
+            producer_fingerprint = previous.get("producer_evidence_fingerprint", previous.get("fingerprint"))
+            record["producer_evidence_fingerprint"] = (producer_fingerprint
+                if probe_only and isinstance(producer_fingerprint, str)
+                and re.fullmatch(r"[0-9a-f]{64}", producer_fingerprint) else fingerprint)
         record["withheld_stage"] = "validation" if validation_command else "command"
         record["last_probe"] = "validation_only" if probe_only else "producer"
         if validation_command:
@@ -1441,6 +2010,9 @@ def run_resume_cycle(
         if repeated and not record.get("dependencies_revalidated"):
             # Persist the fence before executing a validator: a restart cannot
             # convert an interrupted repair into an unlimited retry budget.
+            probe_started = time.monotonic()
+            probe_budget = _task_timeout(fields)
+            probe_deadline = probe_started + probe_budget
             record["dependencies_revalidated"] = True
             gate_recovery.store(task_id, record)
             validations: list[dict[str, Any]] = []
@@ -1451,16 +2023,24 @@ def run_resume_cycle(
                 source = blocks.get(dependency) or {}
                 raw = str(source.get("validation") or "")
                 argv = parse_deterministic_command(raw, repo_root=repo_root)
-                code = None if argv is None else _run_argv(
+                remaining = max(0.0, probe_deadline - time.monotonic())
+                timeout = min(_dependency_validation_timeout(source), remaining)
+                executed = argv is not None and remaining > 0
+                code = _run_argv(
                     argv, repo_root=repo_root,
                     cleanup_descendants_on_success=source.get("resource_class") == "cpu-browser",
-                    timeout=min(_task_timeout(source), 30.0), log_path=log_path,
+                    timeout=timeout, log_path=log_path,
                     heartbeat=lambda: heartbeat(
                         active_task_id=task_id, state="degraded", phase="gate_dependency_revalidation",
                     ),
-                )
+                ) if executed else None
                 validations.append({
                     "task_id": dependency, "validation": raw, "exit_code": code,
+                    "executed": executed, "timeout_seconds": timeout if executed else None,
+                    "not_run_reason": None if executed else "dependency_probe_budget_exhausted"
+                    if remaining <= 0 else "validation_command_refused",
+                    "probe_budget_seconds": probe_budget,
+                    "probe_elapsed_seconds": max(0.0, time.monotonic() - probe_started),
                     "validation_strength": "existence_only" if argv and Path(argv[0]).name == "test"
                     and len(argv) > 1 and argv[1] in {"-f", "-e", "-d", "-s", "-r", "-w", "-x", "-L", "-h"}
                     else "declared",
@@ -1473,6 +2053,11 @@ def run_resume_cycle(
             held = hold_result()
             if held:
                 return held
+            # Dependency probes may have run for minutes since gate admission.
+            storage_wait = _recovery_storage_wait(task_id, repo_root=repo_root, attempt_path=attempt_path,
+                                                  log_path=log_path)
+            if storage_wait:
+                return storage_wait
             record["repair_attempted"] = True
             gate_recovery.store(task_id, record)
             code = _run_argv(
@@ -1500,7 +2085,7 @@ def run_resume_cycle(
                     gate_code = _run_argv(
                         validation_command, repo_root=repo_root,
                         cleanup_descendants_on_success=fields.get("resource_class") == "cpu-browser",
-                        timeout=min(_task_timeout(fields), 300.0), log_path=log_path,
+                        timeout=_validation_timeout(fields), log_path=log_path,
                         heartbeat=lambda: heartbeat(active_task_id=task_id, state="healthy", phase="gate_revalidation"),
                     )
                 record["deterministic_repair"]["gate_exit_code"] = gate_code
@@ -1593,6 +2178,13 @@ def run_resume_cycle(
         if held:
             return held
         fields = blocks.get(task_id) or {}
+        try:
+            failure_limit = semantic_failure_limit(fields)
+            semantic_recovery.fixture_inputs(repo_root, fields)
+        except (ValueError, semantic_recovery.SemanticRecoveryError) as exc:
+            semantic_waits.append(task_id)
+            skipped.append(f"{task_id}:{exc}")
+            continue
         if task_id in invalid_validators:
             skipped.append(f"{task_id}:validation_provider_or_shell_refused")
             continue
@@ -1610,6 +2202,38 @@ def run_resume_cycle(
             )
             skipped.append(f"{task_id}:{reason}")
             continue
+        resource_wait = (fixed_points.get(task_id) or {}).get("resource_wait") or {}
+        if resource_wait.get("contract") == _command_contract(fields, command, validation, repo_root=repo_root):
+            if not resource_wait.get("window_closed") and resource_wait["deadline_at_ms"] <= now_ms:
+                resource_wait.update(window_closed=True,
+                                     next_retry_at_ms=max(resource_wait["next_retry_at_ms"], now_ms + 300_000))
+                save_attempts()
+            result = resource_result(task_id)
+            if result and resource_wait["next_retry_at_ms"] > now_ms:
+                gate_waits.append(result)
+                continue
+            if resource_wait.get("window_closed"):
+                archive_resource_window(fixed_points[task_id], resource_wait, "bounded_window_cooldown_finished")
+                fixed_points[task_id]["resource_wait"] = {"contract": resource_wait["contract"],
+                    "code": resource_wait["code"], "refusals": 0, "first_at_ms": now_ms,
+                    "deadline_at_ms": now_ms + min(_task_timeout(fields), 1200) * 1000,
+                    "next_retry_at_ms": now_ms}
+                save_attempts()
+        recovery_blocked = False
+        if semantic_recovery.journal_path(attempt_path).exists():
+            try:
+                recovery_journal = semantic_recovery.Journal(semantic_recovery.journal_path(attempt_path), _atomic_write)
+                current_contract = _command_contract(fields, command, validation, repo_root=repo_root)
+                source_now = _recovery_source_snapshot(fields, repo_root=repo_root)
+                recovery_journal.reconcile(task_id, current_contract, now_ms, source_now)
+                recovery_summary = recovery_journal.summary(task_id)
+                recovery_blocked = bool(recovery_summary.get("blocked_contract") and (
+                    recovery_summary["blocked_contract"] == current_contract
+                    or recovery_summary.get("source_after") == source_now))
+            except semantic_recovery.SemanticRecoveryError as exc:
+                semantic_waits.append(task_id)
+                skipped.append(f"{task_id}:{exc}")
+                continue
         if str((fixed_points.get(task_id) or {}).get("admitted") or ""):
             skipped.append(f"{task_id}:validation_fixed_point")
             continue
@@ -1625,8 +2249,15 @@ def run_resume_cycle(
         previous_gate = gate_recovery.records.get(task_id) or {}
         same_source = bool(source_contract and isinstance(previous_gate, dict)
                            and previous_gate.get("source_contract") == source_contract)
+        producer_fingerprint = previous_gate.get("producer_evidence_fingerprint", previous_gate.get("fingerprint"))
+        retry_changed_evidence = (
+            str(fields.get("retry_on_changed_evidence") or "").casefold() == "true"
+            and isinstance(producer_fingerprint, str)
+            and re.fullmatch(r"[0-9a-f]{64}", producer_fingerprint) is not None
+            and producer_fingerprint != fingerprint
+        )
         gate_record = gate_recovery.current(task_id, fingerprint) if same_source else {}
-        if int(gate_record.get("next_retry_at_ms") or 0) > now_ms:
+        if int(gate_record.get("next_retry_at_ms") or 0) > now_ms and not retry_changed_evidence:
             packet = gate_recovery.path.with_name(f"gate-recovery-{task_id}.json")
             gate_waits.append({
                 "state": "degraded", "phase": "gate_retry_wait", "active_task_id": task_id,
@@ -1638,7 +2269,11 @@ def run_resume_cycle(
                 "busy": False, "work_complete": False, "completion_authority": False,
             })
             continue
-        if same_source and validation is not None:
+        # Some explicitly registered tasks expose a cheap external resource
+        # guard as declared evidence. A changed guard must admit the producer
+        # again: its validator cannot manufacture the missing execution.
+        # Default lanes keep their existing validation-only retry policy.
+        if same_source and validation is not None and not retry_changed_evidence:
             # A producer that already refused has evidence to inspect. Re-run
             # its acceptance check cheaply before another expensive capture,
             # even when the command explicitly bypasses its own cache. A green
@@ -1646,7 +2281,7 @@ def run_resume_cycle(
             validation_code = _run_argv(
                 validation, repo_root=repo_root,
                 cleanup_descendants_on_success=fields.get("resource_class") == "cpu-browser",
-                timeout=min(_task_timeout(fields), 300.0), log_path=log_path,
+                timeout=_validation_timeout(fields), log_path=log_path,
                 heartbeat=lambda: heartbeat(
                     active_task_id=task_id, state="degraded", phase="gate_evidence_revalidation",
                     gate_evidence_fingerprint=fingerprint,
@@ -1666,7 +2301,7 @@ def run_resume_cycle(
                 ))
                 continue
         exhausted = attempts.get(task_id, 0) >= _ATTEMPT_LIMIT
-        if exhausted and retry_after.get(task_id, 0) > now_ms:
+        if exhausted and not recovery_blocked:
             prior = command_evidence.get(task_id) or {}
             prior_contract = prior.get("retry_contract", prior.get("contract"))
             proof_contract = prior.get("contract")
@@ -1689,6 +2324,48 @@ def run_resume_cycle(
                 save_attempts()
                 with open_command_log(log_path, f"retry rearmed {task_id}: command contract changed\n"):
                     pass
+        progress = (fixed_points.get(task_id) or {}).get("execution_progress") or {}
+        if (recovery_blocked or (progress.get("contract") == _command_contract(fields, command, validation, repo_root=repo_root)
+                and int(progress.get("semantic_failures") or 0) >= failure_limit)):
+            # A successful producer must not run again merely because the
+            # old implicit 300s validator ceiling cut off its acceptance. Admit
+            # one durable validation-only review under the explicit task cap.
+            # Preserve the original contract, attempt/failure counts and raw
+            # outputs; changed or unsuccessful producer evidence cannot enter.
+            recovery_key = hashlib.sha256(json.dumps({
+                "contract": progress.get("contract"), "timeout": _validation_timeout(fields),
+                "workflow": "explicit-validator-budget-v1",
+            }, sort_keys=True).encode()).hexdigest()
+            old_review = (fixed_points.get(task_id) or {}).get("validation_timeout_recovery") or {}
+            producer_record = command_evidence.get(task_id) or {}
+            if (not recovery_blocked and validation is not None
+                    and progress.get("last_stage") == "validation"
+                    and progress.get("last_exit_code") == _COMMAND_TIMEOUT_EXIT
+                    and _validation_timeout(fields) > 300.0
+                    and producer_record.get("exit_code") == 0
+                    and old_review.get("key") != recovery_key
+                    and _produced_evidence_matches(producer_record, fields, command, validation,
+                        repo_root=repo_root, excluded=evidence_exclusions)):
+                timeout_revalidation_ids.append(task_id)
+                continue
+            try:
+                recovery_result = _run_semantic_recovery(
+                    task_id, fields, command, validation, repo_root=repo_root, todo_path=todo_path,
+                    attempt_path=attempt_path, log_path=log_path, progress=progress,
+                    heartbeat=heartbeat, hold_result=hold_result,
+                )
+                if recovery_result:
+                    return recovery_result
+            except semantic_recovery.SemanticRecoveryError as exc:
+                skipped.append(f"{task_id}:{exc}")
+            semantic_waits.append(task_id)
+            skipped.append(f"{task_id}:unchanged_semantic_failure_budget_exhausted")
+            if not progress.get("escalated"):
+                progress["escalated"] = True
+                save_attempts()
+                with open_command_log(log_path, f"semantic failure budget exhausted {task_id}: awaiting changed execution inputs\n"):
+                    pass
+            continue
         if (
             exhausted
             and retry_after.get(task_id, 0) > now_ms
@@ -1738,7 +2415,7 @@ def run_resume_cycle(
         if held:
             return held
         if exit_code == _GATE_WITHHELD_EXIT:
-            gate_waits.append(gate_result(task_id, fields, command))
+            gate_waits.append(withheld_result(task_id, fields, command))
             continue
         if exit_code != 0:
             gate_recovery.clear(task_id)
@@ -1771,7 +2448,7 @@ def run_resume_cycle(
             if held:
                 return held
             if exit_code == _GATE_WITHHELD_EXIT:
-                gate_waits.append(gate_result(task_id, fields, command))
+                gate_waits.append(withheld_result(task_id, fields, command))
                 continue
             attempts[task_id] = 1 if exit_code == 0 else attempts.get(task_id, 0) + 1
             if exit_code != 0 and attempts[task_id] >= _ATTEMPT_LIMIT:
@@ -1801,7 +2478,7 @@ def run_resume_cycle(
                 ),
             )
             if exit_code == _GATE_WITHHELD_EXIT:
-                gate_waits.append(gate_result(task_id, fields, command))
+                gate_waits.append(withheld_result(task_id, fields, command))
                 continue
             attempts[task_id] = 1 if exit_code == 0 else attempts.get(task_id, 0) + 1
             if exit_code != 0 and attempts[task_id] >= _ATTEMPT_LIMIT:
@@ -1826,7 +2503,7 @@ def run_resume_cycle(
                 validation,
                 repo_root=repo_root,
                 cleanup_descendants_on_success=fields.get("resource_class") == "cpu-browser",
-                timeout=min(_task_timeout(fields), 300.0),
+                timeout=_validation_timeout(fields),
                 log_path=log_path,
                 heartbeat=lambda: heartbeat(
                     active_task_id=task_id,
@@ -1838,6 +2515,10 @@ def run_resume_cycle(
             if held:
                 return held
             record_retry_contract(task_id, fields, command, validation)
+            _finish_execution_progress(fixed_points, task_id, code=validation_code, stage="validation",
+                                       contract=_command_contract(fields, command, validation, repo_root=repo_root),
+                                       now_ms=int(time.time() * 1000))
+            save_attempts()
             if validation_code == _GATE_WITHHELD_EXIT:
                 gate_waits.append(gate_result(task_id, fields, command, validation))
                 continue
@@ -1929,7 +2610,7 @@ def run_resume_cycle(
                 source_validation,
                 repo_root=repo_root,
                 cleanup_descendants_on_success=(blocks.get(satisfies) or {}).get("resource_class") == "cpu-browser",
-                timeout=min(_task_timeout(blocks.get(satisfies) or {}), 300.0),
+                timeout=_validation_timeout(blocks.get(satisfies) or {}),
                 log_path=log_path,
                 heartbeat=lambda: heartbeat(
                     active_task_id=satisfies,
@@ -1958,6 +2639,10 @@ def run_resume_cycle(
                     fixed_points.pop(satisfies, None)
                     save_attempts()
         _atomic_write(todo_path, updated if updated.endswith("\n") else updated + "\n")
+        _finish_execution_progress(fixed_points, task_id, code=0, stage="validation",
+                                   contract=_command_contract(fields, command, validation, repo_root=repo_root),
+                                   now_ms=int(time.time() * 1000), validated=True)
+        save_attempts()
         return {
             "state": "healthy",
             "phase": "task_command_passed",
@@ -2051,7 +2736,7 @@ def run_resume_cycle(
                     validation,
                     repo_root=repo_root,
                     cleanup_descendants_on_success=fields.get("resource_class") == "cpu-browser",
-                    timeout=min(_task_timeout(fields), 300.0),
+                    timeout=_validation_timeout(fields),
                     log_path=log_path,
                     heartbeat=lambda: heartbeat(
                         active_task_id=task_id,
@@ -2141,6 +2826,7 @@ def run_resume_cycle(
     # active_task_id stays empty so a quiet log during the wait is not a
     # progress stall. The log line is the evidence the wait is intentional.
     waiting_ids = _attempt_backoff_ids(skipped, retry_after, now_ms=now_ms)
+    waiting_ids = list(dict.fromkeys([*timeout_revalidation_ids, *waiting_ids]))
     if waiting_ids:
         # A failing command can still produce valid evidence. Reuse only a
         # content change observed during its last invocation of this contract.
@@ -2160,11 +2846,25 @@ def run_resume_cycle(
             held = hold_result()
             if held:
                 return held
+            if task_id in timeout_revalidation_ids:
+                progress = (fixed_points.get(task_id) or {}).get("execution_progress") or {}
+                key = hashlib.sha256(json.dumps({
+                    "contract": progress.get("contract"), "timeout": _validation_timeout(fields),
+                    "workflow": "explicit-validator-budget-v1",
+                }, sort_keys=True).encode()).hexdigest()
+                fixed_points[task_id]["validation_timeout_recovery"] = {
+                    "key": key, "timeout_seconds": _validation_timeout(fields),
+                    "reserved_at_ms": int(time.time()*1000),
+                    "prior_execution_progress": dict(progress), "producer_reexecuted": False,
+                    "completion_authority": False,
+                }
+                # Reserve before launching, including across interrupts/restarts.
+                save_attempts()
             validation_code = _run_argv(
                 validation,
                 repo_root=repo_root,
                 cleanup_descendants_on_success=fields.get("resource_class") == "cpu-browser",
-                timeout=min(_task_timeout(fields), 300.0),
+                timeout=_validation_timeout(fields),
                 log_path=log_path,
                 heartbeat=lambda **kwargs: heartbeat(active_task_id=task_id, **kwargs),
             )
@@ -2173,6 +2873,10 @@ def run_resume_cycle(
                 return held
             record_retry_contract(task_id, fields, command, validation)
             if validation_code != 0:
+                _finish_execution_progress(fixed_points, task_id, code=validation_code, stage="validation",
+                                           contract=_command_contract(fields, command, validation, repo_root=repo_root),
+                                           now_ms=int(time.time() * 1000))
+                save_attempts()
                 continue
             held = hold_result()
             if held:
@@ -2213,6 +2917,10 @@ def run_resume_cycle(
             retry_after.pop(task_id, None)
             save_attempts()
             _atomic_write(todo_path, updated if updated.endswith("\n") else updated + "\n")
+            _finish_execution_progress(fixed_points, task_id, code=0, stage="validation",
+                                       contract=_command_contract(fields, command, validation, repo_root=repo_root),
+                                       now_ms=int(time.time() * 1000), validated=True)
+            save_attempts()
             return {
                 "state": "healthy",
                 "phase": "task_command_passed",
@@ -2227,15 +2935,20 @@ def run_resume_cycle(
         with open_command_log(log_path, "retry waiting " + ",".join(waiting_ids) + "\n"):
             pass
         return {
-            "state": "healthy",
-            "phase": "attempt_retry_wait",
-            "active_task_id": "",
+            "state": "degraded",
+            "phase": "semantic_failure_wait" if semantic_waits else "attempt_retry_wait",
+            "active_task_id": semantic_waits[0] if semantic_waits else "",
             "terminal_reason": "",
             "backpressure_reasons": skipped[:32],
+            "next_retry_at_ms": min(retry_after.get(identity, now_ms + _EXHAUSTED_RETRY_MS) for identity in waiting_ids),
             "busy": False,
             "work_complete": False,
             "completion_authority": False,
         }
+    if semantic_waits:
+        return {"state": "degraded", "phase": "semantic_failure_wait", "active_task_id": semantic_waits[0],
+                "terminal_reason": "unchanged_semantic_failure_budget_exhausted", "backpressure_reasons": skipped[:32],
+                "busy": False, "work_complete": False, "completion_authority": False}
     if gate_waits:
         return gate_waits[0]
     return {
@@ -2265,6 +2978,8 @@ def write_lane_status(
     repair_packet: str = "",
     next_retry_at_ms: int = 0,
     gate_recovery_needed: bool = False,
+    execution_progress: Mapping[str, Any] | None = None,
+    lane_health: Mapping[str, Any] | None = None,
 ) -> None:
     now_ms = int(time.time() * 1000)
     payload = {
@@ -2296,6 +3011,16 @@ def write_lane_status(
             next_retry_at_ms=int(next_retry_at_ms),
             gate_recovery_needed=bool(gate_recovery_needed),
         )
+    if execution_progress:
+        payload["execution_progress"] = dict(execution_progress)
+        payload["unresolved_prior_failure"] = execution_progress.get("unresolved_prior_failure") is True
+        if payload["unresolved_prior_failure"]:
+            payload["unresolved_prior_failure_reason"] = "prior_semantic_failure_not_validated"
+    if lane_health:
+        payload["lane_execution_health"] = dict(lane_health)
+        payload["lane_unresolved_prior_failure"] = lane_health.get("unresolved_prior_failure") is True
+    if next_retry_at_ms:
+        payload["next_retry_at_ms"] = int(next_retry_at_ms)
     _atomic_write(path, json.dumps(payload, indent=2) + "\n")
 
 
@@ -2558,7 +3283,7 @@ def resume_stopped_lane(
     }
 
 
-def serve(argv: Sequence[str] | None = None) -> int:
+def serve(argv: Sequence[str] | None = None, *, between_cycles: Callable[[], Mapping[str, Any] | None] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Deterministic stopped-lane resume")
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--todo-path", required=True)
@@ -2652,6 +3377,19 @@ def serve(argv: Sequence[str] | None = None) -> int:
     ) -> None:
         if not running or time.monotonic() >= deadline:
             raise _LaneResumeInterrupted
+        progress = execution_progress_snapshot(attempt_path, active_task_id) if active_task_id else {}
+        if progress and state in {"healthy", "starting"} and (
+                progress.get("unresolved_prior_failure") is True
+                or int(progress.get("semantic_failures") or 0) > 0
+                or int(progress.get("abandoned_attempts") or 0) >= _ATTEMPT_LIMIT):
+            state = "degraded"
+            backpressure_reasons = (*backpressure_reasons, active_task_id + ":prior_semantic_failure")
+        health = lane_execution_health(repo_root=repo_root, todo_path=todo_path,
+                                       task_header_prefix=str(args.task_header_prefix), attempt_path=attempt_path)
+        if health["health"] == "degraded" and state in {"healthy", "starting"}:
+            state = "degraded"
+            backpressure_reasons = (*backpressure_reasons, "lane:" + (
+                "pending_semantic_failures" if health["pending_failure_count"] else "failure_history_unavailable"))
         write_lane_status(
             status_path,
             target_id=str(args.bundle_key),
@@ -2666,6 +3404,8 @@ def serve(argv: Sequence[str] | None = None) -> int:
             repair_packet=repair_packet,
             next_retry_at_ms=next_retry_at_ms,
             gate_recovery_needed=gate_recovery_needed,
+            execution_progress=progress,
+            lane_health=health,
         )
 
     try:
@@ -2687,6 +3427,16 @@ def serve(argv: Sequence[str] | None = None) -> int:
                           backpressure_reasons=("storage_pressure:" + capacity["reason"],))
                 time.sleep(min(5.0, max(0.0, deadline - time.monotonic())))
                 continue
+            if between_cycles is not None:
+                try:
+                    boundary = between_cycles() or {}
+                    if boundary.get("state") == "refused":
+                        raise ValueError(str(boundary.get("reason") or "callback_refused"))
+                except Exception as error:
+                    heartbeat(state="degraded", phase="between_cycles_refused",
+                              backpressure_reasons=("between_cycles:" + type(error).__name__ + ":" + " ".join(str(error).split())[:240],))
+                    time.sleep(min(5.0, max(0.0, deadline-time.monotonic())))
+                    continue
             started = time.monotonic()
             cycle = run_resume_cycle(
                 repo_root=repo_root,

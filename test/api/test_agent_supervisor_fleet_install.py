@@ -693,3 +693,48 @@ def test_legal_ir_profile_cli_plans_without_entering_global_install_or_enrollmen
     assert installer.main() == 0
     assert calls == [{"profile": "legal-ir", "dry_run": True, "enable": True}]
     assert json.loads(capsys.readouterr().out) == {"profile": "legal-ir"}
+
+
+
+def test_installed_policy_and_runtime_assets_cold_import_from_release_only(tmp_path, monkeypatch):
+    """The immutable package must work when no development overlay is available."""
+    import importlib
+    from types import ModuleType
+
+    source = SCRIPT.parents[3]
+    release, contents = installer._enrollment_runtime(source, tmp_path / "cold-home")
+    assert {"recovery_policy", "runtime_assets"} <= contents.keys()
+    installer._materialize_enrollment_release(release, contents, source)
+    prefix = "cold_private_watchdog_runtime"
+    for suffix in ("", ".agent_supervisor", ".agent_supervisor.rescue"):
+        name = prefix + suffix
+        module = ModuleType(name)
+        module.__path__ = [str(release / "ipfs_accelerate_py" / suffix.lstrip(".").replace(".", "/"))]
+        monkeypatch.setitem(sys.modules, name, module)
+    loaded = {}
+    try:
+        for name in ("fleet_watchdog", "fleet_repair", "fleet_heals", "recovery_policy", "runtime_assets"):
+            module = importlib.import_module(prefix + ".agent_supervisor.rescue." + name)
+            assert Path(module.__file__).resolve().is_relative_to(release.resolve())
+            loaded[name] = module
+        board = {"max_repair_attempts": 3, "recovery_policy": {"profile": "infrastructure-only/v1",
+            "repairable_stalls": ["probe_failed"], "max_actions_per_window": 3,
+            "window_seconds": 86400, "circuit_breaker_seconds": 3600}}
+        guard = loaded["recovery_policy"].recovery_denial
+        assert guard(board, {}) == "infrastructure_only_recovery"
+        assert guard(board, {}, allow_infrastructure=True) == ""
+        assert loaded["fleet_watchdog"].infrastructure_policy(board) == board["recovery_policy"]
+        repair = loaded["fleet_repair"]
+        assert not (release / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").exists()
+        policy = {"cwd": str(source), "argv": ["codex", "exec"]}
+        argv = repair.llm_router_repair_argv(policy, tmp_path / "prompt.txt", tmp_path / "last.json")
+        primary = json.loads(argv[argv.index("--primary-command-json") + 1])
+        assert Path(primary[2]) == (source / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").resolve()
+        assert primary[:2] == [sys.executable, "-P"]
+        missing = tmp_path / "missing-engine";missing.mkdir()
+        assert repair._launch_preflight({"cwd": str(missing), "argv": ["codex", "exec"]}) == "repair_adapter_unavailable"
+        with pytest.raises(ValueError): repair._physical_grok_adapter({"cwd": "relative-source"})
+    finally:
+        for name in tuple(sys.modules):
+            if name.startswith(prefix + "."):
+                sys.modules.pop(name, None)

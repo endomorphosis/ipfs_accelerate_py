@@ -211,7 +211,9 @@ def _validated(daemon, request: dict, prior: dict | None, *, candidate: dict | N
           key in refs or type(value) is not dict or value.get("task_id") in refs
           or value.get("task_revision_cid") in refs for key, value in state.protected_implementation_attempts.items()),
           "protected_attempt_hold")
-    _need(daemon.max_task_attempts <= 0 or attempt < daemon.max_task_attempts, "retry_budget_exhausted")
+    # Custody cleanup may retire the final consumed attempt. It grants no
+    # provider dispatch; over-cap accounting still requires separate review.
+    _need(daemon.max_task_attempts <= 0 or attempt <= daemon.max_task_attempts, "retry_budget_exhausted")
     _need(daemon._retained_provider_capacity_deferral() is None, "capacity_hold_present")
     for path in (daemon._implementation_protected_active_snapshot_path(), daemon._implementation_protected_incident_path(),
                  daemon._protected_path_maintenance_lock_path()):
@@ -588,7 +590,7 @@ def _candidate_stable(daemon, request: dict, prior: dict, *, released=False) -> 
     _need(_state_hash(daemon) == base["state_sha256"] and _queue(daemon) == base["merge_queue"],
           "candidate_state_or_queue_changed")
     _need(_git(daemon.repo_root, "rev-parse", "HEAD") == base["repo_head"], "pending_claim_source_changed")
-    _need(daemon.max_task_attempts <= 0 or base["attempt"] < daemon.max_task_attempts, "retry_budget_exhausted")
+    _need(daemon.max_task_attempts <= 0 or base["attempt"] <= daemon.max_task_attempts, "retry_budget_exhausted")
     task = [t for t in daemon._load_tasks() if t.task_id == base["task_id"] and daemon._canonical_ref(t) == base["task_cid"]]
     _need(len(task) == 1 and native.normalize_status(task[0].status) in {"todo", "ready", "in_progress"},
           "pending_current_task_required")

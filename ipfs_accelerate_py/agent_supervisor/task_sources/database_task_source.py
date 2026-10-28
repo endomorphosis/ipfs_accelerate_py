@@ -36,7 +36,6 @@ from typing import Any, ClassVar, Final
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
-    FALSE_TERMINAL_BLOCKED_REASON_MARKERS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
@@ -54,6 +53,7 @@ from .duckdb_state import (
     submit_quack_owner_command,
     validate_quack_owner_command,
 )
+from .quack_owner_command import false_terminal_blocked_rearm_reason
 from .intent_repository import (
     DEFAULT_PAGE_LIMIT,
     MAX_PAGE_LIMIT,
@@ -3865,16 +3865,13 @@ class DatabaseTaskSource:
         except Exception:
             page = None
         for record in getattr(page, "tasks", ()) or ():
-            try:
-                blob = json.dumps(record.to_dict(), default=str)
-            except Exception:
-                blob = str(getattr(record, "body", "") or "")
-            if not any(marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS):
+            rearm_reason = false_terminal_blocked_rearm_reason(getattr(record, "body", None))
+            if rearm_reason is None:
                 continue
             try:
                 cas = self.rearm_blocked_task(
                     record,
-                    receipt={"operation": "false_terminal_blocked_supervisor_bug"},
+                    receipt={"operation": rearm_reason},
                 )
             except Exception:
                 continue
