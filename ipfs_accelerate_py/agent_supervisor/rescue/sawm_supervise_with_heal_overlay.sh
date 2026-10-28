@@ -7,18 +7,33 @@
 set -euo pipefail
 OVERLAY=${1:?overlay root}
 SOURCE_ROOT=${2:?sealed source root}
+LAUNCHER=${3:-$OVERLAY/ipfs_accelerate_py/agent_supervisor/rescue/sealed_board_supervisor_launch.py}
+RUNTIME_MODE=${4:-}
+RUNTIME_MANIFEST_SHA256=${5:-}
+bad_args=0
+if [ "$RUNTIME_MODE" = "--sealed-runtime" ]; then
+  [[ "$RUNTIME_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] || bad_args=1
+elif [ -n "$RUNTIME_MODE$RUNTIME_MANIFEST_SHA256" ]; then
+  bad_args=1
+fi
+if [ "$#" -gt 5 ] || [ "$bad_args" -ne 0 ]; then
+  echo "usage: $0 OVERLAY SOURCE_ROOT [LAUNCHER [--sealed-runtime MANIFEST_SHA256]]" >&2
+  exit 2
+fi
 cd "$SOURCE_ROOT"
 SCRIPT=scripts/ops/agent_supervisor/semantic_addressed_world_model.py
 # Overlay-first for quack-start so the exclusive owner binds the typed
 # command socket. Sealed `launch` below stays pin-free on the sealed package.
 LAUNCH=(
   /usr/bin/python3 -P
-  "$OVERLAY/ipfs_accelerate_py/agent_supervisor/rescue/sealed_board_supervisor_launch.py"
+  "$LAUNCHER"
   --overlay "$OVERLAY"
   --source-root "$SOURCE_ROOT"
-  --
-  "$SCRIPT"
 )
+if [ -n "$RUNTIME_MODE" ]; then
+  LAUNCH+=("$RUNTIME_MODE" --runtime-manifest-sha256 "$RUNTIME_MANIFEST_SHA256")
+fi
+LAUNCH+=(-- "$SCRIPT")
 SEALED=(/usr/bin/python3 -P "$SCRIPT")
 OWNER_READY=(
   /usr/bin/python3 -P
@@ -92,8 +107,8 @@ while kill -0 "$quack_pid" 2>/dev/null; do
   fi
   if [ -z "$launch_pid" ] || ! kill -0 "$launch_pid" 2>/dev/null; then
     if [ -n "$launch_pid" ]; then
-      wait "$launch_pid" || true
-      launch_rc=$?
+      launch_rc=0
+      wait "$launch_pid" || launch_rc=$?
       if [ "$launch_rc" -eq 0 ]; then
         echo "sealed launch admitted; waiting for lane supervisors without retiring another token" >&2
         for _ in $(seq 1 45); do
