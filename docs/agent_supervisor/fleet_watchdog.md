@@ -822,3 +822,52 @@ and retry refusal distinct from engineering completion. Adoption must retain
 explicit and old/new cwd operator markers, change only the reviewed source
 locations, and require fresh post-start observations for both existing namespaces.
 An old status file or a successful coding-process exit is insufficient.
+
+## Native catalogue continuation lineage
+
+The existing `legal-ir-native-task-population/v1` diagnostic profile keeps its
+single-root contract. A native `steer` amendment preserves existing tasks'
+original plan CIDs and attaches additions to a continuation root. Rewriting
+historical task roots to satisfy the v1 observer would destroy that lineage.
+
+The opt-in `legal-ir-native-task-population/v2` profile observes this layout
+through the same bounded read-only catalogue worker. Select it by supplying a
+new immutable population file and its exact SHA256 through the existing CLI;
+the configured plan root and repository tree bind the active tip. Existing
+CLI arguments and v1 behavior are unchanged. An arbitrary `lineage` key in a
+v1 plan record cannot select v2 validation.
+
+The v2 population has exactly `schema`, `board_namespace`, `plan_root_cid`,
+`repository_tree_id`, `tasks`, `goals` and `plans`. Each task binds its exact
+CID, alias, goal, original plan, objective and dependencies. Each goal binds
+its CID, alias, objective and parent. Plans are ordered from genesis to the
+active tip and bind their CID, goal, native status, revision, raw `body_json`
+SHA256 and these body fields:
+
+```text
+repository_tree_id, continuation_of, continued_by,
+revision_cid, delta_cid, idempotency_key
+```
+
+JSON null in one of these manifest body bindings means that the key is
+literally absent from the native body. It does not match a native null value
+or act as a wildcard. Genesis may lack historical fields; continuation bodies
+must carry their tree/revision/delta/idempotency bindings. Each predecessor
+must be `continued`, the final plan `active`, and every continuation must name
+the exact predecessor and unchanged root goal. At most 64 roots are accepted.
+An amendment-only active tip may have no tasks born under it.
+
+Validation refuses undeclared task origins, unrelated or forked roots, cycles,
+extra/missing scoped plans or goals, body/revision drift and dependency changes.
+The worker checks all rows in one existing read-only SQL snapshot with bounded
+rows, disabled external access and before/after database/WAL metadata checks.
+The v2 profile retains the original unknown-outcome, retry and incomplete
+attempt-history diagnostics. It still reports `not_activated` and
+`not_established`; a lineage match is no executor-health or task-admission grant.
+
+Build the selected diagnostic population from the responsible native owner's
+post-amendment readback, then qualify its configuration/binding cutover. A pure
+amendment preview cannot supply the new native plan revisions or body hashes.
+Keep the current deployed population selected until that readback exists;
+adding this profile never applies an amendment, rearms a task, clears a budget,
+replaces an owner or modifies a live database.
