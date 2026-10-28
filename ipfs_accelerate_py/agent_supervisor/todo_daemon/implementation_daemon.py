@@ -49711,8 +49711,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ),
                 "infrastructure_failure": False,
             }
+        # Chromium's ProcessSingleton creates a pathname AF_UNIX socket under
+        # TMPDIR. Keep this owned namespace short even when the operator's
+        # temporary root is a deeply nested storage/campaign path.
         with tempfile.TemporaryDirectory(
-            prefix="ipfs-accelerate-validation-home-"
+            prefix="iav-", dir="/tmp" if sys.platform.startswith("linux") else None
         ) as temporary_home:
             home_path = Path(temporary_home)
             # Tempfile and pytest retention must stay in this command's owned
@@ -68166,7 +68169,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "the validation runner may expose it through a sealed launcher.\n"
             "- Each validation command receives a fresh private `HOME` whose "
             "directory name starts with "
-            "`ipfs-accelerate-validation-home-`. Its XDG paths are exactly "
+            "`iav-` (under `/tmp` on Linux to bound AF_UNIX socket paths). "
+            "Its temporary directory is private `$HOME/tmp`; its XDG paths are exactly "
             "`$HOME/.cache`, `$HOME/.config`, `$HOME/.local/share`, and "
             "`$HOME/.local/state`. Operator profile state such as "
             "`~/.elan`, shell startup files, and provider-only managed "

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import getpass
 import json
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -105,3 +106,62 @@ def test_owned_temporary_roots(tmp_path):
         assert (sentinel.read_bytes(), sentinel.stat().st_ino, sentinel.stat().st_mtime_ns) == sentinel_before
         assert sorted(pytest_root.iterdir()) == [garbage]
     assert environment == original_environment
+
+
+def test_native_chrome_starts_with_a_long_inherited_temporary_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Chromium's ProcessSingleton socket is created under TMPDIR. A long
+    # operator-selected parent must not force that socket past sun_path's
+    # bound, even though ordinary filesystem/profile paths allow more bytes.
+    long_parent = tmp_path / ("operator-selected-temporary-root-" * 4)
+    long_parent.mkdir(mode=0o700)
+    assert len(str(long_parent)) > 108
+    monkeypatch.setenv("TMPDIR", str(long_parent))
+    monkeypatch.setattr(tempfile, "tempdir", str(long_parent))
+    workspace = tmp_path / "chrome-workspace"
+    workspace.mkdir(mode=0o700)
+    chrome = Path("/opt/google/chrome/chrome")
+    assert chrome.is_file(), "actual pinned Chrome executable is required"
+    probe = workspace / "browser_probe.py"
+    probe.write_text(r'''import json
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+home = Path(os.environ["HOME"])
+private_tmp = Path(tempfile.gettempdir())
+profile = Path.cwd() / "a-long-synthetic-profile-path-to-keep-independent-of-the-socket-root" / "profile"
+profile.mkdir(mode=0o700, parents=True)
+command = ["/opt/google/chrome/chrome", "--headless", "--no-sandbox",
+           "--disable-gpu", "--disable-breakpad", "--disable-crash-reporter",
+           "--disable-background-networking", "--no-first-run", "--no-default-browser-check",
+           "--user-data-dir=" + str(profile), "--dump-dom", "about:blank"]
+result = subprocess.run(command, text=True, capture_output=True, timeout=15)
+observation = {"returncode": result.returncode, "stdout": result.stdout,
+               "stderr": result.stderr, "home": str(home), "tmp": str(private_tmp),
+               "home_mode": stat.S_IMODE(home.stat().st_mode),
+               "tmp_mode": stat.S_IMODE(private_tmp.stat().st_mode),
+               "profile": str(profile), "python_tmp": tempfile.gettempdir()}
+(Path.cwd() / "browser-observed.json").write_text(json.dumps(observation), encoding="utf-8")
+assert result.returncode == 0, result.stderr
+assert "<html>" in result.stdout and "<body>" in result.stdout
+''', encoding="utf-8")
+    runner = TodoImplementationDaemon._validation_command_runner
+    environment = validation_environment_for_runner(build_validation_environment(), runner)
+    command = "python browser_probe.py"
+    result = runner(spec=SimpleNamespace(command=command, raw_command=command),
+                    workspace_path=workspace, timeout_seconds=30, environment=environment)
+    assert result["returncode"] == 0, result["output"]
+    observed = json.loads((workspace / "browser-observed.json").read_text(encoding="utf-8"))
+    home, private_tmp = Path(observed["home"]), Path(observed["tmp"])
+    assert observed["returncode"] == 0
+    assert len(str(Path(observed["profile"]))) > 108
+    assert private_tmp.is_relative_to(home)
+    assert len(str(private_tmp)) + len("/.com.google.Chrome.abcdef/SingletonSocket") < 108
+    assert observed["home_mode"] == observed["tmp_mode"] == 0o700
+    assert not home.exists(), "Native must retire the browser's owned temporary namespace"
+    assert list(long_parent.iterdir()) == [], "Native must not leave data under the unbounded parent"
