@@ -111,7 +111,9 @@ _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
 )
 _AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 4 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
-_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
+_AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES = 120 * 1024 * 1024
+_AGENT_CONTROL_PLANE_MAX_ARCHIVE_OVERHEAD_BYTES = 8 * 1024 * 1024
 _AGENT_NATIVE_DEPENDENCY_PIN_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1"
 )
@@ -7742,7 +7744,10 @@ def _agent_control_plane_head_payloads(
     required = set(_AGENT_CONTROL_PLANE_RELATIVE_FILES)
     if not required.issubset(blobs):
         raise ValueError("accepted control-plane HEAD is missing a dependency")
+    if len(blobs) > 2048:
+        raise ValueError("accepted control-plane manifest is oversized")
     payloads: dict[str, bytes] = {}
+    payload_bytes = 0
     for relative, object_id in sorted(blobs.items()):
         size_raw = _agent_git_output(
             root,
@@ -7755,6 +7760,9 @@ def _agent_control_plane_head_payloads(
             raise ValueError("accepted control-plane Git blob size is invalid") from exc
         if not 0 <= size <= _AGENT_CONTROL_PLANE_MAX_FILE_BYTES:
             raise ValueError("accepted control-plane Git blob is oversized")
+        payload_bytes += size
+        if payload_bytes > _AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES:
+            raise ValueError("accepted control-plane source payload is oversized")
         payload = _agent_git_output(
             root,
             ("cat-file", "blob", object_id),
@@ -7977,6 +7985,8 @@ def _agent_control_plane_archive_bytes(
         _AGENT_CONTROL_PLANE_MANIFEST_FILENAME: manifest_raw,
     }
     total = len(main) + len(manifest_raw)
+    if total > _AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES:
+        raise ValueError("accepted control-plane archive payload is oversized")
     for relative, digest in sorted(
         expected_digests.items(), key=lambda item: item[0].as_posix()
     ):
@@ -7988,8 +7998,8 @@ def _agent_control_plane_archive_bytes(
         if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
             raise ValueError("accepted control-plane archive input drifted")
         total += len(raw)
-        if total > _AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES:
-            raise ValueError("accepted control-plane archive is oversized")
+        if total > _AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES:
+            raise ValueError("accepted control-plane archive payload is oversized")
         entries[relative.as_posix()] = raw
     stream = io.BytesIO()
     with zipfile.ZipFile(
@@ -8005,6 +8015,9 @@ def _agent_control_plane_archive_bytes(
             info.external_attr = 0o100400 << 16
             archive.writestr(info, raw)
     payload = stream.getvalue()
+    overhead = len(payload) - total
+    if not 0 <= overhead <= _AGENT_CONTROL_PLANE_MAX_ARCHIVE_OVERHEAD_BYTES:
+        raise ValueError("accepted control-plane archive overhead is oversized")
     if not payload or len(payload) > _AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES:
         raise ValueError("accepted control-plane archive is oversized")
     return payload
