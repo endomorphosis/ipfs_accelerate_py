@@ -475,7 +475,8 @@ def test_legacy_bundle_claim_fails_closed_and_marker_is_sticky(tmp_path):
         changed["tasks"][0]["metadata"].pop("execution packet required")
         with pytest.raises(ExecutionPacketAdmissionError, match="requirement_cannot_be_removed"):
             coordinator.register_bundle(changed)
-        assert coordinator._connection.execute("SELECT COUNT(*) FROM leases").fetchone()[0] == 0
+        with coordinator._database_operation():
+            assert coordinator._connection.execute("SELECT COUNT(*) FROM leases").fetchone()[0] == 0
 
 
 def test_flagged_denial_does_not_charge_attempt_or_stop_eligible_peer(scenario):
