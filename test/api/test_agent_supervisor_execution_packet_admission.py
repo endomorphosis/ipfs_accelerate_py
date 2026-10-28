@@ -514,3 +514,18 @@ def test_plan_reversion_does_not_replay_old_acceptance(scenario):
     with pytest.raises(IntentRepositoryConflictError, match="native_spec_changed"):
         _cas(s, "ready")
     assert _snapshot(s) == before
+
+
+def test_retained_validation_pair_for_foreign_task_cannot_admit(scenario):
+    s = scenario
+    _accept(s)
+    s.intent.upsert_task(task_cid="task:foreign", task_alias="FOREIGN-T", goal_cid="goal:packet", status="blocked")
+    # The public writer keeps these keys consistent. Model a retained native
+    # inconsistency without changing the genuine signed reviewer payload.
+    with s.intent._connection(write=True) as connection:
+        connection.execute("UPDATE validation_runs SET task_cid='task:foreign' WHERE task_cid=?", [s.cid])
+    before = _snapshot(s)
+    with pytest.raises(IntentRepositoryConflictError, match="independent_native_validation_required"):
+        _cas(s, "ready")
+    assert _snapshot(s) == before
+    assert s.intent.get_task(s.cid)["status"] == "blocked"

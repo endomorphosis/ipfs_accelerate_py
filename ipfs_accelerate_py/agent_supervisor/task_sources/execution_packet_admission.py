@@ -371,7 +371,7 @@ def _require_execution_packet_on(connection, task_cid, *, phase="dispatch", reco
     expected = observed_validation_payload(envelope)
     validations = connection.execute(
         "SELECT r.outcome, r.evidence_digest, r.body_json, v.status, v.command_digest, v.finished_at "
-        "FROM validation_results r JOIN validation_runs v ON v.run_id=r.run_id "
+        "FROM validation_results r JOIN validation_runs v ON v.run_id=r.run_id AND v.task_cid=r.task_cid "
         "WHERE r.task_cid=? ORDER BY v.finished_at DESC, r.result_id DESC LIMIT 64", [task_cid]).fetchall()
     for row in validations:
         outcome, result_digest, raw, run_status, command_digest, finished = _values(row, ("outcome", "evidence_digest", "body_json", "status", "command_digest", "finished_at"))
