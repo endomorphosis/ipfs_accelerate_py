@@ -20709,6 +20709,19 @@ class PortalImplementationSupervisor:
         """Autonomously clean a retained generated-output transaction."""
 
         if not self._retained_generated_checkout_lease():
+            existing = read_checkout_mutation_lease(self._repo_merge_lock_path())
+            if (existing is not None
+                    and existing.metadata.get("protected_recovery_required") is True
+                    and existing.metadata.get("protected_recovery_owner") == "implementation_daemon"):
+                # Owner-tagged journals are a union, not interchangeable guard
+                # schemas. Let Native validate/settle its own exact journal
+                # before supervisor snapshots or worktree maintenance run.
+                native = self._build_worktree_reconciliation_daemon()
+                recovery = native.reconcile_protected_checkout_recovery()
+                recovered = recovery.get("checkout_mutation_lease_recovered") is True
+                return {"attempted": True, "recovered": recovered,
+                        "retained_lease": not recovered, "native_checkout_recovery": recovery,
+                        "reason": str(recovery.get("reason") or "native_checkout_recovery_required")}
             adoption = self._adopt_supervisor_protected_recovery()
             if adoption.get("required") and adoption.get("blocked"):
                 return {

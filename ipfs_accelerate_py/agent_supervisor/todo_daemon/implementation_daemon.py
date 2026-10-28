@@ -11050,6 +11050,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             return result
 
+        settlement = self.reconcile_protected_checkout_recovery()
+        if settlement.get("required") and not settlement.get("checkout_mutation_lease_recovered"):
+            return {"reconciled": False, "blocked": True,
+                    "reason": "protected_completion_journal_settlement_required", "settlement": settlement}
         state = PortalTaskState.load(self.state_path)
         lifecycle_preflight = self._reconcile_quiesced_worktree_lifecycle(
             state,
@@ -60967,6 +60971,257 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "intent": dict(intent),
         }
 
+    def _obsolete_protected_completion_proof(self, lease):
+        """Prove a later Native completion supersedes this exact old journal.
+
+        This is settlement of an obsolete transaction, not approval of its
+        protected history and not a new completion decision.
+        """
+        from ..merge.merge_queue import completed_request_digest
+        from ..merge.merge_train import MergeTrain
+        from types import SimpleNamespace
+
+        def require(condition, reason):
+            if not condition:
+                raise ValueError(reason)
+
+        observations = {}
+        def read_record(path):
+            path = Path(path)
+            require(path.resolve() == path and not path.is_symlink(), "record_path_alias")
+            before = path.stat()
+            require(stat_module.S_ISREG(before.st_mode) and before.st_uid == os.getuid()
+                    and before.st_nlink == 1 and before.st_size <= 20_000_000, "record_identity")
+            raw = path.read_bytes()
+            after = path.stat()
+            identity = lambda st: [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns]
+            require(identity(before) == identity(after), "record_changed")
+            observations[str(path)] = {"identity": identity(after), "sha256": hashlib.sha256(raw).hexdigest()}
+            value = json.loads(raw)
+            require(isinstance(value, dict), "record_not_mapping")
+            return value
+
+        root = self.repo_root.resolve()
+        metadata = dict(lease.metadata)
+        require(self._current_checkout_mutation_lease() is None, "current_checkout_transaction")
+        require(metadata.get("protected_recovery_owner") == "implementation_daemon"
+                and metadata.get("protected_recovery_required") is True
+                and metadata.get("operation") == "mark_tasks_completed", "journal_owner_or_operation")
+        owner_pid = int(metadata.get("pid") or 0)
+        require(owner_pid > 0 and not process_is_running(owner_pid)
+                and not self._lock_owner_is_active(metadata, expected_kind="merge"), "journal_owner_active")
+        guard = metadata.get("protected_release_guard")
+        intent = metadata.get("protected_recovery_intent")
+        require(isinstance(guard, Mapping) and isinstance(intent, Mapping), "journal_payload_missing")
+        require(guard.get("schema") == "ipfs_accelerate_py.agent_supervisor.protected-checkout-release-guard@1"
+                and intent.get("schema") == "ipfs_accelerate_py.agent_supervisor.protected-checkout-recovery-intent@1",
+                "journal_schema_unknown")
+        # Historical Native completion journals used worktree_root while their
+        # generic repo_root field was empty. Accept only that exact repo-bound
+        # Native variant; never resolve an empty path against the caller cwd.
+        validation_metadata = dict(metadata)
+        if not str(metadata.get("repo_root") or ""):
+            require(Path(str(metadata.get("worktree_root") or "")).resolve() == root
+                    and metadata.get("repository_id") == checkout_repository_id(root), "legacy_repository_binding")
+            validation_metadata["repo_root"] = str(root)
+        paths = self._recovery_lock_paths(metadata)
+        require(paths and not self._protected_recovery_journal_validation_error(
+            validation_metadata, paths, guard, intent), "journal_binding_invalid")
+        require(intent.get("operation") == "mark_tasks_completed", "intent_operation")
+        old_completion = intent.get("completion_intent")
+        expectation = intent.get("callback_expectation")
+        require(isinstance(old_completion, Mapping) and isinstance(expectation, Mapping), "completion_binding_missing")
+        require(old_completion.get("schema") == "ipfs_accelerate_py.agent_supervisor.completion-publication-intent@1",
+                "completion_schema_unknown")
+        sink = self._validated_completion_publication_sink(old_completion, recovery_metadata=metadata)
+        require(Path(str(sink["state_path"])) == self.state_path.resolve()
+                and Path(str(sink["state_dir"])) == self.state_path.resolve().parent, "state_sink_mismatch")
+        board = expectation.get("task_board")
+        require(isinstance(board, Mapping) and Path(str(board.get("path") or "")).resolve() == self.todo_path.resolve(),
+                "board_binding_mismatch")
+        require(tuple(paths) == (self.todo_path.resolve(),), "unacknowledged_protected_paths")
+        members = expectation.get("members")
+        require(isinstance(members, list) and members, "members_missing")
+        member_map = {str(m.get("task_id") or ""): dict(m) for m in members if isinstance(m, Mapping)}
+        require(len(member_map) == len(members) and set(member_map) == set(expectation.get("task_ids", ()))
+                and all(member_map), "members_invalid")
+        current_tasks = {task.task_id: task for task in self._load_tasks()}
+        for task_id, member in member_map.items():
+            task = current_tasks.get(task_id)
+            require(task is not None and normalize_status(task.status) == "completed", "member_not_completed")
+            identity = self._identity_for_task(task)
+            require(identity.canonical_task_cid == member.get("canonical_task_cid")
+                    and identity.canonical_task_key == member.get("canonical_task_key")
+                    and identity.board_namespace == member.get("board_namespace"), "member_revision_changed")
+        require(self._manual_completion_authority_rejection(member_map) is None, "manual_completion_authority_required")
+        primary = str(intent.get("task_id") or "")
+        require(primary in member_map and metadata.get("task_id") == primary, "primary_task_mismatch")
+        old_payload = old_completion["completion_payload"]
+        require(old_payload.get("task_id") == primary
+                and old_payload.get("task_cid") == member_map[primary]["canonical_task_cid"], "old_completion_task_mismatch")
+        head = self._implementation_protected_git_head(root)
+        old_tree = str(old_payload.get("merged_tree_id") or "")
+        def git(*args):
+            result = subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, check=False)
+            require(result.returncode == 0, "git_evidence_unavailable")
+            return result.stdout.strip()
+        def ancestor(before, after):
+            require(bool(before and after), "integration_missing")
+            git("merge-base", "--is-ancestor", before, after)
+        relative_board = self.todo_path.resolve().relative_to(root).as_posix()
+        records = guard.get("paths") or []
+        require(len(records) == 1 and records[0].get("path") == relative_board, "old_guard_scope_mismatch")
+        repositories = records[0].get("repositories") or []
+        require(len(repositories) == 1 and repositories[0].get("repository") == "."
+                and repositories[0].get("target") == relative_board
+                and repositories[0].get("head") == old_tree, "old_guard_integration_mismatch")
+        before_board = subprocess.check_output(["git", "show", old_tree + ":" + relative_board], cwd=root)
+        require(records[0].get("content") == {"exists": True, "size": len(before_board),
+                "sha256": hashlib.sha256(before_board).hexdigest()}, "old_guard_content_mismatch")
+        expected_lines = before_board.decode("utf-8").splitlines(keepends=True)
+        delta = self._mark_tasks_completed_in_locked_lines(expected_lines,
+            target_task_ids=list(member_map), primary_task_id=primary,
+            completion_reason="obsolete_journal_scope_verification", bundle_work_order=None)
+        require(not delta.get("missing_task_ids") and not delta.get("missing_status_task_ids")
+                and "".join(expected_lines).encode("utf-8") == self.todo_path.read_bytes(),
+                "unacknowledged_protected_board_changes")
+        requests = self.merge_queue.completed_requests(limit=128, metadata_schema="ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            canonical_task_id=member_map[primary]["canonical_task_cid"])
+        matches = []
+        for request in requests:
+            meta = request.metadata
+            if request.task_id != primary or meta.get("completion_task_cids") != {
+                    task_id: member["canonical_task_cid"] for task_id, member in member_map.items()}:
+                continue
+            if Path(str(meta.get("repo_root") or "")).resolve() != root or Path(str(meta.get("todo_path") or "")).resolve() != self.todo_path.resolve():
+                continue
+            require(request.canonical_task_id == member_map[primary]["canonical_task_cid"]
+                    and request.canonical_task_key == member_map[primary]["canonical_task_key"]
+                    and meta.get("target_repository_id") == checkout_repository_id(root)
+                    and meta.get("target_branch") == self.resolved_merge_target_branch
+                    and Path(str(meta.get("state_path") or "")).resolve() == self.state_path.resolve(), "request_scope_mismatch")
+            validation = meta.get("validation_proof") or {}
+            require(validation.get("passed") is True and validation.get("attempted") is True
+                    and validation.get("target_commit") == request.commit_sha
+                    and validation.get("target_tree") == git("rev-parse", request.commit_sha + "^{tree}")
+                    and validation.get("results") and all(r.get("returncode") == 0 and not r.get("timed_out")
+                        for r in validation["results"]), "candidate_validation_missing")
+            require(git("diff", "--name-only", str(meta.get("baseline_ref") or ""), request.commit_sha), "empty_candidate")
+            key = MergeTrain._dedupe_key(SimpleNamespace(queue=self.merge_queue), request.canonical_identity, request.commit_sha)
+            train_path = Path(self.merge_queue_dir).resolve() / "train" / "receipts" / (key + ".json")
+            train = read_record(train_path)
+            require(train.get("request_id") == request.request_id and train.get("accepted") is True
+                    and train.get("commit_sha") == request.commit_sha and train.get("task_id") == primary,
+                    "train_acceptance_mismatch")
+            merged = train.get("merge_result") or {}
+            target = str(merged.get("merge_commit") or "")
+            require(merged.get("returncode") == 0 and merged.get("merged") is True, "successor_not_integrated")
+            integration = merged.get("integration_commit_proof") or {}
+            require(integration.get("passed") is True and integration.get("implementation_commit") == request.commit_sha
+                    and integration.get("integration_commit") == target, "successor_integration_mismatch")
+            ancestor(request.commit_sha, old_tree); ancestor(old_tree, target); ancestor(target, head)
+            callback = merged.get("todo_update_result") or {}
+            post = callback.get("protected_board_postcondition") or {}
+            release = post.get("release_proof") or {}
+            require(callback.get("durable") is True and post.get("checked") is True
+                    and post.get("clean") is True and post.get("trusted") is True
+                    and release.get("trusted") is True and release.get("clean") is True
+                    and release.get("reason") == "protected_outputs_exact_pre_state", "successor_callback_not_durable")
+            fresh_expectation = json.loads(json.dumps(expectation))
+            for member in fresh_expectation["members"]:
+                member["initial_status"] = "completed"
+            fresh_expectation.pop("expectation_id", None)
+            fresh_expectation["expectation_id"] = content_identity(fresh_expectation)
+            evidence = self._completion_callback_evidence(fresh_expectation, callback)
+            require(evidence is not None and evidence == callback.get("completion_callback_evidence"), "successor_member_evidence_mismatch")
+            for receipt in callback.get("completion_receipts", ()):
+                member = member_map.get(str(receipt.get("task_id") or ""))
+                require(member and all(receipt.get(k) == member.get(k) for k in
+                        ("canonical_task_cid", "canonical_task_key", "board_namespace")), "successor_member_revision_mismatch")
+            relative = self.todo_path.resolve().relative_to(root).as_posix()
+            require(not self._dirty_implementation_protected_paths(paths)
+                    and not git("log", "--format=%H", target + ".." + head, "--", relative)
+                    and self.todo_path.read_bytes() == subprocess.check_output(["git", "show", target + ":" + relative], cwd=root),
+                    "current_protected_board_changed")
+            histories = release.get("histories") or []
+            require(len(histories) == 1 and histories[0].get("repository") == "."
+                    and histories[0].get("target") == relative
+                    and histories[0].get("before_head") == histories[0].get("after_head") == target
+                    and not histories[0].get("commits"), "successor_guard_scope_mismatch")
+            successor = json.loads(json.dumps(old_completion))
+            payload = successor["completion_payload"]
+            payload["merged_tree_id"] = target
+            payload["post_merge_evidence"] = {**dict(meta.get("production_reviewed_evidence") or {}),
+                "passed": True, "completion_authoritative": True, "repository_tree_id": target,
+                "merge_result": {k: merged.get(k) for k in ("merged", "already_merged", "reason", "merge_commit")}}
+            successor.pop("intent_id", None); successor["intent_id"] = content_identity(successor)
+            publication = callback.get("completion_publication") or {}
+            require(publication.get("intent_id") == successor["intent_id"]
+                    and publication.get("queue_task_cid") == member_map[primary]["canonical_task_cid"]
+                    and publication.get("sink_id") == sink["sink_id"], "successor_intent_mismatch")
+            pub_path = self._completion_publication_record_path(sink, successor["intent_id"])
+            published = self._validated_completion_publication_record(read_record(pub_path),
+                intent_id=successor["intent_id"], sink_id=str(sink["sink_id"]))
+            require(published is not None and published.get("queue_recorded") is True
+                    and published["publication"] == publication, "successor_publication_missing")
+            matches.append({"request_id": request.request_id, "completed_request_digest": completed_request_digest(request),
+                "candidate_commit": request.commit_sha, "successor_integration": target,
+                "successor_publication": publication, "train_path": str(train_path)})
+        require(len(matches) == 1, "successor_missing_or_ambiguous")
+        require(read_record(lease.lock_path) == metadata, "journal_preimage_changed")
+        queue = PersistentTaskQueue.load(Path(str(sink["task_queue_path"])))
+        queue_entry = queue.entries.get(queue.resolve_key(str(old_completion["queue_task_cid"])))
+        require(queue_entry is not None and queue_entry.last_completed_at > 0, "successor_queue_ack_missing")
+        return {"schema": "ipfs_accelerate_py.agent_supervisor.obsolete-completion-journal-settlement@1",
+            "repository_id": checkout_repository_id(root), "old_lease_id": lease.lease_id,
+            "old_lease_device": lease.device, "old_lease_inode": lease.inode,
+            "old_journal": metadata, "old_guard_trusted": False,
+            "members": members, "current_head": head, "successor": matches[0],
+            "observations": observations, "completion_authority": False, "attempt_refunded": False}
+
+    def reconcile_obsolete_protected_completion_journal(self):
+        """Retire only a dead, exactly superseded Native completion journal."""
+        lease = read_checkout_mutation_lease(self._repo_merge_lock_path())
+        if lease is None or lease.metadata.get("protected_recovery_required") is not True:
+            return {"required": False, "recovered": False}
+        blocked = {"required": True, "recovered": False, "checkout_mutation_lease_retained": True}
+        try:
+            proof = self._obsolete_protected_completion_proof(lease)
+            proof_id = content_identity(proof)
+            archive_key = hashlib.sha256((str(proof["repository_id"]) + "\0" + lease.lease_id).encode()).hexdigest()
+            archive = self.state_path.resolve().parent / "protected-checkout-settlements" / (archive_key + ".json")
+            archive.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if archive.parent.is_symlink() or archive.parent.resolve() != archive.parent:
+                raise ValueError("settlement_archive_path_alias")
+            with serialized_lock_update(archive):
+                prior = load_json_dict(archive)
+                if prior is not None and (prior.get("proof") != proof or prior.get("retired") is True):
+                    raise ValueError("settlement_archive_changed_or_journal_replayed")
+                if prior is None:
+                    write_json_atomic(archive, {"proof": proof, "settlement_id": proof_id, "retired": False})
+            if self._obsolete_protected_completion_proof(lease) != proof:
+                raise ValueError("settlement_evidence_changed")
+            if process_is_running(int(lease.metadata.get("pid") or 0)):
+                raise ValueError("journal_owner_active")
+            if not release_checkout_mutation_lease(lease, require_exact_metadata=True):
+                raise ValueError("settlement_lease_cas_failed")
+            write_json_atomic(archive, {"proof": proof, "settlement_id": proof_id, "retired": True})
+            result = {"required": True, "recovered": True, "checkout_mutation_lease_recovered": True,
+                "checkout_mutation_lease_retained": False, "reason": "obsolete_completion_journal_settled",
+                "settlement_id": proof_id, "settlement_path": str(archive),
+                "old_guard_trusted": False, "completion_authority": False, "attempt_refunded": False}
+            self._record_event("obsolete_completion_journal_settled", result)
+            return result
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError, subprocess.SubprocessError, TaskSourceError) as exc:
+            return {**blocked, "blocked": True, "reason": "obsolete_completion_journal_unsettled", "error": str(exc)[-1000:]}
+
+    def reconcile_protected_checkout_recovery(self) -> dict[str, Any]:
+        """Resolve the Native owner's retained journal before other recovery."""
+        if self._current_checkout_mutation_lease() is not None:
+            return {"required": True, "blocked": True, "recovered": False,
+                    "reason": "current_checkout_transaction", "checkout_mutation_lease_retained": True}
+        return self._recover_protected_checkout_mutation()
+
     def _recover_protected_checkout_mutation(self) -> dict[str, Any]:
         """Autonomously finish a retained protected generated-file mutation."""
 
@@ -61036,6 +61291,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         **authority_rejection,
                     }
 
+        settlement = self.reconcile_obsolete_protected_completion_journal()
+        if settlement.get("checkout_mutation_lease_recovered"):
+            return settlement
         adoption = self._adopt_protected_checkout_recovery()
         if not adoption.get("required", False):
             return {"required": False, "recovered": False}
