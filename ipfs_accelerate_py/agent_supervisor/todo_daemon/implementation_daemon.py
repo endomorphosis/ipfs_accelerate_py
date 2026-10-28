@@ -49715,10 +49715,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             prefix="ipfs-accelerate-validation-home-"
         ) as temporary_home:
             home_path = Path(temporary_home)
+            # Tempfile and pytest retention must stay in this command's owned
+            # namespace. Sanitized environments omit the operator's TMPDIR;
+            # leaving it unset would fall back to shared /tmp and allow pytest
+            # to clean another validation's historical temporary directories.
+            temporary_path = home_path / "tmp"
+            temporary_path.mkdir(mode=0o700)
             child_environment = dict(environment)
             child_environment.update(
                 {
                     "HOME": str(home_path),
+                    "TMPDIR": str(temporary_path),
+                    "TEMP": str(temporary_path),
+                    "TMP": str(temporary_path),
+                    "PYTEST_DEBUG_TEMPROOT": str(temporary_path),
                     "XDG_CACHE_HOME": str(home_path / ".cache"),
                     "XDG_CONFIG_HOME": str(home_path / ".config"),
                     "XDG_DATA_HOME": str(home_path / ".local" / "share"),
