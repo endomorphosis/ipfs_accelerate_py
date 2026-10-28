@@ -718,3 +718,107 @@ The read session controls resource lifetime only. It does not begin a read
 transaction, freeze task heads, grant authority, or replace native source/owner
 admission. The caller must retain the final snapshot comparison and retry only
 the typed observation drift that the native restart-check contract permits.
+
+
+## Infrastructure-only recovery for scientific and engineering observations
+
+The opt-in `recovery_policy.profile = "infrastructure-only/v1"` keeps the existing
+watchdog, repair queue, provider route and worker. It never invokes native ensure,
+unstall, publication or supervisor-heal recipes. Configure `repairable_stalls`
+from the closed infrastructure allowlist, `max_actions_per_window`,
+`window_seconds`, `circuit_breaker_seconds`, and the existing positive
+`max_repair_attempts` board cap. The separate per-board
+`infrastructure-budget.json` is reserved before action and survives symptom,
+progress-token and healthy-sample changes. Corrupt accounting opens the circuit;
+the original evidence must be reconciled rather than deleted. A new time window
+may admit diagnostic actions after its circuit interval, while actual coding
+attempts retain their existing cumulative cap.
+
+Optional `stop_own_repair_on_wait` defaults to false. When explicitly true, a wait
+can stop only the exact board/attempt token reported by the configured systemd
+repair unit, under the original queue lock. A missing or foreign token cannot
+stop a different board's job. Any configured hold, including a dangling symlink,
+fences all recovery and hold review; observation can continue. Holds are never
+automatically cleared by this profile.
+
+For `probe_profile = "native_catalogue"`, bind `native_catalogue_binding` to the
+exact `board_namespace`, `plan_root_cid`, `repository_tree_id`,
+`population_sha256` and finite positive `max_age_seconds`. Fresh bound catalogue
+observations remain blocked when activation, review, exhausted-attempt or unknown
+provider-outcome gates remain. Missing/stale/mismatched observations are unknown,
+never healthy. Only explicitly allowed read/timeout/import observer faults may
+enqueue infrastructure diagnosis. Scope/population mismatches are manual waits.
+Repair workers may fix observer/import/service/reporting code and regressions;
+they may not create, replace or repair the native database/WAL, activate tasks,
+reset budgets, change source populations or approve legal meaning.
+
+A fresh blocked readback can verify observer recovery with
+`scope="infrastructure_observer"`, `observer_verified=true`, and task health still
+`blocked`. It supplies no native task, goal, completion or publication authority.
+The same opt-in policy can monitor the existing service-fleet engineering bridge;
+its original monitor retains lane restart authority and completed/no-runnable
+fleets remain healthy and idle. Give each namespace its own board ID and state
+subdirectory; retain a single existing repair worker and its scoped queue locks.
+
+### Monitor pauses, runnable stalls and durable repair deadlines
+
+A fresh service-fleet report can classify an explicit native retry or resource
+fence as `service_fleet_backpressure_wait`, even when the paused lane reports
+positive ready/selectable counts. The lane must be live, inactive, explicitly
+non-restart-eligible and report backpressure with no action. Namespace, exact
+lane/service bindings, counts, report/native timestamps and the complete monitor
+issue population remain mandatory. Missing provenance, another unhealthy lane,
+stale or dead workers and additional monitor faults cannot receive this exemption.
+
+An all-paused fleet waits without another coding repair. Independently runnable
+or active peer work remains visible. A genuinely stalled ready peer retains its
+finite scheduling interval and passes a closed `service-fleet-scheduling-stall/v1`
+frame through assessment, policy classification and enqueue. The frame binds the
+board, unchanged progress token, threshold, interval anchor and fresh observation.
+Pausing clears only the runnable scheduling anchor; it does not invent accepted
+work, advance meaningful progress or reset action/attempt accounting. A fresh
+pause discovered during repair prelaunch, reconciliation or completion retires
+the exact job as a wait, with false native/task/goal completion authority.
+
+Repair argv selects the existing physical
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py` adapter beside the fallback
+owner, rather than the package alias that resolves to the domain runtime runner.
+It retains `--require-terminal-quota-frame`. The private failure-receipt channel
+recognizes the original exact direct-script form and its explicit Python `-P`
+form; foreign scripts, same-basename replacements and ambiguous interpreter
+options do not gain that channel. The existing sealed module protocol remains
+separate. Exact quota-frame validation and quota-only Codex fallback are unchanged;
+an argparse error or missing trusted failure receipt is not a quota event.
+
+For `infrastructure-only/v1`, a future durable `next_attempt_at` remains a lower
+bound through queue selection, quick-failure handling, route/workspace migration,
+enqueue, source/progress reconciliation, productive continuation and final claim.
+The direct worker checks it before service commands and again under the queue
+lock. Early preflight/storage/spawn refusals retain the deadline even after a
+backward clock step. Existing known-unstarted accounting remains distinct from a
+consumed coding attempt. Infrastructure attempts stay cumulative across legacy-compatible completion
+paths; this profile still requires its positive cumulative cap; healthy samples, source changes and successful
+coding exits cannot replenish them. Existing daily action windows, circuits,
+operator holds and exact board/unit/attempt cancellation remain in force.
+
+The focused classification cohort passed 110 authored cases / 330 phases. The
+separate physical-provider/deadline cohort passed 55 cases / 165 phases, using
+explicit fake Popen, service, readiness and snapshot seams while retaining the
+real quota parser and receipt decision. Neither contacted a provider/service or
+opened a native database. A third, separate cohort passed six unchanged original
+route/adapter cases / 18 phases in 1.10 seconds, with zero guard denials. These
+counts retain their own populations and are not pooled with earlier generations.
+Three older generic cooldown expectations also fail on unchanged `9daede14`;
+their raw failures and baseline attribution remain retained and supply no passing
+credit. Broader generic collection required unrelated native-state fixtures; its
+guard also refused an old native-heal service call and an old subprocess smoke
+before execution. Those attempts are not passing tests. The full generic suites,
+real provider fallback and live service repair remain unqualified by these cohorts.
+
+Deployment of this generation remains a separate reviewed step. Preserve the
+spent three-action window and three-attempt repair history; neither the source
+fix nor a service restart rearms the old job. Keep the scientific UNKNOWN outcome
+and retry refusal distinct from engineering completion. Adoption must retain
+explicit and old/new cwd operator markers, change only the reviewed source
+locations, and require fresh post-start observations for both existing namespaces.
+An old status file or a successful coding-process exit is insufficient.

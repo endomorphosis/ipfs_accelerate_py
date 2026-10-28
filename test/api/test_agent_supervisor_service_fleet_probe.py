@@ -181,3 +181,96 @@ def test_cli_has_same_exact_unit_binding_and_no_mutation(tmp_path, capsys, monke
     assert result["health"] == "healthy" and result["complete"] is False
     assert path.read_bytes() == before
     with pytest.raises(SystemExit): probe.main([*argv, "--expected-unit", "lane-0=other.service"])
+
+
+
+def _backpressure_report():
+    """Reconstruct the producer contract; this is not a retained live snapshot."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import board_service_monitor as monitor
+
+    value = report()
+    for lane in value["lanes"]:
+        lane["health"]["evidence"].update(global_ready_count=2, task_count=137)
+    health = value["lanes"][0]["health"]
+    evidence = health["evidence"]
+    evidence.update(ready_count=2, selectable_ready_count=2,
+        selection_idle_reason="implementation_retry_deferred:all_eligible_ready_tasks_in_cooldown",
+        native_progress_status="backpressure", last_heartbeat_at_epoch=NOW - 1, implement=True)
+    produced = monitor.evaluate_health(
+        {"startup_grace_seconds": 0, "heartbeat_timeout_seconds": 60, "progress_timeout_seconds": 600},
+        {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+         "ExecMainStartTimestampMonotonic": "1000000"}, evidence, {}, NOW, NOW)
+    assert produced["status"] == "backpressure" and produced["restart_eligible"] is False
+    health.update(produced)
+    value.update(healthy=False, status="attention_required", issues=[{
+        "code": "lane_unhealthy", "lane_id": value["lanes"][0]["lane_id"], "status": "backpressure"}])
+    return value
+
+
+def test_fresh_monitor_cooldown_is_a_non_authoritative_wait_with_positive_ready_counts(tmp_path):
+    result = observe(tmp_path, _backpressure_report())
+    assert result["health"] == "blocked"
+    assert result["reason_codes"] == ["service_fleet_backpressure_wait"]
+    assert result["details"]["service_fleet"]["work_availability"] == "backpressure_wait"
+    paused = result["details"]["service_fleet"]["lanes"][0]
+    assert paused["ready_count"] == paused["selectable_ready_count"] == 2
+    assert paused["healthy"] is False and paused["restart_eligible"] is False
+    assert result["progress_token"] and result["busy"] is False
+    assert result["complete"] is result["completion_candidate"] is False
+    assert result["details"]["completion_authority"] is False
+    assert result["details"]["wait"]["completion_authority"] is False
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_paused_lane_cannot_hide_a_genuinely_runnable_or_active_peer(tmp_path, active):
+    value = _backpressure_report()
+    peer = value["lanes"][1]["health"]["evidence"]
+    peer.update(active=active, ready_count=0 if active else 1, selectable_ready_count=0 if active else 1)
+    result = observe(tmp_path, value)
+    assert result["health"] == "healthy" and result["busy"] is active
+    assert result["details"]["service_fleet"]["work_availability"] == "runnable_work"
+
+
+@pytest.mark.parametrize("damage", ["restart_missing", "restart_true", "action_changed", "reason_missing", "empty_prefix",
+                                  "dead_paused", "dead_peer", "active_paused", "stale_peer", "future_peer",
+                                  "other_peer_unhealthy", "top_issue_missing", "top_issue_extra", "top_issue_duplicate",
+                                  "top_healthy_contradiction", "native_status_invalid"])
+def test_cooldown_exemption_requires_complete_fresh_monitor_provenance(tmp_path, damage):
+    value = _backpressure_report()
+    health = value["lanes"][0]["health"]
+    evidence = health["evidence"]
+    if damage == "restart_missing": health.pop("restart_eligible")
+    elif damage == "restart_true": health["restart_eligible"] = True
+    elif damage == "action_changed": health["action"] = "would_restart"
+    elif damage == "reason_missing": evidence.update(selection_idle_reason="", native_progress_status=None)
+    elif damage == "empty_prefix": evidence.update(selection_idle_reason="implementation_retry_deferred:", native_progress_status=None)
+    elif damage == "dead_paused": evidence["native_daemon_pid_alive"] = False
+    elif damage == "dead_peer": value["lanes"][1]["health"]["evidence"]["native_daemon_pid_alive"] = False
+    elif damage == "active_paused": evidence["active"] = True
+    elif damage == "stale_peer": value["lanes"][1]["health"]["checked_at_epoch"] = NOW - 181
+    elif damage == "future_peer": value["lanes"][1]["health"]["checked_at_epoch"] = NOW + 6
+    elif damage == "other_peer_unhealthy":
+        peer = value["lanes"][1]["health"]
+        peer.update(healthy=False, status="stale_worker", restart_eligible=True)
+        value["issues"].append({"code": "lane_unhealthy", "lane_id": value["lanes"][1]["lane_id"], "status": "stale_worker"})
+    elif damage == "top_issue_missing": value.pop("issues")
+    elif damage == "top_issue_extra": value["issues"].append({"code": "repeated_lane_failures", "lane_id": "lane-0", "failures": 2})
+    elif damage == "top_issue_duplicate": value["issues"].append(copy.deepcopy(value["issues"][0]))
+    elif damage == "top_healthy_contradiction": value["healthy"] = True
+    elif damage == "native_status_invalid": evidence["native_progress_status"] = ["backpressure"]
+    result = observe(tmp_path, value)
+    assert result["health"] in {"degraded", "unknown"}
+    assert result["details"]["service_fleet"]["work_availability"] == "unknown"
+    assert "service_fleet_backpressure_wait" not in result["reason_codes"]
+    assert result["complete"] is result["completion_candidate"] is False
+
+
+def test_cooldown_heartbeat_refresh_does_not_invent_work_progress(tmp_path):
+    value = _backpressure_report()
+    before = observe(tmp_path, value)
+    value["checked_at_epoch"] += 1
+    for lane in value["lanes"]:
+        lane["health"]["checked_at_epoch"] += 1
+        lane["health"]["evidence"]["native_status_at_epoch"] += 1
+    after = observe(tmp_path, value, now=NOW + 1)
+    assert before["progress_token"] == after["progress_token"]
