@@ -237,7 +237,7 @@ def _profile(reference, cwd):
     _need(profile.allows("read") and profile.allows("test"), "packet_profile_lacks_metadata_effects")
     # Reuse only the existing repository observation, never benchmark admission.
     from ..runtime.local_planning_admission import _repository
-    _root, head, repository_cid = _repository(cwd)
+    _root, head, repository_cid = _repository(cwd, mirror=False)
     _need(profile.repository_cid == repository_cid and profile.baseline_commit == head, "packet_profile_repository_changed")
     return profile
 

@@ -38,7 +38,7 @@ def _descriptor(path):
 
 
 @pytest.fixture
-def scenario(tmp_path, monkeypatch):
+def scenario(tmp_path, monkeypatch, request):
     workspace = tmp_path / "repository"
     workspace.mkdir()
     for name, text in (("producer.py", "pass\n"), ("verifier.py", "pass\n"), ("input.json", "{}\n")):
@@ -75,7 +75,13 @@ def scenario(tmp_path, monkeypatch):
         "exclusive_keys": ["packet:metadata"], "retry_key": "metadata:attempt1", "invalidation_key": "metadata:source-v1",
         "budgets": {"cpu_threads": 1, "memory_mib": 128, "storage_bytes": 1024 * 1024,
             "max_children": 2, "max_tokens": 0, "deadline_seconds": 30, "max_attempts": 1}}
-    intent = open_intent_repository(tmp_path / "intent.duckdb", owner_id="owner:packet-test")
+    database = tmp_path / "intent.duckdb"
+    operational = request.node.originalname == "test_eaaef_owned_claim_rejects_invalid_packet_before_claim_effects"
+    if operational:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import install_eaaef_operational_schema
+        install_eaaef_operational_schema(database, application_version="packet-gate-test",
+            tool_version="packet-gate-test", owner_id="owner:packet-test-materializer")
+    intent = open_intent_repository(database, owner_id="owner:packet-test", install_schema=not operational)
     intent.upsert_objective(objective_id="objective:packet", objective_alias="PACKET-O", title="Metadata gate")
     intent.upsert_goal(goal_cid="goal:packet", goal_alias="PACKET-G", title="Metadata gate", objective_id="objective:packet")
     intent.upsert_plan(plan_cid="plan:packet", plan_alias="PACKET-P", goal_cid="goal:packet", status="active")
@@ -529,3 +535,13 @@ def test_retained_validation_pair_for_foreign_task_cannot_admit(scenario):
         _cas(s, "ready")
     assert _snapshot(s) == before
     assert s.intent.get_task(s.cid)["status"] == "blocked"
+
+
+def test_readonly_repository_identity_matches_existing_bridge(scenario):
+    s = scenario
+    observed = _repository(s.workspace)
+    before = list(s.mirrors)
+    assert _repository(s.workspace, mirror=False) == observed
+    assert s.mirrors == before
+    with pytest.raises(ValueError, match="exact repository metadata mirroring control"):
+        _repository(s.workspace, mirror=1)
