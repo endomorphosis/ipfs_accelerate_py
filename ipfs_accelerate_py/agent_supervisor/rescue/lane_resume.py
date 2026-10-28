@@ -1655,6 +1655,15 @@ def _transient_resource_refusal(log_path: Path, start: int, task_id: str) -> str
                 continue
             error = value.get("error")
             code = error.get("code") if isinstance(error, dict) else value.get("code")
+            if code == "operator_hold":
+                # Only the task-bound worker admission protocol can qualify
+                # this resource wait; never infer it from exception prose.
+                if (set(value) == {"task_id", "error", "retryable", "work_complete", "completion_authority"}
+                        and error == {"code": "operator_hold"}
+                        and value["retryable"] is True and value["work_complete"] is False
+                        and value["completion_authority"] is False):
+                    return code
+                return ""
             if code == "browser_contention":
                 return code
             if (code == "storage_pressure" and isinstance(error, dict)
