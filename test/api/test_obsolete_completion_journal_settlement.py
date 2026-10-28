@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -61,7 +62,17 @@ def _produce_bad_completion(directory: Path) -> None:
     )
     state.save(daemon.state_path)
     original_run = native.subprocess.run
+    original_validate = daemon._run_validation_commands
     injected = []
+
+    def observe_actual_active_state(*args, **kwargs):
+        active = native.PortalTaskState.load(daemon.state_path)
+        assert active.implementation_in_progress
+        assert active.active_task_id == TASK
+        (directory / "actual-producer-active-state.json").write_bytes(daemon.state_path.read_bytes())
+        return original_validate(*args, **kwargs)
+
+    daemon._run_validation_commands = observe_actual_active_state
 
     def historical_identity(command, *args, **kwargs):
         if (isinstance(command, list) and "commit" in command
@@ -109,6 +120,21 @@ def _try_baseline_recovery(directory: Path) -> None:
     assert proof["reason"] == "protected_release_history_untrusted", proof
     result["original_guard_release_proof"] = proof
     (directory / "baseline-recovery.json").write_text(json.dumps(result, default=str))
+
+
+def _hold_actual_implementation_lease(directory: Path) -> None:
+    """Publish the Native attempt-zero lease from its real owning child."""
+    daemon = daemon_for(directory)
+    task = daemon._load_tasks()[0]
+    metadata = daemon._build_implementation_lock_metadata(task, 0, native.utc_now())
+    path = daemon._implementation_lock_path()
+    acquired, reason, _ = daemon._try_acquire_implementation_lock(path, metadata)
+    assert acquired, reason
+    (directory / "live-implementation-ready.json").write_text(json.dumps(metadata))
+    try:
+        assert sys.stdin.read(1) == "x"
+    finally:
+        assert daemon._release_implementation_lock(path, metadata)
 
 
 @pytest.fixture
@@ -308,7 +334,13 @@ def test_superseded_journal_cannot_replay_after_retirement(successor):
 
 def test_quiesced_public_recovery_settles_before_protected_path_admission(successor):
     daemon = successor["daemon"]
+    # Recreate a delayed save of actual producer state, whose real process
+    # has exited.  These are observed Native bytes, not a fabricated outcome.
+    stale = successor["directory"] / "actual-producer-active-state.json"
+    daemon.state_path.write_bytes(stale.read_bytes())
     before = asdict(native.PortalTaskState.load(daemon.state_path))
+    assert before["implementation_in_progress"] is True
+    assert before["active_task_id"] == TASK
     result = daemon.reconcile_quiesced_active_attempt()
     assert result.get("reconciled") is True and not result.get("blocked"), result
     assert not successor["lock"].exists()
@@ -318,13 +350,12 @@ def test_quiesced_public_recovery_settles_before_protected_path_admission(succes
     assert after["completed_task_ids"] == before["completed_task_ids"]
 
 
-def test_supervisor_preflight_delegates_real_native_owned_journal(successor):
+def supervisor_for(successor):
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
         PortalImplementationSupervisor, PortalSupervisorConfig,
     )
     daemon = successor["daemon"]
-    before = asdict(native.PortalTaskState.load(daemon.state_path))
-    supervisor = PortalImplementationSupervisor(PortalSupervisorConfig(
+    return PortalImplementationSupervisor(PortalSupervisorConfig(
         todo_path=daemon.todo_path, state_path=daemon.state_path,
         strategy_path=daemon.strategy_path,
         events_path=successor["directory"] / "state/supervisor_events.jsonl",
@@ -336,6 +367,12 @@ def test_supervisor_preflight_delegates_real_native_owned_journal(successor):
         merge_queue_dir=daemon.merge_queue_dir,
         implementation_protected_paths=("todo.md",),
     ))
+
+
+def test_supervisor_preflight_delegates_real_native_owned_journal(successor):
+    daemon = successor["daemon"]
+    before = asdict(native.PortalTaskState.load(daemon.state_path))
+    supervisor = supervisor_for(successor)
     result = supervisor._recover_retained_generated_checkout_lease()
     assert result.get("recovered") is True and not result.get("retained_lease"), result
     assert result["native_checkout_recovery"]["checkout_mutation_lease_recovered"] is True
@@ -343,7 +380,53 @@ def test_supervisor_preflight_delegates_real_native_owned_journal(successor):
     assert asdict(native.PortalTaskState.load(daemon.state_path)) == before
 
 
+def test_settlement_refuses_a_real_live_attempt_zero_implementation_lease(successor):
+    daemon = successor["daemon"]
+    daemon._obsolete_protected_completion_proof(read_checkout_mutation_lease(successor["lock"]))
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (
+        str(Path(native.__file__).parents[3]), env.get("PYTHONPATH", ""))))
+    child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                              "--hold-implementation-lease", str(successor["directory"])],
+                             env=env, text=True, stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        ready = successor["directory"] / "live-implementation-ready.json"
+        deadline = time.monotonic() + 25
+        while not ready.exists():
+            assert child.poll() is None, child.communicate(timeout=5)
+            assert time.monotonic() < deadline, "owned child did not publish its lease"
+            time.sleep(.02)
+        metadata = json.loads(ready.read_text())
+        assert metadata["pid"] == child.pid and metadata["attempt"] == 0
+        result = daemon.reconcile_obsolete_protected_completion_journal()
+        assert result.get("checkout_mutation_lease_recovered") is not True, result
+        _assert_preserved(successor)
+    finally:
+        if child.poll() is None:
+            out, err = child.communicate("x", timeout=15)
+            assert child.returncode == 0, (out[-2000:], err[-3000:])
+
+
+def test_settlement_accepts_its_real_current_supervisor_maintenance_lease(successor):
+    daemon = successor["daemon"]
+    supervisor = supervisor_for(successor)
+    lease, guard = supervisor._acquire_implementation_maintenance_lease()
+    assert lease is not None, guard
+    assert lease["pid"] == os.getpid() and lease["lease_role"] == "supervisor_maintenance"
+    before = asdict(native.PortalTaskState.load(daemon.state_path))
+    try:
+        result = daemon.reconcile_obsolete_protected_completion_journal()
+        assert result.get("checkout_mutation_lease_recovered") is True, result
+        assert not successor["lock"].exists()
+        assert asdict(native.PortalTaskState.load(daemon.state_path)) == before
+    finally:
+        supervisor._release_implementation_maintenance_lease(lease)
+
+
 if __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--produce-bad-completion":
     _produce_bad_completion(Path(sys.argv[2]))
 elif __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--baseline-recover":
     _try_baseline_recovery(Path(sys.argv[2]))
+elif __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--hold-implementation-lease":
+    _hold_actual_implementation_lease(Path(sys.argv[2]))

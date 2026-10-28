@@ -20709,7 +20709,7 @@ class PortalImplementationSupervisor:
         """Autonomously clean a retained generated-output transaction."""
 
         if not self._retained_generated_checkout_lease():
-            existing = read_checkout_mutation_lease(self._repo_merge_lock_path())
+            existing = read_checkout_mutation_lease(checkout_mutation_lock_path(self.config.repo_root))
             if (existing is not None
                     and existing.metadata.get("protected_recovery_required") is True
                     and existing.metadata.get("protected_recovery_owner") == "implementation_daemon"):

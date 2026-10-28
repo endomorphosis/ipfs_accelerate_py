@@ -61004,6 +61004,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         root = self.repo_root.resolve()
         metadata = dict(lease.metadata)
         require(self._current_checkout_mutation_lease() is None, "current_checkout_transaction")
+        require(self._find_live_inflight_implementation() is None, "implementation_worker_active")
+        implementation_path = self._implementation_lock_path()
+        if os.path.lexists(implementation_path):
+            implementation = read_record(implementation_path)
+            implementation_pid = int(implementation.get("pid") or 0)
+            require(implementation_pid > 0, "implementation_lease_owner_unknown")
+            if process_is_running(implementation_pid):
+                # Supervisor preflight already owns an exclusive maintenance
+                # lease. It is not a provider/validation worker. Every other
+                # live lease, including provider-free attempt zero, blocks.
+                own_maintenance = (
+                    implementation_pid == os.getpid()
+                    and implementation.get("kind") == "implementation"
+                    and implementation.get("lease_role") == "supervisor_maintenance"
+                    and bool(implementation.get("lease_id"))
+                    and Path(str(implementation.get("repo_root") or "")).resolve() == root
+                    and Path(str(implementation.get("state_path") or "")).resolve() == self.state_path.resolve()
+                    and Path(str(implementation.get("state_dir") or "")).resolve() == self.state_path.resolve().parent)
+                require(own_maintenance, "implementation_worker_active")
         require(metadata.get("protected_recovery_owner") == "implementation_daemon"
                 and metadata.get("protected_recovery_required") is True
                 and metadata.get("operation") == "mark_tasks_completed", "journal_owner_or_operation")
