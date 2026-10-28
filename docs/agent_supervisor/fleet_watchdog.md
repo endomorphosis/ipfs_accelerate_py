@@ -736,6 +736,110 @@ transaction, freeze task heads, grant authority, or replace native source/owner
 admission. The caller must retain the final snapshot comparison and retry only
 the typed observation drift that the native restart-check contract permits.
 
+
+## Infrastructure-only recovery for scientific and engineering observations
+
+The opt-in `recovery_policy.profile = "infrastructure-only/v1"` keeps the existing
+watchdog, repair queue, provider route and worker. It never invokes native ensure,
+unstall, publication or supervisor-heal recipes. Configure `repairable_stalls`
+from the closed infrastructure allowlist, `max_actions_per_window`,
+`window_seconds`, `circuit_breaker_seconds`, and the existing positive
+`max_repair_attempts` board cap. The separate per-board
+`infrastructure-budget.json` is reserved before action and survives symptom,
+progress-token and healthy-sample changes. Corrupt accounting opens the circuit;
+the original evidence must be reconciled rather than deleted. A new time window
+may admit diagnostic actions after its circuit interval, while actual coding
+attempts retain their existing cumulative cap.
+
+Optional `stop_own_repair_on_wait` defaults to false. When explicitly true, a wait
+can stop only the exact board/attempt token reported by the configured systemd
+repair unit, under the original queue lock. A missing or foreign token cannot
+stop a different board's job. Any configured hold, including a dangling symlink,
+fences all recovery and hold review; observation can continue. Holds are never
+automatically cleared by this profile.
+
+For `probe_profile = "native_catalogue"`, bind `native_catalogue_binding` to the
+exact `board_namespace`, `plan_root_cid`, `repository_tree_id`,
+`population_sha256` and finite positive `max_age_seconds`. Fresh bound catalogue
+observations remain blocked when activation, review, exhausted-attempt or unknown
+provider-outcome gates remain. Missing/stale/mismatched observations are unknown,
+never healthy. Only explicitly allowed read/timeout/import observer faults may
+enqueue infrastructure diagnosis. Scope/population mismatches are manual waits.
+Repair workers may fix observer/import/service/reporting code and regressions;
+they may not create, replace or repair the native database/WAL, activate tasks,
+reset budgets, change source populations or approve legal meaning.
+
+A fresh blocked readback can verify observer recovery with
+`scope="infrastructure_observer"`, `observer_verified=true`, and task health still
+`blocked`. It supplies no native task, goal, completion or publication authority.
+The same opt-in policy can monitor the existing service-fleet engineering bridge;
+its original monitor retains lane restart authority and completed/no-runnable
+fleets remain healthy and idle. Give each namespace its own board ID and state
+subdirectory; retain a single existing repair worker and its scoped queue locks.
+
+### Monitor pauses, runnable stalls and durable repair deadlines
+
+A fresh service-fleet report can classify an explicit native retry or resource
+fence as `service_fleet_backpressure_wait`, even when the paused lane reports
+positive ready/selectable counts. The lane must be live, inactive, explicitly
+non-restart-eligible and report backpressure with no action. Namespace, exact
+lane/service bindings, counts, report/native timestamps and the complete monitor
+issue population remain mandatory. Missing provenance, another unhealthy lane,
+stale or dead workers and additional monitor faults cannot receive this exemption.
+
+An all-paused fleet waits without another coding repair. Independently runnable
+or active peer work remains visible. A genuinely stalled ready peer retains its
+finite scheduling interval and passes a closed `service-fleet-scheduling-stall/v1`
+frame through assessment, policy classification and enqueue. The frame binds the
+board, unchanged progress token, threshold, interval anchor and fresh observation.
+Pausing clears only the runnable scheduling anchor; it does not invent accepted
+work, advance meaningful progress or reset action/attempt accounting. A fresh
+pause discovered during repair prelaunch, reconciliation or completion retires
+the exact job as a wait, with false native/task/goal completion authority.
+
+Repair argv selects the existing physical
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py` adapter beside the fallback
+owner, rather than the package alias that resolves to the domain runtime runner.
+It retains `--require-terminal-quota-frame`. The private failure-receipt channel
+recognizes the original exact direct-script form and its explicit Python `-P`
+form; foreign scripts, same-basename replacements and ambiguous interpreter
+options do not gain that channel. The existing sealed module protocol remains
+separate. Exact quota-frame validation and quota-only Codex fallback are unchanged;
+an argparse error or missing trusted failure receipt is not a quota event.
+
+For `infrastructure-only/v1`, a future durable `next_attempt_at` remains a lower
+bound through queue selection, quick-failure handling, route/workspace migration,
+enqueue, source/progress reconciliation, productive continuation and final claim.
+The direct worker checks it before service commands and again under the queue
+lock. Early preflight/storage/spawn refusals retain the deadline even after a
+backward clock step. Existing known-unstarted accounting remains distinct from a
+consumed coding attempt. Infrastructure attempts stay cumulative across legacy-compatible completion
+paths; this profile still requires its positive cumulative cap; healthy samples, source changes and successful
+coding exits cannot replenish them. Existing daily action windows, circuits,
+operator holds and exact board/unit/attempt cancellation remain in force.
+
+The focused classification cohort passed 110 authored cases / 330 phases. The
+separate physical-provider/deadline cohort passed 55 cases / 165 phases, using
+explicit fake Popen, service, readiness and snapshot seams while retaining the
+real quota parser and receipt decision. Neither contacted a provider/service or
+opened a native database. A third, separate cohort passed six unchanged original
+route/adapter cases / 18 phases in 1.10 seconds, with zero guard denials. These
+counts retain their own populations and are not pooled with earlier generations.
+Three older generic cooldown expectations also fail on unchanged `9daede14`;
+their raw failures and baseline attribution remain retained and supply no passing
+credit. Broader generic collection required unrelated native-state fixtures; its
+guard also refused an old native-heal service call and an old subprocess smoke
+before execution. Those attempts are not passing tests. The full generic suites,
+real provider fallback and live service repair remain unqualified by these cohorts.
+
+Deployment of this generation remains a separate reviewed step. Preserve the
+spent three-action window and three-attempt repair history; neither the source
+fix nor a service restart rearms the old job. Keep the scientific UNKNOWN outcome
+and retry refusal distinct from engineering completion. Adoption must retain
+explicit and old/new cwd operator markers, change only the reviewed source
+locations, and require fresh post-start observations for both existing namespaces.
+An old status file or a successful coding-process exit is insufficient.
+
 ## SAWM runtime path compatibility
 
 Bind the existing SAWM service through a persistent `90-sawm-runtime-path.conf`
@@ -840,3 +944,215 @@ For deployment, qualify a board-scoped runtime with private inventories and
 hermetic effect stubs before enabling it. Preserve the accepted owner's
 identity and the other boards' recovery policies. A health/readiness sample
 must never replenish the task attempt budget or establish semantic completion.
+
+
+## Shared recovery-policy boundaries
+
+The watchdog and coding-repair queue accept both original closed policy
+families through the shared `recovery_policy` owner. A valid
+`infrastructure-only/v1` policy can enter only the existing bounded diagnostic
+repair path. Its required action window, circuit, allowlist and cumulative
+repair cap remain mandatory. A valid `owner-retention@1` policy records health
+while retaining the original owner and withholding recovery effects. A policy
+that mixes the two schemas or adds an unknown field is denied.
+
+Only the watchdog and coding-repair owners opt into infrastructure diagnosis.
+The default policy guard used by native heal helpers and service restart
+monitoring refuses native recovery under an infrastructure-only policy. This
+separates compatible observer/code repair from owner replacement; policy
+compatibility does not grant native task or provider authority.
+
+An UNKNOWN callback or retained-attempt marker overrides infrastructure
+classification and repair eligibility. Its observation preserves queue bytes,
+spent counters, durable deadlines, live workers and operator holds. It cannot
+trigger the old unscoped shared-unit cancellation path. The existing exact
+board, unit and attempt cancellation remains the only wait-cancellation owner
+when its policy and custody conditions allow that operation.
+
+Qualify a combined source generation with both policy cohorts and explicit
+cross-policy positive and denial controls before adopting it. Historical
+qualifications stay attributed to their original source generations. Source
+integration alone does not install a runtime or settle a blocked task.
+
+
+The immutable watchdog release includes its shared policy and runtime-asset
+helpers. Its cold import must succeed without a development overlay. Provider
+execution still belongs to the explicitly configured full repair engine. If
+the small watchdog bundle has no physical Grok adapter, argv construction uses
+only that engine's existing adapter and provider assets. Missing, empty or
+symlinked selected assets fail preflight before a coding attempt is charged;
+there is no PATH search or alternate provider-script fallback. The original
+source/request generation bindings remain required for deployment and launch.
+
+## LegalIR recovery integration qualification (2026-10-28)
+
+The shared policy guard accepts the closed infrastructure-diagnosis and owner-
+retention policies without mixing their authorities. UNKNOWN callbacks, retained
+attempts and operator holds still withhold recovery. Diagnostic observer repair
+cannot rearm tasks, replace the native owner or replenish spent budgets.
+
+Both native blocked-task callers use the same current-reason classifier. An
+allowed marker must be the current reason or code, optionally followed by colon-
+delimited detail; a marker quoted in descriptions or history cannot authorize a
+retry. Selected current or retained receipt metadata denies automatic rearm for
+UNKNOWN outcomes, retained custody, cleanup, explicit retry refusal or exhausted
+budgets. Malformed, boolean or negative spent counters fail closed even without a
+maximum. Nonpositive remaining counts and invalid maxima also withhold rearm;
+local candidate readiness cannot override these denials.
+
+The catalogue observer validates retained receipts against the task CID, earlier
+revision and canonical receipt hash. It reports historical UNKNOWN outcomes and
+spent/retry-refused budgets separately from a later independent factual
+completion. Empty normalized tables establish neither zero attempts nor provider
+success. The repair worker also preserves a future queued `next_attempt_at`
+before cached wait reconciliation can retire the job or touch its service,
+workspace or probe; retention, holds and cumulative budget checks retain priority.
+
+The immutable cold release includes `recovery_policy` and `runtime_assets` along
+with its diagnostic dependencies. Its small bundle binds a missing physical Grok
+adapter only through the explicitly configured full repair engine's existing
+adapter, router and fallback assets. Missing, empty or symlinked selected assets
+fail before charging an attempt; PATH lookup supplies no replacement.
+
+Qualification passed 630 regular parent cases / 1,890 phases plus 456 separately
+counted subtest calls (1,086 JUnit tests, 20.804 seconds), with zero guard denials,
+on original resource source `d6b8c9bd`. This includes 44 selected Datasets pure AST
+cases; it does not qualify normal Datasets package or full CLI integration. A
+separate original-parented run passed all 22 physical cases / 66 phases on
+resource source `4c351874`, with unchanged Accelerate product hashes. Its
+precharged private fixtures retain seven symlinks, two FIFOs and the real hardlink
+pair; the strict owned attempt remains regular-file only. Both runs closed their
+original native resources and source custody and released their storage
+reservations. Earlier failed attempts retain their original dispositions.
+
+The [source evidence capsule](evidence/legal-ir-recovery-interop-20261028.json)
+binds both original results, owner closeouts, source hashes and independent
+review receipts to their retained evidence paths. These qualifications do not
+attest runtime rollout, actual provider/model work, legal fidelity or native task
+completion. Stale `in_progress` automatic unstall remains unchanged and outside
+this blocked-task fix. LIR-9001 requires its separate independent native
+verification.
+
+## Native catalogue continuation lineage
+
+The existing `legal-ir-native-task-population/v1` diagnostic profile keeps its
+single-root contract. A native `steer` amendment preserves existing tasks'
+original plan CIDs and attaches additions to a continuation root. Rewriting
+historical task roots to satisfy the v1 observer would destroy that lineage.
+
+The opt-in `legal-ir-native-task-population/v2` profile observes this layout
+through the same bounded read-only catalogue worker. Select it by supplying a
+new immutable population file and its exact SHA256 through the existing CLI;
+the configured plan root and repository tree bind the active tip. Existing
+CLI arguments and v1 behavior are unchanged. An arbitrary `lineage` key in a
+v1 plan record cannot select v2 validation.
+
+The v2 population has exactly `schema`, `board_namespace`, `plan_root_cid`,
+`repository_tree_id`, `tasks`, `goals` and `plans`. Each task binds its exact
+CID, alias, goal, original plan, objective and dependencies. Each goal binds
+its CID, alias, objective and parent. Plans are ordered from genesis to the
+active tip and bind their CID, goal, native status, revision, raw `body_json`
+SHA256 and these body fields:
+
+```text
+repository_tree_id, continuation_of, continued_by,
+revision_cid, delta_cid, idempotency_key
+```
+
+JSON null in one of these manifest body bindings means that the key is
+literally absent from the native body. It does not match a native null value
+or act as a wildcard. Genesis may lack historical fields; continuation bodies
+must carry their tree/revision/delta/idempotency bindings. Each predecessor
+must be `continued`, the final plan `active`, and every continuation must name
+the exact predecessor and unchanged root goal. At most 64 roots are accepted.
+An amendment-only active tip may have no tasks born under it.
+
+Validation refuses undeclared task origins, unrelated or forked roots, cycles,
+extra/missing scoped plans or goals, body/revision drift and dependency changes.
+The worker checks all rows in one existing read-only SQL snapshot with bounded
+rows, disabled external access and before/after database/WAL metadata checks.
+The v2 profile retains the original unknown-outcome, retry and incomplete
+attempt-history diagnostics. It still reports `not_activated` and
+`not_established`; a lineage match is no executor-health or task-admission grant.
+
+Build the selected diagnostic population from the responsible native owner's
+post-amendment readback, then qualify its configuration/binding cutover. A pure
+amendment preview cannot supply the new native plan revisions or body hashes.
+Keep the current deployed population selected until that readback exists;
+adding this profile never applies an amendment, rearms a task, clears a budget,
+replaces an owner or modifies a live database.
+
+### Current-main publisher and native binding follow-up
+
+The current generation reuses merged PR308's publisher fix: an unavailable
+required hosted check retains the exact candidate PR for retry; local checks and
+billing diagnosis cannot authorize an administrative merge. It also preserves
+current-main's explicit inventory fence before native heal. The retained-owner
+tests now supply a real private inventory and exercise the production read before
+asserting the independent policy denial.
+
+A separate focused cohort passed 268 parents / 804 phases, without subtests, in
+8.622 JUnit seconds: 112 publisher cases, 78 native-heal binding cases, 59 shared
+policy cases and 19 watchdog integration cases. All 14 immutable-runtime source
+modules are bound among 210 source inputs; 42 installed Git/Python/helper inputs
+remain separately typed. All 1,061 audited private subprocesses reached terminal
+states. Original native tracking observed at most eight processes; its resources,
+source custody and storage closed positively. Private fixtures retain 66 genuine
+hardlinked regular paths without repacking or cleanup.
+
+Full phase and subprocess records remain in separate hash-bound exports listed
+in the source evidence capsule. Earlier 630-parent/456-subtest and 22-physical
+qualifications retain their own source/resource generations. Focused attempts
+v01--v03 retain their failed qualification and storage dispositions, including
+the earlier raw passing tests whose closing source audit failed. They supply no
+additional passing credit. Runtime activation and fresh acceptance require their
+separate closed control receipts; this qualification supplies no provider/model
+work, legal fidelity or native task-completion authority.
+
+Fresh read-only acceptance subsequently verified the deployed d4d227c1e0 source
+and immutable release `0e549c8e1fc814fe82e9`, including all 14 runtime modules,
+both service process births, configured/proc argv and environment, four exact
+configuration files, preserved histories and two fresh samples. Both units stayed
+at PIDs 2377224/2377225. Engineering was healthy and idle at 145/145; four
+concurrent completed engineering cards are separately attributed work. Science
+remained 1 completed / 63 blocked at cursor 217, with UNKNOWN and retry refusal
+retained and no budget reset.
+
+The first cutover check failed after applying its files and starting the units
+because it compared volatile systemctl `ExecStart` display fields. A first
+read-only check also retained its outdated 141-card expectation. Both failures
+remain recorded. The later read-only acceptance performed no restart, service
+mutation, provider/model invocation or native task mutation. Its receipt is new
+evidence, rather than a rewrite of either failure.
+
+The restored PR307 lineage extension belongs to the separate publication
+worktree and requires its own fresh qualification. It has not changed the active
+runtime source or selected population; the accepted deployment above does not
+qualify that new extension or admit a native plan amendment.
+
+### Publication-only continuation qualification
+
+The restored continuation observer passed its separate current-source cohort:
+54 new lineage cases plus 33 existing nonphysical observer cases, 87 parents /
+261 phases without subtests, in 19.660 JUnit seconds. Its 29 bounded private
+reader invocations comprise 28 established legacy reads and one new isolated
+lineage worker. Parent SQL fixtures and the isolated worker used pinned
+DuckDB 1.4.3 / NumPy 2.1.3; Pytest 9 reporting was loaded separately. The unchanged
+original regular validation owner closed source, native processes and storage
+with zero guard denials.
+
+The earlier missing-attempt pre-owner refusal and the overly narrow one-worker
+harness failure remain recorded with their original dispositions. Their results
+are not pooled into the passing cohort. This qualifies the publication source's
+lineage diagnostics; the active d4d227c1e0 runtime and its selected population
+remain unchanged. A native continuation amendment or later runtime cutover still
+requires its own owner readback and admission.
+
+Independent review binds the exact APUB probe/test bytes, all 203 request pins
+and six separately typed installed inputs to that original positive closeout.
+The evidence capsule retains the source, record and review hashes for this scope.
+
+The publication branch also merges upstream `ea6ebfa29e` without changing any of
+the 29 observed source origins from the 87-case cohort. The changed router and
+documentation inputs were unused by that cohort and retain no new qualification
+credit. The accepted active checkout and release remain unchanged.

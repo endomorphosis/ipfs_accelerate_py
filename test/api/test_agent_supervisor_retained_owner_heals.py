@@ -15,13 +15,24 @@ POLICY = {"schema": "agent-supervisor/owner-retention@1", "mode": "retain",
 
 
 def _case(tmp_path, mode):
-    board = {"id": "private-owner", "cwd": str(tmp_path), "probe": {"argv": ["private-probe"]}}
+    inventory = tmp_path / "inventory.json"
+    row = {"id": "private-owner", "cwd": str(tmp_path),
+           "database_path": str(tmp_path / "never-open.duckdb")}
+    inventory.write_text(json.dumps({"boards": [row]}))
+    board = {"id": "private-owner", "cwd": str(tmp_path), "probe": {"argv": [
+        "private-probe", "--inventory", str(inventory), "--board", "private-owner"]}}
     observation = {"board_id": "private-owner", "health": "blocked", "busy": False,
         "details": {"owner_ready": True, "authenticated_task_observation": True,
                     "task_counts": {"todo": 3, "retrying": 2},
                     "blocked_task_ids": ["T-1"], "selection_idle_reason": "no_ready_tasks",
                     "lanes": [{"supervisor": None, "daemon": None}]}}
-    if mode == "policy":
+    if mode == "infrastructure":
+        board["max_repair_attempts"] = 3
+        board["recovery_policy"] = {"profile": "infrastructure-only/v1",
+            "repairable_stalls": ["probe_failed"], "max_actions_per_window": 3,
+            "window_seconds": 86400, "circuit_breaker_seconds": 3600}
+        reason = "infrastructure_only_recovery"
+    elif mode == "policy":
         board["recovery_policy"] = dict(POLICY)
         reason = "native_owner_retention_required"
     elif mode == "invalid":
@@ -33,11 +44,26 @@ def _case(tmp_path, mode):
     return board, observation, reason
 
 
-def _forbid_effects(monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail("retention denial must precede inventory, native, process and source effects")
+def _forbid_effects(monkeypatch, board):
+    # The native entrypoint first verifies its explicit private binding. Exercise
+    # that real read before asserting the independent retention-policy denial.
+    original_inventory_board = heals._inventory_board
+    expected = {"id": board["id"], "cwd": board["cwd"],
+                "database_path": str(Path(board["cwd"]) / "never-open.duckdb")}
 
-    for name in ("_inventory_board", "restore_native_owner_execstart", "_systemd_daemon_reload",
+    def private_inventory_read(selected):
+        assert selected is board
+        assert selected["probe"]["argv"] == ["private-probe", "--inventory",
+            str(Path(board["cwd"]) / "inventory.json"), "--board", board["id"]]
+        found = original_inventory_board(selected)
+        assert found == expected
+        return found
+
+    monkeypatch.setattr(heals, "_inventory_board", private_inventory_read)
+    def forbidden(*args, **kwargs):
+        pytest.fail("retention denial must precede native, process and source effects")
+
+    for name in ("restore_native_owner_execstart", "_systemd_daemon_reload",
                  "_systemd_restart_unit", "_mirror_native_owner_overlay"):
         monkeypatch.setattr(heals, name, forbidden)
     monkeypatch.setattr(heals.subprocess, "run", forbidden)
@@ -64,7 +90,7 @@ def _invoke(name, board, observation):
     return function(board, observation)
 
 
-@pytest.mark.parametrize("mode", ["policy", "invalid", "settlement"])
+@pytest.mark.parametrize("mode", ["policy", "invalid", "settlement", "infrastructure"])
 @pytest.mark.parametrize("entrypoint", [
     "apply_supervisor_heal", "run_board_dump_stop_repair_import_start",
     "restart_native_owner_and_attach", "relaunch_native_lanes_on_ready_owner",
@@ -75,30 +101,30 @@ def _invoke(name, board, observation):
 ])
 def test_direct_native_repair_denies_before_all_effects(tmp_path, monkeypatch, mode, entrypoint):
     board, observation, reason = _case(tmp_path, mode)
-    _forbid_effects(monkeypatch)
+    _forbid_effects(monkeypatch, board)
     result = _invoke(entrypoint, board, observation)
     assert result["status"] in {"skip", "wait"}
     assert result["reason"] == reason
     assert result["completion_authority"] is False
 
 
-@pytest.mark.parametrize("mode", ["policy", "invalid"])
+@pytest.mark.parametrize("mode", ["policy", "invalid", "infrastructure"])
 @pytest.mark.parametrize("entrypoint", ["dump_board_before_owner_stop",
                                         "clear_overlay_copies_blocking_owner_start"])
 def test_board_only_owner_preparation_denies_without_reading_or_writing(
         tmp_path, monkeypatch, mode, entrypoint):
     board, _, reason = _case(tmp_path, mode)
-    _forbid_effects(monkeypatch)
+    _forbid_effects(monkeypatch, board)
     result = getattr(heals, entrypoint)(board)
     assert result["status"] == "skip" and result["reason"] == reason
     assert result["completion_authority"] is False
 
 
-@pytest.mark.parametrize("mode", ["policy", "invalid", "settlement"])
+@pytest.mark.parametrize("mode", ["policy", "invalid", "settlement", "infrastructure"])
 def test_retained_owner_cannot_select_unit_or_dump_stop_recipe(tmp_path, monkeypatch, mode):
     board, observation, _ = _case(tmp_path, mode)
     observation["details"]["extra_gate"] = {"live_owner_unit": "foreign.service"}
-    _forbid_effects(monkeypatch)
+    _forbid_effects(monkeypatch, board)
     assert heals._exclusive_owner_unit(board, observation) == ""
     assert heals.should_run_dump_stop_repair_import_start(
         board, observation, {"last_action_result": {"recipe": "unstall_stale_native_work"}},
@@ -114,7 +140,7 @@ def test_retained_owner_cannot_select_unit_or_dump_stop_recipe(tmp_path, monkeyp
 def test_probe_readiness_or_staleness_cannot_override_operator_retention(tmp_path, monkeypatch, facts):
     board, observation, reason = _case(tmp_path, "policy")
     observation["details"] = facts
-    _forbid_effects(monkeypatch)
+    _forbid_effects(monkeypatch, board)
     result = heals.apply_supervisor_heal(board, {"observation": observation,
                                                "stall_class": "owner_missing"})
     assert result["status"] == "wait" and result["reason"] == reason

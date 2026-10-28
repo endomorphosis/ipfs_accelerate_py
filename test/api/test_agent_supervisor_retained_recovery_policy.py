@@ -246,3 +246,125 @@ def test_policy_clear_does_not_leave_a_stale_denial_and_ordinary_selection_survi
                               "stderr": "", "timed_out": False})
     assert "recovery_denial" not in result
     assert result["planned_action"] == ""
+
+
+# Both original closed policy families share one validator. These literal
+# controls keep coding diagnosis distinct from native-owner recovery.
+def _interop_infrastructure_board(tmp_path):
+    return {"id": "private", "cwd": str(tmp_path), "hold_files": [],
+        "probe": {"argv": ["private-probe"]}, "repair": {"argv": ["private-repair"]},
+        "probe_profile": "native_catalogue", "max_repair_attempts": 3,
+        "failure_grace_seconds": 0, "cooldown_seconds": 180,
+        "native_catalogue_binding": {"board_namespace": "private-native", "plan_root_cid": "plan-1",
+            "repository_tree_id": "tree-1", "population_sha256": "a" * 64, "max_age_seconds": 180},
+        "recovery_policy": {"profile": "infrastructure-only/v1",
+            "repairable_stalls": ["native_catalogue_read_unavailable"],
+            "max_actions_per_window": 1, "window_seconds": 86400, "circuit_breaker_seconds": 3600}}
+
+
+def _interop_catalogue_failure(now=100):
+    return observation(health="unknown", reason_codes=["native_catalogue_read_unavailable"],
+        details={"native_catalogue": {"schema": "native-catalogue-diagnostic/v1",
+            "board_namespace": "private-native", "plan_root_cid": "plan-1",
+            "repository_tree_id": "tree-1", "population_sha256": "a" * 64,
+            "completion_authority": False, "probe_observed_at_epoch": now, "fresh_read": False}})
+
+
+def test_closed_infrastructure_policy_allows_only_explicit_coding_diagnosis(isolated, tmp_path):
+    helper, fleet = isolated
+    board = _interop_infrastructure_board(tmp_path)
+    before = copy.deepcopy(board)
+    assert helper.owner_retention_required(board) is True
+    assert helper.recovery_denial(board, {}) == "infrastructure_only_recovery"
+    assert helper.recovery_denial(board, {}, allow_infrastructure=True) == ""
+    assert fleet.infrastructure_policy(board) == board["recovery_policy"]
+    retained = {"recovery_policy": policy()}
+    assert fleet.infrastructure_policy(retained) is None
+    assert helper.recovery_denial(retained, {}, allow_infrastructure=True) == "native_owner_retention_required"
+    assert board == before
+
+
+@pytest.mark.parametrize("damage", ["mixed", "unknown", "missing_cap", "boolean_cap", "native_stall", "nonfinite", "optional_flag"])
+def test_malformed_or_mixed_policy_cannot_enter_infrastructure_diagnosis(isolated, tmp_path, damage):
+    helper, fleet = isolated
+    board = _interop_infrastructure_board(tmp_path)
+    p = board["recovery_policy"]
+    if damage == "mixed": p.update(policy())
+    elif damage == "unknown": p["reset_attempts"] = True
+    elif damage == "missing_cap": board.pop("max_repair_attempts")
+    elif damage == "boolean_cap": board["max_repair_attempts"] = True
+    elif damage == "native_stall": p["repairable_stalls"] = ["native_catalogue_attempt_budget_exhausted"]
+    elif damage == "nonfinite": p["window_seconds"] = float("nan")
+    else: p["stop_own_repair_on_wait"] = 1
+    assert helper.recovery_denial(board, {}, allow_infrastructure=True) == "invalid_owner_retention_policy"
+    with pytest.raises(ValueError): fleet.infrastructure_policy(board)
+    state = {"health": "unknown", "observation": _interop_catalogue_failure(),
+             "stall_class": "native_catalogue_read_unavailable", "incident_since": 0,
+             "next_action_at": 0, "infrastructure_budget": {"status": "available"}}
+    assert fleet.select_action(state, board, 100) == ""
+
+
+def test_infrastructure_tick_enqueues_one_bounded_repair_and_keeps_its_circuit(isolated, tmp_path, monkeypatch):
+    _, fleet = isolated
+    board = _interop_infrastructure_board(tmp_path)
+    root = tmp_path / "watch"
+    calls = []
+    def runner(spec, **kwargs):
+        calls.append(spec["argv"])
+        if spec == board["probe"]:
+            return {"returncode": 0, "stdout": json.dumps(_interop_catalogue_failure())}
+        assert spec["argv"][:1] == ["private-repair"]
+        return {"returncode": 0, "stdout": "{}"}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("no native service effect"))
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert first["last_action"] == "repair" and first["stall_class"] == "native_catalogue_read_unavailable"
+    assert first["infrastructure_budget"]["actions"] == 1
+    budget = root / "private/infrastructure-budget.json"
+    before = budget.read_bytes()
+    second = fleet.tick_board(board, root, apply=True, now=1000,
+        runner=lambda *a, **k: {"returncode": 0, "stdout": json.dumps(_interop_catalogue_failure(1000))})
+    assert second["planned_action"] == "" and second["infrastructure_budget"]["status"] == "open"
+    assert second["infrastructure_budget"]["total_actions"] == 1 and budget.read_bytes() == before
+    assert len(calls) == 2 and calls[0] == ["private-probe"]
+
+
+@pytest.mark.parametrize("mode", ["unknown_callback", "owner_policy", "invalid_policy", "observe_only", "operator_hold"])
+def test_infrastructure_tick_preserves_denied_custody_before_cancellation_or_repair(isolated, tmp_path, monkeypatch, mode):
+    _, fleet = isolated
+    board = _interop_infrastructure_board(tmp_path)
+    board["recovery_policy"]["stop_own_repair_on_wait"] = True
+    sample = _interop_catalogue_failure()
+    if mode == "unknown_callback": sample["details"]["selection_idle_reason"] = "expired_attempt_settlement_unavailable"
+    elif mode == "owner_policy": board["recovery_policy"] = policy()
+    elif mode == "invalid_policy": board["recovery_policy"] = {"mode": "restart"}
+    elif mode == "observe_only": board["observation_only"] = True
+    else:
+        hold = tmp_path / "OPERATOR_STOP";hold.write_text("retained")
+        board["hold_files"] = [str(hold)]
+    root = tmp_path / "watch"
+    prior = {"health": "unknown", "attempts": 3, "ensure_attempts": 2,
+             "next_action_at": 9999, "pending_action": "repair", "last_action_at": 50}
+    fleet.write_json(root / "private/state.json", prior)
+    job = root / "repairs/private/job.json"
+    fleet.write_json(job, {"status": "running", "attempts": 3, "next_attempt_at": 9999})
+    before = job.read_bytes();calls = []
+    def probe_only(spec, **kwargs):
+        calls.append(spec["argv"]);assert spec == board["probe"]
+        return {"returncode": 0, "stdout": json.dumps(sample)}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("wait cannot stop a repair cgroup"))
+    result = fleet.tick_board(board, root, apply=True, runner=probe_only, now=100)
+    assert result["planned_action"] == "" and calls == [["private-probe"]]
+    assert job.read_bytes() == before
+    assert all(result[k] == prior[k] for k in ("attempts", "ensure_attempts", "next_action_at", "pending_action"))
+    assert not (root / "private/infrastructure-budget.json").exists()
+    if mode == "unknown_callback": assert result["stall_class"] == "retained_attempt_settlement_wait"
+
+
+def test_mixed_fleet_config_admits_both_closed_policies_without_changing_them(isolated, tmp_path):
+    _, fleet = isolated
+    a = _interop_infrastructure_board(tmp_path)
+    b = {"id": "retained", "cwd": str(tmp_path), "probe": {"argv": ["private-probe"]},
+         "recovery_policy": policy()}
+    config = {"state_dir": str(tmp_path / "watch"), "boards": [a, b]}
+    p = tmp_path / "fleet.json";p.write_text(json.dumps(config))
+    assert fleet.load_config(p) == config

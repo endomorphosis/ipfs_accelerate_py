@@ -25,7 +25,8 @@ from typing import Any
 
 from .fleet_watchdog import (
     WAIT_STALLS, _accepted_progress_counts, command, load_config, lock, read_json,
-    write_json, supervisor_pythonpath, observation_only,
+    write_json, supervisor_pythonpath, infrastructure_policy, infrastructure_classification,
+    infrastructure_repair_allowed, NATIVE_CATALOGUE_WAITS, observation_only,
 )
 from .fleet_watchdog import repair_hold_paths as hold_paths
 from .recovery_policy import recovery_denial
@@ -176,6 +177,8 @@ def _repair_limits(config: dict[str, Any]) -> dict[str, int | None]:
     _bound_implementation_route(config.get("repair_worker", {}))
     limits = {}
     for board in config["boards"]:
+        if not recovery_denial(board, {}, allow_infrastructure=True):
+            infrastructure_policy(board)
         observation_only(board)
         limit = board.get("max_repair_attempts")
         if "max_repair_attempts" in board and (type(limit) is not int or limit < 1):
@@ -340,11 +343,11 @@ def _recovery_denial(config: dict[str, Any], board: dict[str, Any],
     job = read_json(Path(config["state_dir"]) / "repairs" / board["id"] / "job.json")
     incident = job.get("latest_incident")
     cached = incident.get("observation") if isinstance(incident, dict) else {}
-    return (recovery_denial(board, sample if isinstance(sample, dict) else {})
+    return (recovery_denial(board, sample if isinstance(sample, dict) else {}, allow_infrastructure=True)
             or ("retained_attempt_settlement_wait"
                 if state.get("stall_class") == "retained_attempt_settlement_wait" else "")
-            or recovery_denial(board, cached if isinstance(cached, dict) else {})
-            or recovery_denial(board, observation if isinstance(observation, dict) else {}))
+            or recovery_denial(board, cached if isinstance(cached, dict) else {}, allow_infrastructure=True)
+            or recovery_denial(board, observation if isinstance(observation, dict) else {}, allow_infrastructure=True))
 
 
 def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command) -> list[dict[str, Any]]:
@@ -576,6 +579,15 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
     denial = _recovery_denial(config, boards[board_id], incident.get("observation"))
     if denial:
         return {"status": "recovery_wait", "reason": denial, "board_id": board_id}
+    board = boards[board_id]
+    if infrastructure_policy(board) is not None:
+        if hold_paths(board):
+            return {"status": "operator_hold", "board_id": board_id}
+        observation = incident.get("observation")
+        if (not isinstance(observation, dict)
+                or not infrastructure_repair_allowed(board, observation, time.time())):
+            return {"status": "policy_wait", "board_id": board_id,
+                    "reason": "infrastructure_repair_not_authorized"}
     directory = Path(config["state_dir"]) / "repairs" / board_id
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
@@ -996,8 +1008,8 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
                         observation: dict[str, Any], publication_dir: Path) -> dict[str, Any]:
     """Verify progress or current publication; model reports grant neither."""
     prior = incident.get("observation")
-    denial = (recovery_denial(board, observation)
-              or recovery_denial(board, prior if isinstance(prior, dict) else {}))
+    denial = (recovery_denial(board, observation, allow_infrastructure=True)
+              or recovery_denial(board, prior if isinstance(prior, dict) else {}, allow_infrastructure=True))
     if denial:
         # A wait is not successful recovery. Do not publish or open even a
         # derived metadata owner on the strength of unresolved custody.
@@ -1167,6 +1179,35 @@ def repair_workspace(board: dict[str, Any], policy: dict[str, Any]) -> Path:
     raise ValueError("repair workspace is not a directory")
 
 
+def _physical_grok_adapter(policy: dict[str, Any]) -> Path:
+    """Bind the physical adapter to the loaded bundle or explicit engine source.
+
+    The stdlib watchdog bundle is not a provider runtime. When it contains no
+    adapter, the configured full repair engine supplies the existing script;
+    PATH lookup and an unrelated same-basename script are never candidates.
+    """
+    selected = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
+    try:
+        metadata = selected.lstat()
+    except FileNotFoundError:
+        configured = policy.get("cwd")
+        if not isinstance(configured, str) or not Path(configured).is_absolute():
+            raise ValueError("repair adapter requires an explicit absolute engine checkout")
+        engine = Path(configured).resolve(strict=True)
+        selected = engine / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py"
+        # These are availability checks on the explicitly selected full engine.
+        # Original source/request bindings retain generation and integrity custody.
+        for relative in ("ipfs_accelerate_py/llm_router.py",
+                         "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py"):
+            detail = (engine / relative).lstat()
+            if not stat.S_ISREG(detail.st_mode) or detail.st_size == 0:
+                raise ValueError("configured repair engine provider assets are unavailable")
+        metadata = selected.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size == 0:
+        raise ValueError("physical repair adapter must be a nonempty regular file")
+    return selected.resolve(strict=True)
+
+
 def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: Path,
                            *, workspace: Path | None = None) -> list[str]:
     """Grok via the packaged adapter, then the configured Codex argv as fallback.
@@ -1182,9 +1223,9 @@ def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: P
     # The public grok_cli_runner name resolves to the domain runtime runner.
     # This outer fallback protocol uses the existing physical adapter's private
     # failure-receipt channel and strict terminal-frame parser instead.
-    grok_adapter = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
+    grok_adapter = _physical_grok_adapter(policy)
     primary = [
-        sys.executable, "-P", str(grok_adapter.resolve(strict=True)),
+        sys.executable, "-P", str(grok_adapter),
         "--workspace", str(workspace),
     ]
     if route is not None:
@@ -1218,6 +1259,10 @@ def _launch_preflight(policy: dict[str, Any]) -> str | None:
         return "repair_route_configuration_invalid"
     if not Path(policy["cwd"]).is_dir():
         return "repair_checkout_unavailable"
+    try:
+        _physical_grok_adapter(policy)
+    except (OSError, ValueError):
+        return "repair_adapter_unavailable"
     for executable in ("systemd-run", policy["argv"][0]):
         if shutil.which(executable) is None:
             return "repair_executable_unavailable"
@@ -1386,10 +1431,26 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     denial = _recovery_denial(config, configured)
     if denial:
         return {"status": "recovery_wait", "reason": denial, "board_id": board["id"]}
-    limit = limits[board["id"]]  # A caller's copied board cannot remove the configured cap.
+    if infrastructure_policy(configured) is not None:
+        board = configured
+    limit = limits[board["id"]]  # A copied board cannot remove policy or its cap.
     policy = dict(config["repair_worker"])
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
+    if infrastructure_policy(board) is not None:
+        # Rehydrating a future queued repair cannot retire it from a cached
+        # wait or touch its service/probe/workspace before the durable deadline.
+        # Retention and holds above still win; a spent budget still escalates.
+        pending = _launch_selection(read_json(path))
+        if pending.get("status") == "queued":
+            denied = _check_repair_budget(board["id"], path, limit, time.time())
+            if denied is not None:
+                return denied
+            pending = _launch_selection(read_json(path))
+            if (pending.get("status") == "queued"
+                    and float(pending.get("next_attempt_at") or 0) > time.time()):
+                return {"status": "repair_backoff", "board_id": board["id"],
+                        "next_attempt_at": pending["next_attempt_at"]}
     wait = board_wait_stall(config, board["id"])
     if wait:
         with lock(path.parent / "queue.lock") as acquired:

@@ -572,6 +572,7 @@ def _retention_health(config: dict[str, Any], evidence: dict[str, Any]) -> dict[
     reasons = {
         "retained_attempt_settlement_wait": "Retained attempt settlement is unavailable; preserve its owner and attempts",
         "native_owner_retention_required": "Configured policy requires retaining the native owner",
+        "infrastructure_only_recovery": "Infrastructure diagnosis cannot restart the native owner",
         "invalid_owner_retention_policy": "Owner-retention policy is invalid; restart is refused",
     }
     return {"healthy": False, "restart_eligible": False, "status": denial,
@@ -579,8 +580,10 @@ def _retention_health(config: dict[str, Any], evidence: dict[str, Any]) -> dict[
             "owner_retention_required": owner_retention_required(config),
             "potential_repair_recommended": True,
             "repair_recommendation": (
-                "Review the invalid owner-retention configuration"
+                "Review the invalid recovery policy configuration"
                 if denial == "invalid_owner_retention_policy" else
+                "Use the bounded infrastructure repair path; native restart authority is separate"
+                if denial == "infrastructure_only_recovery" else
                 "Review retained attempt custody through its authorized native owner; preserve attempt budgets"
             ),
             "repair_authorized": False, "completion_authority": False}

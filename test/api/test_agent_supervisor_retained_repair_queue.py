@@ -23,14 +23,19 @@ def fixture(tmp_path, monkeypatch, mode, status="queued"):
     monkeypatch.setattr(repair.os, "kill", forbidden)
     monkeypatch.setattr(repair.os, "killpg", forbidden)
     board = {"id": "retained", "cwd": str(tmp_path), "hold_files": []}
-    if mode == "policy":
+    if mode == "infrastructure":
+        board["max_repair_attempts"] = 3
+        board["recovery_policy"] = {"profile": "infrastructure-only/v1",
+            "repairable_stalls": ["probe_failed"], "max_actions_per_window": 3,
+            "window_seconds": 86400, "circuit_breaker_seconds": 3600}
+    elif mode == "policy":
         board["recovery_policy"] = POLICY
     elif mode == "invalid":
         board["recovery_policy"] = {"mode": "restart"}
     config = {"state_dir": str(tmp_path), "boards": [board],
               "repair_worker": {"cwd": str(tmp_path)}}
     write_json(tmp_path / "retained/state.json", {
-        "stall_class": "stalled_no_progress", "observation": WAIT if mode == "wait" else {}})
+        "stall_class": "stalled_no_progress", "observation": WAIT if mode in {"wait", "infrastructure"} else {}})
     incident = tmp_path / "incident.json"
     write_json(incident, {"board_id": "retained", "observation": WAIT if mode == "incident" else {}})
     path = tmp_path / "repairs/retained/job.json"
@@ -41,7 +46,7 @@ def fixture(tmp_path, monkeypatch, mode, status="queued"):
     return config, board, path, incident
 
 
-@pytest.mark.parametrize("mode", ["policy", "invalid", "wait", "incident"])
+@pytest.mark.parametrize("mode", ["policy", "invalid", "wait", "incident", "infrastructure"])
 @pytest.mark.parametrize("status", ["queued", "running"])
 def test_all_queue_routes_preserve_retained_history(tmp_path, monkeypatch, mode, status):
     config, board, path, incident = fixture(tmp_path, monkeypatch, mode, status)
@@ -227,3 +232,74 @@ def test_ordinary_verification_without_retained_history_is_preserved(tmp_path, m
     result = repair.verify_job_recovery(board, {"observation": healthy()}, healthy(),
                                        tmp_path / "publication")
     assert result == {"verified": True, "reason": "runtime_health_verified"}
+
+
+
+def test_valid_infrastructure_queue_keeps_durable_delay_with_a_stripped_board(tmp_path, monkeypatch):
+    config, board, path, _ = fixture(tmp_path, monkeypatch, "infrastructure")
+    write_json(tmp_path / "retained/state.json", {"observation": {}})
+    job = json.loads(path.read_text())
+    job.update(attempts=0, next_attempt_at=1000, latest_incident={"observation": {}})
+    write_json(path, job)
+    before = path.read_bytes()
+    monkeypatch.setattr(repair.time, "time", lambda: 100)
+    assert repair._recovery_denial(config, board) == ""
+    assert repair.next_job(config, 100) is None
+    assert repair.run_job(config, {"id": board["id"]}, path)["status"] == "repair_backoff"
+    assert path.read_bytes() == before
+    # An expired delay is not probe authority. A missing cached observation
+    # still withholds selection; only a new allowed diagnosis makes it eligible.
+    monkeypatch.setattr(repair.time, "time", lambda: 1001)
+    assert repair.next_job(config, 1001) is None
+    write_json(tmp_path / "retained/state.json", {
+        "observation": {"health": "unknown", "reason_codes": ["probe_failed"]}})
+    selected = repair.next_job(config, 1001)
+    assert selected is not None and selected[0] is board and selected[1] == path
+
+
+
+@pytest.mark.parametrize("fence,expected", [
+    ("hold", "operator_hold"), ("retained", "recovery_wait"), ("spent", "escalated")])
+def test_future_infrastructure_delay_never_overrides_prior_custody_or_budget(
+        tmp_path, monkeypatch, fence, expected):
+    config, board, path, _ = fixture(tmp_path, monkeypatch, "infrastructure")
+    write_json(tmp_path / "retained/state.json", {"observation": {}})
+    job = json.loads(path.read_text())
+    job.update(attempts=3 if fence == "spent" else 0, next_attempt_at=1000,
+               latest_incident={"observation": {}})
+    write_json(path, job)
+    if fence == "hold":
+        hold = tmp_path / "OPERATOR_STOP";hold.write_text("held")
+        board["hold_files"] = [str(hold)]
+    elif fence == "retained":
+        write_json(tmp_path / "retained/state.json", {"observation": WAIT})
+    before = path.read_bytes()
+    monkeypatch.setattr(repair.time, "time", lambda: 100)
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("a prior fence or future deadline cannot probe, inspect services or select a workspace")
+    for name in ("board_wait_stall", "command", "_launch_preflight", "repair_workspace"):
+        monkeypatch.setattr(repair, name, forbidden)
+    result = repair.run_job(config, {"id": board["id"]}, path)
+    assert result["status"] == expected
+    after = json.loads(path.read_text())
+    assert after["attempts"] == job["attempts"] and after["next_attempt_at"] == 1000
+    if fence == "spent":
+        assert result["reason"] == "repair_budget_exhausted" and after["status"] == "escalated"
+    else:
+        assert path.read_bytes() == before
+
+
+def test_due_infrastructure_wait_keeps_original_retirement_contract(tmp_path, monkeypatch):
+    config, board, path, _ = fixture(tmp_path, monkeypatch, "infrastructure")
+    write_json(tmp_path / "retained/state.json", {"observation": {}})
+    job = json.loads(path.read_text())
+    job.update(attempts=0, next_attempt_at=1000, latest_incident={"observation": {}})
+    write_json(path, job)
+    monkeypatch.setattr(repair.time, "time", lambda: 1001)
+    # The actual classifier rejects this absent observation after the deadline.
+    result = repair.run_job(config, {"id": board["id"]}, path)
+    assert result["status"] == "retired_wait"
+    assert result["wait_stall"] == "native_catalogue_probe_invalid"
+    current = json.loads(path.read_text())
+    assert current["attempts"] == 0 and current["next_attempt_at"] == 1000
+    assert current["status"] == "retired_wait" and current["retired_at"] == 1001

@@ -182,3 +182,14 @@ def test_retained_owner_monitor_ordinary_restart_keeps_charged_budget(config, mo
     assert calls == [["systemctl", "--user", "restart", config["service"]]]
     assert result["action"] == "restart_requested"
     assert result["restart_attempts_last_hour"] == 1
+
+
+
+def test_infrastructure_policy_never_grants_native_service_restart(config, monitor_module):
+    config.update(max_repair_attempts=3, recovery_policy={"profile": "infrastructure-only/v1",
+        "repairable_stalls": ["probe_failed"], "max_actions_per_window": 3,
+        "window_seconds": 86400, "circuit_breaker_seconds": 3600})
+    service, evidence, previous, _ = _case("service_dead")
+    result = monitor_module.evaluate_health(config, service, evidence, previous, NOW, NOW)
+    assert result["status"] == "infrastructure_only_recovery"
+    assert result["restart_eligible"] is result["repair_authorized"] is result["completion_authority"] is False
