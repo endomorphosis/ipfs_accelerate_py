@@ -69,7 +69,7 @@ def _produce_bad_completion(directory: Path) -> None:
         active = native.PortalTaskState.load(daemon.state_path)
         assert active.implementation_in_progress
         assert active.active_task_id == TASK
-        (directory / "actual-producer-active-state.json").write_bytes(daemon.state_path.read_bytes())
+        (directory / "actual-producer-active-state.json").write_text(json.dumps(asdict(active)))
         return original_validate(*args, **kwargs)
 
     daemon._run_validation_commands = observe_actual_active_state
@@ -335,9 +335,14 @@ def test_superseded_journal_cannot_replay_after_retirement(successor):
 def test_quiesced_public_recovery_settles_before_protected_path_admission(successor):
     daemon = successor["daemon"]
     # Recreate a delayed save of actual producer state, whose real process
-    # has exited.  These are observed Native bytes, not a fabricated outcome.
+    # has exited.  These are observed Native fields, not a fabricated outcome.
     stale = successor["directory"] / "actual-producer-active-state.json"
-    daemon.state_path.write_bytes(stale.read_bytes())
+    current = native.PortalTaskState.load(daemon.state_path)
+    observed = json.loads(stale.read_text())
+    for field, value in observed.items():
+        if field.startswith("active_") or field == "implementation_in_progress":
+            setattr(current, field, value)
+    current.save(daemon.state_path)
     before = asdict(native.PortalTaskState.load(daemon.state_path))
     assert before["implementation_in_progress"] is True
     assert before["active_task_id"] == TASK
