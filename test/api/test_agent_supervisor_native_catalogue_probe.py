@@ -315,3 +315,72 @@ def test_optional_goal_objective_rejects_nonstring_or_invalid_nonempty_identifie
     result = observe(catalogue)
     assert result["health"] == "unknown" and not result["progress_token"]
     assert result["reason_codes"] == ["native_catalogue_invalid_binding"]
+
+
+# A current independently verified task completion must not hide a prior UNKNOWN.
+def _complete_with_retained_outcome(catalogue, *, mutate=None):
+    receipt = {"task_cid": "baguqeerataska", "attempt_number": 2,
+               "automatic_retry_admitted": False,
+               "failure_kind": "administrative_operator_stop_outcome_unknown",
+               "provider_invocation_count": 1}
+    entry = {"task_cid": "baguqeerataska", "task_revision": 13,
+             "completion_receipt": receipt,
+             "sha256": hashlib.sha256(json.dumps(receipt, sort_keys=True,
+                 separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()}
+    if mutate is not None:
+        mutate(entry)
+    body = {"board_namespace": NAMESPACE,
+            "completion_receipt": {"operation": "independent_metadata_acceptance"},
+            "retained_execution_outcomes": [entry]}
+    change_database(catalogue,
+        "UPDATE tasks SET body_json=?, status='completed', revision=15 WHERE task_alias='LIR-9001'",
+        [json.dumps(body)])
+
+
+def test_completed_factual_work_retains_prior_unknown_without_retry_authority(catalogue):
+    _complete_with_retained_outcome(catalogue)
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    task = diagnostic["tasks"][0]
+    assert task["status"] == "completed" and task["revision"] == 15
+    assert task["receipt_failure_kind"] is None
+    assert task["retained_execution_outcomes"][0]["attempt_number"] == 2
+    assert task["retained_execution_outcomes"][0]["max_task_attempts"] is None
+    assert diagnostic["retained_unknown_outcome_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["retry_not_admitted_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["provider_outcome_knowledge"] == "unknown_observed"
+    assert diagnostic["external_outcome_knowledge"] == "unknown_observed"
+    assert diagnostic["historical_outcomes_are_separate_from_current_completion"] is True
+    assert result["complete"] is result["completion_candidate"] is False
+    assert diagnostic["completion_authority"] is False
+    assert "recovery_action" not in result
+
+
+@pytest.mark.parametrize("damage", ["digest", "wrong_task", "future_revision", "boolean_revision", "receipt_identity", "malformed"])
+def test_invalid_retained_outcome_is_unknown_instead_of_silently_discarded(catalogue, damage):
+    def mutate(entry):
+        if damage == "digest": entry["sha256"] = "0" * 64
+        elif damage == "wrong_task": entry["task_cid"] = "baguqeeraother"
+        elif damage == "future_revision": entry["task_revision"] = 15
+        elif damage == "boolean_revision": entry["task_revision"] = True
+        elif damage == "malformed": entry["extra"] = "unexpected"
+        else:
+            entry["completion_receipt"]["task_cid"] = "baguqeeraother"
+            entry["sha256"] = hashlib.sha256(json.dumps(entry["completion_receipt"],
+                sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    _complete_with_retained_outcome(catalogue, mutate=mutate)
+    result = observe(catalogue)
+    assert result["health"] == "unknown"
+    assert "native_catalogue_native_retained_outcome_invalid" in result["reason_codes"]
+    assert result["details"]["native_catalogue"]["fresh_read"] is False
+
+
+def test_current_administrative_unknown_retains_provider_invocation_knowledge(catalogue):
+    receipt = {"attempt_number": 2, "automatic_retry_admitted": False,
+               "failure_kind": "administrative_operator_stop_outcome_unknown",
+               "provider_invocation_count": 1}
+    change_database(catalogue, "UPDATE tasks SET body_json=? WHERE task_alias='LIR-9001'",
+                    [json.dumps({"board_namespace": NAMESPACE, "completion_receipt": receipt})])
+    result = observe(catalogue)
+    assert result["details"]["native_catalogue"]["provider_outcome_knowledge"] == "unknown_observed"
+    assert result["details"]["native_catalogue"]["external_outcome_knowledge"] == "unknown_observed"

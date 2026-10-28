@@ -2395,3 +2395,114 @@ def test_runnable_stall_frame_is_closed_fresh_and_bound_to_its_original_diagnost
     elif damage == "nonfinite_anchor": frame["anchor_at_epoch"] = float("nan")
     assert fleet._service_fleet_availability(sample, board, 1000) == ""
     assert not fleet.infrastructure_repair_allowed(board, sample, 1000)
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", [], {}])
+def test_observation_only_configuration_requires_an_operator_boolean(tmp_path, value):
+    path = tmp_path / "fleet.json"
+    path.write_text(json.dumps({"boards": [_board(tmp_path, observation_only=value)]}))
+    with pytest.raises(ValueError, match="observation_only"):
+        fleet.load_config(path)
+
+
+@pytest.mark.parametrize("value", [None, False, True])
+def test_observation_only_configuration_keeps_legacy_and_boolean_policies(tmp_path, value):
+    board = _board(tmp_path)
+    if value is not None:
+        board["observation_only"] = value
+    path = tmp_path / "fleet.json"
+    path.write_text(json.dumps({"boards": [board]}))
+    assert fleet.load_config(path)["boards"] == [board]
+
+
+@pytest.mark.parametrize("health,stall,publication", [
+    ("unknown", "probe_failed", False),
+    ("stopped", "owner_missing", False),
+    ("stalled", "stalled_no_progress", False),
+    ("blocked", "configured_control_plane_dirty", False),
+    ("complete", "complete", False),
+    ("complete", "complete", True),
+])
+def test_observation_only_selection_cannot_authorize_any_recovery(
+        tmp_path, health, stall, publication):
+    board = _board(tmp_path, observation_only=True)
+    if publication:
+        board["publication"] = {"manifest": "must-not-publish"}
+    state = {"health": health, "stall_class": stall, "incident_since": 0,
+             "next_action_at": 0, "observation": _observation(
+                 health=health, complete=health == "complete")}
+    assert fleet.select_action(state, board, 1000) == ""
+
+
+@pytest.mark.parametrize("scenario", [
+    "healthy", "unknown", "repair", "native_heal", "publication",
+    "completion_review", "wait_with_running_job", "hold_review",
+])
+def test_observation_only_applied_tick_preserves_recovery_custody(
+        tmp_path, monkeypatch, scenario):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion, fleet_heals, fleet_holds
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("an observation-only board cannot perform recovery side effects")
+
+    monkeypatch.setattr(fleet, "command", forbidden)
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal", forbidden)
+    monkeypatch.setattr(fleet_holds, "review_board_holds", forbidden)
+    monkeypatch.setattr(fleet_completion, "publish_completed_board", forbidden)
+    board = _board(tmp_path, observation_only=True, failure_grace_seconds=0,
+                   blocked_grace_seconds=0)
+    observation = _observation(progress_token="new-observed-work")
+    if scenario == "unknown":
+        observation.update(health="unknown", reason_codes=["probe_failed"])
+    elif scenario == "repair":
+        observation.update(health="stalled", reason_codes=["no_task_progress"])
+    elif scenario == "native_heal":
+        observation.update(health="stopped", reason_codes=["owner_missing"],
+                           recovery_action="ensure")
+    elif scenario in {"publication", "completion_review"}:
+        observation.update(health="complete", complete=True)
+        if scenario == "publication":
+            board["publication"] = {"manifest": "must-not-publish"}
+    elif scenario == "wait_with_running_job":
+        observation.update(completion_candidate=True,
+                           details={"native_completion_authority": False})
+    elif scenario == "hold_review":
+        hold = tmp_path / "OPERATOR_STOP"
+        hold.write_text("retained operator custody")
+        board["hold_files"] = [str(hold)]
+    root = tmp_path / "watch"
+    recovery = {"attempts": 7, "ensure_attempts": 2, "pending_action": "repair",
+                "next_action_at": 7777, "last_action": "ensure", "last_action_at": 15,
+                "last_action_result": {"status": "failed", "receipt": "retained"}}
+    fleet.write_json(root / "spar/state.json", {
+        **recovery, "board_id": "spar", "health": "healthy", "last_progress_at": 1,
+        "progress_token": "old-observed-work", "observation": _observation()})
+    job = root / "repairs/spar/job.json"
+    fleet.write_json(job, {"status": "running", "attempts": 3, "next_attempt_at": 8888})
+    job_before = job.read_bytes()
+    calls = []
+
+    def probe_only(spec, **kwargs):
+        calls.append(spec)
+        assert spec == board["probe"]
+        return _result(observation)
+
+    state = fleet.tick_board(board, root, apply=True, runner=probe_only, now=1000,
+                             repair_unit="ipfs-taskboard-legal-ir-repair-job.service")
+    assert calls == [board["probe"]]
+    assert state["planned_action"] == ""
+    assert state["observation"] == observation
+    assert state["observed_at"] == state["last_progress_at"] == 1000
+    assert {key: state[key] for key in recovery} == recovery
+    assert fleet.read_json(root / "spar/state.json") == state
+    assert job.read_bytes() == job_before
+    assert not (root / "spar/incident.json").exists()
+    assert not (root / "spar/last_action.json").exists()
+    if scenario == "hold_review":
+        assert hold.read_text() == "retained operator custody"
+
+
+def test_explicit_false_observation_policy_retains_normal_recovery_selection(tmp_path):
+    board = _board(tmp_path, observation_only=False)
+    state = {"health": "unknown", "stall_class": "probe_failed", "incident_since": 0,
+             "next_action_at": 0, "observation": _observation(health="unknown")}
+    assert fleet.select_action(state, board, 1000) == "repair"

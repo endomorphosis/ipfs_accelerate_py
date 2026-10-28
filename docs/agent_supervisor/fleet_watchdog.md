@@ -129,6 +129,56 @@ The report probe validates regular bounded JSON, freshness, namespace, exact lan
 
 The completed135-task legacy engineering board and the separate34-goal/64-task LegalIR programme retain distinct scopes. Before corpus-worker cutover, reviewed execution packets and authenticated native task/goal scope must be admitted through the existing owners. This diagnostic profile does not rematerialize that population, rearm attempts, approve legal meanings or declare the US Code formalized.
 
+### Observe the scientific programme before enabling recovery
+
+An additional entry in the existing fleet can set `"observation_only": true`.
+This is a strict Boolean operator policy, not a probe result. The watchdog
+continues its configured status probe, health/progress assessment and local
+observation writes, including while holds are present. It selects no recovery
+action and preserves retained recovery counters, pending intent and cooldown.
+It does not review holds, stop a repair unit, heal an owner, enqueue a coding
+job or publish. Existing queued/running repair records remain unchanged and
+appear as held with reason `observation_only`; direct enqueue and job execution
+also enforce the configured policy. Other fleet entries retain their policy.
+This does not cancel workers that were already running.
+
+Native healing also requires exactly one explicit absolute `--inventory` in
+the configured probe, with any `--board` matching the configured identity.
+The selected inventory must contain exactly one matching entry with absolute
+checkout/database paths, and its checkout must match the configured `cwd`.
+Missing, malformed, foreign or incomplete inventories do not fall back to
+`~/.config/ipfs-taskboard-watchdog/inventory.json`. Board names and observed
+unit names alone cannot establish ownership. Unbound fleet heals and direct
+dump/attach/collapse/restart paths refuse before their first effect. Tests of
+these paths must supply a private inventory or assert that refusal.
+
+Use an admitted read-only native status command as the probe. The policy does
+not make an arbitrary operator-configured command read-only. Keep the native
+owner's `bind_database_status_scope` binding to the exact board namespace,
+plan root, repository tree and complete task CID population. Its status-only
+grant has no command operations. Do not open the live database or substitute
+saved `status`/`ready` projections for that authenticated read.
+
+The corresponding `live_board_probe` inventory entry can additionally pin
+`native_population`, an object with exactly `task_cids` and `goal_cids`.
+Each is a complete list of 1–512 unique nonblank identities, at most256
+characters each. Copy the accepted inventories, not aliases, counts or a sample.
+The probe checks both sets against the admitted database status and completion
+projection. Missing, added, substituted or duplicate identities reject the
+observation. A pinned entry cannot fall back to daemon task/readiness counts;
+rejected native completion flags cannot close the board. Omitting the pin
+preserves the existing unpinned adapters.
+
+For LegalIR, retain distinct entry identities for the legacy engineering fleet
+and the `legal-ir-span-graph-lean-refinement-20261016` scientific programme.
+The latter's retained inventory is34 goals/64 tasks; its historical blocked
+snapshot is not current status. Reuse the existing G090/LIR-9004 handoff and
+scientific observation controls. A fresh owner/status binding and compatible
+probe must be qualified before enrollment. This policy adds no LIR launcher,
+task population, credential or execution packet. Enable recovery only through
+an explicit subsequent operator configuration after its native capability,
+retry/resource budgets and independent verification are admitted.
+
 ## Operation
 
 Each board may explicitly configure read-only active-storage checks:
@@ -395,6 +445,23 @@ GitHub `main`. The publisher checks the source and remote again before an
 ordinary push. Conflicts, stale evidence, changed gitlinks without dependencies,
 dirty validation output or failed tests produce a retained hold for repair.
 There are no force pushes, resets of live checkouts or automatic branch deletion.
+
+Publication uses an exact-head pull request and ordinary GitHub merge rules.
+Required hosted checks and reviews must pass, with the candidate head checked
+again immediately before merging. Local validation does not replace a missing
+required hosted result. The publisher never uses administrative merge rights
+when billing, quota or another service outage prevents a check from running.
+
+A confirmed GitHub Actions billing lock retains the tested candidate and its
+pull request as a retryable publication hold. Billing diagnosis uses bounded
+check-run annotations from GitHub Actions on that exact candidate; failures on
+another commit or repository do not establish this candidate's state. The
+watchdog waits with its publication backoff instead of launching a code repair
+for the account outage. After checks recover, the next publication attempt
+reuses the retained candidate and rechecks GitHub readiness. An already merged
+pull request at the exact candidate remains idempotent. Restoring account
+eligibility requires the account owner's action; neither a billing observation
+nor local test success authorizes changing billing or branch protection.
 
 ## Install and inspect
 
@@ -772,3 +839,196 @@ and retry refusal distinct from engineering completion. Adoption must retain
 explicit and old/new cwd operator markers, change only the reviewed source
 locations, and require fresh post-start observations for both existing namespaces.
 An old status file or a successful coding-process exit is insufficient.
+
+## SAWM runtime path compatibility
+
+Bind the existing SAWM service through a persistent `90-sawm-runtime-path.conf`
+that takes precedence over a generated `81` overlay path. Keep its launcher,
+readiness helper, schema/migration modules and five declared SQL resources in a
+matched runtime bundle outside disposable Git worktrees. The bundle manifest
+uses `sawm/schema-compatibility-runtime@1`; pin its SHA256 in the service argv.
+Hash and retain every Python/shell body during staging and immediately before
+activation: `manifest.files` is reference metadata, while the launcher enforces
+the external manifest pin and SQL hashes. Code commitments require that external
+staging control. Do not silently replace an active content-addressed generation.
+
+The schema binding recipe preflights its selected shell/Python assets before
+creating or replacing a drop-in. A missing, empty or symlinked asset produces
+`supervisor_runtime_assets_unavailable` and preserves existing bindings. This
+availability check does not establish integrity or permit an owner restart.
+
+The compatible invocation is:
+
+```sh
+bash "$runtime/ipfs_accelerate_py/agent_supervisor/rescue/sawm_supervise_with_heal_overlay.sh" \
+  "$runtime" "$sealed_sawm_checkout" \
+  "$runtime/ipfs_accelerate_py/agent_supervisor/rescue/sealed_board_supervisor_launch.py" \
+  --sealed-runtime "$manifest_sha256"
+```
+
+Only an exact SAWM `quack-start` invocation receives the two compatibility
+modules, installed in migration/schema order with frozen, hash-verified SQL.
+Scheduler/client commands retain the original sealed package, provider policy
+and capsule-origin checks. The previous default and `--pin-only` paths remain
+available. A newer scheduler's provider constants must not substitute for an
+older accepted SAWM configuration.
+
+Use cold help, shell/unit syntax checks, resource/launcher tests and native
+bootstrap/catalog readback before startup. A ready status file is a hint; verify
+`owner_ready` and `peer_authenticated_observation` through the original SAWM
+`status` API, then check fresh coordinator/lane process births and heartbeats.
+Startup and serving do not establish task, goal or semantic completion.
+
+M70 explicitly retains its live generation-48 owner. Do not stop or restart it
+to fix a client launcher, reset reservations, change generation or rewrite task
+budgets. A reviewed live entrypoint patch must preserve the owner identity,
+SQL/schema/native bodies and record the selected code-file drift separately;
+select a new complete bundle for subsequent starts. Preserve operator holds and
+use the existing per-board watchdog maintenance fence while recovery actors are
+being qualified. Fresh lane heartbeats alone do not prove useful task progress
+or authorize an external owner restart.
+
+## Retained attempts and owner recovery
+
+`expired_attempt_settlement_unavailable` means a real callback's outcome is
+unknown. An expired lease cannot establish whether that callback ran. The
+watchdog classifies this as `retained_attempt_settlement_wait` before stale
+in-progress, unclaimed-todo and retrying heuristics. A later lane's settlement
+wait takes precedence over the first lane's ordinary `no_ready_tasks` result.
+The marker withholds recovery; it cannot authorize a retry or completion.
+
+For runtimes that publish daemon pass heartbeats rather than task-state JSON,
+set `daemon_pass_heartbeat_paths` on the probe inventory board to an ordered
+list of absolute paths, one per lane (`max_lanes`). The adapter reports only a
+settlement-wait marker from the declared heartbeat schema when the daemon's
+PID, process birth and boot match and its completion timestamp is at most 120
+seconds old. Counts, writes and completion flags in that file confer no
+authority. Missing or stale metadata does not release an owner-retention policy.
+
+For an accepted owner whose native contract forbids external replacement, put
+this operator policy on its fleet board and on its service monitor config:
+
+```json
+{
+  "recovery_policy": {
+    "schema": "agent-supervisor/owner-retention@1",
+    "mode": "retain",
+    "profile_id": "semantic-addressed-world-model-v1/m70",
+    "reason": "The accepted M70 contract retains the generation-48 owner."
+  }
+}
+```
+
+`profile_id` identifies the operator's native contract; it is not a capability
+or grant. Only the four shown policy fields are accepted. A present malformed
+policy fails closed. Boards without this policy retain their existing recovery
+contract; the expired-callback denial applies independently of configuration.
+
+During a denial, the watchdog still probes and records health. It preserves
+attempt counters, cooldowns, pending repairs, operator holds and live repair
+workers. It does not cancel a shared repair cgroup, review away a hold, launch
+a coding repair, rearm tasks, clear sidecars, signal processes, dump/import a
+database or replace the owner. Direct heal helpers and the service monitor
+apply the same denial before their effects. Existing native workers can still
+process independently admitted work; the watchdog adds no task pause or grant.
+
+Automatic diagnosis distinguishes an unresolved callback from a missing
+runtime asset or stale client. The existing native completion and terminal
+failure reconciliations may settle exact receipt-backed outcomes. They must
+preserve UNKNOWN outcomes. Do not add a generic settlement RPC or infer a
+non-dispatch receipt from elapsed time. A cached unresolved incident remains
+retained until its evidence is explicitly superseded after native settlement;
+removing an operator policy alone does not establish callback custody.
+
+For deployment, qualify a board-scoped runtime with private inventories and
+hermetic effect stubs before enabling it. Preserve the accepted owner's
+identity and the other boards' recovery policies. A health/readiness sample
+must never replenish the task attempt budget or establish semantic completion.
+
+
+## Shared recovery-policy boundaries
+
+The watchdog and coding-repair queue accept both original closed policy
+families through the shared `recovery_policy` owner. A valid
+`infrastructure-only/v1` policy can enter only the existing bounded diagnostic
+repair path. Its required action window, circuit, allowlist and cumulative
+repair cap remain mandatory. A valid `owner-retention@1` policy records health
+while retaining the original owner and withholding recovery effects. A policy
+that mixes the two schemas or adds an unknown field is denied.
+
+Only the watchdog and coding-repair owners opt into infrastructure diagnosis.
+The default policy guard used by native heal helpers and service restart
+monitoring refuses native recovery under an infrastructure-only policy. This
+separates compatible observer/code repair from owner replacement; policy
+compatibility does not grant native task or provider authority.
+
+An UNKNOWN callback or retained-attempt marker overrides infrastructure
+classification and repair eligibility. Its observation preserves queue bytes,
+spent counters, durable deadlines, live workers and operator holds. It cannot
+trigger the old unscoped shared-unit cancellation path. The existing exact
+board, unit and attempt cancellation remains the only wait-cancellation owner
+when its policy and custody conditions allow that operation.
+
+Qualify a combined source generation with both policy cohorts and explicit
+cross-policy positive and denial controls before adopting it. Historical
+qualifications stay attributed to their original source generations. Source
+integration alone does not install a runtime or settle a blocked task.
+
+
+The immutable watchdog release includes its shared policy and runtime-asset
+helpers. Its cold import must succeed without a development overlay. Provider
+execution still belongs to the explicitly configured full repair engine. If
+the small watchdog bundle has no physical Grok adapter, argv construction uses
+only that engine's existing adapter and provider assets. Missing, empty or
+symlinked selected assets fail preflight before a coding attempt is charged;
+there is no PATH search or alternate provider-script fallback. The original
+source/request generation bindings remain required for deployment and launch.
+
+## LegalIR recovery integration qualification (2026-10-28)
+
+The shared policy guard accepts the closed infrastructure-diagnosis and owner-
+retention policies without mixing their authorities. UNKNOWN callbacks, retained
+attempts and operator holds still withhold recovery. Diagnostic observer repair
+cannot rearm tasks, replace the native owner or replenish spent budgets.
+
+Both native blocked-task callers use the same current-reason classifier. An
+allowed marker must be the current reason or code, optionally followed by colon-
+delimited detail; a marker quoted in descriptions or history cannot authorize a
+retry. Selected current or retained receipt metadata denies automatic rearm for
+UNKNOWN outcomes, retained custody, cleanup, explicit retry refusal or exhausted
+budgets. Malformed, boolean or negative spent counters fail closed even without a
+maximum. Nonpositive remaining counts and invalid maxima also withhold rearm;
+local candidate readiness cannot override these denials.
+
+The catalogue observer validates retained receipts against the task CID, earlier
+revision and canonical receipt hash. It reports historical UNKNOWN outcomes and
+spent/retry-refused budgets separately from a later independent factual
+completion. Empty normalized tables establish neither zero attempts nor provider
+success. The repair worker also preserves a future queued `next_attempt_at`
+before cached wait reconciliation can retire the job or touch its service,
+workspace or probe; retention, holds and cumulative budget checks retain priority.
+
+The immutable cold release includes `recovery_policy` and `runtime_assets` along
+with its diagnostic dependencies. Its small bundle binds a missing physical Grok
+adapter only through the explicitly configured full repair engine's existing
+adapter, router and fallback assets. Missing, empty or symlinked selected assets
+fail before charging an attempt; PATH lookup supplies no replacement.
+
+Qualification passed 630 regular parent cases / 1,890 phases plus 456 separately
+counted subtest calls (1,086 JUnit tests, 20.804 seconds), with zero guard denials,
+on original resource source `d6b8c9bd`. This includes 44 selected Datasets pure AST
+cases; it does not qualify normal Datasets package or full CLI integration. A
+separate original-parented run passed all 22 physical cases / 66 phases on
+resource source `4c351874`, with unchanged Accelerate product hashes. Its
+precharged private fixtures retain seven symlinks, two FIFOs and the real hardlink
+pair; the strict owned attempt remains regular-file only. Both runs closed their
+original native resources and source custody and released their storage
+reservations. Earlier failed attempts retain their original dispositions.
+
+The [source evidence capsule](evidence/legal-ir-recovery-interop-20261028.json)
+binds both original results, owner closeouts, source hashes and independent
+review receipts to their retained evidence paths. These qualifications do not
+attest runtime rollout, actual provider/model work, legal fidelity or native task
+completion. Stale `in_progress` automatic unstall remains unchanged and outside
+this blocked-task fix. LIR-9001 requires its separate independent native
+verification.

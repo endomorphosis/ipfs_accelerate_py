@@ -152,6 +152,50 @@ def _bounded_rows(connection, sql, parameters=(), *, maximum=MAX_RUNTIME_ROWS):
     return rows
 
 
+def _retained_outcomes(body, task_cid, revision):
+    """Observe preserved native receipts without granting retry or completion."""
+    entries = body.get("retained_execution_outcomes", [])
+    if not isinstance(entries, list) or len(entries) > 16:
+        raise InvalidCatalogue("native_retained_outcome_invalid")
+    result, seen = [], set()
+    for entry in entries:
+        if (not isinstance(entry, dict) or set(entry) != {
+                "task_cid", "task_revision", "completion_receipt", "sha256"}
+                or entry["task_cid"] != task_cid
+                or type(entry["task_revision"]) is not int
+                or not 0 <= entry["task_revision"] < revision):
+            raise InvalidCatalogue("native_retained_outcome_invalid")
+        receipt = entry["completion_receipt"]
+        if not isinstance(receipt, dict) or not receipt:
+            raise InvalidCatalogue("native_retained_outcome_invalid")
+        digest = hashlib.sha256(json.dumps(receipt, sort_keys=True,
+            separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+        if entry["sha256"] != digest or (entry["task_revision"], digest) in seen:
+            raise InvalidCatalogue("native_retained_outcome_invalid")
+        seen.add((entry["task_revision"], digest))
+        attempt, maximum = receipt.get("attempt_number"), receipt.get("max_task_attempts")
+        retry, exhausted = receipt.get("automatic_retry_admitted"), receipt.get("attempt_budget_exhausted")
+        providers, failure = receipt.get("provider_invocation_count"), receipt.get("failure_kind")
+        for value in (attempt, maximum):
+            if value is not None and (type(value) is not int or not 1 <= value <= 10000):
+                raise InvalidCatalogue("native_retained_outcome_invalid")
+        if any(value is not None and type(value) is not bool for value in (retry, exhausted)):
+            raise InvalidCatalogue("native_retained_outcome_invalid")
+        if maximum is not None and attempt is not None and exhausted is not None and exhausted != (attempt >= maximum):
+            raise InvalidCatalogue("native_retained_outcome_invalid")
+        if providers is not None and (type(providers) is not int or not 0 <= providers <= 10000):
+            raise InvalidCatalogue("native_retained_outcome_invalid")
+        if failure is not None:
+            _identifier(failure)
+        if receipt.get("task_cid", task_cid) != task_cid:
+            raise InvalidCatalogue("native_retained_outcome_invalid")
+        result.append({"task_revision": entry["task_revision"], "receipt_sha256": digest,
+                       "attempt_number": attempt, "max_task_attempts": maximum,
+                       "automatic_retry_admitted": retry, "attempt_budget_exhausted": exhausted,
+                       "provider_invocation_count": providers, "failure_kind": failure})
+    return result
+
+
 def _read_catalogue(arguments):
     """Worker-only direct SQL, deliberately independent of native constructors."""
     expected, expected_goals, expected_plan = _population(arguments)
@@ -211,13 +255,19 @@ def _read_catalogue(arguments):
             failure = receipt.get("failure_kind")
             if failure is not None:
                 _identifier(failure)
+            providers = receipt.get("provider_invocation_count")
+            if providers is not None and (type(providers) is not int or not 0 <= providers <= 10000):
+                raise InvalidCatalogue("native_receipt_invalid")
+            retained = _retained_outcomes(body, cid, revision)
             tasks.append({"task_cid": cid, "task_alias": alias, "goal_cid": goal,
                           "plan_cid": plan, "status": status, "revision": revision,
                           "completion_receipt_attempt_number": attempt,
                           "automatic_retry_admitted": retry,
                           "receipt_max_task_attempts": maximum,
                           "receipt_attempt_budget_exhausted": exhausted,
-                          "receipt_failure_kind": failure})
+                          "receipt_failure_kind": failure,
+                          "receipt_provider_invocation_count": providers,
+                          "retained_execution_outcomes": retained})
         count = int(connection.execute(
             "SELECT COUNT(*) FROM tasks WHERE json_extract_string(body_json, '$.board_namespace') = ?",
             [arguments["board_namespace"]]).fetchone()[0])
@@ -346,14 +396,31 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
             raise InvalidCatalogue("native_read_stale")
         tasks = data["tasks"]
         counts = dict(collections.Counter(task["status"] for task in tasks))
-        retry_not_admitted = [task["task_cid"] for task in tasks if task["automatic_retry_admitted"] is False]
-        exhausted = [task["task_cid"] for task in tasks if task["receipt_attempt_budget_exhausted"] is True]
-        provider_unknown = [row[0] for row in data["provider_status_rows"] if "unknown" in str(row[2]).lower()]
-        provider_unknown += [task["task_cid"] for task in tasks if
-                             "provider" in str(task["receipt_failure_kind"]).lower()
-                             and "unknown" in str(task["receipt_failure_kind"]).lower()]
-        external_unknown = [task["task_cid"] for task in tasks
-                            if "outcome_unknown" in str(task["receipt_failure_kind"]).lower()]
+        # A later independent factual completion does not settle older provider actions.
+        retry_not_admitted, exhausted, external_unknown, retained_unknown = [], [], [], []
+        provider_unknown = {row[0] for row in data["provider_status_rows"]
+                            if "unknown" in str(row[2]).lower()}
+        for task in tasks:
+            retained = task.get("retained_execution_outcomes", [])
+            current = {"automatic_retry_admitted": task["automatic_retry_admitted"],
+                       "attempt_budget_exhausted": task["receipt_attempt_budget_exhausted"],
+                       "failure_kind": task["receipt_failure_kind"],
+                       "provider_invocation_count": task.get("receipt_provider_invocation_count")}
+            outcomes = [current, *retained]
+            cid = task["task_cid"]
+            if any(outcome["automatic_retry_admitted"] is False for outcome in outcomes):
+                retry_not_admitted.append(cid)
+            if any(outcome["attempt_budget_exhausted"] is True for outcome in outcomes):
+                exhausted.append(cid)
+            for outcome in outcomes:
+                failure = str(outcome["failure_kind"]).lower()
+                if ("unknown" in failure and ("provider" in failure or
+                        (outcome.get("provider_invocation_count") or 0) > 0)):
+                    provider_unknown.add(cid)
+                if "outcome_unknown" in failure and cid not in external_unknown:
+                    external_unknown.append(cid)
+            if any("unknown" in str(outcome["failure_kind"]).lower() for outcome in retained):
+                retained_unknown.append(cid)
         codes = ["native_catalogue_activation_missing"]
         if counts.get("blocked") == len(tasks):
             codes.append("native_catalogue_expected_blocked")
@@ -383,7 +450,9 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
             "provider_outcome_knowledge": "unknown_observed" if provider_unknown else "not_established",
             "external_outcome_knowledge": "unknown_observed" if external_unknown else "not_established",
             "retry_not_admitted_task_cids": retry_not_admitted,
-            "exhausted_receipt_task_cids": exhausted}
+            "exhausted_receipt_task_cids": exhausted,
+            "retained_unknown_outcome_task_cids": retained_unknown,
+            "historical_outcomes_are_separate_from_current_completion": True}
         token = hashlib.sha256(json.dumps([data["event_cursor"],
             [[task["task_cid"], task["status"], task["revision"]] for task in tasks]],
             separators=(",", ":")).encode()).hexdigest()

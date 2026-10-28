@@ -1,0 +1,143 @@
+{
+  "accelerate_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/rescue/board_service_monitor.py": {
+      "bytes": 52409,
+      "sha256": "73b0df08b7ce1a256a9e886bac93677ac85b5dbc423b936de9412790098a1e7c"
+    },
+    "ipfs_accelerate_py/agent_supervisor/rescue/fleet_repair.py": {
+      "bytes": 98001,
+      "sha256": "2edc8be1c3d54f8a0e0312a027d1400c3fce980366df6f213d72e4891e468ffb"
+    },
+    "ipfs_accelerate_py/agent_supervisor/rescue/fleet_watchdog.py": {
+      "bytes": 78867,
+      "sha256": "030320b6086b7977f77d55b0c9136271a6ac49bb4a55990609cb17f848c8f42b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/rescue/native_catalogue_probe.py": {
+      "bytes": 28235,
+      "sha256": "e6c071aee8fa89095021d21bd4d4122d9aaae1a6f5b30b00a0d901086893d368"
+    },
+    "ipfs_accelerate_py/agent_supervisor/rescue/recovery_policy.py": {
+      "bytes": 6874,
+      "sha256": "094e7ebc8fd50c46e17ccda4269f41e7a57b5eafec641a9264063967569e90e1"
+    },
+    "ipfs_accelerate_py/agent_supervisor/rescue/runtime_assets.py": {
+      "bytes": 1483,
+      "sha256": "69a9c0419f1f7837cfcbebfa4fc224bbb9e10a1936a204988daca7024cc65c12"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": {
+      "bytes": 247103,
+      "sha256": "a1963c9fe10bd34e1dcf7783f03f429e20df1cbd675f2bab338f4867c8d4ff9b"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py": {
+      "bytes": 205564,
+      "sha256": "541534a13f1854e9bf5774a35ac9ab340bd1cfcfeaef1245d00f452219f3d214"
+    },
+    "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_command.py": {
+      "bytes": 37744,
+      "sha256": "7971d6b6444e7fd51d0a1f10b681419c0a4669d014fc3e4481d892f2419d9e8d"
+    },
+    "scripts/ops/agent_supervisor/install_fleet_watchdog.py": {
+      "bytes": 34734,
+      "sha256": "ab03fa5d220e1d2ed83b63fdb2900ebe20a48e8705b0beb35671c575b7a4bcaf"
+    }
+  },
+  "closures": {
+    "both_original_native_resource_chains_closed": true,
+    "both_original_storage_reservations_released": true,
+    "both_source_READ_custodies_closed": true
+  },
+  "independent_review_receipts": {
+    "physical": {
+      "bytes": 5028,
+      "path": "parented-physical-all22-v02/independent-physical22-binding-v01.json",
+      "sha256": "3cada4dd9e12176e7ec5133dc4f4a2a96d248a991b27bb11b9993301f7f55f2d"
+    },
+    "regular": {
+      "bytes": 8223,
+      "path": "independent-v12-source-and-qualification-binding-v01.json",
+      "sha256": "3d7309c82055136dcf83fa763f3343866a4ee471ad3e2085903ace0196fef1f8"
+    }
+  },
+  "limits": {
+    "earlier_failed_attempts_upgraded_or_pooled": false,
+    "legal_autoformalization_accuracy_attested": false,
+    "live_provider_model_or_network_work_attested": false,
+    "native_LIR_9001_status": "Qualification supplies no native completion; independent revision-bound verification remains a separate operation.",
+    "native_task_or_goal_completion_authorized": false,
+    "runtime_rollout_attested": false,
+    "stale_in_progress_automatic_unstall_changed": false,
+    "stale_in_progress_automatic_unstall_qualified": false
+  },
+  "physical_qualification": {
+    "ValidationResourceReservation_v1_or_v2_claimed": false,
+    "actual_typed_creation_events": 10,
+    "guard_denials": 0,
+    "original_owner_closeout": {
+      "bytes": 35428,
+      "path": "parented-physical-all22-v02/root-capture-closeout-v01.json",
+      "sha256": "c7ad202cbd48a25ecf81d51d8baa44cecb2a986e60c5fcf23e9a5ac77bec2d0f"
+    },
+    "original_resource_source_sha256": "4c351874ac6725bfdaf43b9e16b1ceba70d283044e9d59a4588c35f83f1142c0",
+    "owner_profile": "Original VALIDATION root/phase and ParentedPhaseResourceReservation leaf; strict regular attempt plus32MiB explicitly precharged private external fixtures.",
+    "parent_cases": 22,
+    "parent_phases": 66,
+    "private_SQL_connections": 6,
+    "request": {
+      "bytes": 52040,
+      "path": "parented-physical-all22-v02/request-v01.json",
+      "sha256": "50a1950d6495b2f4eb5d149da2cb95b042c60a6c09c3902bbe7bcc4f1cbc203a"
+    },
+    "resource_generation_adoption": {
+      "bytes": 1725,
+      "path": "root-original-resource-generation-adoption-v02.json",
+      "sha256": "366dcac365891d6ec81c83a2d4ee4a03bd32c093e051863f16ce77fc4e1a830b"
+    },
+    "result": {
+      "bytes": 80824,
+      "path": "parented-physical-all22-v02/attempt-v01/exports/physical-qualification-result.json",
+      "sha256": "74bb1eb364d872d3af3bab6fdfa49b6ddb856f7466a597b0f5cfe0f217880f87"
+    },
+    "retained_physical_counts": {
+      "fifo": 2,
+      "hardlinked_regular_paths": 2,
+      "symlink": 7
+    },
+    "same_Accelerate_product_hashes_as_regular": true,
+    "subtests": 0
+  },
+  "recorded_date_utc": "2026-10-28",
+  "regular_qualification": {
+    "JUnit_seconds": 20.804,
+    "JUnit_testcase_elements": 630,
+    "JUnit_tests": 1086,
+    "datasets_pure_AST_cases_included_in_630": 44,
+    "guard_denials": 0,
+    "normal_Datasets_package_or_full_CLI_integration_qualified": false,
+    "original_owner_closeout": {
+      "bytes": 15366,
+      "path": "root-source-closeout-v12.json",
+      "sha256": "c07b1e69d841567960acd1e8dc75570a61f416f9c945c8c881caf088568f7257"
+    },
+    "original_resource_source_sha256": "d6b8c9bd8a5f650892c57205fc34af5dbb8b98b33299f09e14e321205224e495",
+    "parent_cases": 630,
+    "parent_phases": 1890,
+    "request": {
+      "bytes": 70313,
+      "path": "request-v12.json",
+      "sha256": "bb2d68f6daf5fd639397d340d0256d93061d263d25c1d57aa4fd7b9ee1ea7d85"
+    },
+    "result": {
+      "bytes": 800802,
+      "path": "attempt-v12/exports/qualification-result.json",
+      "sha256": "7ffecfda832ab9b1499388722d9a27c314b401c774001314b7e55a088c323ab4"
+    },
+    "typed_subtest_calls": 456
+  },
+  "retained_evidence_location": {
+    "directory": "workspace/test-logs/federal-corpus-audits/legal-ir-programme-review-20261022-05/supervisor-programme-v01/current-plan-refresh-v01/watchdog-dual-namespace-v01/recovery-interop-20261028-v01",
+    "not_embedded": "Existing retained results and source/owner receipts remain with their original owners; no logs or duplicate plans copied.",
+    "repository": "ipfs_datasets_py"
+  },
+  "schema": "legal-ir-recovery-interop-source-evidence/v1",
+  "scope": "Integrated supervisor policy, current-reason rearm guard, retained UNKNOWN observer, repair queue deadline and cold release assets."
+}
