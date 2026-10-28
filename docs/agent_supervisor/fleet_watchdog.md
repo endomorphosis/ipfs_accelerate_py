@@ -709,3 +709,66 @@ The same opt-in policy can monitor the existing service-fleet engineering bridge
 its original monitor retains lane restart authority and completed/no-runnable
 fleets remain healthy and idle. Give each namespace its own board ID and state
 subdirectory; retain a single existing repair worker and its scoped queue locks.
+
+### Monitor pauses, runnable stalls and durable repair deadlines
+
+A fresh service-fleet report can classify an explicit native retry or resource
+fence as `service_fleet_backpressure_wait`, even when the paused lane reports
+positive ready/selectable counts. The lane must be live, inactive, explicitly
+non-restart-eligible and report backpressure with no action. Namespace, exact
+lane/service bindings, counts, report/native timestamps and the complete monitor
+issue population remain mandatory. Missing provenance, another unhealthy lane,
+stale or dead workers and additional monitor faults cannot receive this exemption.
+
+An all-paused fleet waits without another coding repair. Independently runnable
+or active peer work remains visible. A genuinely stalled ready peer retains its
+finite scheduling interval and passes a closed `service-fleet-scheduling-stall/v1`
+frame through assessment, policy classification and enqueue. The frame binds the
+board, unchanged progress token, threshold, interval anchor and fresh observation.
+Pausing clears only the runnable scheduling anchor; it does not invent accepted
+work, advance meaningful progress or reset action/attempt accounting. A fresh
+pause discovered during repair prelaunch, reconciliation or completion retires
+the exact job as a wait, with false native/task/goal completion authority.
+
+Repair argv selects the existing physical
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py` adapter beside the fallback
+owner, rather than the package alias that resolves to the domain runtime runner.
+It retains `--require-terminal-quota-frame`. The private failure-receipt channel
+recognizes the original exact direct-script form and its explicit Python `-P`
+form; foreign scripts, same-basename replacements and ambiguous interpreter
+options do not gain that channel. The existing sealed module protocol remains
+separate. Exact quota-frame validation and quota-only Codex fallback are unchanged;
+an argparse error or missing trusted failure receipt is not a quota event.
+
+For `infrastructure-only/v1`, a future durable `next_attempt_at` remains a lower
+bound through queue selection, quick-failure handling, route/workspace migration,
+enqueue, source/progress reconciliation, productive continuation and final claim.
+The direct worker checks it before service commands and again under the queue
+lock. Early preflight/storage/spawn refusals retain the deadline even after a
+backward clock step. Existing known-unstarted accounting remains distinct from a
+consumed coding attempt. Infrastructure attempts stay cumulative across legacy-compatible completion
+paths; this profile still requires its positive cumulative cap; healthy samples, source changes and successful
+coding exits cannot replenish them. Existing daily action windows, circuits,
+operator holds and exact board/unit/attempt cancellation remain in force.
+
+The focused classification cohort passed 110 authored cases / 330 phases. The
+separate physical-provider/deadline cohort passed 55 cases / 165 phases, using
+explicit fake Popen, service, readiness and snapshot seams while retaining the
+real quota parser and receipt decision. Neither contacted a provider/service or
+opened a native database. A third, separate cohort passed six unchanged original
+route/adapter cases / 18 phases in 1.10 seconds, with zero guard denials. These
+counts retain their own populations and are not pooled with earlier generations.
+Three older generic cooldown expectations also fail on unchanged `9daede14`;
+their raw failures and baseline attribution remain retained and supply no passing
+credit. Broader generic collection required unrelated native-state fixtures; its
+guard also refused an old native-heal service call and an old subprocess smoke
+before execution. Those attempts are not passing tests. The full generic suites,
+real provider fallback and live service repair remain unqualified by these cohorts.
+
+Deployment of this generation remains a separate reviewed step. Preserve the
+spent three-action window and three-attempt repair history; neither the source
+fix nor a service restart rearms the old job. Keep the scientific UNKNOWN outcome
+and retry refusal distinct from engineering completion. Adoption must retain
+explicit and old/new cwd operator markers, change only the reviewed source
+locations, and require fresh post-start observations for both existing namespaces.
+An old status file or a successful coding-process exit is insufficient.

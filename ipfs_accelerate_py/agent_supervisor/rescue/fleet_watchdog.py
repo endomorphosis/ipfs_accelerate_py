@@ -38,6 +38,7 @@ WAIT_STALLS = {
     "closeout_waiting_on_unsettled_goals",
     "operator_hold",
     "external_dependency_wait",
+    "service_fleet_backpressure_wait",
     "board_checkout_missing",
     "kernel_uninterruptible_wait",
     "native_status_unavailable_with_live_workers",
@@ -166,6 +167,8 @@ def infrastructure_classification(observation: dict[str, Any], board: dict[str, 
         availability = _service_fleet_availability(sample, board, now)
         if availability == "dependency_wait":
             return sample, "external_dependency_wait"
+        if availability == "backpressure_wait":
+            return sample, "service_fleet_backpressure_wait"
         if availability == "no_runnable_work":
             return sample, "none"
         if availability == "runnable_work":
@@ -770,7 +773,7 @@ def _service_fleet_availability(observation: dict[str, Any], board: dict[str, An
             or len(set(expected.values())) != len(expected)
             or type(maximum) is not int or not 1 <= maximum <= 3600
             or observation.get("board_id") != board.get("id")
-            or observation.get("health") not in {"healthy", "blocked"}
+            or observation.get("health") not in {"healthy", "blocked", "stalled"}
             or observation.get("complete") is not False
             or observation.get("completion_candidate") is not False
             or details.get("completion_authority") is not False
@@ -787,20 +790,30 @@ def _service_fleet_availability(observation: dict[str, Any], board: dict[str, An
     lanes = report.get("lanes")
     if not isinstance(lanes, list) or len(lanes) != len(expected):
         return ""
+    # Reuse the monitor-pause predicate, but independently verify every binding,
+    # timestamp, liveness and issue before accepting a non-repairable wait.
+    from .service_fleet_probe import backpressure_monitor_issues, retry_backpressure_lane
     seen: set[str] = set()
-    idle, runnable, waiting = True, False, False
+    paused: set[str] = set()
+    idle, runnable, waiting, active, independent_ready = True, False, False, False, False
     for lane in lanes:
         if not isinstance(lane, dict):
             return ""
         identifier = lane.get("lane_id")
         if (not isinstance(identifier, str) or identifier in seen
                 or identifier not in expected or lane.get("service") != expected[identifier]
-                or lane.get("healthy") is not True
+                or type(lane.get("healthy")) is not bool
+                or lane.get("native_daemon_pid_alive") is not True
                 or not fresh(lane.get("checked_at_epoch"))
                 or not fresh(lane.get("native_status_at_epoch"))
                 or type(lane.get("active")) is not bool):
             return ""
         seen.add(identifier)
+        is_paused = retry_backpressure_lane(lane)
+        if is_paused:
+            paused.add(identifier)
+        elif lane["healthy"] is not True:
+            return ""
         keys = ("ready_count", "selectable_ready_count", "global_ready_count",
                 "blocked_count", "waiting_count", "task_count", "completed_count")
         if any(type(lane.get(k)) is not int or lane[k] < 0 for k in keys):
@@ -811,11 +824,43 @@ def _service_fleet_availability(observation: dict[str, Any], board: dict[str, An
                          and lane["completed_count"] == lane["task_count"])
         runnable = runnable or lane["active"] or any(lane[k] > 0 for k in keys[:3])
         waiting = waiting or lane["blocked_count"] > 0 or lane["waiting_count"] > 0
+        active = active or lane["active"]
+        independent_ready = independent_ready or (not is_paused
+                              and (lane["ready_count"] > 0 or lane["selectable_ready_count"] > 0))
+    if paused and not backpressure_monitor_issues(report.get("monitor_healthy"), report.get("monitor_issues"), paused):
+        return ""
+    if not paused and report.get("monitor_healthy", True) is not True:
+        return ""
     availability = report.get("work_availability")
+    if (availability == "backpressure_wait" and paused and not active and not independent_ready
+            and observation["health"] == "blocked" and observation.get("busy") is False
+            and "service_fleet_backpressure_wait" in observation.get("reason_codes", [])):
+        return availability
     if availability == "no_runnable_work" and idle and observation["health"] == "healthy":
         return availability
-    if availability == "runnable_work" and runnable and observation["health"] == "healthy":
-        return availability
+    if availability == "runnable_work" and runnable and (not paused or active or independent_ready):
+        if observation["health"] == "healthy":
+            return availability
+        # A derived scheduling stall must survive the repair queue's independent
+        # reclassification. A bare stalled flag or fresh heartbeat is insufficient.
+        frame = details.get("service_fleet_scheduling_stall")
+        fields = {"schema", "board_id", "progress_token", "anchor_at_epoch", "observed_at_epoch", "stall_seconds"}
+        threshold = board.get("stall_seconds", 900)
+        if (observation["health"] == "stalled" and observation.get("busy") is False
+                and "no_task_progress" in observation.get("reason_codes", [])
+                and isinstance(frame, dict) and set(frame) == fields
+                and frame["schema"] == "service-fleet-scheduling-stall/v1"
+                and frame["board_id"] == board.get("id")
+                and isinstance(frame["progress_token"], str) and 0 < len(frame["progress_token"]) <= 256
+                and frame["progress_token"] == observation.get("progress_token")
+                and type(threshold) in (int, float) and math.isfinite(threshold) and threshold > 0
+                and type(frame["stall_seconds"]) in (int, float) and frame["stall_seconds"] == threshold
+                and fresh(frame["observed_at_epoch"])
+                and type(frame["anchor_at_epoch"]) in (int, float) and math.isfinite(frame["anchor_at_epoch"])
+                and 0 <= frame["anchor_at_epoch"] <= frame["observed_at_epoch"]
+                and frame["observed_at_epoch"] >= report["checked_at_epoch"]
+                and frame["observed_at_epoch"] - frame["anchor_at_epoch"] >= threshold):
+            return availability
     if (availability == "dependency_wait" and waiting and not runnable
             and observation["health"] == "blocked"
             and "external_dependency_wait" in observation.get("reason_codes", [])):
@@ -860,7 +905,9 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
     health = observation["health"]
     availability = _service_fleet_availability(observation, board, now)
     confirmed_idle = availability == "no_runnable_work"
-    if confirmed_idle:
+    if confirmed_idle or availability == "backpressure_wait":
+        # A cooldown is not accepted work. Pause only the runnable scheduling
+        # interval; preserve meaningful progress and every durable repair budget.
         state.pop("work_available_since", None)
     elif availability == "runnable_work":
         # Start a scheduling interval, not an accepted-work/progress event.
@@ -873,10 +920,21 @@ def assess(observation: dict[str, Any], previous: dict[str, Any], board: dict[st
         health = "stalled"
         observation = dict(observation, health=health,
                            reason_codes=[*observation.get("reason_codes", []), "no_task_progress"])
+        if availability == "runnable_work":
+            observation = dict(observation, details={**observation.get("details", {}),
+                "service_fleet_scheduling_stall": {"schema": "service-fleet-scheduling-stall/v1",
+                    "board_id": board["id"], "progress_token": observation.get("progress_token"),
+                    "anchor_at_epoch": stall_anchor, "observed_at_epoch": now,
+                    "stall_seconds": board.get("stall_seconds", 900)}})
         state["observation"] = observation
     state["stall_class"] = ("external_dependency_wait" if availability == "dependency_wait"
-                            else classify_stall(observation, previous))
+                             else "service_fleet_backpressure_wait" if availability == "backpressure_wait"
+                             else classify_stall(observation, previous))
     if policy_observation is not None:
+        if availability == "runnable_work" and health == "stalled":
+            # Revalidate the scoped diagnostic after deriving its finite stall,
+            # instead of overwriting that diagnosis with the earlier healthy one.
+            policy_observation = infrastructure_classification(observation, board, now)
         state["stall_class"] = policy_observation[1]
     reasons = sorted(str(x) for x in observation.get("reason_codes", []))
     signature = hashlib.sha256(json.dumps([health, reasons]).encode()).hexdigest()[:20]

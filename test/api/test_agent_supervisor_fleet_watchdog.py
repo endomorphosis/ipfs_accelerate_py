@@ -1763,7 +1763,7 @@ def _service_fleet_case(now=1000.0, *, ready=0):
                  service_fleet_binding=dict(board_namespace="legal-ir-autoencoder-v1",
                                             max_age_seconds=180, lanes=units))
     lanes = [dict(lane_id=k, service=v, healthy=True, checked_at_epoch=now,
-                  native_status_at_epoch=now, active=False, ready_count=ready,
+                  native_status_at_epoch=now, native_daemon_pid_alive=True, active=False, ready_count=ready,
                   selectable_ready_count=ready, global_ready_count=ready,
                   blocked_count=0, waiting_count=0, task_count=135 + ready,
                   completed_count=135) for k, v in units.items()]
@@ -2197,3 +2197,201 @@ def test_infrastructure_tick_assesses_after_real_probe_without_allowing_future_c
     assert future["health"] == "unknown"
     assert future["stall_class"] == "native_catalogue_probe_invalid"
     assert future["planned_action"] == ""
+
+
+
+def _backpressure_service_fleet_case(now=1000.0, *, independent_ready=False, active_peer=False):
+    """Typed diagnostic fixture, not evidence of an observed live fleet."""
+    board, observation = _service_fleet_case(now)
+    report = observation["details"]["service_fleet"]
+    for lane in report["lanes"]:
+        lane.update(status="completed", action="none", restart_eligible=False,
+                    selection_idle_reason="no_shard_selectable_ready_tasks", native_progress_status=None,
+                    global_ready_count=2, task_count=137)
+    first, peer = report["lanes"]
+    first.update(healthy=False, status="backpressure", ready_count=2, selectable_ready_count=2,
+                 selection_idle_reason="implementation_retry_deferred:all_eligible_ready_tasks_in_cooldown",
+                 native_progress_status="backpressure")
+    peer.update(active=active_peer, ready_count=int(independent_ready), selectable_ready_count=int(independent_ready))
+    report.update(monitor_healthy=False, monitor_issues=[{
+        "code": "lane_unhealthy", "lane_id": first["lane_id"], "status": "backpressure"}],
+        work_availability="runnable_work" if independent_ready or active_peer else "backpressure_wait")
+    observation.update(health="healthy" if independent_ready or active_peer else "blocked", busy=active_peer,
+        reason_codes=["service_fleet_work_observed"] if independent_ready or active_peer else ["service_fleet_backpressure_wait"])
+    return board, observation
+
+
+def test_cooldown_wait_pauses_scheduling_clock_without_resetting_progress_or_recovery_counters():
+    board, waiting = _backpressure_service_fleet_case()
+    previous = {"last_progress_at": 100, "progress_token": "same-work", "work_available_since": 100,
+                "attempts": 3, "repair_attempts": 3, "next_action_at": 9000,
+                "infrastructure_budget": {"status": "open", "actions": 3, "total_actions": 3}}
+    state = fleet.assess(waiting, previous, board, 1000)
+    assert state["health"] == "blocked" and state["stall_class"] == "service_fleet_backpressure_wait"
+    assert "work_available_since" not in state
+    for key in ("last_progress_at", "progress_token", "attempts", "repair_attempts", "next_action_at", "infrastructure_budget"):
+        assert state[key] == previous[key]
+    board, ready = _service_fleet_case(2000, ready=1)
+    resumed = fleet.assess(ready, state, board, 2000)
+    assert resumed["health"] == "healthy" and resumed["work_available_since"] == 2000
+    assert resumed["last_progress_at"] == 100
+    board, ready = _service_fleet_case(2059, ready=1)
+    assert fleet.assess(ready, resumed, board, 2059)["health"] == "healthy"
+    board, ready = _service_fleet_case(2060, ready=1)
+    assert fleet.assess(ready, resumed, board, 2060)["health"] == "stalled"
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_cooldown_does_not_hide_independent_lane_work_or_its_finite_deadline(active):
+    board, value = _backpressure_service_fleet_case(independent_ready=not active, active_peer=active)
+    previous = {"last_progress_at": 100, "progress_token": "same-work", "work_available_since": 900}
+    state = fleet.assess(value, previous, board, 1000)
+    assert fleet._service_fleet_availability(value, board, 1000) == "runnable_work"
+    assert state["health"] == ("healthy" if active else "stalled")
+    assert state["last_progress_at"] == 100
+    assert state["work_available_since"] == 900
+
+
+@pytest.mark.parametrize("damage", ["unbound", "stale", "dead", "active", "restart", "missing_restart",
+                                  "missing_reason", "long_reason", "control_character", "missing_issues", "extra_issue",
+                                  "wrong_issue_lane", "healthy_contradiction", "hidden_peer_ready"])
+def test_forged_or_incomplete_cooldown_diagnostics_do_not_authorize_a_wait(damage):
+    board, value = _backpressure_service_fleet_case()
+    report = value["details"]["service_fleet"]
+    lane = report["lanes"][0]
+    if damage == "unbound": board.pop("service_fleet_binding")
+    elif damage == "stale": lane["native_status_at_epoch"] = 819
+    elif damage == "dead": lane["native_daemon_pid_alive"] = False
+    elif damage == "active": lane["active"] = True
+    elif damage == "restart": lane["restart_eligible"] = True
+    elif damage == "missing_restart": lane.pop("restart_eligible")
+    elif damage == "missing_reason": lane.update(selection_idle_reason="", native_progress_status=None)
+    elif damage == "long_reason": lane.update(selection_idle_reason="implementation_retry_deferred:" + "x" * 256, native_progress_status=None)
+    elif damage == "control_character": lane.update(selection_idle_reason="implementation_retry_deferred:cooldown\n", native_progress_status=None)
+    elif damage == "missing_issues": report.pop("monitor_issues")
+    elif damage == "extra_issue": report["monitor_issues"].append({"code": "duplicate_active_tasks"})
+    elif damage == "wrong_issue_lane": report["monitor_issues"][0]["lane_id"] = "other"
+    elif damage == "healthy_contradiction": report["monitor_healthy"] = True
+    elif damage == "hidden_peer_ready": report["lanes"][1]["selectable_ready_count"] = 1
+    assert fleet._service_fleet_availability(value, board, 1000) == ""
+
+
+def test_reconstructed_monitor_to_probe_to_watchdog_wait_preserves_durable_action_budget(tmp_path, monkeypatch):
+    """Run the original monitor decision with fixture evidence, not a live PID."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import board_service_monitor as monitor
+    from ipfs_accelerate_py.agent_supervisor.rescue import service_fleet_probe as probe
+
+    board, template = _service_fleet_case()
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]}, repair={"argv": ["forbidden-repair"]},
+                 ensure={"argv": ["forbidden-ensure"]}, hold_files=[], failure_grace_seconds=0,
+                 cooldown_seconds=30, max_repair_attempts=3,
+                 recovery_policy={"profile": "infrastructure-only/v1",
+                    "repairable_stalls": ["service_fleet_unhealthy", "stalled_no_progress"],
+                    "max_actions_per_window": 3, "window_seconds": 86400, "circuit_breaker_seconds": 3600})
+    native_idle = "implementation_retry_deferred:all_eligible_ready_tasks_in_cooldown"
+    rows = []
+    for index, (lane_id, unit) in enumerate(board["service_fleet_binding"]["lanes"].items()):
+        evidence = {name: 0 for name in probe.COUNT_FIELDS}
+        evidence.update(ready_count=1 if index == 0 else 0, selectable_ready_count=1 if index == 0 else 0,
+            global_ready_count=1, task_count=136, completed_count=135, namespace_mismatch=False, active=False,
+            native_daemon_pid_alive=True, native_status_at_epoch=1000, last_heartbeat_at_epoch=1000, state_available=True,
+            last_progress_at_epoch=100, last_work_event_at_epoch=100, implement=True,
+            native_progress_status="backpressure" if index == 0 else None,
+            selection_idle_reason=native_idle if index == 0 else "no_shard_selectable_ready_tasks")
+        decision = monitor.evaluate_health({"startup_grace_seconds": 0, "heartbeat_timeout_seconds": 60,
+            "progress_timeout_seconds": 600}, {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+            "ExecMainStartTimestampMonotonic": "1000000"}, evidence, {}, 1000, 1000)
+        rows.append({"lane_id": lane_id, "health": {"schema": probe.LANE_SCHEMA, "service": unit,
+            "board_namespace": board["service_fleet_binding"]["board_namespace"], "checked_at_epoch": 1000,
+            "action": "none", **decision, "evidence": evidence}})
+    issues = [{"code": "lane_unhealthy", "lane_id": row["lane_id"], "status": row["health"]["status"]}
+              for row in rows if not row["health"]["healthy"]]
+    report = {"schema": probe.REPORT_SCHEMA, "checked_at_epoch": 1000, "healthy": not issues,
+              "status": "attention_required", "completion_authority": False, "lane_count": len(rows),
+              "lanes": rows, "issues": issues}
+    path = tmp_path / "monitor-report.json"
+    path.write_text(json.dumps(report))
+    observation = probe.observe_service_fleet(path, board_id=board["id"],
+        board_namespace=board["service_fleet_binding"]["board_namespace"],
+        expected_units=board["service_fleet_binding"]["lanes"], now=1000)
+    directory = tmp_path / board["id"]
+    directory.mkdir()
+    budget = directory / "infrastructure-budget.json"
+    budget.write_text(json.dumps({"schema": "agent-supervisor/infrastructure-budget@1", "board_id": board["id"],
+        "window_started_at": 900, "actions": 3, "total_actions": 3, "circuit_open_until": 4500}))
+    original_budget = budget.read_bytes()
+    calls = []
+    def runner(spec, **kwargs):
+        calls.append(spec["argv"])
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(observation)}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("no recovery/native command authorized"))
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=1000)
+    assert state["health"] == "blocked" and state["stall_class"] == "service_fleet_backpressure_wait"
+    assert state["planned_action"] == "" and calls == [["probe"]]
+    assert budget.read_bytes() == original_budget
+    assert state["observation"]["complete"] is False
+
+
+def _cooldown_infrastructure_policy():
+    return {"profile": "infrastructure-only/v1", "repairable_stalls": ["stalled_no_progress"],
+            "max_actions_per_window": 3, "window_seconds": 86400, "circuit_breaker_seconds": 3600}
+
+
+def test_mixed_runnable_stall_survives_infrastructure_reclassification_and_actual_enqueue(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_repair as repair
+
+    board, observation = _backpressure_service_fleet_case(independent_ready=True)
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]}, repair={"argv": ["repair", "enqueue"]},
+        hold_files=[], failure_grace_seconds=0, cooldown_seconds=30, max_repair_attempts=3,
+        recovery_policy=_cooldown_infrastructure_policy())
+    root = tmp_path / "watch"
+    config = {"state_dir": str(root), "boards": [board], "repair_worker": {"cwd": str(tmp_path)}}
+    queued = []
+    clock = {"now": 1000}
+    monkeypatch.setattr(repair.time, "time", lambda: clock["now"])
+    def enqueue_actual(spec, **kwargs):
+        assert spec["argv"][:3] == ["repair", "enqueue", "--incident"]
+        value = repair.enqueue(config, Path(spec["argv"][3]))
+        queued.append(value)
+        return {"returncode": 0, "stdout": json.dumps(value), "stderr": ""}
+    runner = Runner(observation, action=enqueue_actual)
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=1000)
+    assert first["health"] == "healthy" and queued == []
+    _, runner.observation = _backpressure_service_fleet_case(1060, independent_ready=True)
+    clock["now"] = 1060
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=1060)
+    assert state["health"] == "stalled" and state["stall_class"] == "stalled_no_progress"
+    assert fleet._service_fleet_availability(state["observation"], board, 1060) == "runnable_work"
+    assert fleet.infrastructure_repair_allowed(board, state["observation"], 1060)
+    assert state["last_action"] == "repair" and len(queued) == 1
+    assert queued[0]["status"] == "queued" and queued[0]["board_id"] == "legal-ir"
+    job = fleet.read_json(root / "repairs/legal-ir/job.json")
+    assert job["latest_incident"]["observation"]["complete"] is False
+    queued_class = fleet.infrastructure_classification(job["latest_incident"]["observation"], board, 1060)
+    assert queued_class[1] == "stalled_no_progress"
+    assert fleet.read_json(root / "legal-ir/infrastructure-budget.json")["total_actions"] == 1
+
+
+@pytest.mark.parametrize("damage", ["missing", "future", "deadline_not_elapsed", "token", "board", "threshold",
+                                  "reason", "busy", "extra_field", "nonfinite_anchor"])
+def test_runnable_stall_frame_is_closed_fresh_and_bound_to_its_original_diagnostic(damage):
+    board, observation = _backpressure_service_fleet_case(independent_ready=True)
+    board.update(max_repair_attempts=3, recovery_policy=_cooldown_infrastructure_policy())
+    previous = {"last_progress_at": 100, "progress_token": "same-work", "work_available_since": 900}
+    state = fleet.assess(observation, previous, board, 1000)
+    assert state["stall_class"] == "stalled_no_progress"
+    sample = state["observation"]
+    frame = sample["details"]["service_fleet_scheduling_stall"]
+    if damage == "missing": sample["details"].pop("service_fleet_scheduling_stall")
+    elif damage == "future": frame["observed_at_epoch"] = 1001
+    elif damage == "deadline_not_elapsed": frame["anchor_at_epoch"] = 999
+    elif damage == "token": frame["progress_token"] = "different-work"
+    elif damage == "board": frame["board_id"] = "other"
+    elif damage == "threshold": frame["stall_seconds"] = 61
+    elif damage == "reason": sample["reason_codes"].remove("no_task_progress")
+    elif damage == "busy": sample["busy"] = True
+    elif damage == "extra_field": frame["admitted"] = True
+    elif damage == "nonfinite_anchor": frame["anchor_at_epoch"] = float("nan")
+    assert fleet._service_fleet_availability(sample, board, 1000) == ""
+    assert not fleet.infrastructure_repair_allowed(board, sample, 1000)

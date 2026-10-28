@@ -392,12 +392,18 @@ def _uses_packaged_grok_adapter(command: Sequence[str]) -> bool:
         return True
     if len(command) < 2:
         return False
+    # Accept only the historical direct-script shape and its explicit safe-path
+    # Python variant. Arbitrary interpreter options, module aliases and scripts
+    # with the same basename do not receive the trusted private receipt pipe.
+    script_index = 2 if command[1] == "-P" else 1
+    if len(command) <= script_index:
+        return False
     expected_python = Path(sys.executable).resolve()
     expected = Path(__file__).with_name("grok_cli_runner.py").resolve()
     try:
         return (
             Path(command[0]).expanduser().resolve() == expected_python
-            and Path(command[1]).expanduser().resolve() == expected
+            and Path(command[script_index]).expanduser().resolve() == expected
         )
     except OSError:
         return False

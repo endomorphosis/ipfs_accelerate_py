@@ -417,16 +417,17 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                             root / board["id"] / "publication") if admitted_healthy or diagnostic
                             else {"verified": False})
             if verification.get("wait") is True:
-                current.update(status="retired_wait", wait_stall="external_dependency_wait",
+                current.update(status="retired_wait", wait_stall=verification.get("wait_stall", "external_dependency_wait"),
                                verification=verification, latest_probe=fresh, retired_at=time.time())
                 results.append({"board_id": board["id"], "status": "retired_wait",
-                                "wait_stall": "external_dependency_wait"})
+                                "wait_stall": current["wait_stall"]})
             elif verification["verified"]:
                 current.update(status="verified_healthy", verification=verification,
                                latest_probe=fresh, next_attempt_at=0, reconciled_at=now,
                                reconciled_evidence=evidence,
                                prior_attempts=current.get("attempts", 0))
-                if limits[board["id"]] is None and not diagnostic:
+                if (limits[board["id"]] is None and not diagnostic
+                        and infrastructure_policy(board) is None):
                     current["attempts"] = 0
                 results.append({"board_id": board["id"], "status": "verified_healthy"})
             elif _escalate_repair_budget(current, limits[board["id"]], now):
@@ -434,9 +435,10 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                 # but cannot buy another coding attempt or shorten its backoff.
                 current.update(latest_probe=fresh, reconciled_evidence=evidence, reconciled_at=now)
                 results.append(_budget_result(board["id"], current))
-            elif ((productive and evidence == progress["after"])
-                  or ((healthy or changed) and _new_repair_evidence(baseline, evidence)
-                      and evidence != current.get("reconciled_evidence"))):
+            elif (infrastructure_policy(board) is None
+                  and ((productive and evidence == progress["after"])
+                       or ((healthy or changed) and _new_repair_evidence(baseline, evidence)
+                           and evidence != current.get("reconciled_evidence")))):
                 # Never change native task budgets. Retain the coding attempt
                 # count and a minimum five-minute gap after the preceding job.
                 prior_finish = current.get("finished_at") or current.get("last_started_at") or now
@@ -576,7 +578,8 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
             return {**_budget_result(board_id, prior), "job": str(directory / "job.json")}
         if prior.get("status") not in {"queued", "running"}:
             prior["status"] = "queued"
-        if prior.get("status") == "queued" and not repair_route_is_current(prior):
+        if (prior.get("status") == "queued" and not repair_route_is_current(prior)
+                and infrastructure_policy(board) is None):
             # Codex-only backoff must not park llm_router for six hours.
             prior["next_attempt_at"] = min(float(prior.get("next_attempt_at") or time.time()), time.time())
         prior.setdefault("queued_at", time.time())
@@ -956,9 +959,12 @@ def _service_fleet_recovery(board: dict[str, Any], incident: dict[str, Any],
                 or availability == "runnable_work" and (not stalled or progressed))
     return {
         "verified": verified,
-        "wait": availability == "dependency_wait",
+        "wait": availability in {"dependency_wait", "backpressure_wait"},
+        **({"wait_stall": "service_fleet_backpressure_wait"}
+           if availability == "backpressure_wait" else {}),
         "reason": ("service_fleet_runtime_verified" if verified
                    else "service_fleet_stall_without_work_progress" if availability == "runnable_work" and stalled
+                   else "service_fleet_backpressure_wait" if availability == "backpressure_wait"
                    else "external_dependency_wait" if availability == "dependency_wait"
                    else "service_fleet_runtime_not_verified"),
         "scope": "service_fleet_diagnostic_runtime", "work_availability": availability or None,
@@ -1034,9 +1040,12 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
                 board["id"], path, limits[board["id"]], now) is not None:
             continue
         due = float(job.get("next_attempt_at") or 0)
-        if (due > now and not repair_route_is_stale(job)
-                and not repair_launch_failed_immediately(job, now)
-                and not repair_workspace_is_stale(job, board, config.get("repair_worker", {}))):
+        # Explicit infrastructure recovery retains its original durable delay;
+        # route/workspace churn and quick failures cannot rearm it early.
+        if (due > now and (infrastructure_policy(board) is not None
+                or (not repair_route_is_stale(job)
+                    and not repair_launch_failed_immediately(job, now)
+                    and not repair_workspace_is_stale(job, board, config.get("repair_worker", {}))))):
             continue
         candidates.append((job.get("last_started_at", 0), job.get("queued_at", 0), board, path))
     if not candidates:
@@ -1130,9 +1139,12 @@ def llm_router_repair_argv(policy: dict[str, Any], prompt: Path, last_message: P
     route = _bound_implementation_route(policy)
     fallback = [*policy["argv"], "-C", str(workspace),
                 "--output-last-message", str(last_message), "-"]
-    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner as grok_adapter
+    # The public grok_cli_runner name resolves to the domain runtime runner.
+    # This outer fallback protocol uses the existing physical adapter's private
+    # failure-receipt channel and strict terminal-frame parser instead.
+    grok_adapter = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     primary = [
-        sys.executable, "-P", str(Path(grok_adapter.__file__).resolve()),
+        sys.executable, "-P", str(grok_adapter.resolve(strict=True)),
         "--workspace", str(workspace),
     ]
     if route is not None:
@@ -1249,8 +1261,9 @@ def _launch_selection(job: dict[str, Any]) -> dict[str, Any]:
 def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
                         *, selection: dict[str, Any] | None = None,
                         attempt: dict[str, Any] | None = None,
-                        storage: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Retry a known pre-exec failure; never infer non-execution from job text."""
+                        storage: dict[str, Any] | None = None,
+                        board: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Retry a known pre-exec failure without shortening infrastructure delay."""
     with lock(path.parent / "queue.lock") as acquired:
         if not acquired:
             return {"status": "queue_busy"}
@@ -1269,7 +1282,10 @@ def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
         failure = {"reason": reason, "observed_at": now, "attempt": attempt}
         if storage is not None:
             failure["storage"] = storage
-        job.update(status="queued", next_attempt_at=now + retry,
+        due = now + retry
+        if board is not None and infrastructure_policy(board) is not None:
+            due = max(float(job.get("next_attempt_at") or 0), due)
+        job.update(status="queued", next_attempt_at=due,
                    launch_failures=job.get("launch_failures", 0) + 1,
                    last_launch_failure=failure)
         write_json(path, job)
@@ -1339,6 +1355,10 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             return denied
     if selection.get("status") not in {"queued", "running"}:
         return {"status": "completion_superseded"}
+    if (infrastructure_policy(board) is not None and selection.get("status") == "queued"
+            and float(selection.get("next_attempt_at") or 0) > time.time()):
+        return {"status": "repair_backoff", "board_id": board["id"],
+                "next_attempt_at": selection["next_attempt_at"]}
     unit = repair_job_unit(config)
     # On worker restart, adopt the still-running bounded cgroup rather than
     # launching another coding process. The fixed unit name is also a mutex.
@@ -1360,7 +1380,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         return denied
     unavailable = _launch_preflight(policy)
     if unavailable:
-        return _defer_unstarted_job(path, policy, unavailable, selection=selection)
+        return _defer_unstarted_job(path, policy, unavailable, selection=selection, board=board)
     try:
         # Bind one temporary root across all samples and argv construction,
         # including an environment change during the native probe.
@@ -1370,7 +1390,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     storage = _storage_preflight(policy, path, config["state_dir"])
     if storage:
         return _defer_unstarted_job(path, policy, storage["reason"],
-                                   selection=selection, storage=storage)
+                                   selection=selection, storage=storage, board=board)
     # A worker report cannot supply its own productive-repair baseline.
     from .fleet_watchdog import normalize_probe
     try:
@@ -1392,20 +1412,22 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                 job.update(status=status, verification=verification, latest_probe=initial,
                            reconciled_at=initial_at, reconciled_evidence=repair_evidence(initial))
                 if status == "retired_wait":
-                    job.update(wait_stall="external_dependency_wait", retired_at=initial_at)
+                    job.update(wait_stall=verification.get("wait_stall", "external_dependency_wait"), retired_at=initial_at)
                 else:
                     job["next_attempt_at"] = 0
                 write_json(path, job)
-            return {"board_id": board["id"], "status": status, "verification": verification}
+            return {"board_id": board["id"], "status": status, "verification": verification,
+                    **({"wait_stall": job["wait_stall"]}
+                       if status == "retired_wait" and "wait_stall" in verification else {})}
     # Native probes can take up to 90 seconds. Recheck immediately before
     # claiming the slot, since a package upgrade may occur during that read.
     unavailable = _launch_preflight(policy)
     if unavailable:
-        return _defer_unstarted_job(path, policy, unavailable, selection=selection)
+        return _defer_unstarted_job(path, policy, unavailable, selection=selection, board=board)
     storage = _storage_preflight(policy, path, config["state_dir"])
     if storage:
         return _defer_unstarted_job(path, policy, storage["reason"],
-                                   selection=selection, storage=storage)
+                                   selection=selection, storage=storage, board=board)
     directory = path.parent
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
@@ -1416,11 +1438,18 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         if _launch_selection(job) != selection:
             return {"status": "completion_superseded"}
         now = time.time()
+        # Slow source/native probes cannot authorize an infrastructure attempt
+        # earlier than its durable due time, including a backwards clock step.
+        if (infrastructure_policy(board) is not None and job.get("status") == "queued"
+                and float(job.get("next_attempt_at") or 0) > now):
+            return {"status": "repair_backoff", "board_id": board["id"],
+                    "next_attempt_at": job["next_attempt_at"]}
         limit = _repair_limits(config)[board["id"]]
         if _escalate_repair_budget(job, limit, now):
             write_json(path, job)
             return _budget_result(board["id"], job)
-        if limit is None and repair_launch_failed_immediately(job, now):
+        if (limit is None and infrastructure_policy(board) is None
+                and repair_launch_failed_immediately(job, now)):
             attempts = 1
         else:
             attempts = job.get("attempts", 0) + 1
@@ -1471,13 +1500,13 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         if storage:
             return _defer_unstarted_job(path, policy, storage["reason"],
                                        attempt=attempt, selection=claimed_selection,
-                                       storage=storage)
+                                       storage=storage, board=board)
         try:
             process = subprocess.Popen(argv, stdin=inp, stdout=log, stderr=log)
         except OSError as exc:
             return _defer_unstarted_job(path, policy,
                                        f"launcher_spawn_failed:{type(exc).__name__}",
-                                       attempt=attempt, selection=claimed_selection)
+                                       attempt=attempt, selection=claimed_selection, board=board)
         try:
             returncode = process.wait(timeout=policy.get("timeout_seconds", 2400) + 90)
         except subprocess.TimeoutExpired:
@@ -1533,22 +1562,25 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                    finished_at=finished_at, returncode=returncode,
                    latest_probe=observation, report_path=str(report), log_path=str(log_path))
         if waiting:
-            job.update(wait_stall="external_dependency_wait", retired_at=finished_at)
+            job.update(wait_stall=verification.get("wait_stall", "external_dependency_wait"), retired_at=finished_at)
         elif verified:
             job["next_attempt_at"] = 0
             # Optional finite budgets are cumulative. Recovery is observed,
             # not permission to erase the coding calls that were already spent.
-            if limit is None and "service_fleet_binding" not in board:
+            if (limit is None and "service_fleet_binding" not in board
+                    and infrastructure_policy(board) is None):
                 job["attempts"] = 0
         else:
             # Finish cadence applies even when a long job outlived its backoff.
             job["next_attempt_at"] = max(job.get("next_attempt_at", 0), finished_at + 300)
-            if not _escalate_repair_budget(job, limit, finished_at):
+            if (not _escalate_repair_budget(job, limit, finished_at)
+                    and infrastructure_policy(board) is None):
                 progress = _completed_attempt_progress(job, finished_at)
                 if progress is not None and not hold_paths(board):
                     _record_productive_continuation(job, progress, finished_at, finished_at + 300)
         write_json(path, job)
-    return {"board_id": board["id"], "status": job["status"], "returncode": returncode}
+    return {"board_id": board["id"], "status": job["status"], "returncode": returncode,
+            **({"wait_stall": job["wait_stall"]} if waiting and "wait_stall" in verification else {})}
 
 
 def main(argv: list[str] | None = None) -> int:
