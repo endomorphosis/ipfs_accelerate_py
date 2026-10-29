@@ -36,6 +36,8 @@ def test_expired_dead_owner_is_archived_with_exact_bytes_and_registration(tmp_pa
     dead_hold(marker)
     before = marker.read_bytes()
     inode = marker.stat().st_ino
+    binding = holds.hold_binding(marker, now=1010)
+    assert binding and not holds.binding_released(binding)
     result = holds.review_hold(marker, apply=True, now=1010)
     assert result["status"] == "released"
     assert not marker.exists()
@@ -44,6 +46,12 @@ def test_expired_dead_owner_is_archived_with_exact_bytes_and_registration(tmp_pa
     registration = json.loads(archive.with_name(archive.name + ".lease.json").read_text())
     assert registration["inode"] == inode
     assert result["completion_authority"] is False
+    assert holds.binding_released(binding)
+    marker.write_text("new operator stop")
+    assert not holds.binding_released(binding)
+    marker.unlink()
+    archive.write_bytes(before + b" ")
+    assert not holds.binding_released(binding)
     assert holds.review_hold(marker, apply=True, now=1020)["status"] == "absent"
 
 

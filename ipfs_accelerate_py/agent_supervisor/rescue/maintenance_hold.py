@@ -175,6 +175,41 @@ def create_hold(path: Path, *, reason: str, ttl_seconds: float, now=None):
     return payload
 
 
+def hold_binding(path: Path, *, now=None):
+    """Read-only binding for a native paused-state projection."""
+    path = Path(path).absolute()
+    try:
+        payload, raw, _info, _reserve, _archive = _load(path, time.time() if now is None else now)
+        return {"path": str(path), "token": payload["token"], "sha256": hashlib.sha256(raw).hexdigest()}
+    except (OSError, ValueError, TypeError, KeyError, IndexError, RecursionError):
+        return {}
+
+
+def binding_released(binding):
+    """An old native hold flag can clear only with its exact archived release."""
+    try:
+        if (type(binding) is not dict or set(binding) != {"path", "token", "sha256"}
+                or type(binding["path"]) is not str or not Path(binding["path"]).is_absolute()
+                or not re.fullmatch("[0-9a-f]{32}", str(binding["token"]))
+                or not re.fullmatch("[0-9a-f]{64}", str(binding["sha256"]))):
+            return False
+        path = Path(binding["path"])
+        if path.parent.resolve() != path.parent or os.path.lexists(path):
+            return False
+        _reserve, archive = _members(path, binding["token"])
+        raw, info = _read(archive)
+        registration, registered_info = _read(archive.with_name(archive.name + ".lease.json"))
+        payload = json.loads(raw)
+        return bool(hashlib.sha256(raw).hexdigest() == binding["sha256"]
+            and payload.get("schema") == SCHEMA and payload.get("scope") == "maintenance_pause"
+            and payload.get("path") == binding["path"] and payload.get("token") == binding["token"]
+            and registered_info.st_nlink == 1 and json.loads(registration) == {
+                "body_sha256": binding["sha256"], "device": info.st_dev, "inode": info.st_ino,
+                "mtime_ns": info.st_mtime_ns, "size": len(raw)})
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError, RecursionError):
+        return False
+
+
 def review_hold(path: Path, *, apply=False, now=None, owner_token=None):
     """Archive only an expired dead owner's lease, or the exact current owner's."""
     path = Path(path).absolute()
