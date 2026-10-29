@@ -42,9 +42,15 @@ def _git(root: Path, *args: str) -> str:
 
 def task_contract_id(task: Any) -> str:
     """Bind the actual task contract, excluding attempt-local DB metadata."""
+    execution_metadata = {"database attempt id", "database claim id", "database attempt number",
+        "database lease id", "database owner session id", "database fencing token",
+        "database fence epoch", "completion receipt"}
     return identity({"task_id": task.task_id, "title": task.title,
         "outputs": list(task.outputs), "validation": list(task.validation),
-        "acceptance": task.acceptance, "board_namespace": task.board_namespace})
+        "acceptance": task.acceptance, "board_namespace": task.board_namespace,
+        "completion": task.completion, "priority": task.priority, "track": task.track,
+        "metadata": {key: value for key, value in task.metadata.items()
+            if key.strip().lower().replace("_", " ") not in execution_metadata}})
 
 
 def candidate_manifest(worktree: Path, baseline: str, candidate: str) -> dict[str, Any]:
@@ -128,6 +134,7 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
         request.get("receipt_id") == identity({k: v for k, v in request.items() if k != "receipt_id"}),
         "candidate_request_identity_invalid")
     _need(type(request["predecessor_attempt_number"]) is int and
+        type(request["next_attempt_number"]) is int and
         1 <= request["predecessor_attempt_number"] < request["next_attempt_number"] ==
         request["predecessor_attempt_number"] + 1 == attempt.attempt_number,
         "candidate_next_attempt_changed")
@@ -179,22 +186,55 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
     _need(bound.get("database_attempt_id") == attempt.attempt_id and
         bound.get("database_binding_id") == binding["binding_id"] and
         bound.get("database_claim_id") == attempt.claim_id, "candidate_portal_attempt_unbound")
-    lifecycle_store = portal_daemon.worktree_lifecycle
-    lifecycle = lifecycle_store.load_workspace(worktree)
-    _need(not lifecycle_store.workspace_path_for(worktree).exists() or lifecycle is not None,
-        "candidate_previous_workspace_fence_malformed")
-    _need(lifecycle is None or lifecycle.is_terminal, "candidate_previous_workspace_fence_live")
-    DatabasePortalExecutionBridge._strict_workspace_process_scan(lifecycle_store, worktree)
-    DatabasePortalExecutionBridge._strict_workspace_container_scan(worktree)
     _need(_git(worktree, "symbolic-ref", "--short", "HEAD") == request["branch_name"] and
         _git(worktree, "rev-parse", request["candidate_commit"] + "^{tree}") == request["candidate_tree"] and
         candidate_manifest(worktree, request["baseline_commit"], request["candidate_commit"]) == request["changed_files"],
         "candidate_committed_bytes_changed")
     allowed = set(task.outputs)
     _need(set(request["changed_files"]) <= allowed, "candidate_paths_outside_declared_outputs")
-    result = portal_daemon.reconcile_validated_worktree_candidate(worktree_path=worktree,
-        branch_name=request["branch_name"], task=task, baseline_ref=request["baseline_commit"],
+    # Read retained bytes only. A new cleanup-visible native lease owns a
+    # fresh checkout at the immutable commit; no old workspace is adopted and
+    # absence of historical lifecycle/process records grants no authority.
+    fresh_id = hashlib.sha256((attempt.attempt_id + request["receipt_id"]).encode()).hexdigest()[:24]
+    fresh = portal_daemon.worktree_root.resolve(strict=True) / ("workspace_continuation_" + fresh_id)
+    branch = "implementation/" + attempt.task_alias.lower() + "-continuation-" + fresh_id + "-attempt-1"
+    _need(not fresh.exists() and not fresh.is_symlink() and not _git(repo, "branch", "--list", branch),
+        "candidate_fresh_workspace_already_exists")
+    record = portal_daemon.worktree_lifecycle.begin_preparing(task_id=task.task_id,
+        canonical_task_cid=bound["canonical_task_cid"], attempt=portal_daemon._worktree_lifecycle_attempt(task, 1),
+        lane_id=portal_daemon._worktree_lifecycle_lane_id(), workspace_path=fresh, branch=branch,
+        merge_target=portal_daemon.resolved_merge_target_branch, state_dir=str(paths.root.resolve(strict=True)),
+        allow_replace_stale=False)
+    portal_daemon._active_worktree_lifecycle = record
+    authority(attempt, dict(binding), prior)
+    lease, _reason, _cleared, _waited = portal_daemon._acquire_checkout_mutation_lease(
+        task_id=task.task_id, attempt=1, branch=branch, operation="candidate_continuation_checkout",
+        timeout_seconds=0, preserve_existing=True)
+    _need(lease is not None, "candidate_native_checkout_lease_unavailable")
+    try:
+        _git(repo, "worktree", "add", "-b", branch, str(fresh), request["candidate_commit"])
+    finally:
+        _need(portal_daemon._release_checkout_mutation_lease(lease), "candidate_native_checkout_lease_changed")
+    record = portal_daemon.worktree_lifecycle.mark_active(fresh, lease_id=record.lease_id, expected_fence=record.fence)
+    portal_daemon._active_worktree_lifecycle = record
+    _need(candidate_manifest(fresh, request["baseline_commit"], request["candidate_commit"]) == request["changed_files"] and
+        candidate_manifest(worktree, request["baseline_commit"], request["candidate_commit"]) == request["changed_files"],
+        "candidate_snapshot_bytes_changed")
+    authority(attempt, dict(binding), prior)
+    portal_daemon._record_event("candidate_continuation_workspace_prepared", {
+        "task_id": task.task_id, "database_attempt_id": attempt.attempt_id,
+        "candidate_admission_receipt_id": request["receipt_id"], "source_worktree": str(worktree),
+        "worktree_path": str(fresh), "branch": branch, "candidate_commit": request["candidate_commit"],
+        "candidate_tree": request["candidate_tree"], "lifecycle_record_id": record.record_id,
+        "provider_dispatched": False, "attempt_consumed": False})
+    result = portal_daemon.reconcile_validated_worktree_candidate(worktree_path=fresh,
+        branch_name=branch, task=task, baseline_ref=request["baseline_commit"],
         candidate_commit=request["candidate_commit"], changed_submodule_paths=(), recovery_key=request["receipt_id"])
+    if not result.get("merge_result", {}).get("merged") and not result.get("merge_result", {}).get("queued"):
+        current_record = portal_daemon.worktree_lifecycle.load_workspace(fresh)
+        if current_record is not None and current_record.is_nonterminal:
+            portal_daemon._finalize_exact_worktree_lifecycle(current_record,
+                reason="candidate_continuation_validation_failed")
     # Reconciliation has no provider phase. Only a genuinely terminal private
     # projection permits the normal receipt-repair pass to run afterwards.
     projection = DatabasePortalExecutionBridge._verify_projection(paths, binding)
@@ -209,4 +249,5 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
             "candidate_native_completion_event_missing")
     authority(attempt, dict(binding), prior)
     return {"implementation_result": dict(result), "completion_pass": dict(completion_pass),
-        "candidate_admission_receipt_id": request["receipt_id"], "provider_dispatched": False}
+        "candidate_admission_receipt_id": request["receipt_id"], "provider_dispatched": False,
+        "continuation_workspace": str(fresh), "continuation_branch": branch}

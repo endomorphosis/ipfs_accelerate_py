@@ -31,6 +31,8 @@ class LongNativeInflight(unittest.TestCase):
                 'state_root':str(reference/'state'),'plan_path':str(plan),'run_id':'long-native-reference','repair_command':[]})
             original_open, original_pass = native.CampaignRuntime.open, PortalImplementationDaemon.run_once
             owners, threads, evidence = [], [], {}
+            gates = []
+            worker_reports = []
             used = [False]
             def opened(runtime):
                 original_open(runtime)
@@ -38,7 +40,9 @@ class LongNativeInflight(unittest.TestCase):
             @contextlib.contextmanager
             def delayed_stub(spec_path, python):
                 original = provider.implementation_command
-                code = "import time,runpy,sys; time.sleep(10); sys.argv=" + repr([str(Path(canary.__file__).resolve()),'worker','--spec',str(spec_path)]) + "; runpy.run_path(sys.argv[0],run_name='__main__')"
+                gate = spec_path.parent / 'native-inflight-canary-release.json'
+                gates.append(gate)
+                code = "import time,runpy,sys,pathlib; gate=pathlib.Path(" + repr(str(gate)) + "); end=time.monotonic()+90\nwhile not gate.is_file() and time.monotonic()<end: time.sleep(.05)\nif not gate.is_file(): raise SystemExit(124)\nsys.argv=" + repr([str(Path(canary.__file__).resolve()),'worker','--spec',str(spec_path)]) + "; runpy.run_path(sys.argv[0],run_name='__main__')"
                 provider.implementation_command = lambda *_args, **_kwargs: shlex.join([python,'-I','-c',code])
                 try:
                     yield
@@ -62,7 +66,9 @@ class LongNativeInflight(unittest.TestCase):
                 failures=[]
                 def work():
                     try:
-                        original_pass(worker)
+                        finished = original_pass(worker)
+                        outcome = finished.get('implementation_result') or {}
+                        worker_reports.append({key:outcome.get(key) for key in ('returncode','reason','board_completion','validation_result','commit_result','merge_result')})
                     except BaseException as error:
                         failures.append(error)
                     finally:
@@ -89,11 +95,18 @@ class LongNativeInflight(unittest.TestCase):
                 owner._bind_provider_activity(attempt)
                 self.assertEqual((owner.config.state_root/'provider-activity-binding.json').read_bytes(),before)
                 evidence.update(attempt_id=attempt.attempt_id, config=owner.config, intent=intent, deadline=owner._cached['stage_deadline_at'])
+                native.atomic_json(gates[-1], {'release_after_verified_native_inflight': True})
                 return pending
             try:
                 with patch.object(native.CampaignRuntime,'open',opened), patch.object(PortalImplementationDaemon,'run_once',observe_real_inflight), patch.object(canary,'_stub_provider_command',delayed_stub):
-                    result=canary.run_canary(reference_config=config,parent_dir=reference)
+                    try:
+                        result=canary.run_canary(reference_config=config,parent_dir=reference)
+                    except BaseException as error:
+                        details=[{key:owner._last_failure.get(key) for key in ('error_class','reason','phase','traceback')} for owner in owners if owner._last_failure]
+                        raise AssertionError('native fixture failure: '+json.dumps(details,sort_keys=True)+' WORKER_REPORTS='+json.dumps(worker_reports,sort_keys=True)) from error
             finally:
+                for gate in gates:
+                    if not gate.exists(): native.atomic_json(gate, {'cleanup_release': True})
                 for thread in threads:
                     thread.join(timeout=30)
                     self.assertFalse(thread.is_alive())
@@ -108,7 +121,7 @@ class LongNativeInflight(unittest.TestCase):
                 try:
                     attempt=daemon.get_attempt(evidence['attempt_id'])
                     phases=daemon.phase_history(attempt.attempt_id)
-                    self.assertEqual(attempt.status,'completed')
+                    self.assertEqual(attempt.status,'succeeded')
                     self.assertEqual(attempt.attempt_number,1)
                     self.assertNotIn('failed',[phase['phase'] for phase in phases])
                 finally:

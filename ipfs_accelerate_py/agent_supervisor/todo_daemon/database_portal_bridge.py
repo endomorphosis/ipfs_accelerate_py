@@ -3321,7 +3321,18 @@ class DatabasePortalExecutionBridge:
                 b"/usr/lib/systemd/systemd\0--user\0",
                 b"/lib/systemd/systemd\0--user\0",
             }:
-                return False
+                argv = command.split(b"\0")
+                if (len(argv) != 4 or argv[-1] != b""
+                        or argv[0] not in {b"/usr/lib/systemd/systemd", b"/lib/systemd/systemd"}
+                        or argv[1] != b"--user"
+                        or re.fullmatch(rb"--deserialize=[0-9]+", argv[2]) is None):
+                    return False
+                try:
+                    executable = os.readlink(entry / "exe")
+                except OSError:
+                    return False
+                if executable not in {"/usr/lib/systemd/systemd", "/lib/systemd/systemd"}:
+                    return False
             expected_comm = b"(systemd)"
             expected_parent = 1
             expected_group = pid
@@ -11307,6 +11318,40 @@ class DatabasePortalExecutionBridge:
             observe(unavailable_reason)
             return None
 
+    @staticmethod
+    def _run_native_completion_without_provider(daemon: Any) -> Mapping[str, Any]:
+        from .implementation_daemon import PortalImplementationDaemon
+        if type(daemon) is not PortalImplementationDaemon:
+            raise DatabasePortalProviderCustodyUnknown("native completion requires the canonical Portal owner")
+        implement = daemon.implement
+        daemon.implement = False
+        try:
+            result = daemon.run_once()
+            if not isinstance(result, Mapping):
+                raise DatabasePortalProviderCustodyUnknown("native completion returned no evidence")
+            return result
+        finally:
+            daemon.implement = implement
+
+    @staticmethod
+    def _has_validated_native_candidate(paths: DatabasePortalAttemptPaths, authority: Mapping[str, Any], implementation: Mapping[str, Any]) -> bool:
+        events_path = getattr(paths, "events", None)
+        if events_path is None or not events_path.is_file():
+            return False
+        try:
+            events, _digest = _accepted_source_events(events_path)
+        except (DatabasePortalBridgeError, OSError, ValueError):
+            return False
+        finished = [event for event in events if event.get("type") == "implementation_finished"
+            and event.get("canonical_task_cid") == authority["canonical_task_cid"]
+            and event.get("task_id") == implementation["task_id"] and event.get("attempt") == implementation["attempt"]]
+        if not finished:
+            return False
+        last = finished[-1]
+        validation, commit = last.get("validation_result"), last.get("commit_result")
+        return (last.get("returncode") == 0 and isinstance(validation, Mapping) and validation.get("passed") is True
+            and isinstance(commit, Mapping) and commit.get("committed") is True)
+
     def _wait_for_native_inflight(
         self, *, attempt: Any, paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any], daemon: Any, authority: Mapping[str, Any],
@@ -11335,6 +11380,7 @@ class DatabasePortalExecutionBridge:
         deadline = time.monotonic() + max(0.0, started_ms / 1000 + timeout - time.time())
         terminal_grace = None
         terminal_reconciled = False
+        candidate_reconciliation_passes = 0
         while True:
             projection = self._verify_projection(paths, binding)
             if _projection_status(projection) in _TERMINAL_STATUSES:
@@ -11350,9 +11396,7 @@ class DatabasePortalExecutionBridge:
                         merge_request_loader=merge_request_loader)
                     if transition is not None:
                         terminal_reconciled = True
-                        reconciliation = daemon.run_once()
-                        if not isinstance(reconciliation, Mapping):
-                            raise DatabasePortalProviderCustodyUnknown("native terminal reconciliation returned no evidence")
+                        reconciliation = self._run_native_completion_without_provider(daemon)
                         summaries = [*summaries, _bounded_portal_result(reconciliation)]
                         self._verify_projection(paths, binding)
                         continue
@@ -11368,6 +11412,12 @@ class DatabasePortalExecutionBridge:
                 and live.get("attempt") == implementation.get("attempt")
                 and live.get("worktree_path") == implementation.get("worktree_path"))
             if not exact:
+                if self._has_validated_native_candidate(paths, authority, implementation) and candidate_reconciliation_passes < self.max_passes:
+                    candidate_reconciliation_passes += 1
+                    reconciliation = self._run_native_completion_without_provider(daemon)
+                    summaries = [*summaries, _bounded_portal_result(reconciliation)]
+                    self._verify_projection(paths, binding)
+                    continue
                 # Completion may be fsynced immediately after process exit.
                 # Observe only; run_once here could dispatch another provider.
                 if terminal_grace is None:
@@ -11468,6 +11518,15 @@ class DatabasePortalExecutionBridge:
                 )
             merge_queue = getattr(daemon, "merge_queue", None)
             merge_request_loader = getattr(merge_queue, "get", None)
+            if self.candidate_reconciliation_loader is not None:
+                from ..project_adapters.worldwide_legal_search_continuation import reconcile_candidate
+                admission = self.candidate_reconciliation_loader(attempt=attempt, paths=paths,
+                    binding=dict(binding), portal_daemon=daemon)
+                reconciled = reconcile_candidate(portal_daemon=daemon, attempt=attempt, paths=paths,
+                    binding=binding, admission=admission)
+                summaries.append(_bounded_portal_result(reconciled))
+                return self._acceptance_receipt(attempt=attempt, paths=paths, binding=binding,
+                    summaries=summaries, merge_request_loader=merge_request_loader)
             self._recover_superseded_attempt_lifecycle(
                 attempt=attempt,
                 paths=paths,
@@ -11514,15 +11573,6 @@ class DatabasePortalExecutionBridge:
                         raise DatabasePortalBridgeError(
                             "Portal daemon rejected database diagnostic binding"
                         ) from exc
-            if self.candidate_reconciliation_loader is not None:
-                from ..project_adapters.worldwide_legal_search_continuation import reconcile_candidate
-                admission = self.candidate_reconciliation_loader(attempt=attempt, paths=paths,
-                    binding=dict(binding), portal_daemon=daemon)
-                reconciled = reconcile_candidate(portal_daemon=daemon, attempt=attempt, paths=paths,
-                    binding=binding, admission=admission)
-                summaries.append(_bounded_portal_result(reconciled))
-                return self._acceptance_receipt(attempt=attempt, paths=paths, binding=binding,
-                    summaries=summaries, merge_request_loader=merge_request_loader)
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(

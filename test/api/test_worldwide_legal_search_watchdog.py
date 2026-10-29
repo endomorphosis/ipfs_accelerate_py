@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,6 +63,37 @@ def test_observation_never_refreshes_owner_heartbeat_or_progress(bridge):
     adapter.clock = lambda: 10200
     with pytest.raises(WatchdogBridgeError, match="stale"):
         adapter.observe({"policy_id": "wwl-policy", "run_id": "wwl-test"})
+
+
+def test_execute_mode_recovers_a_crashed_maintenance_pause_without_task_writes(bridge):
+    adapter, _, _ = bridge
+    adapter.state_root.chmod(0o700)
+    marker = adapter.state_root / "HOLD"
+    code = ("from pathlib import Path; import sys; "
+            "from ipfs_accelerate_py.agent_supervisor.rescue.maintenance_hold import create_hold; "
+            "create_hold(Path(sys.argv[1]), reason='bounded maintenance', ttl_seconds=1, now=9990)")
+    subprocess.run([sys.executable, "-c", code, str(marker)], check=True, timeout=20)
+    from ipfs_accelerate_py.agent_supervisor.rescue.maintenance_hold import hold_binding
+    native = read_owned_json(adapter.state_root / "campaign-status.json")
+    write(adapter.state_root / "campaign-status.json", {**native, "hold": True,
+          "maintenance_hold_bindings": [hold_binding(marker, now=10000)]})
+    request = {"policy_id": "wwl-policy", "run_id": "wwl-test"}
+    assert adapter.observe(request)["hold"] is True
+    assert marker.exists()
+    before = (adapter.state_root / "campaign-status.json").read_bytes()
+    result = adapter.observe({**request, "execution_requested": True})
+    assert result["hold"] is False and result["hold_reviews"][0]["status"] == "released"
+    assert adapter.observe(request)["hold"] is False
+    assert not marker.exists()
+    assert (adapter.state_root / "campaign-status.json").read_bytes() == before
+
+
+def test_execute_mode_keeps_manual_maintenance_holds(bridge):
+    adapter, _, _ = bridge
+    marker = adapter.state_root / "HOLD"
+    marker.write_text("operator maintenance")
+    result = adapter.observe({"policy_id": "wwl-policy", "run_id": "wwl-test", "execution_requested": True})
+    assert result["hold"] is True and marker.read_text() == "operator maintenance"
 
 
 def test_repair_without_binding_is_a_durable_no_effect_refusal(bridge):

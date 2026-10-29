@@ -74,12 +74,19 @@ def test_actual_public_native_reconciliation_validates_merges_without_paid_attem
         assert result["validation_result"]["validation_dag_receipt"]["passed"] is True
         assert result["merge_result"]["merged"] is True
         assert result["merge_result"]["integration_commit_proof"]
+        assert result["board_completion"] == {"complete": True, "pending_merge": False, "reason": "merged_into_target"}
         assert (repo / "feature.py").read_text() == "VALUE = 1\n"
         after = PortalTaskState.load(portal.state_path)
         assert before.implementation_attempts == after.implementation_attempts
         assert before.implementation_attempts_by_cid == after.implementation_attempts_by_cid
         events = [json.loads(line) for line in portal.events_path.read_text().splitlines()]
         assert any(e["type"] == "merge_finished" and e["merged"] is True for e in events)
+        terminal = next(e for e in reversed(events) if e["type"] == "implementation_finished")
+        assert terminal["board_completion"] == result["board_completion"]
+        identity = portal._identity_for_task(task)
+        assert terminal["canonical_task_cid"] == identity.canonical_task_cid
+        assert terminal["canonical_task_key"] == identity.canonical_task_key
+        assert terminal["board_namespace"] == identity.board_namespace
         assert not any(e["type"] == "implementation_started" for e in events)
     finally:
         portal.close_event_runtime()
@@ -95,14 +102,15 @@ def native_continuation(tmp_path, monkeypatch):
     native = DatabaseImplementationDaemon(database_path=tmp_path / "control.duckdb",
         coordination_path=tmp_path / "coordination.duckdb", execution_path=tmp_path / "execution.duckdb",
         state_dir=tmp_path / "database-native", state_prefix="wwl", owner_session_id="fixture-continuation",
-        authority_mode="embedded_exclusive", lease_ms=1000, clock_ms=lambda: now[0], max_task_attempts=3).open()
+        authority_mode="embedded_exclusive", lease_ms=5000, clock_ms=lambda: now[0], max_task_attempts=3).open()
     native.materialize_population({"repository_tree_id": baseline,
         "objectives": [{"objective_id": "fixture-objective", "goal_cid": "fixture-goal", "title": "Fixture"}],
         "tasks": [{"task_cid": "sha256:" + hashlib.sha256(b"fixture-task").hexdigest(),
             "task_id": "WWL-001", "goal_cid": "fixture-goal", "status": "ready", "ordinal": 1,
-            "title": "Retained fixture", "outputs": ["feature.py"],
+            "title": "Retained fixture", "outputs": [{"path": "feature.py"}],
             "validation": ["python -m py_compile feature.py"],
             "acceptance": "The real validator compiles the retained candidate.", "completion": "auto"}]})
+    (tmp_path / "database-native").mkdir(exist_ok=True)
     bridge = DatabasePortalExecutionBridge(task_source=native.task_source,
         attempt_root=tmp_path / "database-native" / "attempts", portal_factory=lambda *_: None,
         repo_root=repo, board_namespace="fixture-continuation", merge_target_branch="main",
@@ -112,7 +120,7 @@ def native_continuation(tmp_path, monkeypatch):
     old_paths, old_binding = bridge._ensure_attempt_projection(prior, native.task_source.get(prior.task_cid))
     # The existing public synthetic-only expiry path proves failed predecessor
     # custody, without fabricating any provider terminal or completion receipt.
-    now[0] += 2000
+    now[0] += 6000
     native.reconcile_expired_running_attempts()
     current = native.claim_next()
     assert current is not None and current.attempt_number == 2
@@ -139,13 +147,17 @@ def native_continuation(tmp_path, monkeypatch):
         native.close()
 
 
-def test_helper_uses_real_native_fence_and_no_provider_pipeline(native_continuation):
+def test_helper_uses_real_native_fence_fresh_workspace_and_merge(native_continuation):
     portal, attempt, paths, binding, admission, native = native_continuation
     result = reconcile_candidate(portal_daemon=portal, attempt=attempt, paths=paths,
         binding=binding, admission=admission)
     assert result["provider_dispatched"] is False
     assert result["implementation_result"]["merge_result"]["merged"] is True
     assert result["implementation_result"]["validation_result"]["passed"] is True
+    assert result["implementation_result"]["merge_result"]["worktree_lifecycle_handoff"]["finalized"] is True
+    assert Path(admission.request["worktree_path"]).is_dir()
+    assert git(Path(admission.request["worktree_path"]), "rev-parse", "HEAD") == admission.request["candidate_commit"]
+    assert result["continuation_workspace"] != admission.request["worktree_path"]
     assert DatabasePortalExecutionBridge._has_completion_event(paths, "WWL-001")
     assert native.get_attempt(admission.request["predecessor_attempt_id"]).status == "failed"
     # The bridge/native completion CAS is deliberately outside this helper.
@@ -177,3 +189,12 @@ def test_manifest_refuses_symlink_output(tmp_path):
     git(candidate, "add", "feature.py"); git(candidate, "commit", "-m", "Authored invalid symlink")
     with pytest.raises(ValueError, match="candidate_requires_root_regular_files"):
         candidate_manifest(candidate, baseline, git(candidate, "rev-parse", "HEAD"))
+
+
+def test_helper_refuses_existing_fresh_workspace(native_continuation):
+    portal, attempt, paths, binding, admission, _native = native_continuation
+    fresh_id = hashlib.sha256((attempt.attempt_id + admission.request["receipt_id"]).encode()).hexdigest()[:24]
+    (portal.worktree_root / ("workspace_continuation_" + fresh_id)).mkdir()
+    with pytest.raises(ValueError, match="candidate_fresh_workspace_already_exists"):
+        reconcile_candidate(portal_daemon=portal, attempt=attempt, paths=paths, binding=binding, admission=admission)
+    assert not paths.events.exists()

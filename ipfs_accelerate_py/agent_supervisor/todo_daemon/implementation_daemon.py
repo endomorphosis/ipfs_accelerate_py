@@ -31078,9 +31078,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         terminal_event_recorded = False
 
         def reconciliation_result() -> dict[str, Any]:
-            return {
+            result = {
                 "task_id": task.task_id,
                 "task_cid": identity.canonical_task_cid,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "canonical_task_key": identity.canonical_task_key,
+                "board_namespace": identity.board_namespace,
                 "attempt": attempt,
                 "returncode": returncode,
                 "attempt_consumed": False,
@@ -31100,6 +31103,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "protected_path_violation": protected_path_violation,
                 "recovery_key": recovery_key,
             }
+            if (returncode == 0 and merge_result.get("merged") is True
+                    and validation_result.get("passed") is True
+                    and not protected_path_violation):
+                # Reconciliation uses the same native merge gate as ordinary
+                # implementation. Expose its actual completed merge so the
+                # canonical bridge can admit this terminal source event.
+                result["board_completion"] = {"complete": True,
+                    "pending_merge": False, "reason": "merged_into_target"}
+            return result
 
         def reconciliation_event_type() -> str:
             if returncode == 0 and merge_result.get("merged"):

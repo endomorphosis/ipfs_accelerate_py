@@ -709,6 +709,10 @@ class CampaignRuntime:
         native_unknown = any(item.get("effects_unknown") for item in blockers)
         repair_unknown = any(value.get("request", {}).get("kind") == "repair" and value.get("observation", {}).get("status") == "unknown" for value in self._actions.values())
         hold = any((self.config.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP"))
+        from ..rescue.maintenance_hold import hold_binding
+        markers = [self.config.state_root / name for name in ("HOLD", "STOP", "OPERATOR_STOP")
+                   if os.path.lexists(self.config.state_root / name)]
+        maintenance_bindings = [hold_binding(path, now=now) for path in markers]
         verified = list(cached.get("verified_task_ids", []))
         required = list(self.tasks)
         # Root completion must eventually come from the native typed-goal
@@ -719,6 +723,7 @@ class CampaignRuntime:
             "authority_revision": str(cached.get("authority_revision") or "bootstrap"),
             "admitted_plan_revision": self.bootstrap_receipt["admitted_plan_revision"],
             "accepted_tree": identity(observed_forest(self.config)), "hold": hold,
+            "maintenance_hold_bindings": maintenance_bindings if markers and all(maintenance_bindings) else [],
             "completion_verified": completed, "completion_receipt": completion_receipt,
             "required_task_ids": required, "verified_task_ids": verified,
             "stage": str(cached.get("stage") or "startup"), "task_id": str(cached.get("active_task_id") or ""),

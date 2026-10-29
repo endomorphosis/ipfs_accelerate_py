@@ -208,6 +208,21 @@ class WorldwideWatchdogBridge:
             # defect. In particular, do not publish settlement files on a full
             # filesystem while observing it.
             return {**snapshot, "blocked_kind": "resource_quota", "resource_pressure": resources}
+        from ..rescue.maintenance_hold import binding_released, review_hold
+        holds = [self.state_root / name for name in ("HOLD", "STOP", "OPERATOR_STOP")]
+        reviews = [review_hold(path, apply=request.get("execution_requested") is True, now=self.clock())
+                   for path in holds if os.path.lexists(path)]
+        # A native pause can be independent of filesystem markers. Clear its
+        # stale projection only when every explicitly bound maintenance hold
+        # has an exact durable release archive; preserve unbound native holds.
+        bindings = snapshot.get("maintenance_hold_bindings")
+        released = (type(bindings) is list and bool(bindings)
+                    and all(type(item) is dict and item.get("path") in {str(p) for p in holds}
+                            and binding_released(item) for item in bindings))
+        snapshot = {**snapshot, "hold": any(os.path.lexists(path) for path in holds)
+                    or (bool(snapshot.get("hold")) and not released)}
+        if reviews:
+            snapshot["hold_reviews"] = reviews
         # Canonical heartbeat, progress token and source revision are retained.
         observations = {item["action_id"]: item for item in snapshot.get("action_observations", [])}
         for action_id in request.get("action_ids", []):
