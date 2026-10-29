@@ -76322,6 +76322,11 @@ class DatabaseImplementationDaemon:
             attempt.attempt_id, idempotency_key=key
         )
         retry_prior = None
+        dependency_prior = None
+        from . import dependency_preflight_retry
+        if prior is not None and prior.get("schema") == dependency_preflight_retry.SCHEMA:
+            dependency_preflight_retry.ready(self, attempt, prior, key, provider_fn or self._provider_fn)
+            dependency_prior, prior = prior, None
         if prior is not None and prior.get("schema") == "database-source384-no-dispatch-retry@1":
             self._require_source384_retry_state(attempt, prior, key)
             retry_prior, prior = prior, None
@@ -76340,6 +76345,8 @@ class DatabaseImplementationDaemon:
                         and getattr(official, "__func__", None) is DatabasePortalExecutionBridge.run_provider):
                     accepted = bridge.recover_provider_callback(attempt)
                 if accepted is None:
+                    if dependency_preflight_retry.settle(self, attempt, bridge, prior, key):
+                        raise DatabasePortalBridgeDeferred(dependency_preflight_retry.REASON)
                     raise DatabasePortalBridgeDeferred("provider_callback_outcome_unknown")
                 bridge._require_accepted_provider(attempt, accepted)
                 self._protect_attempt_write(attempt)
@@ -76413,7 +76420,15 @@ class DatabaseImplementationDaemon:
                     **{name: value for name, value in self._source384_retry_identity(attempt).items()
                        if name != "owner_session_id"},
                 }
-                if retry_prior is not None:
+                if dependency_prior is not None:
+                    changed = self._require_connection().execute(
+                        "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? "
+                        "AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
+                        [_database_daemon_json(intent), self._now_ms(), attempt.attempt_id, key,
+                         _database_daemon_json(dependency_prior), self.owner_session_id, attempt.task_cid]).fetchone()
+                    if changed is None:
+                        raise DatabaseImplementationAuthorityError("native dependency retry callback changed")
+                elif retry_prior is not None:
                     changed = self._require_connection().execute(
                         "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
                         [_database_daemon_json(intent), self._now_ms(), attempt.attempt_id, key,
@@ -76439,7 +76454,7 @@ class DatabaseImplementationDaemon:
             try:
                 result = dict(self._run_with_attempt_heartbeat(attempt, lambda: callback(attempt)))
             except Exception as exc:
-                from .database_portal_bridge import DatabasePortalSource384Deferred
+                from .database_portal_bridge import DatabasePortalSource384Deferred, DatabasePortalBridgeDeferred
                 if type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge:
                     if type(exc) is DatabasePortalSource384Deferred:
                         self._settle_source384_resource_deferral(attempt, failure=exc, idempotency_key=key, previous=retry_prior)
@@ -76447,6 +76462,10 @@ class DatabaseImplementationDaemon:
                         native_exit = callback.__self__.take_native_provider_exit_failure(attempt, exc)
                         if native_exit is not None:
                             self._settle_native_provider_failure(attempt, native_exit=native_exit, idempotency_key=key)
+                        elif type(exc) is DatabasePortalBridgeDeferred and str(exc) == dependency_preflight_retry.REASON:
+                            pending = self.provider_invocation_recorded(attempt.attempt_id, idempotency_key=key)
+                            dependency_preflight_retry.settle(self, attempt, callback.__self__, pending, key,
+                                previous=dependency_prior)
                 raise
             finally:
                 if token is not None:
@@ -78799,6 +78818,18 @@ class DatabaseImplementationDaemon:
                         )
                     except Exception:
                         pass
+                    from . import dependency_preflight_retry
+                    if reason in {dependency_preflight_retry.REASON, "validation_dependency_repair_required"}:
+                        waiting = self.provider_invocation_recorded(attempt.attempt_id,
+                            idempotency_key=f"provider:{attempt.attempt_id}")
+                        if waiting is not None and waiting.get("schema") == dependency_preflight_retry.SCHEMA:
+                            return {"resumed": True, "deferred": True, "reason": reason,
+                                "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
+                                "status": "running", "wait_kind": "validation_dependencies",
+                                "attempt_consumed": False, "provider_dispatched": False,
+                                "backoff_seconds": exc.backoff_seconds,
+                                "retry_not_before_ms": waiting["native"]["retry_not_before_ms"],
+                                "retry_deadline_ms": waiting["native"]["retry_deadline_ms"]}
                     return {
                         "resumed": True,
                         "deferred": True,

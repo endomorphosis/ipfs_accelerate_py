@@ -239,6 +239,7 @@ def repair_pipeline_binding(config: CampaignConfig) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/dependency_preflight_retry.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",

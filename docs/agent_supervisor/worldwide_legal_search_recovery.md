@@ -29,7 +29,7 @@ or exhausted checkout retry refuses this recovery.
 An unknown ordinary provider callback remains unknown and is never invoked
 again by this recovery. Native can reconcile an existing completed Portal
 projection using its genuine completion event and accepted-source evidence.
-The sole execution replay is the explicit no-provider candidate checkout above.
+Candidate replay requires the explicit no-provider admission above.
 The original callback intent remains in the reconciliation event; acceptance
 still passes through the existing native receipt validation and completion CAS.
 
@@ -44,6 +44,24 @@ Reconciliation with unresolved effects reports `unknown`, never a terminal
 retain their original receipt and are rechecked by the native owner. This
 keeps the watchdog observing while uncertainty remains, without resetting its
 persisted action budget or treating a heartbeat as task completion.
+
+A dependency preflight refusal is a known resource wait only after the exact
+Native owner joins the sealed task binding, intact event chain, stopped state,
+and finished workspace cleanup. A missing workspace alone is insufficient.
+There must be no provider-start, merge or completion event. Native's terminal
+lifecycle, or its exact compare-delete cleanup receipt with an absent branch
+and task-attempt index, must agree with that refusal. This also reconciles an
+older callback intent stranded at that proven pre-provider boundary.
+
+The wait keeps the same database attempt and all paid history. Native's bounded
+backoff is honored, with at most eight observations within the original
+implementation deadline. Every retry rechecks the refusal and commits dispatch
+intent before entering Native again. A changed journal, later execution or
+foreign claim refuses recovery. Deadline or retry exhaustion reports an
+explicit dependency-repair requirement; it does not erase an unknown outcome.
+Repair dependencies in the existing approved environment and rerun the sealed
+metadata probe. This recovery never enables global automatic package installs
+or relaxes the validation interpreter, security policy or completion gates.
 
 The one-shot command returns failure when native completion was not verified.
 The continuous service uses exit 75 for a fenced checkout restart or to reopen
