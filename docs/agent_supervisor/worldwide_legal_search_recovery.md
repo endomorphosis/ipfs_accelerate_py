@@ -18,6 +18,9 @@ Git observations have a 60-second bound; checkout creation has a 180-second
 bound. A checkout interruption requests a registered service restart so its
 whole cgroup drains. On restart, only the exact request-derived PREPARING
 lifecycle can use Native's dead-owner CAS. The partial checkout is retained.
+Native startup may already have fenced that same dead owner; its exact terminal
+record is also accepted only while the verified event journal proves the
+candidate never crossed the checkout-prepared execution boundary.
 There is one separate checkout retry, with a distinct request-bound path and
 the original task, claim, validation and completion authority. An unregistered
 directory, live owner, different lifecycle, active validation, changed candidate

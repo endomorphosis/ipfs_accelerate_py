@@ -43,7 +43,7 @@ def test_public_native_database_completes_exact_retained_candidate_without_model
     assert any(event.get('type')=='task_completed' for event in events)
 
 
-@pytest.mark.parametrize('interrupted_checkout', [False, True])
+@pytest.mark.parametrize('interrupted_checkout', [False, True, 'startup_fenced', 'past_execution_boundary'])
 def test_unknown_callback_recovers_only_real_native_acceptance_or_a_dead_preparing_candidate(native_continuation, interrupted_checkout):
     portal, attempt, paths, binding, admission, owner = native_continuation
     def interrupted(**_kwargs):
@@ -85,6 +85,14 @@ subprocess.run(['git', 'worktree', 'add', '--no-checkout', '-b', body['branch'],
         subprocess.run([sys.executable, '-c', code, json.dumps(body), admission.request['candidate_commit']],
             check=True, timeout=30, capture_output=True)
         assert not (fresh / 'feature.py').exists()
+        if interrupted_checkout in {'startup_fenced', 'past_execution_boundary'}:
+            fenced = portal.worktree_lifecycle.reclaim_dead_owner_for_controlled_restart(
+                fresh, expected_state_dir=paths.root)
+            assert fenced is not None and fenced.terminal_reason == 'controlled_restart_dead_owner'
+        if interrupted_checkout == 'past_execution_boundary':
+            portal._record_event('candidate_continuation_workspace_prepared', {
+                'database_attempt_id': attempt.attempt_id, 'worktree_path': str(fresh),
+                'candidate_admission_receipt_id': admission.request['receipt_id']})
         bridge.candidate_reconciliation_loader = lambda **_kwargs: admission
     else:
         fixtures.reconcile_candidate(portal_daemon=portal, attempt=attempt, paths=paths,
@@ -92,6 +100,11 @@ subprocess.run(['git', 'worktree', 'add', '--no-checkout', '-b', body['branch'],
         # Leave the candidate callback unbound: reading accepted work must not
         # require permission to invoke any provider or candidate operation.
     result = owner.run_once()
+    if interrupted_checkout == 'past_execution_boundary':
+        assert result['implementation_result']['reason'] == 'provider_callback_outcome_unknown'
+        assert owner.provider_invocation_recorded(attempt.attempt_id, idempotency_key='provider:' + attempt.attempt_id) == pending
+        assert owner.get_attempt(attempt.attempt_id).status == 'running'
+        return
     assert owner.get_attempt(attempt.attempt_id).status == 'succeeded', json.dumps(result)
     assert owner.task_source.get_task(attempt.task_alias).status == 'completed'
     assert owner.get_attempt(attempt.attempt_id).attempt_number == 2

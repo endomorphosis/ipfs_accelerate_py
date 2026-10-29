@@ -11725,10 +11725,15 @@ class DatabasePortalExecutionBridge:
             previous = daemon.worktree_lifecycle.load_workspace(fresh)
             retry_id = hashlib.sha256((fresh_id + ":checkout-retry-1").encode()).hexdigest()[:24]
             retry = daemon.worktree_root.resolve(strict=True) / ("workspace_continuation_" + retry_id)
+            events = _accepted_source_events(paths.events)[0] if paths.events.exists() else []
+            entered_validation = any(event.get("type") == "candidate_continuation_workspace_prepared"
+                and event.get("database_attempt_id") == attempt.attempt_id for event in events)
             recover_checkout = bool(previous is not None
-                and previous.state.value in {"preparing", "terminal"}
-                and previous.owner != current_process_birth(proc_root=daemon.worktree_lifecycle.proc_root)
-                and not retry.exists() and not retry.is_symlink())
+                and (previous.state.value == "preparing"
+                     and previous.owner != current_process_birth(proc_root=daemon.worktree_lifecycle.proc_root)
+                     or previous.is_terminal and previous.terminal_reason in {
+                         "candidate_checkout_interrupted_before_execution", "controlled_restart_dead_owner"})
+                and not entered_validation and not retry.exists() and not retry.is_symlink())
         finally:
             daemon.close_event_runtime()
         if recover_checkout:

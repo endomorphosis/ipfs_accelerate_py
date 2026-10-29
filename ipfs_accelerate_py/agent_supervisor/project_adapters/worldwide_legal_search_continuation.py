@@ -122,7 +122,7 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
     """Use genuine native custody and validators; return no completion shortcut."""
     from ..todo_daemon.implementation_daemon import DatabaseImplementationDaemon, PortalImplementationDaemon
     from ..todo_daemon.database_portal_bridge import (
-        DatabasePortalExecutionBridge, _attempt_key,
+        DatabasePortalExecutionBridge, _attempt_key, _accepted_source_events,
     )
     _need(type(admission) is CandidateContinuationAdmission, "native_candidate_admission_required")
     authority = admission.prior_attempt_authority
@@ -218,8 +218,12 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
                 fresh, expected_state_dir=paths.root,
                 reason="candidate_checkout_interrupted_before_execution")
         _need(previous is not None and previous.is_terminal
-            and previous.terminal_reason == "candidate_checkout_interrupted_before_execution",
+            and previous.terminal_reason in {"candidate_checkout_interrupted_before_execution", "controlled_restart_dead_owner"},
             "candidate_interrupted_checkout_owner_not_fenced")
+        events = _accepted_source_events(paths.events)[0] if paths.events.exists() else []
+        _need(not any(event.get("type") == "candidate_continuation_workspace_prepared"
+            and event.get("database_attempt_id") == attempt.attempt_id for event in events),
+            "candidate_checkout_already_entered_validation")
         fresh_id = hashlib.sha256((fresh_id + ":checkout-retry-1").encode()).hexdigest()[:24]
         fresh = portal_daemon.worktree_root.resolve(strict=True) / ("workspace_continuation_" + fresh_id)
         branch = ("implementation/" + attempt.task_alias.lower() + "-" + fresh_id
