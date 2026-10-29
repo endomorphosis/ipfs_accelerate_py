@@ -14872,7 +14872,7 @@ class PortalImplementationSupervisor:
                 # Keep completed/unknown legacy lanes on their normal cleanup
                 # path; only current pending aliases can request fresh proof.
                 try:
-                    hints = {} if self.config.database_program is not None else {
+                    hints = {} if self._database_authority_enabled() else {
                         task.task_id: task for task in parse_task_file(self.config.todo_path, self.config.task_prefix)}
                 except (OSError, ValueError, UnicodeError):
                     hints = {}

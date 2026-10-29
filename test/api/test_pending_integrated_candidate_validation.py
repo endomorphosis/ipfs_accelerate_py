@@ -8,7 +8,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as native
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
-    TodoImplementationSupervisor, TodoSupervisorConfig,
+    TodoImplementationSupervisor, TodoSupervisorConfig, parse_args, supervisor_config_from_args,
 )
 
 
@@ -18,7 +18,7 @@ def git(root, *args):
     return result.stdout.strip()
 
 
-def world(tmp_path, *, failure='', historical_start=False, completed=False):
+def world(tmp_path, *, failure='', historical_start=False, completed=False, legacy_cli=False):
     repo=tmp_path/'repo'; repo.mkdir(mode=0o700)
     git(repo,'init','-b','main');git(repo,'config','user.name','Fixture');git(repo,'config','user.email','fixture@example.invalid')
     board=repo/'todo.md'
@@ -30,6 +30,10 @@ def world(tmp_path, *, failure='', historical_start=False, completed=False):
         board.write_text(board.read_text().replace('- Status: todo', '- Status: completed'))
     if failure=='ambiguous':
         board.write_text(board.read_text()+'\n## EX-016 A different task\n\n- Status: todo\n- Outputs: other.py\n')
+    if legacy_cli:
+        board.write_text(board.read_text().replace('EX-015','CIMP-UX-15').replace('EX-016','CIMP-UX-16'))
+    task_id='CIMP-UX-15' if legacy_cli else 'EX-015'
+    task_prefix='## CIMP-' if legacy_cli else '## EX-'
     (repo/'feature.py').write_text('VALUE = 1\n');(repo/'helper.py').write_text('HELPER = 0\n')
     (repo/'test_feature.py').write_text('def test_actual_effect():\n from feature import VALUE\n assert VALUE == 2\n')
     (repo/'pytest.ini').write_text('[pytest]\n')
@@ -38,20 +42,35 @@ def world(tmp_path, *, failure='', historical_start=False, completed=False):
     baseline=git(repo,'rev-parse','HEAD')
     workroot=tmp_path/'worktrees';workroot.mkdir(mode=0o700)
     workspace=workroot/'candidate'
-    branch='implementation/ex-015-operator-retained'
+    branch='implementation/cimp-ux-15-operator-retained' if legacy_cli else 'implementation/ex-015-operator-retained'
     if failure=='ambiguous':branch='implementation/ex-015-and-ex-016-retained'
     git(repo,'worktree','add','-b',branch,str(workspace),baseline)
     state_dir=tmp_path/'state'
+    # These are the exact source-selection flags emitted by the complaint Host.
+    # An explicit legacy descriptor is a real program configuration object; it
+    # does not select database-authoritative task discovery.
+    program=None;board_namespace=''
+    if legacy_cli:
+        args=parse_args(['--todo-path',str(board),'--state-dir',str(state_dir),
+            '--state-prefix','owned','--worktree-root',str(workroot),
+            '--task-source-kind','legacy-markdown','--authority-mode','legacy_markdown',
+            '--explicit-legacy-task-source','--task-prefix',task_prefix,
+            '--board-namespace','complaint-gui-ux-overhaul'])
+        parsed_config=supervisor_config_from_args(args,repo_root=repo)
+        program=parsed_config.database_program;board_namespace=parsed_config.board_namespace
+        assert program is not None and program.authority_mode=='legacy_markdown'
+        assert program.task_source_kind=='legacy-markdown'
     config=TodoSupervisorConfig(todo_path=board,state_path=state_dir/'task-state.json',
         strategy_path=state_dir/'strategy.json',events_path=state_dir/'supervisor-events.jsonl',
-        state_dir=state_dir,repo_root=repo,task_prefix='## EX-',state_prefix='owned',
+        state_dir=state_dir,repo_root=repo,task_prefix=task_prefix,state_prefix='owned',
+        database_program=program,board_namespace=board_namespace,
         worktree_root=workroot,worktree_submodule_paths=(),merge_target_branch='main',
         merge_queue_dir=state_dir/'merge-queue',max_task_attempts=3,implementation_timeout=45,
         implementation_protected_paths=() if failure=='cid' else ('todo.md',),
         worktree_reconciliation_enabled=True,worktree_reconciliation_max_merges=1)
     supervisor=TodoImplementationSupervisor(config)
     daemon=supervisor._build_worktree_reconciliation_daemon()
-    task=next(task for task in daemon._load_tasks() if task.task_id=='EX-015')
+    task=next(task for task in daemon._load_tasks() if task.task_id==task_id)
     identity=daemon._identity_for_task(task)
     state=native.PortalTaskState(implementation_attempts={task.task_id:2},
         implementation_attempts_by_cid={identity.canonical_task_cid:2},
@@ -79,10 +98,54 @@ def world(tmp_path, *, failure='', historical_start=False, completed=False):
         git(workspace,'merge','--no-ff','second-parent','-m','candidate has two possible parents')
         candidate=git(workspace,'rev-parse','HEAD')
     git(repo,'merge','--no-ff',branch,'-m','integrate actual code without completing the pending task')
-    assert native.parse_task_file(board,task_header_prefix='## EX-')[0].status==('completed' if completed else 'todo')
+    assert native.parse_task_file(board,task_header_prefix=task_prefix)[0].status==('completed' if completed else 'todo')
     return SimpleNamespace(repo=repo,board=board,workspace=workspace,branch=branch,
         baseline=baseline,candidate=candidate,supervisor=supervisor,daemon=daemon,task=task,
         identity=identity,state_before=asdict(state))
+
+
+def test_host_parsed_legacy_program_validates_pending_integrated_task15(tmp_path):
+    c=world(tmp_path,legacy_cli=True);before=counts(c)
+    assert c.supervisor.config.database_program is not None
+    assert c.supervisor._database_authority_enabled() is False
+    result=c.supervisor.reconcile_backlogged_worktrees()
+    successful=[item for item in result['processed'] if item.get('merged')]
+    assert len(successful)==1,result
+    recovery=successful[0]['recovery_result']
+    assert recovery['validation_result']['attempted'] and recovery['validation_result']['passed']
+    assert recovery['provider_dispatched'] is False and recovery['attempt_consumed'] is False
+    assert native.parse_task_file(c.board,'## CIMP-')[0].status=='completed'
+    assert counts(c)==before and before[0]=={'CIMP-UX-15':2}
+
+
+@pytest.mark.parametrize('kind',['completed','unknown'])
+def test_host_parsed_legacy_program_keeps_completed_and_unknown_cleanup_authority(tmp_path,monkeypatch,kind):
+    c=world(tmp_path,legacy_cli=True,completed=kind=='completed');before=counts(c)
+    if kind=='unknown':
+        git(c.workspace,'branch','-m','implementation/unknown-retained')
+    monkeypatch.setattr(c.supervisor,'_build_worktree_reconciliation_daemon',
+        lambda:pytest.fail('completed or unknown alias must not request a fresh callback'))
+    result=c.supervisor.reconcile_backlogged_worktrees()
+    assert not result['processed'] and any(item.get('reason')=='already_merged_cleanup_pass'
+        for item in result['skipped']),result
+    cleanup=c.supervisor.cleanup_backlogged_worktrees()
+    # Existing descriptor-based cleanup refuses mutation until its own guarded
+    # runtime is qualified. This repair grants no extra cleanup authority.
+    assert cleanup['removed_count']==0 and c.workspace.exists(),cleanup
+    assert counts(c)==before
+
+
+@pytest.mark.parametrize('failure',['validation','scope'])
+def test_host_parsed_legacy_program_retains_rejected_task15_without_paid_retry(tmp_path,failure):
+    c=world(tmp_path,legacy_cli=True,failure=failure);before=counts(c)
+    code=(c.workspace/'feature.py').read_bytes();index=git(c.workspace,'ls-files','--stage')
+    result=c.supervisor.reconcile_backlogged_worktrees()
+    assert result['processed'] and not any(item.get('merged') for item in result['processed']),result
+    assert native.parse_task_file(c.board,'## CIMP-')[0].status=='todo'
+    cleanup=c.supervisor.cleanup_backlogged_worktrees()
+    assert c.workspace.exists() and git(c.repo,'rev-parse',c.branch)==c.candidate,cleanup
+    assert (c.workspace/'feature.py').read_bytes()==code and git(c.workspace,'ls-files','--stage')==index
+    assert counts(c)==before and before[0]=={'CIMP-UX-15':2}
 
 
 def counts(c):
