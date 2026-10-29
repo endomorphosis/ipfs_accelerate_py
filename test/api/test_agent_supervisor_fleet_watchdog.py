@@ -34,7 +34,7 @@ import importlib.util, json, pathlib, sys, types
 package = types.ModuleType('isolated_fleet')
 package.__path__ = []
 sys.modules[package.__name__] = package
-for name in ('live_board_probe', 'fleet_watchdog'):
+for name in ('recovery_policy', 'live_board_probe', 'fleet_watchdog'):
     spec = importlib.util.spec_from_file_location(
         'isolated_fleet.' + name, pathlib.Path(sys.argv[1]) / (name + '.py'))
     module = importlib.util.module_from_spec(spec)
@@ -837,6 +837,65 @@ def test_ready_owner_after_ensure_does_not_block_receipt_heal():
     assert fleet.select_action(state, board, 100) == "supervisor_heal"
     state["last_action"] = "supervisor_heal"
     assert fleet.select_action(state, board, 100) == ""
+
+
+@pytest.mark.parametrize("stall", ["owner_missing", "owner_live_status_unreadable",
+    "independent_todos_unclaimed", "ready_owner_missing_lanes", "stalled_no_progress"])
+@pytest.mark.parametrize("last_action", ["ensure", "supervisor_heal", "repair"])
+def test_native_recovery_retains_durable_cooldown_for_unchanged_work(tmp_path, monkeypatch, stall, last_action):
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0)
+    monkeypatch.setattr(fleet, "_ensure_unit_already_active", lambda _: False)
+    state = {"health": "degraded", "stall_class": stall,
+             "observation": _observation(health="degraded"), "incident_since": 0,
+             "last_action": last_action, "next_action_at": 130,
+             "attempts": 7, "ensure_attempts": 2,
+             "last_action_result": {"returncode": 0, "stdout": '{"status":"queued"}'}}
+    original = json.loads(json.dumps(state))
+    assert fleet.select_action(state, board, 101) == ""
+    assert fleet.select_action(state, board, 131) in {"ensure", "supervisor_heal"}
+    assert state == original
+
+
+def test_repeated_missing_owner_and_native_heal_wait_each_keep_their_cooldown(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    board = _board(tmp_path, failure_grace_seconds=0)
+    runner = Runner(_observation(health="stopped", recovery_action="ensure",
+                                 reason_codes=["owner_missing"]))
+    root = tmp_path / "watch"
+    heals = []
+    def heal(*args, **kwargs):
+        heals.append(True)
+        return {"status": "wait", "recipe": "owner_live_status_unreadable"}
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal", heal)
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert first["last_action"] == "ensure" and first["next_action_at"] == 130
+    runner.observation["reason_codes"] = ["owner_process_missing_or_birth_mismatch"]
+    waiting = fleet.tick_board(board, root, apply=True, runner=runner, now=101)
+    assert waiting["planned_action"] == "" and waiting["attempts"] == 1
+    assert not heals
+    recovered = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
+    assert recovered["last_action"] == "supervisor_heal" and len(heals) == 1
+    assert recovered["next_action_at"] == 161 and recovered["ensure_attempts"] == 1
+    waiting = fleet.tick_board(board, root, apply=True, runner=runner, now=132)
+    assert waiting["planned_action"] == "" and waiting["attempts"] == 2 and len(heals) == 1
+    assert len([call for call in runner.calls if call["argv"] == ["ensure"]]) == 1
+
+
+@pytest.mark.parametrize("pending_action", ["ensure", "supervisor_heal", "repair"])
+@pytest.mark.parametrize("ready_after_ensure", [False, True])
+def test_interrupted_native_recovery_does_not_use_queued_repair_to_bypass_cooldown(tmp_path, pending_action, ready_after_ensure):
+    state = {"health": "stopped", "stall_class": "owner_missing",
+             "observation": _observation(health="stopped", recovery_action="ensure"),
+             "incident_since": 0, "next_action_at": 130, "pending_action": pending_action,
+             "last_action": "repair", "attempts": 7, "ensure_attempts": 2,
+             "last_action_result": {"returncode": 0, "stdout": '{"status":"queued"}'}}
+    if ready_after_ensure:
+        state.update(stall_class="blocked_without_independent_work", last_action="ensure")
+        state["observation"]["details"] = {"owner_ready": True}
+    before = json.loads(json.dumps(state))
+    assert fleet.select_action(state, _board(tmp_path), 101) == ""
+    assert state == before
 
 
 def test_local_validation_heal_retries_unstall_on_cooldown(tmp_path, monkeypatch):

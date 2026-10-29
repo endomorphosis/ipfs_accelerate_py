@@ -5884,6 +5884,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Preserve daemon grammar while consuming one canonical source row."""
 
         body = dict(task.body)
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        packet_required = execution_packet_required(body)
         provenance = body.get("provenance")
         metadata: dict[str, str] = {
             str(key).strip().lower().replace("_", " "): cls._task_source_metadata_text(
@@ -5892,6 +5894,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for key, value in body.items()
             if str(key).strip()
         }
+        if packet_required:
+            metadata["execution packet required"] = "true"
         if isinstance(provenance, Mapping):
             for key, value in provenance.items():
                 metadata.setdefault(
@@ -21634,6 +21638,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation path stays free of hard import failures at module load.
         """
 
+        from ..task_sources.execution_packet_admission import execution_packet_required_metadata
+        if execution_packet_required_metadata(task.metadata):
+            return {"skip_provider": True, "provider_authorized": False,
+                    "disposition": "defer_capability", "reason_code": "execution_packet_metadata_has_no_provider_authority",
+                    "receipt_cid": "", "event": {"task_id": task.task_id, "attempt": int(attempt)}}
         try:
             from .pre_implementation_provider_gate import (
                 evaluate_provider_gate,
@@ -69698,7 +69707,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         all_tasks: Sequence[PortalTask] | None = None,
         downstream_unlock_by_task: Mapping[str, int] | None = None,
     ) -> PortalTask | None:
-        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        from ..task_sources.execution_packet_admission import execution_packet_required_metadata
+        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"
+                 and not execution_packet_required_metadata(task.metadata)]
         if self.manual_completion_authority_revalidation_only:
             ready = [
                 task
@@ -74684,6 +74695,7 @@ class DatabaseImplementationDaemon:
             repository_tree_id=repository_tree_id,
             plan_root_cid=plan_root_cid,
         )
+        from ..task_sources.execution_packet_admission import execution_packet_required
         registered: list[str] = []
         for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
             deps = tuple(str(dep) for dep in task.dependencies)
@@ -74695,6 +74707,7 @@ class DatabaseImplementationDaemon:
                     "task_alias": task.task_alias,
                     "status": task.status,
                     "priority": task.priority,
+                    **({"execution_packet_required": True} if execution_packet_required(task.body) else {}),
                 },
             )
             registered.append(task.task_cid)
@@ -74711,8 +74724,12 @@ class DatabaseImplementationDaemon:
         ready = self.task_source.ready_tasks(
             limit=TASK_SOURCE_QUERY_LIMIT, **self._positive_claim_selection(),
         )
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        self._required_execution_packet_tasks = set()
         registered: list[str] = []
         for task in ready.tasks:
+            if execution_packet_required(task.body):
+                self._required_execution_packet_tasks.add(task.task_cid)
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
                 continue
@@ -74741,7 +74758,8 @@ class DatabaseImplementationDaemon:
                 task_cid=task.task_cid,
                 task_id=task.task_alias or task.task_cid,
                 dependency_task_cids=tuple(live_deps),
-                body={"task_alias": task.task_alias, "status": task.status},
+                body={"task_alias": task.task_alias, "status": task.status,
+                      **({"execution_packet_required": True} if execution_packet_required(task.body) else {})},
             )
             readiness = self.coordinator.claimability(task.task_cid)
             if str(readiness.get("completion_status") or "") == "failed":
@@ -75921,6 +75939,8 @@ class DatabaseImplementationDaemon:
         excluded.update(self._automatic_claim_exclusions())
         parked_goals: set[str] = set()
 
+        packet_denials: dict[str, str] = {}
+
         def accept_task_cid(task_cid: str) -> bool:
             record = self.task_source.get(task_cid)
             self._shutdown_boundary()
@@ -75931,6 +75951,13 @@ class DatabaseImplementationDaemon:
             if self._task_goal_is_inconclusive(record):
                 parked_goals.add(task_cid)
                 return False
+            from ..task_sources.execution_packet_admission import execution_packet_required, NativeExecutionPacketAuthority, ExecutionPacketAdmissionError
+            if execution_packet_required(getattr(record, "body", {})) and self._typed_quack_authority_binding is None:
+                try:
+                    NativeExecutionPacketAuthority(self.task_source.intent).require(task_cid, phase="claim")
+                except (ExecutionPacketAdmissionError, AttributeError) as exc:
+                    packet_denials[task_cid] = str(exc)
+                    return False
             return str(record.status or "").strip().lower() in _DATABASE_CONTROL_READY_STATUSES
 
         self._shutdown_boundary()
@@ -75939,12 +75966,17 @@ class DatabaseImplementationDaemon:
         )
         if claim is None:
             self._shutdown_boundary()
+            packet_options = {}
+            if self._typed_quack_authority_binding is None and getattr(self, "_required_execution_packet_tasks", set()):
+                from ..task_sources.execution_packet_admission import NativeExecutionPacketAuthority
+                packet_options["execution_packet_authority"] = NativeExecutionPacketAuthority(self.task_source.intent)
             claim = self.coordinator.claim_ready_task(
                 owner_session_id=self.owner_session_id,
                 lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
                 exclude_task_cids=excluded,
                 now_ms=self._now_ms(),
                 accept_task_cid=accept_task_cid,
+                **packet_options,
             )
         if claim is None:
             parked_reader = getattr(self.task_source, "parked_ready_task_cids", None)
@@ -75959,6 +75991,12 @@ class DatabaseImplementationDaemon:
                     "formalized": False,
                     "reason": "goals_inconclusive",
                     "task_cids": sorted(parked_goals),
+                }
+            if packet_denials:
+                self._last_claim_withdrawal = {
+                    **self._last_claim_withdrawal, "admitted": False, "claim_state": "not_claimed", "formalized": False,
+                    "reason": self._last_claim_withdrawal.get("reason", "execution_packet_not_admitted"),
+                    "execution_packet_denials": dict(sorted(packet_denials.items())),
                 }
             return None
         task = self.task_source.get(claim.task_cid)
@@ -76840,6 +76878,12 @@ class DatabaseImplementationDaemon:
                            task_cid=attempt.task_cid, body=receipt)
 
     def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        current_packet_task = self.task_source.get(attempt.task_cid)
+        if current_packet_task is not None and execution_packet_required(getattr(current_packet_task, "body", {})):
+            # V1 is read/test metadata only; no signed local profile can turn
+            # that into model/provider authority, including injected callbacks.
+            raise DatabaseImplementationAuthorityError("execution packet metadata v1 has no provider authority")
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
 
