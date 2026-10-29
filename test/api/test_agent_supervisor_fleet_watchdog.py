@@ -1754,3 +1754,86 @@ def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
         "max_ensure_attempts": 2,
     }
     assert fleet.select_action(state, board, 100) == "supervisor_heal"
+
+
+def _wait_cancel_cycle(tmp_path, monkeypatch, *, job_status="running", policy=None):
+    board = _board(tmp_path)
+    root = tmp_path / "watch"
+    config = dict(state_dir=str(root), boards=[board])
+    if policy is not None:
+        config["repair_worker"] = policy
+    job = root / "repairs/spar/job.json"
+    if job_status is not None:
+        fleet.write_json(job, {"status": job_status, "attempts": 2})
+    foreign = root / "repairs/foreign/job.json"
+    fleet.write_json(foreign, {"status": "running", "attempts": 7})
+    original_foreign = foreign.read_bytes()
+    observation = _observation(completion_candidate=True,
+                               details={"native_completion_authority": False})
+    calls = []
+
+    def command(spec, **kwargs):
+        calls.append(list(spec["argv"]))
+        if spec["argv"] == ["probe"]:
+            return _result(observation)
+        assert spec["argv"][:3] == ["systemctl", "--user", "stop"]
+        return {"returncode": 0, "stdout": "", "stderr": ""}
+
+    original_tick = fleet.tick_board
+
+    def tick(*args, **kwargs):
+        kwargs["runner"] = command
+        return original_tick(*args, **kwargs)
+
+    monkeypatch.setattr(fleet, "tick_board", tick)
+    monkeypatch.setattr(fleet, "command", command)
+    monkeypatch.setattr(fleet.subprocess, "Popen",
+                        lambda *a, **kw: pytest.fail("live process launch is forbidden"))
+    return config, calls, job, foreign, original_foreign
+
+
+@pytest.mark.parametrize("unit", [None, "ipfs-taskboard-legal-ir-repair-job.service"])
+def test_wait_cancel_uses_configured_job_unit_and_preserves_foreign_job(tmp_path, monkeypatch, unit):
+    policy = {} if unit is None else {"job_unit": unit}
+    config, calls, job, foreign, original = _wait_cancel_cycle(tmp_path, monkeypatch, policy=policy)
+    job_before = job.read_bytes()
+    report = fleet.run_cycle(config, apply=True)
+    assert report["boards"]["spar"]["stall_class"] == "missing_independent_clause_evidence"
+    assert calls == [["probe"], ["systemctl", "--user", "stop",
+                                unit or "ipfs-taskboard-repair-job.service"]]
+    assert foreign.read_bytes() == original
+    assert job.read_bytes() == job_before
+
+
+@pytest.mark.parametrize("unit", [None, "--all.service", "../other.service", "other*.service",
+                                  "other.timer", "other service.service", 3])
+def test_wait_cancel_invalid_config_refuses_before_probe_or_state_mutation(tmp_path, monkeypatch, unit):
+    config, calls, job, foreign, original = _wait_cancel_cycle(
+        tmp_path, monkeypatch, policy={"job_unit": unit})
+    before = job.read_bytes()
+    with pytest.raises(ValueError, match="job_unit must be a literal service unit"):
+        fleet.run_cycle(config, apply=True)
+    assert calls == []
+    assert job.read_bytes() == before and foreign.read_bytes() == original
+    assert not (Path(config["state_dir"]) / "spar").exists()
+
+
+@pytest.mark.parametrize("status", [None, "queued", "failed", "completed"])
+def test_wait_cancel_without_running_job_does_not_stop_any_unit(tmp_path, monkeypatch, status):
+    config, calls, job, foreign, original = _wait_cancel_cycle(
+        tmp_path, monkeypatch, job_status=status,
+        policy={"job_unit": "ipfs-taskboard-legal-ir-repair-job.service"})
+    before = job.read_bytes() if job.exists() else None
+    fleet.run_cycle(config, apply=True)
+    assert calls == [["probe"]]
+    assert (job.read_bytes() if job.exists() else None) == before
+    assert foreign.read_bytes() == original
+
+
+def test_wait_cancel_observation_only_cycle_does_not_stop_running_job(tmp_path, monkeypatch):
+    config, calls, job, foreign, original = _wait_cancel_cycle(
+        tmp_path, monkeypatch, policy={"job_unit": "ipfs-taskboard-legal-ir-repair-job.service"})
+    before = job.read_bytes()
+    fleet.run_cycle(config, apply=False)
+    assert calls == [["probe"]]
+    assert job.read_bytes() == before and foreign.read_bytes() == original

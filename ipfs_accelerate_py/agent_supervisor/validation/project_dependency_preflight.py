@@ -2,8 +2,8 @@
 
 The preflight is deliberately detection-only.  Importing this module performs
 no subprocess, package-manager, network, or filesystem mutation.  At explicit
-call time it reads static PEP-621 declarations or a narrowly scoped, declarative
-supervisor contract and evaluates them in the same approved, sealed Python
+call time it reads static PEP-621 declarations, literal setuptools core metadata,
+or a narrowly scoped, declarative supervisor contract in the approved, sealed Python
 environment used by authoritative validation.  Scoped contracts may attest a
 literal ``setup.py`` extra without executing setup code; they never replace
 ordinary project-wide dependency metadata.
@@ -543,6 +543,108 @@ def _setuptools_file_backed_dependencies(
         maximum_total_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
         expected_project_root_snapshot=expected_project_root_snapshot,
     )
+
+
+def _setup_core_literal_requirements(payload: bytes) -> list[str]:
+    """Read one unshadowed setuptools setup call without executing setup.py."""
+
+    tree = ast.parse(payload.decode("utf-8"), filename="setup.py", mode="exec")
+    bindings = [
+        (node, alias.asname or alias.name)
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.level == 0
+        and node.module == "setuptools"
+        for alias in node.names if alias.name == "setup"
+    ]
+    if len(bindings) != 1:
+        raise ValueError("setup.py requires one module-level setuptools.setup import")
+    binding, name = bindings[0]
+    calls = [
+        node for node in ast.walk(tree) if isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Name) and node.func.id == name
+            or isinstance(node.func, ast.Attribute) and node.func.attr == "setup"
+        )
+    ]
+    if len(calls) != 1:
+        raise ValueError("setup.py requires one setup call")
+    call = calls[0]
+    statements = [node for node in tree.body if isinstance(node, ast.Expr) and node.value is call]
+    if (
+        len(statements) != 1
+        or not isinstance(call.func, ast.Name) or call.func.id != name
+        or tree.body.index(binding) >= tree.body.index(statements[0])
+    ):
+        raise ValueError("setup.py setup call must be unconditional and imported")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, (ast.Store, ast.Del)):
+            raise ValueError("setup.py setup import is reassigned")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name:
+            raise ValueError("setup.py setup import is shadowed")
+        if isinstance(node, ast.arg) and node.arg == name:
+            raise ValueError("setup.py setup import is shadowed")
+        if isinstance(node, ast.ExceptHandler) and node.name == name:
+            raise ValueError("setup.py setup import is shadowed")
+        if isinstance(node, ast.Attribute) and node.attr == name and isinstance(node.ctx, (ast.Store, ast.Del)):
+            raise ValueError("setup.py setup binding has an attribute mutation")
+        if (
+            isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del))
+            and isinstance(node.slice, ast.Constant) and node.slice.value == name
+        ):
+            raise ValueError("setup.py setup binding has a namespace mutation")
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                target = alias.asname or alias.name.split(".")[0]
+                if alias.name == "*" or (target == name and node is not binding):
+                    raise ValueError("setup.py setup import is ambiguous")
+        if isinstance(node, ast.Name) and node.id in {
+            "exec", "eval", "globals", "locals", "vars", "setattr", "delattr", "__import__",
+        }:
+            raise ValueError("setup.py has dynamic namespace mutation")
+    keywords = [keyword.arg for keyword in call.keywords]
+    if call.args or None in keywords or len(keywords) != len(set(keywords)):
+        raise ValueError("setup.py setup arguments must be explicit and unique")
+    values = [keyword.value for keyword in call.keywords if keyword.arg == "install_requires"]
+    if len(values) != 1 or not isinstance(values[0], ast.List):
+        raise ValueError("setup.py install_requires must be one literal list")
+    requirements: list[str] = []
+    for element in values[0].elts:
+        if (
+            not isinstance(element, ast.Constant) or type(element.value) is not str
+            or not element.value or element.value.strip() != element.value
+            or len(element.value.encode("utf-8")) > MAX_REQUIREMENT_BYTES
+        ):
+            raise ValueError("setup.py install_requires entries must be bounded literal strings")
+        requirements.append(element.value)
+    if len(requirements) > MAX_STATIC_REQUIREMENTS:
+        raise ValueError("setup.py install_requires exceeds preflight bound")
+    return requirements
+
+
+def _setuptools_literal_dependencies(
+    parsed: Mapping[str, Any],
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Bind the complete literal setup.py core to its exact file digest."""
+
+    build = parsed.get("build-system")
+    if (
+        not isinstance(build, Mapping)
+        or build.get("build-backend") not in {"setuptools.build_meta", "setuptools.build_meta:__legacy__"}
+        or "backend-path" in build
+    ):
+        raise ValueError("literal setup.py dependencies require the standard setuptools backend")
+    path, payload = _read_bounded_contained_regular_file(
+        project_root, project_root / "setup.py",
+        maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+        expected_containment_root_snapshot=expected_project_root_snapshot,
+    )
+    return _setup_core_literal_requirements(payload), [{
+        "path": path.relative_to(project_root).as_posix(),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "bytes": len(payload),
+    }]
 
 
 def _scoped_dependency_contract_configuration(
@@ -2251,35 +2353,42 @@ def _bounded_static_project(
             )
         except (OSError, UnicodeError, ValueError):
             try:
-                (
-                    dependencies,
-                    dependency_manifests,
-                    scoped_contract_metadata,
-                ) = _scoped_setup_extra_dependencies(
-                    parsed,
-                    project,
-                    project_root,
-                    project_root_snapshot,
-                    relative_root,
-                    validation_commands,
-                    task_authority,
-                    prior_seed_authority,
+                dependencies, dependency_manifests = _setuptools_literal_dependencies(
+                    parsed, project_root, project_root_snapshot,
                 )
-            except (OSError, UnicodeError, ValueError) as exc:
-                failure = {
-                    "root": relative_root,
-                    "project_name_sha256": _project_name_sha256(project),
-                    "applicable": True,
-                    "passed": False,
-                    "reason": "dynamic_dependencies_unresolved",
-                    "pyproject_sha256": pyproject_sha256,
-                    "error_type": type(exc).__name__,
-                }
-                if isinstance(exc, _ScopedDependencyContractError):
-                    failure["contract_error_reason"] = exc.reason
-                return failure
-            dependency_source = "agent_supervisor_scoped_setup_extra"
-            scoped_contract_selected = True
+            except (OSError, UnicodeError, SyntaxError, ValueError):
+                try:
+                    (
+                        dependencies,
+                        dependency_manifests,
+                        scoped_contract_metadata,
+                    ) = _scoped_setup_extra_dependencies(
+                        parsed,
+                        project,
+                        project_root,
+                        project_root_snapshot,
+                        relative_root,
+                        validation_commands,
+                        task_authority,
+                        prior_seed_authority,
+                    )
+                except (OSError, UnicodeError, ValueError) as exc:
+                    failure = {
+                        "root": relative_root,
+                        "project_name_sha256": _project_name_sha256(project),
+                        "applicable": True,
+                        "passed": False,
+                        "reason": "dynamic_dependencies_unresolved",
+                        "pyproject_sha256": pyproject_sha256,
+                        "error_type": type(exc).__name__,
+                    }
+                    if isinstance(exc, _ScopedDependencyContractError):
+                        failure["contract_error_reason"] = exc.reason
+                    return failure
+                dependency_source = "agent_supervisor_scoped_setup_extra"
+                scoped_contract_selected = True
+            else:
+                dependency_source = "setuptools_setup_literal"
         else:
             dependency_source = "setuptools_dynamic_file"
     elif dependencies is None:
@@ -2298,7 +2407,10 @@ def _bounded_static_project(
     requirement_marker_extras = [
         "test" if scoped_contract_selected else ""
     ] * len(dependencies)
-    if pytest_invoked and not scoped_contract_selected:
+    if (
+        pytest_invoked and not scoped_contract_selected
+        and dependency_source != "setuptools_setup_literal"
+    ):
         # Pytest dispatch is gated on the runner and an explicit test extra,
         # not the full runtime closure.  Sealed validation overlays cannot
         # grow unused runtime packages (hypercorn, paramiko, aiofiles) just

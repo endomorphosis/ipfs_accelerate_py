@@ -684,6 +684,7 @@ def parse_unified_patch(
     max_files: int = 256,
     max_bytes: int = 2_000_000,
     allow_binary: bool = False,
+    binary_artifact_paths: tuple[str, ...] = (),
 ) -> tuple[ParsedPatchFile, ...]:
     """Parse and validate a Git-style unified diff without invoking a shell.
 
@@ -730,7 +731,7 @@ def parse_unified_patch(
                 raise ProposalValidationError(f"{boundary} patch modes are forbidden")
             if current.startswith(("GIT binary patch", "Binary files ")):
                 binary = True
-                if not allow_binary:
+                if not allow_binary and not binary_artifact_paths:
                     raise ProposalValidationError("binary patch payloads are forbidden")
             if current.startswith("new file mode "):
                 operation = "add"
@@ -847,6 +848,13 @@ def parse_unified_patch(
                     "text patch section requires headers and an effectful hunk "
                     "or canonical empty-file metadata"
                 )
+        if binary and not allow_binary and any(
+            path and path not in binary_artifact_paths
+            for path in (old_path, new_path)
+        ):
+            raise ProposalValidationError(
+                "binary patch path requires exact artifact authority"
+            )
         files.append(
             ParsedPatchFile(
                 old_path=old_path,
@@ -1055,6 +1063,9 @@ class ProposalValidationPolicy:
         ("mypy",),
     )
     allow_binary: bool = False
+    # Native opaque artifacts are admitted only at exact task-owned PDF/ZIP
+    # paths. Empty authority preserves historical policy identities.
+    binary_artifact_paths: tuple[str, ...] = ()
     allow_secrets: bool = False
     allow_large_files: bool = False
     allow_generated: bool = False
@@ -1181,6 +1192,33 @@ class ProposalValidationPolicy:
             if isinstance(value, bool) or int(value) <= 0:
                 raise ProposalValidationError(f"{name} must be a positive integer")
             object.__setattr__(self, name, int(value))
+        binary_paths = self.binary_artifact_paths
+        if type(binary_paths) not in {tuple, list} or len(binary_paths) > 256:
+            raise ProposalValidationError("binary_artifact_paths must be a bounded path sequence")
+        exact_paths: list[str] = []
+        for path in binary_paths:
+            canonical = _strict_repo_path(path, field_name="binary_artifact_paths")
+            try:
+                path_bytes = canonical.encode("utf-8", errors="strict")
+            except UnicodeEncodeError as exc:
+                raise ProposalValidationError(
+                    "binary_artifact_paths must contain canonical UTF-8 paths"
+                ) from exc
+            if (
+                len(path_bytes) > self.max_path_bytes
+                or len(PurePosixPath(canonical).parts) > self.max_path_depth
+                or "\x7f" in canonical
+                or any(character in canonical for character in "*?[]")
+                or ":" in canonical
+                or not canonical.lower().endswith((".pdf", ".zip"))
+                or not self.path_is_in_scope(canonical)
+                or canonical in exact_paths
+            ):
+                raise ProposalValidationError(
+                    "binary_artifact_paths must name exact supported task-owned artifacts"
+                )
+            exact_paths.append(canonical)
+        object.__setattr__(self, "binary_artifact_paths", tuple(sorted(exact_paths)))
         claimed = str(self.policy_id or "").strip()
         object.__setattr__(self, "policy_id", "")
         actual = _identity(self._identity_payload())
@@ -1208,6 +1246,8 @@ class ProposalValidationPolicy:
     def _identity_payload(self) -> dict[str, Any]:
         return {
             "schema": PROPOSAL_VALIDATION_POLICY_SCHEMA,
+            **({"binary_artifact_paths": self.binary_artifact_paths}
+               if self.binary_artifact_paths else {}),
             "allowed_paths": self.allowed_paths,
             "task_owned_paths": self.task_owned_paths,
             "forbidden_paths": self.forbidden_paths,
@@ -1307,6 +1347,7 @@ class ProposalValidationPolicy:
                 )
             ),
             allow_binary=payload.get("allow_binary", False),
+            binary_artifact_paths=payload.get("binary_artifact_paths", ()),
             allow_secrets=payload.get("allow_secrets", False),
             allow_large_files=payload.get("allow_large_files", False),
             allow_generated=payload.get("allow_generated", False),
@@ -3256,6 +3297,75 @@ def _metadata_size(metadata: Mapping[str, Any]) -> int:
     return max(sizes)
 
 
+def _scoped_binary_artifact(entry: CandidateDiffEntry,
+                            policy: ProposalValidationPolicy) -> bool:
+    """Check native opaque identities without opening or unpacking artifacts.
+
+    Raw provider JSON cannot supply these opaque identity fields: its strict
+    ingress rejects them independently. Native Git collection binds hash,
+    byte count, and magic for each opaque side before this typed gate.
+    """
+    if not entry.binary or not policy.binary_artifact_paths:
+        return False
+    for side, path, source, blob in (
+        ("before", entry.old_path, entry.before_source, entry.before_blob_id),
+        ("after", entry.new_path, entry.after_source, entry.after_blob_id),
+    ):
+        if not path:
+            continue
+        if path not in policy.binary_artifact_paths or not policy.path_is_in_scope(path):
+            return False
+        if source is not None:
+            try:
+                raw = source.encode("utf-8", errors="strict")
+            except UnicodeEncodeError:
+                return False
+            size, magic = len(raw), raw[:8]
+        else:
+            size = entry.metadata.get(f"{side}_size_bytes")
+            digest = entry.metadata.get(f"{side}_sha256")
+            magic_hex = entry.metadata.get(f"{side}_magic_hex")
+            if (
+                type(size) is not int or size <= 0
+                or not isinstance(blob, str)
+                or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", blob) is None
+                or not isinstance(digest, str)
+                or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+                or not isinstance(magic_hex, str)
+                or re.fullmatch(r"(?:[0-9a-f]{2}){1,8}", magic_hex) is None
+            ):
+                return False
+            magic = bytes.fromhex(magic_hex)
+            if len(magic) != min(size, 8):
+                return False
+        if not 0 < size <= policy.max_file_bytes:
+            return False
+        if path.lower().endswith(".pdf"):
+            if not magic.startswith(b"%PDF-"):
+                return False
+        elif path.lower().endswith(".zip"):
+            if not magic.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")):
+                return False
+        else:
+            return False
+    return True
+
+
+def _materialized_entry_bytes(entry: CandidateDiffEntry, *, include_opaque: bool) -> int:
+    total = 0
+    for side, path, source in (
+        ("before", entry.old_path, entry.before_source),
+        ("after", entry.new_path, entry.after_source),
+    ):
+        if source is not None:
+            total += len(source.encode("utf-8", errors="surrogatepass"))
+        elif include_opaque and path and entry.binary:
+            size = entry.metadata.get(f"{side}_size_bytes")
+            if type(size) is int and size > 0:
+                total += size
+    return total
+
+
 def _command_is_allowed(
     command: Sequence[str], prefixes: Sequence[Sequence[str]]
 ) -> bool:
@@ -3675,11 +3785,9 @@ class ProposalValidator:
                 ProposalGate.PATCH,
                 "candidate diff exceeds the entry bound",
             )
-        patch_bytes = sum(
-            len((entry.before_source or "").encode("utf-8", errors="surrogatepass"))
-            + len((entry.after_source or "").encode("utf-8", errors="surrogatepass"))
-            for entry in entries
-        )
+        patch_bytes = sum(_materialized_entry_bytes(
+            entry, include_opaque=bool(policy.binary_artifact_paths)
+        ) for entry in entries)
         if patch_bytes > policy.max_patch_bytes:
             add(
                 ProposalFindingCode.PATCH_TOO_LARGE,
@@ -3805,6 +3913,7 @@ class ProposalValidator:
                     max_files=policy.max_diff_entries,
                     max_bytes=policy.max_patch_bytes,
                     allow_binary=policy.allow_binary,
+                    binary_artifact_paths=policy.binary_artifact_paths,
                 )
             except ProposalValidationError as exc:
                 add(
@@ -3860,6 +3969,7 @@ class ProposalValidator:
                 "declared paths do not exactly match the normalized candidate diff",
             )
         for entry in entries:
+            scoped_binary = _scoped_binary_artifact(entry, policy)
             inert_test_package_marker = (
                 _is_inert_test_package_marker_companion(entry, policy)
             )
@@ -3925,7 +4035,7 @@ class ProposalValidator:
                         "candidate path is outside the immutable task-owned scope",
                         path,
                     )
-            if entry.binary and not policy.allow_binary:
+            if entry.binary and not policy.allow_binary and not scoped_binary:
                 add(
                     ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
                     ProposalGate.PATH,
@@ -3935,14 +4045,15 @@ class ProposalValidator:
             source_bytes = (entry.after_source or "").encode(
                 "utf-8", errors="surrogatepass"
             )
-            if not policy.allow_binary and _looks_binary(source_bytes):
+            if not policy.allow_binary and not scoped_binary and _looks_binary(source_bytes):
                 add(
                     ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,
                     "binary candidate content requires explicit policy authority",
                     entry.path,
                 )
-            if not policy.allow_archives and _looks_archive(entry.path, source_bytes):
+            if (not policy.allow_archives and not scoped_binary
+                    and _looks_archive(entry.path, source_bytes)):
                 add(
                     ProposalFindingCode.ARCHIVE_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,

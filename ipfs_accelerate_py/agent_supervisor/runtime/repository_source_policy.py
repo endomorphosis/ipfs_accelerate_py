@@ -65,6 +65,10 @@ def _instruction(binding):
         "and respect its raw-source requirements. "
         "Pass the query's path and symbol_id to repository_read for a supported Python definition and its verified local edit name. "
         "These definition reads are dedented and omit imports/enclosing context; omit symbol_id for a full file. "
+        "For a smaller exact read of any UTF-8 file, pass start_line and end_line together "
+        "with representation original (inclusive physical lines, at most 4096 lines/64 KiB). "
+        "Line ranges report omitted lines, omit other context and provide no symbol edit handle; "
+        "do not combine them with symbol_id. "
         f"The selected default representation is {representation}. "
         + selection +
         "Use repository_replace_symbol with the read's symbol, source_sha256 as expected_sha256, and returned representation for supported edits; "
@@ -247,17 +251,30 @@ def finish_runtime_store(binding, *, expected_identity):
                 or stat.S_IMODE(info.st_mode) != 0o700):
             raise ValueError("repository invocation directory changed")
         try:
-            from .repository_source_mcp import summarize_repository_audit, validate_retrieval_observation
+            from .repository_source_mcp import (
+                summarize_repository_audit, validate_read_observation, validate_retrieval_observation,
+            )
             summary = summarize_repository_audit(Path(binding["audit_store"]))
             retrieval = summary.pop("retrieval_observation", None) if type(summary) is dict else None
+            reads = summary.pop("read_observation", None) if type(summary) is dict else None
             if (type(summary) is dict and summary.get("status") in {"observed", "not_observed", "unavailable"}
                     and all(value is None or type(value) is int and value >= 0
                             for key, value in summary.items() if key != "status")
                     and set(summary) == set(usage) - {"store_cleanup_complete", "artifacts_retained_after_invocation"}):
                 usage.update(summary)
                 if retrieval is not None:
-                    usage["retrieval_observation"] = validate_retrieval_observation(
-                        retrieval, tool_calls=usage["tool_calls"], errors=usage["errors"])
+                    try:
+                        usage["retrieval_observation"] = validate_retrieval_observation(
+                            retrieval, tool_calls=usage["tool_calls"], errors=usage["errors"])
+                    except (ValueError, TypeError, KeyError):
+                        pass
+                if reads is not None:
+                    try:
+                        usage["read_observation"] = validate_read_observation(reads,
+                            tool_calls=usage["tool_calls"], errors=usage["errors"],
+                            successful_reads=usage["successful_reads"], compact_reads=usage["compact_reads"])
+                    except (ValueError, TypeError, KeyError):
+                        pass
         except Exception:
             pass
         if "tokenizer" in binding["config"]:

@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import stat
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -51,6 +53,9 @@ PROOF_SCOPE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-scope@1"
 PROOF_SCOPE_SET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-proof-scope-set@1"
 CODE_OBLIGATION_REQUEST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-obligation-request@1"
 CODE_OBLIGATION_CACHE_KEY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/code-obligation-cache-key@1"
+# This collector never materializes an unbounded opaque payload. The daemon's
+# aggregate proposal ceiling may be stricter than this per-side read bound.
+MAX_NATIVE_CANDIDATE_BLOB_BYTES = 16_000_000
 PROOF_CANDIDATE_NON_AUTHORITY_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-candidate-non-authority-evidence@1"
 )
@@ -1200,29 +1205,81 @@ def _git(repo_root: Path, *arguments: str, binary: bool = False) -> str | bytes 
     return result.stdout.decode("utf-8", errors="surrogateescape")
 
 
-def _git_source(repo_root: Path, revision: str | None, path: str) -> tuple[str | None, str]:
+def _git_blob_identity(repo_root: Path, raw: bytes) -> str:
+    """Hash the captured bytes without writing an object or applying filters."""
+
+    result = subprocess.run(
+        ["git", "hash-object", "--stdin"], cwd=repo_root, input=raw,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError("unable to bind captured candidate bytes to a Git blob")
+    return result.stdout.decode("ascii").strip()
+
+
+def _git_source(
+    repo_root: Path, revision: str | None, path: str,
+) -> tuple[str | None, str, dict[str, Any]]:
+    """Capture one bounded source and hash/size/magic evidence for opaque bytes.
+
+    Opaque bytes stay out of JSON source fields. This is collection evidence,
+    never permission to admit a binary/archive path; that remains policy-owned.
+    """
+
     if revision is None:
         absolute = repo_root / path
         if absolute.is_symlink():
             blob = _git(repo_root, "hash-object", "--", path)
-            return None, str(blob or "").strip()
+            return None, str(blob or "").strip(), {}
         try:
-            raw = absolute.read_bytes()
-        except OSError:
-            return None, ""
-        blob = _git(repo_root, "hash-object", "--", path)
+            # A symlinked ancestor must not turn a task-owned spelling into
+            # authority to collect an external file.
+            if absolute.resolve(strict=True) != absolute:
+                raise ValueError("candidate source path contains an alias")
+            fd = os.open(absolute, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    raise ValueError("candidate source must be a regular file")
+                if before.st_size > MAX_NATIVE_CANDIDATE_BLOB_BYTES:
+                    raise ValueError("candidate source exceeds bounded native blob limit")
+                raw = stream.read(MAX_NATIVE_CANDIDATE_BLOB_BYTES + 1)
+                after = os.fstat(stream.fileno())
+            observed = absolute.lstat()
+            identity = lambda item: (item.st_dev, item.st_ino, item.st_mode,
+                                     item.st_size, item.st_mtime_ns, item.st_ctime_ns,
+                                     item.st_nlink)
+            if (len(raw) > MAX_NATIVE_CANDIDATE_BLOB_BYTES
+                    or identity(before) != identity(after)
+                    or identity(after) != identity(observed)
+                    or len(raw) != before.st_size):
+                raise ValueError("candidate source changed while being collected")
+        except FileNotFoundError:
+            return None, "", {}
+        blob = _git_blob_identity(repo_root, raw)
     else:
-        raw = _git(repo_root, "show", f"{revision}:{path}", binary=True)
+        blob = str(_git(repo_root, "rev-parse", f"{revision}:{path}") or "").strip()
+        if not blob or str(_git(repo_root, "cat-file", "-t", blob) or "").strip() != "blob":
+            return None, "", {}
+        size = str(_git(repo_root, "cat-file", "-s", blob) or "").strip()
+        if not size.isdecimal() or int(size) > MAX_NATIVE_CANDIDATE_BLOB_BYTES:
+            raise ValueError("Git source exceeds bounded native blob limit")
+        raw = _git(repo_root, "cat-file", "blob", blob, binary=True)
         if not isinstance(raw, bytes):
-            return None, ""
-        blob = _git(repo_root, "rev-parse", f"{revision}:{path}")
-    if b"\0" in raw:
-        return None, str(blob or "").strip()
+            raise ValueError("unable to read the exact candidate Git blob")
+        if len(raw) != int(size) or _git_blob_identity(repo_root, raw) != blob:
+            raise ValueError("candidate Git blob content binding differs")
+    opaque = (b"\0" in raw or raw.startswith(b"%PDF-")
+              or raw.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")))
     try:
-        source = raw.decode("utf-8")
+        source = None if opaque else raw.decode("utf-8")
     except UnicodeDecodeError:
-        return None, str(blob or "").strip()
-    return source, str(blob or "").strip()
+        source = None
+    if revision is None and source is None and before.st_nlink != 1:
+        raise ValueError("opaque candidate source must not be hardlinked")
+    metadata = ({"size_bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+                 "magic_hex": raw[:8].hex()} if source is None else {})
+    return source, str(blob or "").strip(), metadata
 
 
 def collect_git_candidate_diff(
@@ -1277,11 +1334,11 @@ def collect_git_candidate_diff(
 
     entries: list[CandidateDiffEntry] = []
     for status, old_path, new_path in changes:
-        before_source, before_blob = (
-            _git_source(root, base_revision, old_path) if old_path else (None, "")
+        before_source, before_blob, before_metadata = (
+            _git_source(root, base_revision, old_path) if old_path else (None, "", {})
         )
-        after_source, after_blob = (
-            _git_source(root, candidate_revision, new_path) if new_path else (None, "")
+        after_source, after_blob, after_metadata = (
+            _git_source(root, candidate_revision, new_path) if new_path else (None, "", {})
         )
         binary = bool(
             (old_path and before_source is None and before_blob)
@@ -1297,6 +1354,8 @@ def collect_git_candidate_diff(
                 before_blob_id=before_blob,
                 after_blob_id=after_blob,
                 binary=binary,
+                metadata={**{"before_" + key: value for key, value in before_metadata.items()},
+                          **{"after_" + key: value for key, value in after_metadata.items()}},
             )
         )
 
@@ -1329,7 +1388,11 @@ def collect_git_candidate_diff(
                 before_blob_id=old_entry.before_blob_id,
                 after_blob_id=new_entry.after_blob_id,
                 binary=old_entry.binary or new_entry.binary,
-                metadata={"detected_from_unstaged_blob_identity": True},
+                metadata={
+                    **{key: value for key, value in old_entry.metadata.items() if key.startswith("before_")},
+                    **{key: value for key, value in new_entry.metadata.items() if key.startswith("after_")},
+                    "detected_from_unstaged_blob_identity": True,
+                },
             )
         )
     reconciled.extend(entry for entry in entries if id(entry) not in replaced)

@@ -11,12 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import json
+import math
 from pathlib import Path
 import threading
 import weakref
 
 from ..context.context_compiler import ContextCompileResult
-from ..context.context_contracts import ContextCapsule
+from ..context.context_contracts import CONTEXT_REFERENCE_SCHEMA, ContextCapsule
 from ..procedure_compiler.world_model import RepositoryWorldState, WorldProjectionStatus
 from ..prompt.delta_task_packet import (
     DeltaTaskPacketRequest, PacketBudget, admit_provider_packet, build_delta_task_packet,
@@ -31,6 +32,19 @@ RECEIPT_SCHEMA = "repository-world-packet-receipt@1"
 MAX_BYTES = 262144
 REPLAY_MAX_BYTES = 2 * 1024 * 1024
 ARTIFACT_SCHEMA = "repository-world-packet-artifact@1"
+WORLD_PROMPT_VIEW_SCHEMA = "repository-world-prompt-view@1"
+WORLD_PROMPT_VIEW_RECEIPT_SCHEMA = "repository-world-prompt-view-receipt@1"
+WORLD_PROMPT_VIEW_MAX_BYTES = MAX_BYTES + 4096
+_VIEW_REFERENCE_FIELDS = frozenset({"schema", "contract_version", "kind", "tier",
+                                  "repository_id", "tree_id", "path"})
+_VIEW_FALSE_FIELDS = frozenset({"source_freshness_verified", "program_semantics_proved",
+    "proof_authority", "execution_authority", "completion_authority",
+    "provider_token_savings_measured", "provider_retained_parent"})
+_VIEW_INSTRUCTIONS = (
+    "Each context-reference evidence record's reference inherits reference_common_bindings. "
+    "Shared fields have identical values in every reference and no overrides. "
+    "All values and evidence bodies remain inline; no prior context is needed."
+)
 _ISSUED = weakref.WeakKeyDictionary()
 _ISSUANCE_LOCK = threading.RLock()
 GUIDANCE = (
@@ -75,6 +89,183 @@ def _plain(value):
 
 def _sha(value: str):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _view_parse(text, *, maximum=MAX_BYTES):
+    """Parse bounded representation data without opening any native owner."""
+    _require(type(text) is str, "world_prompt_view_text_required")
+    try:
+        _require(len(text.encode("utf-8")) <= maximum, "world_prompt_view_limit")
+
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                _require(key not in result, "world_prompt_view_duplicate_key")
+                result[key] = value
+            return result
+
+        def invalid_constant(_value):
+            raise RepositoryWorldPacketError("world_prompt_view_nonfinite")
+
+        value = json.loads(text, object_pairs_hook=unique, parse_constant=invalid_constant)
+        _require(type(value) is dict, "world_prompt_view_object_required")
+        pending, nodes = [(value, 0)], 0
+        while pending:
+            current, depth = pending.pop()
+            nodes += 1
+            _require(nodes <= maximum and depth <= 40, "world_prompt_view_structure_limit")
+            if type(current) is dict:
+                for key, item in current.items():
+                    _require(type(key) is str, "world_prompt_view_key_invalid")
+                    key.encode("utf-8")
+                    pending.append((item, depth + 1))
+            elif type(current) is list:
+                pending.extend((item, depth + 1) for item in current)
+            elif type(current) is str:
+                current.encode("utf-8")
+            elif type(current) is float:
+                _require(math.isfinite(current), "world_prompt_view_nonfinite")
+            else:
+                _require(current is None or type(current) in (bool, int), "world_prompt_view_value_invalid")
+        return value
+    except RepositoryWorldPacketError:
+        raise
+    except (TypeError, ValueError, UnicodeError, RecursionError) as error:
+        raise RepositoryWorldPacketError("world_prompt_view_json_invalid") from error
+
+
+def _view_wire(prompt, *, maximum=MAX_BYTES):
+    _require(type(prompt) is str and prompt.startswith(GUIDANCE + "\n"), "world_prompt_view_guidance_mismatch")
+    # Include the unchanged guidance in the same byte ceiling as the wire.
+    try:
+        _require(len(prompt.encode("utf-8")) <= maximum, "world_prompt_view_limit")
+    except UnicodeError as error:
+        raise RepositoryWorldPacketError("world_prompt_view_json_invalid") from error
+    wire = _view_parse(prompt[len(GUIDANCE) + 1:], maximum=maximum)
+    _require(prompt == GUIDANCE + "\n" + _json(wire), "world_prompt_view_noncanonical")
+    return wire
+
+
+def _view_references(wire, *, native):
+    packet = wire.get("packet")
+    _require(type(packet) is dict and type(packet.get("members")) is list
+             and len(packet["members"]) <= 512, "world_prompt_view_members_invalid")
+    references, identities = [], set()
+    for member in packet["members"]:
+        _require(type(member) is dict, "world_prompt_view_member_invalid")
+        if member.get("kind") != "evidence":
+            continue
+        payload = member.get("payload")
+        _require(type(payload) is dict, "world_prompt_view_evidence_invalid")
+        evidence_id = payload.get("evidence_id")
+        if type(evidence_id) is not str or not evidence_id.startswith("context-reference:"):
+            continue
+        reference = payload.get("reference")
+        _require(type(reference) is dict and type(reference.get("reference_id")) is str
+                 and reference["reference_id"]
+                 and evidence_id == "context-reference:" + reference["reference_id"]
+                 and reference["reference_id"] not in identities
+                 and type(reference.get("summary")) is str, "world_prompt_view_reference_invalid")
+        if native:
+            _require(reference.get("schema") == CONTEXT_REFERENCE_SCHEMA, "world_prompt_view_reference_schema")
+        identities.add(reference["reference_id"])
+        references.append(reference)
+    return references
+
+
+def _view_scalar(field, value):
+    if field == "contract_version":
+        return type(value) is int and 0 <= value <= 2147483647
+    return type(value) is str and len(value.encode("utf-8")) <= 4096
+
+
+@dataclass(frozen=True)
+class RepositoryWorldPromptView:
+    """Pure reversible rendering; no source, provider or ownership admission."""
+
+    native_prompt: str
+    provider_prompt: str
+    _receipt_json: str = field(repr=False)
+
+    @property
+    def receipt(self):
+        return json.loads(self._receipt_json)
+
+
+def _build_world_prompt_view(native_prompt):
+    wire = _view_wire(native_prompt)
+    _require(set(wire) == {"schema", "delivery_mode", "packet"}
+             and wire["schema"] == SCHEMA and wire["delivery_mode"] == "self_contained",
+             "world_prompt_view_native_schema")
+    references = _view_references(wire, native=True)
+    common = {}
+    if len(references) >= 2:
+        for name in sorted(_VIEW_REFERENCE_FIELDS):
+            if name not in references[0] or not _view_scalar(name, references[0][name]):
+                continue
+            value = references[0][name]
+            if all(name in reference and type(reference[name]) is type(value)
+                   and reference[name] == value for reference in references):
+                common[name] = value
+        for reference in references:
+            for name in common:
+                del reference[name]
+    wire.update(schema=WORLD_PROMPT_VIEW_SCHEMA, source_schema=SCHEMA,
+                reference_common_bindings=common, reference_instructions=_VIEW_INSTRUCTIONS)
+    candidate = GUIDANCE + "\n" + _json(wire)
+    # The candidate adds a small inline decoder even when sharing has no gain.
+    # Keep such valid native packets available for the runner's native fallback.
+    _require(len(candidate.encode("utf-8")) <= WORLD_PROMPT_VIEW_MAX_BYTES, "world_prompt_view_limit")
+    receipt = dict(schema=WORLD_PROMPT_VIEW_RECEIPT_SCHEMA, view_schema=WORLD_PROMPT_VIEW_SCHEMA,
+        source_schema=SCHEMA, native_prompt_sha256=_sha(native_prompt), native_prompt_bytes=len(native_prompt.encode("utf-8")),
+        candidate_prompt_sha256=_sha(candidate), candidate_prompt_bytes=len(candidate.encode("utf-8")),
+        shared_reference_fields=sorted(common), reference_count=len(references),
+        factored_reference_count=len(references) if common else 0,
+        shared_bindings_sha256=_sha(_json(common)), **{name: False for name in _VIEW_FALSE_FIELDS})
+    return RepositoryWorldPromptView(native_prompt, candidate, _json(receipt))
+
+
+def project_repository_world_prompt(native_prompt: str) -> RepositoryWorldPromptView:
+    """Factor only identical scalar reference metadata into inline bindings.
+
+    The caller must already hold a verified native packet. Every body, identity,
+    requiredness and coverage field remains recoverable without a parent or tool.
+    A candidate with no shared fields may be larger; the runner owns selection.
+    """
+    view = _build_world_prompt_view(native_prompt)
+    _require(restore_repository_world_prompt(view.provider_prompt, view.receipt) == native_prompt,
+             "world_prompt_view_roundtrip_mismatch")
+    return view
+
+
+def restore_repository_world_prompt(provider_prompt: str, receipt: dict) -> str:
+    """Restore exact native text and reject edits, overrides or forged receipts."""
+    _require(type(receipt) is dict, "world_prompt_view_receipt_invalid")
+    try:
+        checked_receipt = _view_parse(_json(receipt), maximum=8192)
+    except (TypeError, ValueError, UnicodeError, RecursionError) as error:
+        raise RepositoryWorldPacketError("world_prompt_view_receipt_invalid") from error
+    wire = _view_wire(provider_prompt, maximum=WORLD_PROMPT_VIEW_MAX_BYTES)
+    _require(set(wire) == {"schema", "source_schema", "delivery_mode", "packet",
+                          "reference_common_bindings", "reference_instructions"}
+             and wire["schema"] == WORLD_PROMPT_VIEW_SCHEMA and wire["source_schema"] == SCHEMA
+             and wire["delivery_mode"] == "self_contained" and wire["reference_instructions"] == _VIEW_INSTRUCTIONS,
+             "world_prompt_view_schema")
+    common = wire["reference_common_bindings"]
+    _require(type(common) is dict and not set(common) - _VIEW_REFERENCE_FIELDS
+             and all(_view_scalar(name, value) for name, value in common.items()),
+             "world_prompt_view_shared_fields_invalid")
+    references = _view_references(wire, native=False)
+    _require(not common or len(references) >= 2, "world_prompt_view_shared_population_invalid")
+    for reference in references:
+        _require(not set(common).intersection(reference), "world_prompt_view_reference_override")
+        reference.update(common)
+    native = GUIDANCE + "\n" + _json(dict(schema=SCHEMA, delivery_mode="self_contained", packet=wire["packet"]))
+    rebuilt = _build_world_prompt_view(native)
+    _require(rebuilt.provider_prompt == provider_prompt, "world_prompt_view_projection_mismatch")
+    # Canonical JSON comparison keeps bool/int and int/float types distinct.
+    _require(_json(rebuilt.receipt) == _json(checked_receipt), "world_prompt_view_receipt_mismatch")
+    return native
 
 
 def _texts(value, name, *, maximum=64, required=False):

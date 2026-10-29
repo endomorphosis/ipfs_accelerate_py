@@ -248,6 +248,23 @@ def _validate_retrieval(usage):
         raise ValueError("repository runtime probe retrieval usage differs")
 
 
+def _validate_reads(usage, *, legacy):
+    from .repository_source_mcp import READ_COUNTERS, validate_read_observation
+    reads = validate_read_observation(usage["read_observation"],
+        tool_calls=usage["tool_calls"], errors=usage["errors"],
+        successful_reads=usage["successful_reads"], compact_reads=usage["compact_reads"])
+    # The installed probe reads full files at 4/7/16 and definitions at 12/15;
+    # reads 6/14 refuse old generations. Historical @1 stops before 12-16.
+    expected = (dict(read_calls=3, successful_reads=2, failed_reads=1, full_file_reads=2,
+                     original_reads=1, compact_reads=1, generation_bindings_observed=2) if legacy else
+                dict(read_calls=7, successful_reads=5, failed_reads=2, full_file_reads=3,
+                     definition_reads=2, original_reads=3, compact_reads=2, generation_bindings_observed=5))
+    if (reads["complete"] is not True or reads["exposed_content_utf8_bytes"] <= 0
+            or any(reads[key] != expected.get(key, 0) for key in READ_COUNTERS
+                   if key != "exposed_content_utf8_bytes")):
+        raise ValueError("repository runtime probe read usage differs")
+
+
 def validate_probe(value, *, allow_legacy=False):
     """Admit current qualification; old receipts require explicit review mode.
 
@@ -284,6 +301,8 @@ def validate_probe(value, *, allow_legacy=False):
                     "artifacts_retained_after_invocation"}
     if not legacy or type(usage) is dict and "retrieval_observation" in usage:
         usage_fields.add("retrieval_observation")
+    if type(usage) is dict and "read_observation" in usage:
+        usage_fields.add("read_observation")
     if (type(usage) is not dict or set(usage) != usage_fields or usage.get("status") != "observed"
             or any(type(usage.get(key)) is not int or usage[key] != number for key, number in expected.items())
             or type(usage.get("returned_bytes")) is not int or not 0 < usage["returned_bytes"] <= 128 * 1024
@@ -292,6 +311,8 @@ def validate_probe(value, *, allow_legacy=False):
         raise ValueError("repository runtime probe usage differs")
     if "retrieval_observation" in usage:
         _validate_retrieval(usage)
+    if "read_observation" in usage:
+        _validate_reads(usage, legacy=legacy)
     return value
 
 
