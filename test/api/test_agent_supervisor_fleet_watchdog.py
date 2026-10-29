@@ -2565,3 +2565,141 @@ def test_explicit_false_observation_policy_retains_normal_recovery_selection(tmp
     state = {"health": "unknown", "stall_class": "probe_failed", "incident_since": 0,
              "next_action_at": 0, "observation": _observation(health="unknown")}
     assert fleet.select_action(state, board, 1000) == "repair"
+
+
+# Optional producer identity is observational metadata, never recovery authority.
+def _liveness_profile(**changes):
+    return {"schema": "agent-supervisor/watchdog-liveness-profile@1",
+            "deployment_id": "legal-ir:release-01", "source_sha256": "a" * 64,
+            **changes}
+
+
+def _liveness_cycle(tmp_path, monkeypatch, *, profile=...):
+    observation = {"board_id": "kept", "health": "blocked", "reason_codes": ["review_required"]}
+    config = {"state_dir": str(tmp_path), "boards": [{"id": "kept"}]}
+    if profile is not ...:
+        config["liveness_identity"] = profile
+    monkeypatch.setattr(fleet, "tick_board", lambda *args, **kwargs: observation)
+    monkeypatch.setattr(fleet.time, "time", lambda: 1234.5)
+    published = []
+    exports = []
+    monkeypatch.setattr(fleet, "write_json", lambda path, report: published.append((path, report)))
+    monkeypatch.setattr(fleet, "write_ducklake_fleet_health", lambda path, report: exports.append((path, report)))
+    report = fleet.run_cycle(config, apply=True)
+    assert report["boards"] == {"kept": observation}
+    assert published == [(tmp_path / "status.json", report)]
+    assert exports == [(tmp_path, report)]
+    return report, config
+
+
+def test_run_cycle_without_liveness_preserves_legacy_shape_and_skips_metadata(tmp_path, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("legacy cycle must not read optional process metadata")
+
+    monkeypatch.setattr(fleet, "process_identity", forbidden)
+    monkeypatch.setattr(fleet, "_watchdog_liveness", forbidden)
+    report, _ = _liveness_cycle(tmp_path, monkeypatch)
+    assert report == {"schema": "agent-supervisor/fleet-watchdog@1", "observed_at": 1234.5,
+                      "apply": True, "boards": {"kept": {"board_id": "kept", "health": "blocked",
+                                                        "reason_codes": ["review_required"]}}}
+
+
+def test_run_cycle_liveness_is_a_declared_profile_with_own_birth_only(tmp_path, monkeypatch):
+    calls = []
+    profile = _liveness_profile()
+
+    def identity(pid):
+        calls.append(pid)
+        return {"pid": pid, "start_time_ticks": 456,
+                "boot_id": "12345678-1234-1234-1234-123456789abc",
+                "argv": ["private argument"], "cwd": "/not-a-source-attestation"}
+
+    monkeypatch.setattr(fleet, "process_identity", identity)
+    report, config = _liveness_cycle(tmp_path, monkeypatch, profile=profile)
+    assert calls == [os.getpid()]
+    assert report["liveness"] == {
+        "schema": "agent-supervisor/watchdog-liveness@1", "available": True,
+        "process": {"pid": os.getpid(), "birth_ticks": 456,
+                    "boot_id": "12345678-1234-1234-1234-123456789abc"},
+        "profile": {"deployment_id": "legal-ir:release-01", "source_sha256": "a" * 64},
+        "source_binding": "declared_profile_only", "action_authority": False,
+    }
+    report["liveness"]["profile"]["deployment_id"] = "caller-change"
+    assert config["liveness_identity"] == profile == _liveness_profile()
+
+
+@pytest.mark.parametrize("profile", [
+    None, [], True, "profile", {},
+    _liveness_profile(schema="wrong"),
+    _liveness_profile(deployment_id=""),
+    _liveness_profile(deployment_id=" "),
+    _liveness_profile(deployment_id="name\n"),
+    _liveness_profile(deployment_id="x" * 129),
+    _liveness_profile(deployment_id=True),
+    _liveness_profile(deployment_id=math.nan),
+    _liveness_profile(source_sha256="A" * 64),
+    _liveness_profile(source_sha256="a" * 63),
+    _liveness_profile(source_sha256=math.nan),
+    _liveness_profile(extra=True),
+])
+def test_run_cycle_malformed_liveness_preserves_results_without_metadata_reads(tmp_path, monkeypatch, profile):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid profile must not read process metadata")
+
+    monkeypatch.setattr(fleet, "process_identity", forbidden)
+    report, _ = _liveness_cycle(tmp_path, monkeypatch, profile=profile)
+    assert report["liveness"] == {
+        "schema": "agent-supervisor/watchdog-liveness@1", "available": False,
+        "reason_code": "invalid_liveness_profile", "source_binding": "declared_profile_only",
+        "action_authority": False,
+    }
+
+
+@pytest.mark.parametrize("change", [
+    "empty", "not_object", "foreign_pid", "boolean_pid", "string_birth",
+    "boolean_birth", "zero_birth", "nan_birth", "invalid_boot", "missing_boot", "error",
+])
+def test_run_cycle_unavailable_own_birth_keeps_board_report(tmp_path, monkeypatch, change):
+    def identity(pid):
+        if change == "error":
+            raise OSError("private metadata failure must not appear in report")
+        if change == "empty":
+            return {}
+        if change == "not_object":
+            return None
+        value = {"pid": pid, "start_time_ticks": 456,
+                 "boot_id": "12345678-1234-1234-1234-123456789abc"}
+        if change == "foreign_pid":
+            value["pid"] = pid + 1
+        elif change == "boolean_pid":
+            value["pid"] = True
+        elif change == "string_birth":
+            value["start_time_ticks"] = "456"
+        elif change == "boolean_birth":
+            value["start_time_ticks"] = True
+        elif change == "zero_birth":
+            value["start_time_ticks"] = 0
+        elif change == "nan_birth":
+            value["start_time_ticks"] = math.nan
+        elif change == "invalid_boot":
+            value["boot_id"] = "not-a-uuid"
+        elif change == "missing_boot":
+            value.pop("boot_id")
+        return value
+
+    monkeypatch.setattr(fleet, "process_identity", identity)
+    report, _ = _liveness_cycle(tmp_path, monkeypatch, profile=_liveness_profile())
+    assert report["liveness"] == {
+        "schema": "agent-supervisor/watchdog-liveness@1", "available": False,
+        "reason_code": "process_identity_unavailable", "source_binding": "declared_profile_only",
+        "profile": {"deployment_id": "legal-ir:release-01", "source_sha256": "a" * 64},
+        "action_authority": False,
+    }
+
+
+def test_load_config_preserves_optional_liveness_for_nonfatal_cycle_validation(tmp_path):
+    path = tmp_path / "fleet.json"
+    profile = _liveness_profile(deployment_id="bad token with spaces")
+    value = {"state_dir": str(tmp_path), "boards": [_board(tmp_path)], "liveness_identity": profile}
+    path.write_text(json.dumps(value))
+    assert fleet.load_config(path)["liveness_identity"] == profile
