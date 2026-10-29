@@ -761,3 +761,549 @@ def test_prerequisite_returned_pins_do_not_alias_configuration(tmp_path):
     result["owner_pin"]["sha256"] = "caller-change"
     result["report_pin"]["path"] = "/caller-change"
     assert json.dumps(reference, sort_keys=True) == expected
+
+
+# The optional watchdog attachment is diagnostic only. These fixtures never
+# query a real unit, process, provider, or native task store.
+_WATCHDOG_MONOTONIC = 10_000.0
+_WATCHDOG_BOOT_ID = "b82a31a5-7008-41e2-b518-d01e719bfb42"
+
+
+@pytest.fixture
+def watchdog_liveness(config, tmp_path, monkeypatch):
+    path = tmp_path / "dedicated-watchdog-status.json"
+    binding = {
+        "schema": "agent-supervisor/watchdog-liveness-binding@1",
+        "service": "fixture-dedicated-watchdog.service",
+        "status_path": str(path),
+        "deployment_id": "fixture-deployment-v1",
+        "source_sha256": "a" * 64,
+        "stale_after_seconds": 60,
+        "startup_grace_seconds": 30,
+    }
+    process = {"pid": 4242, "birth_ticks": 12345, "boot_id": _WATCHDOG_BOOT_ID,
+               "children": []}
+    report = {
+        "schema": "agent-supervisor/fleet-watchdog@1",
+        "observed_at": NOW - 10,
+        "apply": True,
+        "boards": {"fixture-engineering": {"health": "healthy"}},
+        "liveness": {
+            "schema": "agent-supervisor/watchdog-liveness@1",
+            "available": True,
+            "process": {key: process[key] for key in ("pid", "birth_ticks", "boot_id")},
+            "profile": {key: binding[key] for key in ("deployment_id", "source_sha256")},
+            "source_binding": "declared_profile_only",
+            "action_authority": False,
+        },
+    }
+    unit = {"LoadState": "loaded", "ActiveState": "active", "SubState": "running",
+            "MainPID": "4242", "ExecMainStartTimestampMonotonic": "9000000000"}
+    systemd_calls, process_calls = [], []
+
+    def systemd_show(service):
+        systemd_calls.append(service)
+        return dict(unit)
+
+    def process_snapshot(pid):
+        process_calls.append(pid)
+        return dict(process)
+
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: _WATCHDOG_MONOTONIC)
+    monkeypatch.setattr(fleet.lane_monitor, "systemd_show", systemd_show)
+    monkeypatch.setattr(fleet.lane_monitor, "_process_snapshot", process_snapshot)
+    config["watchdog_liveness"] = binding
+    write_json(path, report)
+    return {"config": config, "binding": binding, "path": path, "report": report,
+            "unit": unit, "process": process, "systemd_calls": systemd_calls,
+            "process_calls": process_calls}
+
+
+def _assert_watchdog_observation_only(result):
+    assert result["action_authority"] is False
+    assert result["restart_eligible"] is False
+
+
+def _watchdog_observe(fixture, now=NOW):
+    return fleet.watchdog_liveness_diagnostics(fixture["config"], now)
+
+
+def test_watchdog_liveness_absent_preserves_legacy_without_extra_io(config, monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("an absent optional binding must perform no watchdog I/O")
+
+    monkeypatch.setattr(fleet.lane_monitor, "systemd_show", forbidden)
+    monkeypatch.setattr(fleet.lane_monitor, "_process_snapshot", forbidden)
+    monkeypatch.setattr(fleet, "_read_watchdog_liveness_report", forbidden)
+    calls = stub_health(config, monkeypatch)
+    result = fleet.monitor_fleet(config, apply=True)
+    assert "watchdog_liveness" not in result
+    assert result["healthy"] is True and result["issues"] == []
+    assert sorted(calls) == [("board-lane-0.service", True), ("board-lane-1.service", True)]
+
+
+def test_watchdog_liveness_healthy_report_is_bound_twice_and_declared_only(watchdog_liveness):
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["configured"] is True and result["available"] is True
+    assert result["status"] == "healthy" and result["attention_required"] is False
+    assert result["source_binding"] == "declared_profile_only"
+    _assert_watchdog_observation_only(result)
+    assert watchdog_liveness["systemd_calls"] == [watchdog_liveness["binding"]["service"]] * 2
+    assert watchdog_liveness["process_calls"] == [4242, 4242]
+
+
+@pytest.mark.parametrize("age,status", [(60, "healthy"), (60.001, "stale")])
+def test_watchdog_liveness_age_boundary_does_not_grant_restart(watchdog_liveness, age, status):
+    watchdog_liveness["report"]["observed_at"] = NOW - age
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["available"] is True and result["status"] == status
+    assert result["attention_required"] is (status == "stale")
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("apply", [False, True])
+def test_stale_watchdog_attachment_preserves_healthy_idle_lane_authority(watchdog_liveness, monkeypatch, apply):
+    config = watchdog_liveness["config"]
+    watchdog_liveness["report"]["observed_at"] = NOW - 100
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    values = {}
+    for lane in config["lanes"]:
+        value = healthy(lane)
+        value.update(status="shard_idle")
+        value["evidence"].update(active=False, active_task_id="", global_ready_count=0)
+        values[lane["monitor_config"]["service"]] = value
+    calls = stub_health(config, monkeypatch, values)
+    result = fleet.monitor_fleet(config, apply=apply)
+    assert result["watchdog_liveness"]["status"] == "stale"
+    _assert_watchdog_observation_only(result["watchdog_liveness"])
+    assert result["healthy"] is True and result["status"] == "healthy"
+    assert result["issues"] == [] and result["healthy_lane_count"] == 2
+    assert result["completion_authority"] is False and result["task_counts_aggregated"] is False
+    assert all(lane["health"]["action"] == "none" for lane in result["lanes"])
+    assert sorted(calls) == [("board-lane-0.service", apply), ("board-lane-1.service", apply)]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("pid", 4243), ("birth_ticks", 12346),
+    ("boot_id", "c82a31a5-7008-41e2-b518-d01e719bfb42"),
+])
+def test_watchdog_liveness_rejects_report_from_another_process_birth(watchdog_liveness, field, value):
+    watchdog_liveness["report"]["liveness"]["process"][field] = value
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["status"] == "unavailable" and result["available"] is False
+    assert result["reason_codes"]
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("field,value", [("deployment_id", "previous-deployment"), ("source_sha256", "b" * 64)])
+def test_watchdog_liveness_rejects_different_declared_profile(watchdog_liveness, field, value):
+    watchdog_liveness["report"]["liveness"]["profile"][field] = value
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["available"] is False and result["status"] == "unavailable"
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("stamp", [NOW + 0.001, NOW - 1001, True, float("nan"), float("inf"), "recent"])
+def test_watchdog_liveness_rejects_future_prestart_and_invalid_report_clocks(watchdog_liveness, stamp):
+    watchdog_liveness["report"]["observed_at"] = stamp
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["available"] is False and result["status"] == "unavailable"
+    _assert_watchdog_observation_only(result)
+
+
+def test_legacy_watchdog_report_cannot_mint_process_or_source_binding(watchdog_liveness):
+    del watchdog_liveness["report"]["liveness"]
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["available"] is False and result["status"] == "unavailable"
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("which", ["unit_pid", "unit_birth", "process_birth", "process_boot"])
+def test_watchdog_liveness_rejects_identity_change_during_observation(watchdog_liveness, monkeypatch, which):
+    counts = {"unit": 0, "process": 0}
+
+    def show(service):
+        counts["unit"] += 1
+        value = dict(watchdog_liveness["unit"])
+        if counts["unit"] > 1 and which.startswith("unit_"):
+            value["MainPID" if which == "unit_pid" else "ExecMainStartTimestampMonotonic"] = "4243" if which == "unit_pid" else "9000000001"
+        return value
+
+    def snapshot(pid):
+        counts["process"] += 1
+        value = dict(watchdog_liveness["process"])
+        if counts["process"] > 1 and which.startswith("process_"):
+            value["birth_ticks" if which == "process_birth" else "boot_id"] = 12346 if which == "process_birth" else "other-boot"
+        return value
+
+    monkeypatch.setattr(fleet.lane_monitor, "systemd_show", show)
+    monkeypatch.setattr(fleet.lane_monitor, "_process_snapshot", snapshot)
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["available"] is False and result["status"] == "unavailable"
+    _assert_watchdog_observation_only(result)
+
+
+def test_watchdog_startup_grace_uses_verified_monotonic_service_birth(watchdog_liveness):
+    watchdog_liveness["path"].unlink()
+    watchdog_liveness["unit"]["ExecMainStartTimestampMonotonic"] = "9990000000"
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["status"] == "starting" and result["attention_required"] is False
+    _assert_watchdog_observation_only(result)
+    watchdog_liveness["unit"]["ExecMainStartTimestampMonotonic"] = "9970000000"
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["status"] == "unavailable" and result["available"] is False
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("held", [False, True])
+def test_inactive_or_held_watchdog_never_becomes_restart_eligible(watchdog_liveness, held):
+    if held:
+        watchdog_liveness["binding"]["operator_hold"] = True
+    else:
+        watchdog_liveness["unit"].update(ActiveState="inactive", SubState="dead", MainPID="0", ExecMainStartTimestampMonotonic="0")
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["status"] == ("held" if held else "inactive")
+    assert result["attention_required"] is (not held)
+    assert (result["incident_id"] is None) is held
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("service", "fixture.service;start-other.service"), ("deployment_id", ""),
+    ("deployment_id", 17),
+    ("source_sha256", "A" * 64), ("stale_after_seconds", True),
+    ("stale_after_seconds", float("inf")), ("startup_grace_seconds", -1),
+    ("operator_hold", "false"), ("status_path", 17),
+])
+def test_malformed_watchdog_binding_is_unavailable_without_actions(watchdog_liveness, field, value):
+    watchdog_liveness["binding"][field] = value
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["status"] == "unavailable" and result["available"] is False
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("kind", ["missing", "malformed", "symlink", "fifo"])
+def test_watchdog_report_io_failure_is_bounded_and_does_not_hide_lanes(watchdog_liveness, monkeypatch, tmp_path, kind):
+    path = watchdog_liveness["path"]
+    foreign = tmp_path / "foreign-watchdog.json"
+    original = path.read_bytes()
+    special = kind in {"symlink", "fifo"}
+    if special:
+        # Keep ordinary fixture evidence. This leaf exists only as its declared
+        # transient kind, then the owning test removes that special fixture.
+        path = tmp_path / "nonregular-watchdog-status.json"
+        watchdog_liveness["binding"]["status_path"] = str(path)
+        if kind == "symlink":
+            foreign.write_bytes(original)
+            path.symlink_to(foreign)
+        else:
+            os.mkfifo(path, 0o600)
+            real_open = fleet.os.open
+
+            def nonblocking_open(name, flags, *args, **kwargs):
+                if str(name) == str(path):
+                    assert flags & os.O_NONBLOCK and flags & os.O_NOFOLLOW
+                return real_open(name, flags, *args, **kwargs)
+
+            monkeypatch.setattr(fleet.os, "open", nonblocking_open)
+    elif kind == "malformed":
+        path.write_text('{"schema":')
+    else:
+        path.unlink()
+    try:
+        stub_health(watchdog_liveness["config"], monkeypatch)
+        result = fleet.monitor_fleet(watchdog_liveness["config"], apply=True)
+        assert result["watchdog_liveness"]["status"] == "unavailable"
+        _assert_watchdog_observation_only(result["watchdog_liveness"])
+        assert result["healthy"] is True and result["issues"] == []
+        assert result["healthy_lane_count"] == 2
+        assert json.loads(Path(watchdog_liveness["config"]["health_path"]).read_text())["healthy"] is True
+        if kind == "symlink":
+            assert foreign.read_bytes() == original and path.is_symlink()
+        elif kind == "fifo":
+            assert path.is_fifo()
+    finally:
+        if special:
+            path.unlink()
+
+
+def test_watchdog_incident_is_stable_across_age_and_deduplicated_until_transition(watchdog_liveness, monkeypatch):
+    config = watchdog_liveness["config"]
+    stub_health(config, monkeypatch)
+    watchdog_liveness["report"]["observed_at"] = NOW - 100
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    first = fleet.monitor_fleet(config, apply=True)["watchdog_liveness"]
+    monkeypatch.setattr(fleet.time, "time", lambda: NOW + 10)
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: _WATCHDOG_MONOTONIC + 10)
+    second = fleet.monitor_fleet(config, apply=True)["watchdog_liveness"]
+    assert first["status"] == second["status"] == "stale"
+    assert first["incident_id"] and first["incident_id"] == second["incident_id"]
+    actions = [json.loads(line) for line in Path(config["actions_path"]).read_text().splitlines()]
+    assert len([event for event in actions if event["action"] == "fleet_observed"]) == 2
+    assert len([event for event in actions if event["action"] != "fleet_observed"]) == 1
+    watchdog_liveness["report"]["observed_at"] = NOW + 10
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    assert fleet.monitor_fleet(config, apply=True)["watchdog_liveness"]["status"] == "healthy"
+    actions = [json.loads(line) for line in Path(config["actions_path"]).read_text().splitlines()]
+    assert len([event for event in actions if event["action"] != "fleet_observed"]) == 2
+
+
+def test_watchdog_incident_identity_separates_dedicated_fleets(watchdog_liveness):
+    watchdog_liveness["report"]["observed_at"] = NOW - 100
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    first = _watchdog_observe(watchdog_liveness)
+    watchdog_liveness["binding"]["service"] = "another-dedicated-watchdog.service"
+    second = _watchdog_observe(watchdog_liveness)
+    assert first["status"] == second["status"] == "stale"
+    assert first["incident_id"] != second["incident_id"]
+    _assert_watchdog_observation_only(first)
+    _assert_watchdog_observation_only(second)
+
+
+@pytest.mark.parametrize("case", ["replaced", "closing_read_error"])
+def test_watchdog_liveness_rejects_report_change_between_opening_and_closing_reads(watchdog_liveness, monkeypatch, case):
+    original_read = fleet.lane_monitor._read_json
+    calls = []
+
+    def read(path):
+        value, error = original_read(path)
+        if str(path) != str(watchdog_liveness["path"]):
+            return value, error
+        calls.append(str(path))
+        if len(calls) == 1 and case == "replaced":
+            replacement = watchdog_liveness["path"].with_name("replacement-status.json")
+            changed = json.loads(json.dumps(watchdog_liveness["report"]))
+            changed["observed_at"] = NOW - 5
+            write_json(replacement, changed)
+            replacement.replace(watchdog_liveness["path"])
+        elif len(calls) == 2 and case == "closing_read_error":
+            return {}, "fixture closing report unavailable"
+        return value, error
+
+    monkeypatch.setattr(fleet, "_read_watchdog_liveness_report", read)
+    result = _watchdog_observe(watchdog_liveness)
+    assert len(calls) == 2
+    assert result["available"] is False and result["status"] == "unavailable"
+    if case == "replaced":
+        assert "report_changed" in result["reason_codes"]
+    _assert_watchdog_observation_only(result)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("schema", "agent-supervisor/watchdog-liveness@999"),
+    ("available", False), ("source_binding", "verified_imported_source"),
+    ("action_authority", True),
+])
+def test_watchdog_liveness_rejects_unavailable_or_authoritative_envelopes(watchdog_liveness, field, value):
+    watchdog_liveness["report"]["liveness"][field] = value
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["available"] is False and result["status"] == "unavailable"
+    _assert_watchdog_observation_only(result)
+
+
+def test_watchdog_incident_identity_tracks_kernel_boot_with_unchanged_unit_generation(watchdog_liveness):
+    watchdog_liveness["report"]["observed_at"] = NOW - 100
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    original_unit = dict(watchdog_liveness["unit"])
+    original_profile = dict(watchdog_liveness["report"]["liveness"]["profile"])
+    first = _watchdog_observe(watchdog_liveness)
+    next_boot = "c82a31a5-7008-41e2-b518-d01e719bfb42"
+    watchdog_liveness["process"]["boot_id"] = next_boot
+    watchdog_liveness["report"]["liveness"]["process"]["boot_id"] = next_boot
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    second = _watchdog_observe(watchdog_liveness)
+    assert first["available"] is True and second["available"] is True
+    assert first["status"] == second["status"] == "stale"
+    assert first["incident_id"] and first["incident_id"] != second["incident_id"]
+    assert watchdog_liveness["unit"] == original_unit
+    assert watchdog_liveness["report"]["liveness"]["profile"] == original_profile
+    _assert_watchdog_observation_only(first)
+    _assert_watchdog_observation_only(second)
+
+
+def test_watchdog_liveness_uses_closing_clock_after_lane_work(watchdog_liveness, monkeypatch):
+    config = watchdog_liveness["config"]
+    clock = {"wall": NOW, "monotonic": _WATCHDOG_MONOTONIC}
+    monkeypatch.setattr(fleet.time, "time", lambda: clock["wall"])
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: clock["monotonic"])
+    watchdog_liveness["report"]["observed_at"] = NOW + 15
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    values = {lane["monitor_config"]["service"]: healthy(lane) for lane in config["lanes"]}
+
+    def completed_lane_work(per_lane, *, apply):
+        clock.update(wall=NOW + 20, monotonic=_WATCHDOG_MONOTONIC + 20)
+        return values[per_lane["service"]]
+
+    monkeypatch.setattr(fleet.lane_monitor, "monitor", completed_lane_work)
+    result = fleet.monitor_fleet(config)
+    attachment = result["watchdog_liveness"]
+    assert result["checked_at_epoch"] == NOW
+    assert attachment["checked_at_epoch"] == NOW + 20
+    assert attachment["available"] is True and attachment["status"] == "healthy"
+    assert attachment["report_age_seconds"] == 5
+    assert attachment["attention_required"] is False
+    assert result["healthy"] is True and result["issues"] == []
+    _assert_watchdog_observation_only(attachment)
+
+
+@pytest.mark.parametrize("which", ["wall", "monotonic"])
+def test_watchdog_liveness_rejects_backward_closing_clock(watchdog_liveness, monkeypatch, which):
+    if which == "wall":
+        monkeypatch.setattr(fleet.time, "time", lambda: NOW - 1)
+    else:
+        samples = iter([_WATCHDOG_MONOTONIC, _WATCHDOG_MONOTONIC - 1])
+        monkeypatch.setattr(fleet.time, "monotonic", lambda: next(samples))
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["available"] is False and result["status"] == "unavailable"
+    assert "clock_changed" in result["reason_codes"]
+    _assert_watchdog_observation_only(result)
+
+
+def test_watchdog_liveness_failed_user_expansion_preserves_lane_observations(watchdog_liveness, monkeypatch, tmp_path):
+    bad_path = "~fixture_missing_user/status.json"
+    original_expanduser = Path.expanduser
+    expansions = []
+
+    def expanduser(path):
+        if str(path) == bad_path:
+            expansions.append(str(path))
+            raise RuntimeError("fixture missing user; no system lookup performed")
+        return original_expanduser(path)
+
+    config_path = tmp_path / "fleet.json"
+    raw_config = json.loads(config_path.read_text())
+    raw_config["watchdog_liveness"] = {**watchdog_liveness["binding"], "status_path": bad_path}
+    write_json(config_path, raw_config)
+    monkeypatch.setattr(Path, "expanduser", expanduser)
+    loaded = fleet.load_config(config_path)
+    assert expansions == [bad_path]
+    assert loaded["watchdog_liveness"]["status_path"] == bad_path
+    calls = stub_health(loaded, monkeypatch)
+    result = fleet.monitor_fleet(loaded, apply=True)
+    assert result["watchdog_liveness"]["available"] is False
+    assert result["watchdog_liveness"]["status"] == "unavailable"
+    _assert_watchdog_observation_only(result["watchdog_liveness"])
+    assert result["healthy"] is True and result["issues"] == []
+    assert result["healthy_lane_count"] == 2
+    assert all(lane["health"]["action"] == "none" for lane in result["lanes"])
+    assert sorted(calls) == [("board-lane-0.service", True), ("board-lane-1.service", True)]
+
+
+@pytest.mark.parametrize("state", ["inactive", "failed"])
+def test_unheld_stopped_watchdog_has_stable_attention_without_action(watchdog_liveness, state):
+    watchdog_liveness["unit"].update(ActiveState=state, SubState="dead", MainPID="0",
+                                       ExecMainStartTimestampMonotonic="0")
+    first = _watchdog_observe(watchdog_liveness)
+    second = _watchdog_observe(watchdog_liveness)
+    assert first["available"] is True and first["status"] == "inactive"
+    assert first["attention_required"] is True
+    assert first["reason_codes"] == ["service_not_active"]
+    assert first["incident_id"].startswith("watchdog-liveness:")
+    assert first["incident_id"] == second["incident_id"]
+    _assert_watchdog_observation_only(first)
+
+
+@pytest.mark.parametrize("field", ["schema", "observed_at", "process_pid"])
+def test_duplicate_watchdog_report_fields_are_not_healthy(watchdog_liveness, field):
+    report = watchdog_liveness["report"]
+    raw = json.dumps(report)
+    if field == "process_pid":
+        pid = report["liveness"]["process"]["pid"]
+        spelling = '"pid": ' + str(pid)
+        assert raw.count(spelling) == 1
+        raw = raw.replace(spelling, '"pid": 0, ' + spelling, 1)
+    else:
+        raw = '{"' + field + '": null, ' + raw[1:]
+    watchdog_liveness["path"].write_text(raw)
+    result = _watchdog_observe(watchdog_liveness)
+    assert result["status"] == "unavailable" and result["available"] is False
+    assert result["attention_required"] is True
+    assert result["reason_codes"] == ["report_unavailable"]
+    assert result["incident_id"] is not None
+    _assert_watchdog_observation_only(result)
+
+
+def test_fresh_dependency_wait_report_is_watchdog_progress(watchdog_liveness, monkeypatch):
+    watchdog_liveness["report"]["boards"] = {
+        "scientific": {"health": "blocked", "planned_action": "",
+                       "observation": {"reason_codes": ["native_catalogue_activation_missing"]}}
+    }
+    write_json(watchdog_liveness["path"], watchdog_liveness["report"])
+    stub_health(watchdog_liveness["config"], monkeypatch)
+    result = fleet.monitor_fleet(watchdog_liveness["config"], apply=True)
+    attachment = result["watchdog_liveness"]
+    assert attachment["status"] == "healthy" and attachment["attention_required"] is False
+    assert attachment["incident_id"] is None
+    assert result["healthy"] is True and result["issues"] == []
+    _assert_watchdog_observation_only(attachment)
+
+
+@pytest.mark.parametrize("lane_seconds", [45.001, 75, 100])
+def test_slow_lanes_skip_optional_watchdog_queries_and_publish(watchdog_liveness, monkeypatch, lane_seconds):
+    config = watchdog_liveness["config"]
+    clock = {"monotonic": _WATCHDOG_MONOTONIC}
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: clock["monotonic"])
+    values = {lane["monitor_config"]["service"]: healthy(lane) for lane in config["lanes"]}
+
+    def slow_lane(per_lane, *, apply):
+        clock["monotonic"] = _WATCHDOG_MONOTONIC + lane_seconds
+        return values[per_lane["service"]]
+
+    monkeypatch.setattr(fleet.lane_monitor, "monitor", slow_lane)
+    result = fleet.monitor_fleet(config, apply=True)
+    attachment = result["watchdog_liveness"]
+    assert attachment["status"] == "unavailable"
+    assert attachment["reason_codes"] == ["observation_budget_exhausted"]
+    assert watchdog_liveness["systemd_calls"] == []
+    assert watchdog_liveness["process_calls"] == []
+    assert result["healthy"] is True and result["issues"] == []
+    assert json.loads(Path(config["health_path"]).read_text())["healthy"] is True
+    _assert_watchdog_observation_only(attachment)
+
+
+@pytest.mark.parametrize("lane_seconds", [44.999, 45])
+def test_watchdog_queries_fit_exact_cycle_reserve_boundary(watchdog_liveness, monkeypatch, lane_seconds):
+    config = watchdog_liveness["config"]
+    clock = {"monotonic": _WATCHDOG_MONOTONIC}
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: clock["monotonic"])
+    values = {lane["monitor_config"]["service"]: healthy(lane) for lane in config["lanes"]}
+
+    def completed_lane(per_lane, *, apply):
+        clock["monotonic"] = _WATCHDOG_MONOTONIC + lane_seconds
+        return values[per_lane["service"]]
+
+    monkeypatch.setattr(fleet.lane_monitor, "monitor", completed_lane)
+    result = fleet.monitor_fleet(config)
+    attachment = result["watchdog_liveness"]
+    assert attachment["status"] == "healthy" and attachment["available"] is True
+    assert len(watchdog_liveness["systemd_calls"]) == 2
+    assert result["healthy"] is True and result["issues"] == []
+    _assert_watchdog_observation_only(attachment)
+
+
+def test_watchdog_closing_query_is_skipped_when_local_observation_consumes_reserve(watchdog_liveness, monkeypatch):
+    config = watchdog_liveness["config"]
+    clock = {"monotonic": _WATCHDOG_MONOTONIC}
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: clock["monotonic"])
+    stub_health(config, monkeypatch)
+    original_reader = fleet._read_watchdog_liveness_report
+
+    def slow_read(path):
+        clock["monotonic"] += 31
+        return original_reader(path)
+
+    monkeypatch.setattr(fleet, "_read_watchdog_liveness_report", slow_read)
+    result = fleet.monitor_fleet(config, apply=True)
+    attachment = result["watchdog_liveness"]
+    assert attachment["status"] == "unavailable"
+    assert attachment["reason_codes"] == ["observation_budget_exhausted"]
+    assert len(watchdog_liveness["systemd_calls"]) == 1
+    assert result["healthy"] is True and result["issues"] == []
+    assert json.loads(Path(config["health_path"]).read_text())["healthy"] is True
+    _assert_watchdog_observation_only(attachment)

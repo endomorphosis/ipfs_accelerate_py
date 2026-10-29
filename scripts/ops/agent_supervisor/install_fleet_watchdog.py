@@ -83,7 +83,8 @@ def validate_inventory(inventory: dict, repair_cwd: Path) -> None:
 def generic_service_unit(python: str, source: Path, release: Path, config_path: Path,
                          suffix: str, module: str, mode: list[str], *,
                          description: str | None = None) -> bytes:
-    """The existing generic watchdog/repair unit format, shared by both modes."""
+    """Render immutable-runtime prerequisites without requiring its old checkout."""
+    module_path = release / "ipfs_accelerate_py/agent_supervisor/rescue" / f"{module}.py"
     argv = [python, "-P", "-m", f"ipfs_accelerate_py.agent_supervisor.rescue.{module}",
             *mode, "--config", str(config_path)]
     description = description or f"IPFS taskboard fleet {suffix} (SPAR SAWM ASEH PCTDD PCPR DOEP)"
@@ -92,6 +93,9 @@ Description={description}
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
+ConditionPathIsDirectory={unit_directory(str(release))}
+ConditionFileNotEmpty={unit_directory(str(module_path))}
+ConditionFileNotEmpty={unit_directory(str(config_path))}
 
 [Service]
 Type=simple
@@ -527,6 +531,8 @@ def install(source: Path, inventory_path: Path, repair_cwd: Path, *, enable: boo
 Description=IPFS {board_id} native supervisor ensure
 After=network-online.target
 Wants=network-online.target
+ConditionPathIsDirectory={unit_directory(entry['cwd'])}
+ConditionFileNotEmpty={unit_directory(entry['config_path'])}
 
 [Service]
 Type=oneshot

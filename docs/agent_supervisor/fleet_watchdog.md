@@ -109,6 +109,75 @@ Qualification on public base `a8f18f6a3fc9a1d3f5efe8307dcff2b25a8cb95f` passed
 all **160 tests**. The cases cover bounded recovery, changed/reused PID births,
 fresh worker/completed-idle/resource-fence suppression and unreadable evidence.
 
+## Optional watchdog self-liveness observation
+
+The existing fleet monitor can observe the dedicated watchdog itself through an
+optional `watchdog_liveness` attachment. Qualify and adopt the producer and
+monitor together before configuring it. Older watchdog reports contain no
+process/profile declaration and remain explicitly unbound; a recent timestamp
+alone cannot establish their producer.
+
+In the watchdog fleet configuration, add this optional producer profile:
+
+```json
+{
+  "liveness_identity": {
+    "schema": "agent-supervisor/watchdog-liveness-profile@1",
+    "deployment_id": "accepted-release-id",
+    "source_sha256": "<qualified-source-sha256>"
+  }
+}
+```
+
+In the existing board-service fleet monitor configuration, bind the same profile:
+
+```json
+{
+  "watchdog_liveness": {
+    "schema": "agent-supervisor/watchdog-liveness-binding@1",
+    "service": "ipfs-taskboard-legal-ir-watchdog.service",
+    "status_path": "/home/operator/.local/state/ipfs-taskboard-watchdog/legal-ir/status.json",
+    "deployment_id": "accepted-release-id",
+    "source_sha256": "<qualified-source-sha256>",
+    "stale_after_seconds": 180,
+    "startup_grace_seconds": 300,
+    "operator_hold": false
+  }
+}
+```
+
+Replace the example deployment, absolute path and SHA256 with the original
+owner's admitted bindings; the digest must be64 lowercase hexadecimal characters.
+The profile is a declaration, **not imported-byte attestation or source
+qualification**. Original source/runtime adoption remains independently required.
+Omitting these optional keys preserves the existing report and monitor behavior.
+
+The producer records its own kernel PID/birth/boot identity. The monitor compares
+opening and closing report, systemd and kernel-process observations, matching the
+declared profile and checking report age against a closing wall clock and verified
+monotonic service birth. These are sequential consistency checks, not an atomic
+snapshot. Missing initial reports receive only the configured startup grace;
+legacy, malformed, replaced, future, pre-start or different-generation reports
+remain unavailable. `operator_hold` and inactive services never grant recovery.
+
+The optional attachment uses an 80-second deadline from fleet-cycle entry,
+reserving ten seconds of the existing 90-second oneshot for publication. It
+requires 35 seconds before the first existing 15-second unit query and 20 before
+the closing query. Slow lane checks or local observations therefore produce
+`unavailable` with `observation_budget_exhausted` and preserve fleet publication.
+These checks reserve time for bounded operations; they do not impose a hard
+operating-system deadline on filesystem I/O.
+
+Read `watchdog_liveness.status`, `attention_required` and `reason_codes` in the
+existing fleet health report. Repeated identical consecutive incidents share an
+`incident_id`; transitions use the existing action observation log. This separate
+attachment never changes lane health, aggregate issues, restart eligibility,
+repair budgets or CLI lane-health exit status. Existing fleet probes use those
+aggregate fields as repair triggers, so a self-liveness warning must not feed
+back into an automatic coding/restart loop. No additional queue or daemon is
+created. A stale result is a diagnostic for the original owner, not restart,
+signalling, code-adoption or task-completion authority.
+
 ## Isolated LegalIR diagnostic profile
 
 `install_fleet_watchdog.py --profile legal-ir` stages a separate instance of these same watchdog/repair owners. It consumes the existing minute LegalIR fleet-monitor report and does not add another lane monitor. The six-board global configuration, units, operator holds and repair history remain unchanged. Use this profile when the global runtime/source bindings require their own separate review.
@@ -476,7 +545,20 @@ python3 scripts/ops/agent_supervisor/install_fleet_watchdog.py \
 
 The installer creates a content-addressed standalone runtime under
 `~/.local/lib/ipfs-taskboard-watchdog/releases/`, avoiding optional provider
-imports and sealed-checkout module shadowing. It writes:
+imports and sealed-checkout module shadowing.
+
+Generated watchdog and repair units check that their immutable release directory,
+selected module and configuration exist before starting. Missing prerequisites
+skip startup instead of entering a restart loop. A released unit does not require
+the original development checkout. Generated native ensure units check their
+own working directory and configuration; externally owned service units retain
+their original launch contract.
+
+These path checks do not recreate deleted source, databases or native authority.
+Restore and admit the original prerequisites before requesting the existing
+launcher again. Preserve maintenance holds and unresolved attempt history.
+
+The installer writes:
 
 * Configuration: `~/.config/ipfs-taskboard-watchdog/fleet.json`
 * Inventory: `~/.config/ipfs-taskboard-watchdog/inventory.json`
