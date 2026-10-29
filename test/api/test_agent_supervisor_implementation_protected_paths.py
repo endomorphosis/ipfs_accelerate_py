@@ -204,6 +204,56 @@ def _protected_git_worktree_daemon(
     return daemon, repo, workspace, protected
 
 
+@pytest.mark.parametrize("mutated", [False, True])
+def test_live_inflight_worker_keeps_its_protected_snapshot_without_hiding_mutations(tmp_path, monkeypatch, mutated):
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(task=task, attempt=1, workspace_path=workspace)
+    identity = daemon._identity_for_task(task)
+    event = {"task_id": task.task_id, "attempt": 1, "worktree_path": str(workspace),
+        "canonical_task_cid": identity.canonical_task_cid, "canonical_task_key": identity.canonical_task_key}
+    monkeypatch.setattr(daemon, "_inflight_implementation_events", lambda: [event])
+    monkeypatch.setattr(daemon, "_implementation_process_active", lambda event: True)
+    if mutated:
+        protected.write_text("unexpected mutation while provider is active\n")
+    result = daemon._reconcile_implementation_protected_path_fence()
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+    if mutated:
+        assert result["blocked"] is True
+        assert result["reason"] == "implementation_protected_path_mutated"
+    else:
+        assert result["blocked"] is False
+        assert result["reason"] == "inflight_protected_snapshot_retained"
+
+
+@pytest.mark.parametrize("same_revision", [True, False])
+def test_live_same_task_skip_keeps_owned_dispatch_intent_until_native_worker_settles(tmp_path, monkeypatch, same_revision):
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    identity = daemon._identity_for_task(task)
+    event = {"task_id": task.task_id, "attempt": 1, "worktree_path": str(workspace),
+        "canonical_task_cid": identity.canonical_task_cid if same_revision else "different-native-revision",
+        "canonical_task_key": identity.canonical_task_key}
+    monkeypatch.setattr(daemon, "_find_live_inflight_implementation", lambda: event)
+    monkeypatch.setattr(daemon, "_active_provider_capacity_backoff_for_task", lambda task: {})
+    monkeypatch.setattr(implementation_daemon_module, "completion_gap_edit_scope", lambda *args, **kwargs: ("src/example.py",))
+    result = daemon._run_implementation(task, PortalTaskState())
+    assert result["reason"] == "inflight_process"
+    assert result.get("dispatch_intent_retained", False) is same_revision
+    if same_revision:
+        assert result["provider_dispatched"] is True
+        assert result["attempt_consumed"] is True
+        assert result["canonical_task_cid"] == identity.canonical_task_cid
+    intent_path = tmp_path / "owned-intent.json"
+    metadata = {"canonical_task_cid": identity.canonical_task_cid, "lease_id": "native-owned-lease"}
+    intent_path.write_text(json.dumps(metadata))
+    released = []
+    monkeypatch.setattr(daemon, "_release_implementation_task_claim", lambda path, metadata: released.append(str(path)) or True)
+    daemon._reconcile_unselected_implementation_dispatch_intents({task.task_id: (intent_path, metadata)},
+        selected=task if result.get("dispatch_intent_retained") else None, reason="retained_intent_not_preserved_after_dispatch")
+    assert bool(released) is not same_revision
+
+
 def _protected_git_worktree_supervisor(
     daemon: PortalImplementationDaemon,
     repo: Path,

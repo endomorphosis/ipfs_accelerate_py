@@ -341,7 +341,7 @@ class RepairAdmissionBoundaries(unittest.TestCase):
     def test_canary_binding_survives_unrelated_commit_but_rejects_pipeline_drift(self):
         with tempfile.TemporaryDirectory() as directory:
             config, _request_path, _failure, target = self.fixture(Path(directory))
-            for relative in ("project_adapters/worldwide_legal_search_provider.py", "project_adapters/worldwide_legal_search_goals.py",
+            for relative in ("project_adapters/worldwide_legal_search_continuation.py", "project_adapters/worldwide_legal_search_provider.py", "project_adapters/worldwide_legal_search_goals.py",
                              "todo_daemon/implementation_daemon_runner.py", "todo_daemon/implementation_daemon.py", "todo_daemon/database_portal_bridge.py", "rescue/repair_dispatcher.py",
                              "task_sources/board_control_plane.py", "task_sources/database_task_source.py", "task_sources/intent_repository.py",
                              "validation/validation_runtime.py", "validation/validation_commands.py", "validation/project_dependency_preflight.py",
@@ -512,6 +512,83 @@ class RepairAdmissionBoundaries(unittest.TestCase):
                 self.assertEqual(raised.exception.errno, 28)
             self.assertFalse(config.database.exists())
             self.assertFalse((config.state_root / "native-owner.lock").exists())
+
+
+    def test_terminalized_live_skip_is_unknown_without_a_native_terminal_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            attempt = "attempt:still-inflight"
+            root = config.state_root / "native/wwl_database_portal_attempts" / hashlib.sha256(attempt.encode()).hexdigest()[:24]
+            atomic_json(root / "database-attempt-binding.json", {"attempt_id": attempt, "task_alias": "WWL-000", "task_cid": "native-task", "binding_id": "native-binding"})
+            events = [{"type": "implementation_started", "task_id": "WWL-000"},
+                {"type": "implementation_skipped", "task_id": "WWL-000", "reason": "inflight_process", "event_id": "native-event"}]
+            (root / "portal-events.jsonl").write_text("".join(json.dumps(event) + "\n" for event in events))
+            task = SimpleNamespace(task_alias="WWL-000", task_cid="native-task", revision=7, status="blocked", body={"completion_receipt": {"attempt_id": attempt, "task_cid": "native-task", "settlement_id": "native-failure"}})
+            observation = runtime._native_blocker(task)
+            self.assertTrue(observation["effects_unknown"])
+            self.assertEqual(observation["reason"], "native_inflight_callback_terminalized")
+            self.assertFalse(observation["completion_authority"])
+
+    def test_repeated_provider_observation_reuses_exact_live_activity_capability(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            attempt = SimpleNamespace(attempt_id="attempt:live", task_alias="WWL-000", task_cid="sha256:" + "a" * 64,
+                started_at_ms=int((time.time() - 10) * 1000))
+            inner = SimpleNamespace(task_source=object(), board_namespace="fixture", _record_for_attempt=lambda *args: object(),
+                _paths=lambda _: SimpleNamespace(task_projection=config.state_root / "projection.md"),
+                _render_projection=lambda *args: "projection", _projection_task_identity=lambda *args, **kwargs: {"canonical_task_cid": "sha256:" + "b" * 64})
+            runtime._bridge = SimpleNamespace(_for_attempt=lambda _: inner)
+            runtime._bind_provider_activity(attempt)
+            path = config.state_root / "provider-activity-binding.json"
+            original = path.read_bytes()
+            self.assertTrue(runtime._provider_activity_binding)
+            runtime._provider_activity_sequence = 7
+            runtime._bind_provider_activity(attempt)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(runtime._provider_activity_sequence, 7)
+            changed = read_json(path)
+            changed["portal_task_cid"] = "sha256:" + "c" * 64
+            atomic_json(path, changed)
+            tampered = path.read_bytes()
+            runtime._bind_provider_activity(attempt)
+            self.assertEqual(path.read_bytes(), tampered)
+            self.assertEqual(runtime._provider_activity_sequence, 7)
+
+    def test_routed_native_provider_persists_intent_before_canonical_callback(self):
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import DatabaseImplementationDaemon
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DatabasePortalExecutionBridge
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import _RepositoryRoutedPortalBridge
+        from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import DatabaseTaskSource
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            with DatabaseTaskSource(config.database, owner_id="fixture") as source:
+                source.materialize(build_population(plan_fixture(), source_forest=FOREST))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            runtime.open()
+            try:
+                self.assertIs(type(runtime._daemon._provider_fn.__self__), _RepositoryRoutedPortalBridge)
+                attempt = runtime._daemon.claim_next()
+                seen = []
+                def native_callback(bridge, current):
+                    self.assertIs(type(bridge), DatabasePortalExecutionBridge)
+                    receipt = runtime._daemon.provider_invocation_recorded(current.attempt_id, idempotency_key=f"provider:{current.attempt_id}")
+                    self.assertEqual(receipt["callback_state"], "started_outcome_unknown")
+                    seen.append(receipt)
+                    raise RuntimeError("fixture stops before any provider effect")
+                with patch.object(DatabasePortalExecutionBridge, "run_provider", native_callback):
+                    # Rebind the exact official router method, never a generic observer wrapper.
+                    with self.assertRaisesRegex(RuntimeError, "fixture stops"):
+                        runtime._daemon.run_provider(attempt)
+                self.assertEqual(len(seen), 1)
+                class GenericWrapper:
+                    def run_provider(self, current):
+                        raise AssertionError("must not execute")
+                wrapper = GenericWrapper().run_provider
+                self.assertEqual(DatabaseImplementationDaemon._resolve_native_portal_provider_callback(wrapper, attempt), wrapper)
+            finally:
+                runtime._daemon.close()
 
 
 if __name__ == "__main__":

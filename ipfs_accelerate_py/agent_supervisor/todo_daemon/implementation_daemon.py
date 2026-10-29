@@ -1480,6 +1480,18 @@ class CrashFenceReconciler:
                 "payload": violation,
             }
 
+        for event in daemon._inflight_implementation_events():
+            if (str(event.get("task_id") or "") == task_id
+                    and int(event.get("attempt") or 0) == attempt
+                    and str(event.get("worktree_path") or "") == str(workspace_path)
+                    and daemon._implementation_process_active(event)):
+                # A same-owner callback may be revisited while its provider
+                # is still running. This is not a crashed attempt, and its
+                # unchanged protected snapshot must keep fencing mutations.
+                return {"action": "return", "result": {"blocked": False, "deferred": True,
+                    "reason": "inflight_protected_snapshot_retained", "task_id": task_id,
+                    "attempt": attempt, "workspace_path": str(workspace_path)}}
+
         reconciliation_reason = (
             "crash_reconciliation_ephemeral_workspace_missing"
             if missing_ephemeral_workspace
@@ -21566,13 +21578,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return result
         inflight = self._find_live_inflight_implementation()
         if inflight is not None:
+            identity = self._identity_for_task(task)
+            same_task = bool(str(inflight.get("task_id") or "") == task.task_id
+                and str(inflight.get("canonical_task_cid") or "") == identity.canonical_task_cid
+                and str(inflight.get("canonical_task_key") or "") == identity.canonical_task_key)
             result = {
                 "skipped": True,
+                "deferred": True,
                 "reason": "inflight_process",
                 "task_id": str(inflight.get("task_id") or task.task_id),
                 "attempt": int(inflight.get("attempt") or 0),
                 "worktree_path": str(inflight.get("worktree_path") or ""),
             }
+            if same_task:
+                # Selection already proved this exact process birth owns the
+                # reusable intent. Keep it while observing its live provider;
+                # releasing it here loses custody and invites another writer.
+                result["dispatch_intent_retained"] = True
+                result.update(provider_dispatched=True, attempt_consumed=True,
+                    canonical_task_cid=identity.canonical_task_cid,
+                    canonical_task_key=identity.canonical_task_key)
             self._record_event("implementation_skipped", result)
             return result
 
@@ -76083,6 +76108,21 @@ class DatabaseImplementationDaemon:
         )
 
     @staticmethod
+    def _resolve_native_portal_provider_callback(callback: Any, attempt: DatabaseTaskAttempt) -> Any:
+        """Resolve only the official exact repository router to its bridge."""
+        owner = getattr(callback, "__self__", None)
+        if owner is None:
+            return callback
+        from .implementation_daemon_runner import _RepositoryRoutedPortalBridge
+        if type(owner) is not _RepositoryRoutedPortalBridge or getattr(callback, "__func__", None) is not _RepositoryRoutedPortalBridge.run_provider:
+            return callback
+        from .database_portal_bridge import DatabasePortalExecutionBridge
+        resolved = owner._for_attempt(attempt).run_provider
+        if type(getattr(resolved, "__self__", None)) is not DatabasePortalExecutionBridge or getattr(resolved, "__func__", None) is not DatabasePortalExecutionBridge.run_provider:
+            raise DatabaseImplementationAuthorityError("repository router did not resolve to the exact native Portal callback")
+        return resolved
+
+    @staticmethod
     def _source384_retry_identity(attempt: DatabaseTaskAttempt) -> dict[str, Any]:
         return {name: getattr(attempt, name) for name in (
             "attempt_id", "task_cid", "owner_session_id", "claim_id", "lease_id", "fencing_token", "fence_epoch")}
@@ -76313,6 +76353,7 @@ class DatabaseImplementationDaemon:
         require_declared_callback(self, attempt, callback)
         if retry_prior is not None and callback != self._provider_fn:
             raise DatabaseImplementationAuthorityError("Source384 retry cannot replace its declared callback")
+        callback = self._resolve_native_portal_provider_callback(callback, attempt)
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(

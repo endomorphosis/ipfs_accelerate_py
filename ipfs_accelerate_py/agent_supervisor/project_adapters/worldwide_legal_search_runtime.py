@@ -13,6 +13,7 @@ import fcntl
 import fnmatch
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -233,6 +234,7 @@ def repair_pipeline_binding(config: CampaignConfig) -> dict[str, Any]:
     policy = read_json(config.plan_path.with_name("watchdog.policy.json"))
     paths = ["ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_runtime.py",
         "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_continuation.py",
         "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_goals.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
@@ -379,6 +381,7 @@ class CampaignRuntime:
         self._loaded_framework_revision = git(config.framework_root, "rev-parse", "HEAD") if config.framework_root.is_dir() else ""
         self._last_successful_pass: dict[str, Any] = {}
         self._native_terminal_result: dict[str, Any] = {}
+        self._candidate_request_path: Path | None = None
         self._provider_activity_binding: dict[str, Any] = {}
         self._provider_activity_sequence = 0
         self._provider_activity: dict[str, Any] = {}
@@ -496,7 +499,8 @@ class CampaignRuntime:
             coordination_path=self.config.state_root / "coordination.duckdb", execution_path=self.config.state_root / "execution.duckdb",
             state_dir=self.config.state_root / "native", state_prefix="wwl", owner_session_id=self.config.run_id,
             authority_mode="embedded_exclusive", require_real_execution=True, max_task_attempts=self.config.max_task_attempts,
-            task_prefix="WWL-").open()
+            task_prefix="WWL-", execution_slice_task_ids=(str(self._read_candidate_request()["task_id"]),)
+                if self._candidate_request_path is not None else ()).open()
         command = self.config.implementation_command
         if not command:
             from .worldwide_legal_search_provider import implementation_command
@@ -517,10 +521,11 @@ class CampaignRuntime:
             authorize_superseded_portal_attempt_binding=self._daemon.authorize_superseded_portal_attempt_binding,
             bind_execution_callbacks=lambda **callbacks: captured.update(callbacks))
         bridge = bind_database_portal_execution_from_args(proxy, args, repo_root=self.config.site_root, portal_daemon_class=self._make_native_portal,
-            task_repo_root_resolver=self.repository_for_task)
+            task_repo_root_resolver=self.repository_for_task, provider_handoff_binder=self._observe_provider_handoff,
+            candidate_reconciliation_loader=self._load_candidate_admission if self._candidate_request_path is not None else None)
         self._bridge = bridge
         callbacks = _ProgressCallbacks(self, bridge)
-        self._daemon.bind_execution_callbacks(provider_fn=callbacks.run_provider, effect_fn=callbacks.apply_effect, validation_fn=callbacks.validate_effect)
+        self._daemon.bind_execution_callbacks(provider_fn=bridge.run_provider, effect_fn=callbacks.apply_effect, validation_fn=callbacks.validate_effect)
 
     def capture(self, stage: str = "", attempt: Any = None) -> None:
         """Called only by the native DB owner worker, never the watcher."""
@@ -580,6 +585,12 @@ class CampaignRuntime:
             records = [json.loads(line) for line in raw.splitlines() if line.strip()]
             finished = [event for event in records if event.get("type") == "implementation_finished" and event.get("task_id") == record.task_alias]
             if not finished:
+                started = [event for event in records if event.get("type") == "implementation_started" and event.get("task_id") == record.task_alias]
+                inflight = [event for event in records if event.get("type") == "implementation_skipped" and event.get("reason") == "inflight_process" and event.get("task_id") == record.task_alias]
+                if started and inflight:
+                    result.update(reason="native_inflight_callback_terminalized", effects_unknown=True,
+                        native_event_receipt=str(inflight[-1].get("event_id") or ""), native_events_sha256=hashlib.sha256(raw).hexdigest(),
+                        diagnostic_source=str(events), native_binding_id=str(binding.get("binding_id") or ""))
                 return result
             last = finished[-1]
             exception = last.get("exception_result") or {}
@@ -593,9 +604,39 @@ class CampaignRuntime:
             pass
         return result
 
+    def _read_candidate_request(self) -> Mapping[str, Any]:
+        from .worldwide_legal_search_watchdog import read_owned_json
+        path = self._candidate_request_path
+        if path is None or not path.is_absolute() or path.resolve(strict=True) != path or not path.is_relative_to(self.config.state_root):
+            raise ValueError("candidate continuation request must be an exact owned campaign path")
+        request = read_owned_json(path)
+        if request.get("run_id") != self.config.run_id or request.get("task_id") not in self.tasks:
+            raise ValueError("candidate continuation request campaign or task differs")
+        return request
+
+    def _load_candidate_admission(self, *, attempt: Any, paths: Any, binding: Mapping[str, Any], portal_daemon: Any) -> Any:
+        from .worldwide_legal_search_continuation import CandidateContinuationAdmission
+        request = self._read_candidate_request()
+        if request["task_id"] != attempt.task_alias or request["database_task_cid"] != attempt.task_cid:
+            raise ValueError("candidate continuation does not match the exact native selected task")
+        prior_id = str(request.get("predecessor_attempt_id") or "")
+        predecessor = self.config.state_root / "native/wwl_database_portal_attempts" / hashlib.sha256(prior_id.encode()).hexdigest()[:24] / "database-attempt-binding.json"
+        bridge = self._bridge._for_attempt(attempt)
+        previous = bridge._strict_binding(predecessor)
+        return CandidateContinuationAdmission(request, previous, self._daemon.authorize_superseded_portal_attempt_binding)
+
+    def _observe_provider_handoff(self, *, portal_daemon: Any, attempt: Any, paths: Any, binding: Mapping[str, Any]) -> None:
+        """Observe the canonical native callback after its durable intent."""
+        self._provider_callback_entered = True
+        try:
+            self.capture("provider", attempt)
+            self._bind_provider_activity(attempt)
+        except Exception:
+            # Optional observation cannot replace or fail the native callback.
+            pass
+
     def _bind_provider_activity(self, attempt: Any) -> None:
-        """Observation binding only; the existing native bridge owns launch."""
-        self._provider_activity_binding, self._provider_activity_sequence, self._provider_activity = {}, 0, {}
+        """Reuse an exact attempt capability; the native bridge owns launch."""
         try:
             bridge = self._bridge._for_attempt(attempt)
             record = bridge._record_for_attempt(bridge.task_source, attempt)
@@ -608,9 +649,28 @@ class CampaignRuntime:
                 "native_attempt_id": attempt_id, "portal_attempt_number": 1, "issued_at": time.time(),
                 "capability_nonce": secrets.token_hex(32),
                 "activity_path": str(self.config.state_root / "provider-activity" / (hashlib.sha256(attempt_id.encode()).hexdigest() + ".json"))}
+            path = self.config.state_root / "provider-activity-binding.json"
+            if path.exists():
+                from .worldwide_legal_search_watchdog import read_owned_json
+                previous = read_owned_json(path)
+                if previous.get("native_attempt_id") == attempt_id:
+                    keys = ("schema", "run_id", "task_id", "task_cid", "portal_task_cid", "native_attempt_id", "portal_attempt_number", "activity_path")
+                    issued, nonce = previous.get("issued_at"), previous.get("capability_nonce")
+                    valid = (not path.stat().st_mode & 0o077 and all(previous.get(key) == binding[key] for key in keys)
+                        and type(issued) in (int, float) and math.isfinite(issued)
+                        and int(attempt.started_at_ms) / 1000 <= issued <= time.time() + 5
+                        and isinstance(nonce, str) and re.fullmatch(r"[0-9a-f]{64}", nonce)
+                        and previous.get("binding_id") == identity({key: value for key, value in previous.items() if key != "binding_id"}))
+                    if not valid:
+                        return
+                    if self._provider_activity_binding.get("binding_id") != previous["binding_id"]:
+                        self._provider_activity_sequence, self._provider_activity = 0, {}
+                    self._provider_activity_binding = previous
+                    return
             binding["binding_id"] = identity(binding)
-            atomic_json(self.config.state_root / "provider-activity-binding.json", binding)
+            atomic_json(path, binding)
             self._provider_activity_binding = binding
+            self._provider_activity_sequence, self._provider_activity = 0, {}
         except Exception:
             # Missing optional telemetry never changes routing or custody.
             pass
@@ -1003,12 +1063,6 @@ class _ProgressCallbacks:
         self.runtime, self.bridge = runtime, bridge
         self.attempt_root, self.max_task_attempts = bridge.attempt_root, bridge.max_task_attempts
 
-    def run_provider(self, attempt: Any) -> Any:
-        self.runtime._provider_callback_entered = True
-        self.runtime.capture("provider", attempt)
-        self.runtime._bind_provider_activity(attempt)
-        return self.bridge.run_provider(attempt)
-
     def apply_effect(self, attempt: Any, result: Any) -> Any:
         self.runtime.capture("effect", attempt)
         return self.bridge.apply_effect(attempt, result)
@@ -1044,7 +1098,7 @@ def validate_goal(config: CampaignConfig, goal_id: str) -> dict[str, Any]:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("command", choices=("bootstrap", "run", "status", "validate-goal", "repair-once"))
+    result.add_argument("command", choices=("bootstrap", "run", "status", "validate-goal", "repair-once", "continue-candidate"))
     result.add_argument("--config", type=Path)
     for option in ("site-root", "framework-root", "state-root", "plan-path", "implementation-command", "python-executable", "run-id"):
         result.add_argument("--" + option)
@@ -1080,12 +1134,21 @@ def main(argv: list[str] | None = None) -> int:
             with owner_lock(config):
                 receipt = bootstrap(config, already_locked=True)
                 runtime = CampaignRuntime(config, receipt)
+                if args.command == "continue-candidate":
+                    if not args.request:
+                        raise ValueError("continue-candidate requires an immutable native candidate request")
+                    from .worldwide_legal_search_migration import _registered_stopped_fence
+                    fence = _registered_stopped_fence(config)
+                    if fence.get("owner_alive") is not False or fence.get("main_pid") != 0 or fence.get("cgroup_empty") is not True:
+                        raise ValueError("candidate continuation requires the registered previous owner stopped and fenced")
+                    runtime._candidate_request_path = args.request
+                    runtime._read_candidate_request()
                 def request_stop(_signum: int, _frame: Any) -> None:
                     runtime.cancel.set()
                     runtime.stop.set()
                 signal.signal(signal.SIGTERM, request_stop)
                 signal.signal(signal.SIGINT, request_stop)
-                output = runtime.run(once=args.once)
+                output = runtime.run(once=args.once or args.command == "continue-candidate")
                 if runtime._reload_request:
                     print(json.dumps(output, sort_keys=True, default=str), flush=True)
                     return 75

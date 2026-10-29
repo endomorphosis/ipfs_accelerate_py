@@ -1203,6 +1203,8 @@ def bind_database_portal_execution_from_args(
         ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
     task_repo_root_resolver: Callable[[str], Path] | None = None,
+    provider_handoff_binder: Callable[..., Any] | None = None,
+    candidate_reconciliation_loader: Callable[..., Any] | None = None,
 ) -> object | None:
     """Bind real Portal execution to a database daemon in production mode.
 
@@ -1223,6 +1225,8 @@ def bind_database_portal_execution_from_args(
             default_objective_path=default_objective_path,
             default_objective_bundle_dir=default_objective_bundle_dir,
             configured_board_live_admission=configured_board_live_admission,
+            provider_handoff_binder=provider_handoff_binder,
+            candidate_reconciliation_loader=candidate_reconciliation_loader,
         )
     from .database_portal_bridge import DatabasePortalExecutionBridge
 
@@ -1389,6 +1393,8 @@ def bind_database_portal_execution_from_args(
         prior_attempt_authority=(
             daemon.authorize_superseded_portal_attempt_binding
         ),
+        provider_handoff_binder=provider_handoff_binder,
+        candidate_reconciliation_loader=candidate_reconciliation_loader,
     )
     binder(
         provider_fn=bridge.run_provider,

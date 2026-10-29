@@ -27,6 +27,7 @@ import shlex
 import stat
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -159,6 +160,14 @@ class DatabasePortalBridgeError(RuntimeError):
     def __init__(self, message: str, *, result: Mapping[str, Any] | None = None):
         super().__init__(message)
         self.result = dict(result or {})
+
+
+class DatabasePortalProviderCustodyUnknown(RuntimeError):
+    """A paid native callback has no accepted terminal custody evidence.
+
+    This deliberately is not a BridgeError or no-dispatch deferral. The
+    native outer callback intent and claim remain fenced against redispatch.
+    """
 
 
 class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
@@ -1865,6 +1874,7 @@ class DatabasePortalExecutionBridge:
         max_task_attempts: int = 0,
         prior_attempt_authority: PriorAttemptAuthority | None = None,
         provider_handoff_binder: Any = None,
+        candidate_reconciliation_loader: Any = None,
     ) -> None:
         if not callable(portal_factory):
             raise TypeError("portal_factory must be callable")
@@ -1940,6 +1950,9 @@ class DatabasePortalExecutionBridge:
         if provider_handoff_binder is not None and not callable(provider_handoff_binder):
             raise TypeError("provider_handoff_binder must be an owner-only callable or None")
         self.provider_handoff_binder = provider_handoff_binder
+        if candidate_reconciliation_loader is not None and not callable(candidate_reconciliation_loader):
+            raise TypeError("candidate_reconciliation_loader must be an owner-only callable or None")
+        self.candidate_reconciliation_loader = candidate_reconciliation_loader
 
     def _paths(self, attempt: Any) -> DatabasePortalAttemptPaths:
         root = self.attempt_root / _attempt_key(attempt.attempt_id)
@@ -11294,6 +11307,77 @@ class DatabasePortalExecutionBridge:
             observe(unavailable_reason)
             return None
 
+    def _wait_for_native_inflight(
+        self, *, attempt: Any, paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any], daemon: Any, authority: Mapping[str, Any],
+        implementation: Mapping[str, Any], summaries: Sequence[Mapping[str, Any]],
+        merge_request_loader: Any,
+    ) -> Mapping[str, Any]:
+        """Keep the original native callback alive; never start another turn."""
+        from .implementation_daemon import PortalImplementationDaemon, parse_task_text
+
+        if (type(daemon) is not PortalImplementationDaemon
+                or implementation.get("reason") != "inflight_process"
+                or implementation.get("dispatch_intent_retained") is not True
+                or implementation.get("provider_dispatched") is not True
+                or implementation.get("attempt_consumed") is not True
+                or implementation.get("task_id") != binding["task_alias"]
+                or implementation.get("canonical_task_cid") != authority["canonical_task_cid"]):
+            raise DatabasePortalProviderCustodyUnknown("native inflight provider lacks exact retained dispatch authority")
+        tasks = parse_task_text(self._verify_projection(paths, binding), path=paths.task_projection,
+            task_header_prefix=f"## {binding['task_alias']}")
+        if len(tasks) != 1 or tasks[0].task_id != binding["task_alias"]:
+            raise DatabasePortalProviderCustodyUnknown("native inflight projection identity changed")
+        timeout = daemon._implementation_timeout_policy(tasks[0]).max_timeout_seconds
+        started_ms = getattr(attempt, "started_at_ms", None)
+        if type(started_ms) is not int or started_ms <= 0 or not math.isfinite(timeout) or timeout <= 0:
+            raise DatabasePortalProviderCustodyUnknown("native inflight provider has no original bounded deadline")
+        deadline = time.monotonic() + max(0.0, started_ms / 1000 + timeout - time.time())
+        terminal_grace = None
+        terminal_reconciled = False
+        while True:
+            projection = self._verify_projection(paths, binding)
+            if _projection_status(projection) in _TERMINAL_STATUSES:
+                if self._has_completion_event(paths, str(binding["task_alias"])):
+                    return self._acceptance_receipt(attempt=attempt, paths=paths, binding=binding,
+                        summaries=summaries, merge_request_loader=merge_request_loader)
+                if not terminal_reconciled:
+                    # The worker's real merge may finish before the next Portal
+                    # board reconciliation emits task_completed. Only an exact
+                    # verified landed transition permits this no-ready-task pass.
+                    transition = self._accepted_source_transition(attempt=attempt, paths=paths, binding=binding,
+                        task_alias=str(binding["task_alias"]), task_cid=str(attempt.task_cid),
+                        merge_request_loader=merge_request_loader)
+                    if transition is not None:
+                        terminal_reconciled = True
+                        reconciliation = daemon.run_once()
+                        if not isinstance(reconciliation, Mapping):
+                            raise DatabasePortalProviderCustodyUnknown("native terminal reconciliation returned no evidence")
+                        summaries = [*summaries, _bounded_portal_result(reconciliation)]
+                        self._verify_projection(paths, binding)
+                        continue
+            if time.monotonic() >= deadline:
+                raise DatabasePortalProviderCustodyUnknown("native inflight provider original deadline elapsed")
+            if daemon._implementation_cancel_requested():
+                raise DatabasePortalProviderCustodyUnknown("native inflight provider owner cancellation requires process fence")
+            live = daemon._find_live_inflight_implementation()
+            exact = (isinstance(live, Mapping)
+                and live.get("task_id") == binding["task_alias"]
+                and live.get("canonical_task_cid") == authority["canonical_task_cid"]
+                and live.get("canonical_task_key") == implementation.get("canonical_task_key")
+                and live.get("attempt") == implementation.get("attempt")
+                and live.get("worktree_path") == implementation.get("worktree_path"))
+            if not exact:
+                # Completion may be fsynced immediately after process exit.
+                # Observe only; run_once here could dispatch another provider.
+                if terminal_grace is None:
+                    terminal_grace = min(deadline, time.monotonic() + 5.0)
+                if time.monotonic() >= terminal_grace:
+                    raise DatabasePortalProviderCustodyUnknown("native inflight provider vanished without accepted terminal evidence")
+            elif terminal_grace is not None:
+                raise DatabasePortalProviderCustodyUnknown("native inflight provider custody changed during terminal observation")
+            time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
@@ -11430,6 +11514,15 @@ class DatabasePortalExecutionBridge:
                         raise DatabasePortalBridgeError(
                             "Portal daemon rejected database diagnostic binding"
                         ) from exc
+            if self.candidate_reconciliation_loader is not None:
+                from ..project_adapters.worldwide_legal_search_continuation import reconcile_candidate
+                admission = self.candidate_reconciliation_loader(attempt=attempt, paths=paths,
+                    binding=dict(binding), portal_daemon=daemon)
+                reconciled = reconcile_candidate(portal_daemon=daemon, attempt=attempt, paths=paths,
+                    binding=binding, admission=admission)
+                summaries.append(_bounded_portal_result(reconciled))
+                return self._acceptance_receipt(attempt=attempt, paths=paths, binding=binding,
+                    summaries=summaries, merge_request_loader=merge_request_loader)
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(
@@ -11451,6 +11544,10 @@ class DatabasePortalExecutionBridge:
                 summaries.append(summary)
                 self._verify_projection(paths, binding)
                 implementation = raw_result.get("implementation_result")
+                if isinstance(implementation, Mapping) and implementation.get("reason") == "inflight_process":
+                    return self._wait_for_native_inflight(attempt=attempt, paths=paths, binding=binding, daemon=daemon,
+                        authority=bound_attempt_authority, implementation=implementation, summaries=summaries,
+                        merge_request_loader=merge_request_loader)
                 if (
                     isinstance(implementation, Mapping)
                     and self._pre_dispatch_deferral(implementation)
@@ -11705,6 +11802,7 @@ __all__ = (
     "CROSS_ATTEMPT_LIFECYCLE_QUARANTINE_FENCE_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
+    "DatabasePortalProviderCustodyUnknown",
     "DatabasePortalBridgeError",
     "DatabasePortalCandidateRetry",
     "DatabasePortalExecutionBridge",
