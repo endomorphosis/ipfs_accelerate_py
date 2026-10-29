@@ -197,7 +197,10 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
     # absence of historical lifecycle/process records grants no authority.
     fresh_id = hashlib.sha256((attempt.attempt_id + request["receipt_id"]).encode()).hexdigest()[:24]
     fresh = portal_daemon.worktree_root.resolve(strict=True) / ("workspace_continuation_" + fresh_id)
-    branch = "implementation/" + attempt.task_alias.lower() + "-continuation-" + fresh_id + "-attempt-1"
+    # Keep the normal campaign branch grammar: real workspace validators and
+    # lifecycle cleanup both consume it. The request-bound hash remains unique.
+    branch = ("implementation/" + attempt.task_alias.lower() + "-" + fresh_id
+              + "-attempt-1-" + str(attempt.started_at_ms // 1000))
     _need(not fresh.exists() and not fresh.is_symlink() and not _git(repo, "branch", "--list", branch),
         "candidate_fresh_workspace_already_exists")
     record = portal_daemon.worktree_lifecycle.begin_preparing(task_id=task.task_id,

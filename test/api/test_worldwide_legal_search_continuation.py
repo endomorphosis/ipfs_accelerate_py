@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 import time
@@ -158,6 +159,7 @@ def test_helper_uses_real_native_fence_fresh_workspace_and_merge(native_continua
     assert Path(admission.request["worktree_path"]).is_dir()
     assert git(Path(admission.request["worktree_path"]), "rev-parse", "HEAD") == admission.request["candidate_commit"]
     assert result["continuation_workspace"] != admission.request["worktree_path"]
+    assert re.fullmatch(r"implementation/wwl-[0-9]{3}-[0-9a-f]+-attempt-[0-9]+-[0-9]+", result["continuation_branch"])
     assert DatabasePortalExecutionBridge._has_completion_event(paths, "WWL-001")
     assert native.get_attempt(admission.request["predecessor_attempt_id"]).status == "failed"
     # The bridge/native completion CAS is deliberately outside this helper.
