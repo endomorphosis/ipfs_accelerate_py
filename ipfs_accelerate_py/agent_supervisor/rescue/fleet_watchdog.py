@@ -1486,7 +1486,7 @@ def load_config(path: Path) -> dict[str, Any]:
     return config
 
 
-def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
+def run_cycle(config: dict[str, Any], *, apply: bool, heartbeat=None) -> dict[str, Any]:
     repair_unit = None
     if "repair_worker" in config:
         from .fleet_repair import repair_job_unit
@@ -1497,6 +1497,8 @@ def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
         work = {pool.submit(tick_board, board, root, apply=apply,
                             repair_unit=repair_unit): board["id"] for board in config["boards"]}
         for future in concurrent.futures.as_completed(work):
+            if heartbeat is not None:
+                heartbeat.notify_due()
             identifier = work[future]
             try:
                 observations[identifier] = future.result()
@@ -1516,14 +1518,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
     config = load_config(args.config)
+    from .systemd_heartbeat import SystemdHeartbeat
+    heartbeat = SystemdHeartbeat.from_environment()
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     with lock(Path(config["state_dir"]) / "fleet.lock") as acquired:
         if not acquired:
             return 0
+        heartbeat.notify_due(force=True)
         while not stop.is_set():
-            report = run_cycle(config, apply=args.apply)
+            report = run_cycle(config, apply=args.apply, **({"heartbeat": heartbeat} if heartbeat.enabled else {}))
+            heartbeat.notify_due()
             print(json.dumps({"observed_at": report["observed_at"], "boards": {
                 key: value["health"] for key, value in report["boards"].items()}}), flush=True)
             if args.once:

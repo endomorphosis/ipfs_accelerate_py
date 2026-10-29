@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import hashlib
 import os
 import re
 import shutil
@@ -30,6 +32,15 @@ from .fleet_watchdog import (
 )
 from .fleet_watchdog import repair_hold_paths as hold_paths
 from .recovery_policy import recovery_denial
+from .systemd_heartbeat import SystemdHeartbeat
+
+_SERVICE_HEARTBEAT = None
+CANDIDATE_PENDING = frozenset({"candidate_ready", "validation_pending", "adoption_pending",
+                               "candidate_pending", "adopted_pending_probe"})
+
+def _heartbeat() -> SystemdHeartbeat:
+    return _SERVICE_HEARTBEAT or SystemdHeartbeat.from_environment()
+
 
 DEFAULT_REPAIR_JOB_UNIT = "ipfs-taskboard-repair-job.service"
 DEFAULT_REPAIR_DISK_AVAILABLE_BYTES = 8 * 1024 ** 3
@@ -350,7 +361,25 @@ def _recovery_denial(config: dict[str, Any], board: dict[str, Any],
             or recovery_denial(board, observation if isinstance(observation, dict) else {}, allow_infrastructure=True))
 
 
-def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command) -> list[dict[str, Any]]:
+def _retired_reconciliation_unit_closed(config: dict[str, Any], runner) -> bool:
+    """Read only the configured repair unit; never stop or adopt a process."""
+    try:
+        result = runner({"argv": ["systemctl", "--user", "show", repair_job_unit(config),
+                                  "--property=ActiveState,MainPID"]}, cwd="/", timeout=10)
+        if type(result.get("returncode")) is not int or result["returncode"] != 0:
+            return False
+        lines = result.get("stdout", "").splitlines()
+        pairs = [line.split("=", 1) for line in lines if "=" in line]
+        if len(pairs) != 2 or {pair[0] for pair in pairs} != {"ActiveState", "MainPID"}:
+            return False
+        state = dict(pairs)
+        return state["MainPID"] == "0" and state["ActiveState"] in {"inactive", "failed"}
+    except Exception:
+        return False
+
+
+def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command,
+                          retired_job_sha256: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """Fresh probes can retire recovered jobs or advance useful continuations.
 
     The watchdog export only selects a recheck. It cannot verify recovery or
@@ -359,18 +388,59 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
     from .fleet_watchdog import normalize_probe
 
     limits = _repair_limits(config)
+    if retired_job_sha256 is not None and (
+            type(retired_job_sha256) is not dict
+            or any(key not in limits or not isinstance(value, str)
+                   or re.fullmatch(r"[0-9a-f]{64}", value) is None
+                   for key, value in retired_job_sha256.items())):
+        raise ValueError("retired reconciliation requires exact configured-board SHA256 bindings")
     root = Path(config["state_dir"])
     results = []
     for board in config["boards"]:
+        _heartbeat().notify_due()
+        if retired_job_sha256 is not None and board["id"] not in retired_job_sha256:
+            continue
         if observation_only(board) or _recovery_denial(config, board):
             continue
         path = root / "repairs" / board["id"] / "job.json"
         job = read_json(path)
         eligible_status = job.get("status")
-        if eligible_status != "queued" and not (eligible_status == "escalated"
+        retired_recheck = retired_job_sha256 is not None
+        expected_hash = retired_job_sha256.get(board["id"]) if retired_recheck else None
+        if retired_recheck:
+            try:
+                observed_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                observed_hash = None
+            refusal = None
+            if observed_hash != expected_hash:
+                refusal = "job_preimage_mismatch"
+            elif eligible_status != "retired_wait" or infrastructure_policy(board) is None:
+                refusal = "not_terminal_infrastructure_wait"
+            elif (type(job.get("attempts")) is not int or job["attempts"] < 0
+                    or type(job.get("returncode")) is not int
+                    or any(type(job.get(key)) not in {int, float}
+                           or not math.isfinite(job[key]) for key in ("finished_at", "last_started_at"))
+                    or job["finished_at"] < job["last_started_at"]
+                    or any(key in job and job[key] is not False
+                           for key in ("outcome_unknown", "provider_outcome_unknown", "external_outcome_unknown"))
+                    or any(key in job and (not isinstance(job[key], str)
+                               or job[key] not in {"known", "known_terminal", "observed_terminal", "not_applicable"})
+                           for key in ("outcome_knowledge", "provider_outcome_knowledge", "external_outcome_knowledge"))):
+                refusal = "attempt_outcome_unknown"
+            elif hold_paths(board):
+                refusal = "operator_hold"
+            elif not _retired_reconciliation_unit_closed(config, runner):
+                refusal = "repair_unit_custody_not_closed"
+            if refusal:
+                results.append({"board_id": board["id"], "status": "retired_reconciliation_refused",
+                                "reason": refusal, "expected_job_sha256": expected_hash,
+                                "observed_job_sha256": observed_hash, "queue_mutated": False})
+                continue
+        elif eligible_status != "queued" and not (eligible_status == "escalated"
                 and limits[board["id"]] is not None):
             continue
-        if board_is_complete(config, board["id"]):
+        if not retired_recheck and board_is_complete(config, board["id"]):
             with lock(path.parent / "queue.lock") as acquired:
                 if acquired:
                     current = read_json(path)
@@ -380,7 +450,7 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
                         results.append({"board_id": board["id"], "status": "retired_complete"})
             continue
         wait = board_wait_stall(config, board["id"])
-        if wait:
+        if wait and not retired_recheck:
             with lock(path.parent / "queue.lock") as acquired:
                 if acquired:
                     current = read_json(path)
@@ -423,12 +493,21 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
             fresh = {"board_id": board["id"], "health": "unknown"}
         if _recovery_denial(config, board, fresh):
             continue
+        if retired_recheck and not _retired_reconciliation_unit_closed(config, runner):
+            results.append({"board_id": board["id"], "status": "retired_reconciliation_refused",
+                            "reason": "repair_unit_custody_not_closed", "queue_mutated": False})
+            continue
         with lock(path.parent / "queue.lock") as acquired:
             if not acquired:
                 continue
             current = read_json(path)
             if (any(current.get(key) != value for key, value in identity.items())
                     or hold_paths(board) or _recovery_denial(config, board, fresh)):
+                continue
+            if retired_recheck and (current != job
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash):
+                results.append({"board_id": board["id"], "status": "retired_reconciliation_refused",
+                                "reason": "job_preimage_changed_during_probe", "queue_mutated": False})
                 continue
             current["reconcile_checked_at"] = now
             evidence = repair_evidence(fresh)
@@ -442,6 +521,20 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command)
             verification = (verify_job_recovery(board, incident, fresh,
                             root / board["id"] / "publication") if admitted_healthy or diagnostic
                             else {"verified": False})
+            if retired_recheck:
+                if verification.get("verified") is not True or verification.get("wait") is True:
+                    results.append({"board_id": board["id"], "status": "retired_reconciliation_refused",
+                                    "reason": "fresh_observer_recovery_not_verified", "queue_mutated": False})
+                    continue
+                # Close only this observed incident. All spent counters,
+                # escalation history, cooldowns, logs and provider outcomes stay.
+                current.update(status="verified_healthy", verification=verification,
+                               latest_probe=fresh, reconciled_at=now, reconciled_evidence=evidence)
+                write_json(path, current)
+                results.append({"board_id": board["id"], "status": "verified_healthy",
+                                "retired_job_sha256": expected_hash, "budget_replenished": False,
+                                "scope": "infrastructure_observer"})
+                continue
             if verification.get("wait") is True:
                 current.update(status="retired_wait", wait_stall=verification.get("wait_stall", "external_dependency_wait"),
                                verification=verification, latest_probe=fresh, retired_at=time.time())
@@ -521,8 +614,11 @@ def board_is_complete(config: dict[str, Any], board_id: str) -> bool:
     state = read_json(Path(config["state_dir"]) / board_id / "state.json")
     observation = state.get("observation") if isinstance(state.get("observation"), dict) else {}
     result = state.get("last_action_result") if isinstance(state.get("last_action_result"), dict) else {}
-    return (state.get("health") == "complete" or observation.get("complete") is True
-            or (state.get("last_action") == "publish" and result.get("status") == "published"))
+    published = state.get("last_action") == "publish" and result.get("status") == "published"
+    if observation.get("completion_candidate") is True:
+        # Count-based completion requests still require the publication gate.
+        return published
+    return (state.get("health") == "complete" or observation.get("complete") is True or published)
 
 
 def repair_route_is_current(job: dict[str, Any]) -> bool:
@@ -595,6 +691,10 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
         if infrastructure_policy(board) is not None and hold_paths(board):
             return {"status": "operator_hold", "board_id": board_id}
         prior = read_json(directory / "job.json")
+        # A frozen attempt remains owned by its validation/adoption path.
+        if prior.get("status") in CANDIDATE_PENDING:
+            return {"status": prior["status"], "board_id": board_id,
+                    "job": str(directory / "job.json"), "coding_attempts_incremented": False}
         # Preserve pending/running work and cooldown across changing symptoms.
         prior.update(board_id=board_id, incident_path=str(incident_path),
                      latest_incident=incident, updated_at=time.time())
@@ -1098,9 +1198,15 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
 def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
     """Distinguish an empty queue from held or scheduled recovery work."""
     limits = _repair_limits(config)
-    waiting, held, escalated = [], [], []
+    waiting, held, escalated, candidates = [], [], [], []
     for board in config["boards"]:
         job = read_json(Path(config["state_dir"]) / "repairs" / board["id"] / "job.json")
+        if job.get("status") in CANDIDATE_PENDING:
+            candidates.append({"board_id": board["id"], "status": job["status"],
+                               "attempts": job.get("attempts"),
+                               "next_resume_at": job.get("candidate_next_resume_at"),
+                               "coding_attempts_incremented": False})
+            continue
         if job.get("status") == "escalated" and limits[board["id"]] is not None:
             escalated.append(_budget_result(board["id"], job))
             continue
@@ -1125,6 +1231,8 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
               "held": held, "next_attempt_at": min((r["next_attempt_at"] for r in waiting), default=None)}
     if escalated:
         result.update(escalated=escalated, status="waiting" if waiting or held else "escalated")
+    if candidates:
+        result.update(candidates=candidates, status="candidate_pending")
     return result
 
 
@@ -1401,6 +1509,8 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     jobs = [(board, job) for board, job in jobs
             if not observation_only(board) and not _recovery_denial(config, board)]
     running = [(board, job) for board, job in jobs if job.get("status") == "running"]
+    if any(job.get("status") in CANDIDATE_PENDING for _, job in jobs):
+        return False  # A validation/adoption owner can still be inside this cgroup.
     if running:
         return any(
             repair_workspace_is_stale(job, board, config.get("repair_worker", {})) or board_wait_stall(config, board["id"])
@@ -1421,6 +1531,254 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
                 and job.get("returncode") not in {0, None})
 
 
+def isolated_candidate_required(board: dict[str, Any], policy: dict[str, Any]) -> bool:
+    return (infrastructure_policy(board) is not None
+            or isinstance(board.get("service_fleet_binding"), dict)
+            or "candidate_policy" in policy)
+
+
+def candidate_dispatch_preflight(config: dict[str, Any], board: dict[str, Any]) -> str | None:
+    if not isolated_candidate_required(board, config["repair_worker"]):
+        return None
+    if "candidate_policy" not in config["repair_worker"]:
+        return "repair_candidate_policy_required"
+    try:
+        from .repair_candidate import parse_candidate_policy
+        from .repair_candidate_runtime import candidate_runtime_preflight
+        if parse_candidate_policy(config["repair_worker"]) is None:
+            return "repair_candidate_policy_required"
+        value = config.get("_config_path")
+        if not isinstance(value, str) or not Path(value).is_absolute() or not Path(value).is_file():
+            return "repair_candidate_config_path_required"
+        return candidate_runtime_preflight(config)
+    except ImportError:
+        return "repair_candidate_runtime_unavailable"
+    except (OSError, ValueError, KeyError, TypeError):
+        return "repair_candidate_policy_invalid"
+
+
+def next_pending_candidate(config: dict[str, Any], now: float):
+    selected = []
+    for board in config["boards"]:
+        if observation_only(board) or hold_paths(board) or _recovery_denial(config, board):
+            continue
+        path = Path(config["state_dir"]) / "repairs" / board["id"] / "job.json"
+        job = read_json(path)
+        binding = job.get("candidate_runtime")
+        if (job.get("status") not in CANDIDATE_PENDING or not isinstance(binding, dict)
+                or job.get("board_id") != board["id"]
+                or not isinstance(job.get("repair_unit_token"), str)
+                or re.fullmatch(r"[0-9a-f]{32}", job["repair_unit_token"]) is None
+                or type(job.get("attempts")) is not int or job["attempts"] <= 0
+                or binding.get("attempt_token") != job["repair_unit_token"]
+                or type(binding.get("attempt_number")) is not int
+                or binding["attempt_number"] != job["attempts"]):
+            continue
+        due = job.get("candidate_next_resume_at", 0)
+        if type(due) not in (int, float) or not math.isfinite(due) or due > now:
+            continue
+        # Constructor failures have no original frozen candidate to resume.
+        if not _candidate_resume_ready(config, board, job):
+            continue
+        selected.append((due, board["id"], board, path))
+    if not selected:
+        return None
+    _, _, board, path = min(selected, key=lambda row: row[:2])
+    return board, path
+
+
+def _candidate_resume_ready(config: dict[str, Any], board: dict[str, Any], job: dict[str, Any]) -> bool:
+    """A cheap selection fence; the inner original owner authenticates every proof."""
+    try:
+        from .repair_candidate_runtime import _read, _json
+        from .repair_candidate import FREEZE_SCHEMA, digest
+    except ImportError:
+        return False
+    token = job.get("repair_unit_token")
+    root = Path(config["state_dir"]) / "repair-candidates" / board["id"] / str(token)
+    binding = job.get("candidate_runtime", {})
+    if binding.get("candidate_metadata") != str(root):
+        return False
+    try:
+        ready = _json(_read(root / "candidate-ready.json"))
+        terminal = _json(_read(root / "provider-terminal.json"))
+        scope = ready.get("binding")
+        unsigned = {k:v for k,v in ready.items() if k != "freeze_sha256"}
+        return (ready.get("schema") == FREEZE_SCHEMA
+                and ready.get("freeze_sha256") == digest(unsigned)
+                and type(terminal.get("returncode")) is int
+                and ready.get("stage") == "candidate_ready" and isinstance(scope, dict)
+                and scope.get("board_id") == board["id"] and scope.get("attempt_id") == token
+                and type(scope.get("attempt_number")) is int and scope["attempt_number"] == job["attempts"]
+                and isinstance(ready.get("freeze_sha256"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", ready["freeze_sha256"]) is not None
+                and terminal.get("binding_sha256") == hashlib.sha256(
+                    json.dumps(scope,sort_keys=True,separators=(",", ":"),ensure_ascii=False,allow_nan=False).encode()).hexdigest()
+                and terminal.get("known_cgroup_empty_except_original_owner") is True)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _candidate_bootstrap_closed(config: dict[str, Any], board: dict[str, Any], job: dict[str, Any]) -> bool:
+    runtime = job.get("candidate_runtime", {})
+    try:
+        from .repair_candidate_runtime import _checked, _json
+        ref = runtime["bootstrap_result"]
+        path = Path(ref["path"])
+        expected = Path(config["state_dir"]) / "repair-runtime" / board["id"] / job["repair_unit_token"]
+        if (path.name != "bootstrap-result.json" or path.parent.parent != expected
+                or re.fullmatch(r"[0-9a-f]{32}", path.parent.name) is None
+                or path.lstat().st_mode & 0o222):
+            return False
+        receipt = _json(_checked(ref))
+        return (receipt.get("stage") == "adopted_pending_probe"
+                and receipt.get("board_id") == board["id"]
+                and receipt.get("attempt_token") == job["repair_unit_token"]
+                and type(receipt.get("attempts")) is int and receipt["attempts"] == job["attempts"]
+                and receipt.get("original_checkout_lease_closed") is True
+                and receipt.get("completion_authority") is False
+                and receipt.get("coding_attempts_incremented") is False)
+    except (ImportError, OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _candidate_unit_argv(config: dict[str, Any], board: dict[str, Any], job: dict[str, Any],
+                         inner: list[str]) -> list[str]:
+    policy = config["repair_worker"]
+    bounds = policy.get("candidate_runtime", {}).get("resource_bounds", {})
+    runtime_max = min(int(policy.get("timeout_seconds", 2400)), int(bounds.get("runtime_max_seconds", 2400)))
+    memory_max = int(bounds.get("memory_max_bytes", 16 * 1024**3))
+    return ["systemd-run", "--user", "--wait", "--collect", "--pipe",
+            f"--unit={repair_job_unit(config)}", "--property=KillMode=control-group",
+            f"--property=RuntimeMaxSec={runtime_max}",
+            "--property=TimeoutStopSec=30", "--property=Nice=10",
+            "--property=CPUWeight=20", f"--property=CPUQuota={int(bounds.get('cpu_quota_percent', 100))}%",
+            f"--property=TasksMax={int(bounds.get('tasks_max', 64))}",
+            f"--property=MemoryHigh={min(8 * 1024**3, memory_max)}",
+            f"--property=MemoryMax={memory_max}", "--property=UMask=0077",
+            *(f"--setenv={key}={_repair_temporary_directory(policy)}" for key in ("TMPDIR", "TEMP", "TMP")),
+            f"--setenv=PYTHONPATH={supervisor_pythonpath()}",
+            f"--setenv=IPFS_TASKBOARD_REPAIR_BOARD_ID={board['id']}",
+            f"--setenv=IPFS_TASKBOARD_REPAIR_JOB_TOKEN={job['repair_unit_token']}", *inner]
+
+
+def _candidate_bootstrap_argv(config: dict[str, Any], path: Path, job: dict[str, Any],
+                              *, mode: str, prompt: Path | None = None) -> list[str]:
+    argv = [sys.executable, "-P", "-m",
+            "ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_runtime", mode,
+            "--config", str(Path(config["_config_path"]).resolve()), "--job", str(path.resolve()),
+            "--attempt-token", job["repair_unit_token"]]
+    if prompt is not None:
+        argv += ["--prompt", str(prompt.resolve())]
+    return argv
+
+
+def _candidate_finished(config: dict[str, Any], board: dict[str, Any], path: Path,
+                        token: str, returncode: int) -> dict[str, Any]:
+    with lock(path.parent / "queue.lock") as acquired:
+        if not acquired:
+            return {"status": "candidate_queue_busy", "board_id": board["id"]}
+        job = read_json(path)
+        if job.get("repair_unit_token") != token:
+            return {"status": "completion_superseded", "board_id": board["id"]}
+        if job.get("status") == "running":
+            # A missing or interrupted bootstrap receipt is an UNKNOWN retained
+            # attempt, never permission to run another coding provider.
+            job.update(status="candidate_pending", candidate_recovery_reason="bootstrap_closeout_missing",
+                       candidate_runtime={"attempt_token": token, "attempt_number": job["attempts"],
+                                          "candidate_metadata": ""})
+        if job.get("status") not in CANDIDATE_PENDING:
+            return {"status": "completion_superseded", "board_id": board["id"]}
+        job.update(candidate_next_resume_at=time.time() + 300,
+                   candidate_last_returncode=returncode, candidate_last_finished_at=time.time())
+        write_json(path, job)
+    if job["status"] == "adopted_pending_probe":
+        return _verify_adopted_candidate(config, board, path, token)
+    return {"status": job["status"], "board_id": board["id"], "returncode": returncode,
+            "attempt_token": token, "coding_attempts_incremented": False}
+
+
+def _verify_adopted_candidate(config: dict[str, Any], board: dict[str, Any], path: Path,
+                              token: str) -> dict[str, Any]:
+    # Reuse the original configured probe after the adoption owner has closed.
+    from .fleet_watchdog import normalize_probe
+    if config.get("_config_path"):
+        current = load_config(Path(config["_config_path"]))
+        board = next(b for b in current["boards"] if b["id"] == board["id"])
+    if hold_paths(board) or observation_only(board) or _recovery_denial(config, board):
+        return {"status": "adopted_pending_probe", "board_id": board["id"]}
+    initial = read_json(path)
+    if (not _retired_reconciliation_unit_closed(config, command)
+            or not _candidate_bootstrap_closed(config, board, initial)):
+        return {"status": "adopted_pending_probe", "board_id": board["id"],
+                "reason": "original_adoption_closeout_not_established"}
+    if initial.get("status") != "adopted_pending_probe" or initial.get("repair_unit_token") != token:
+        return {"status": "completion_superseded", "board_id": board["id"]}
+    sample = normalize_probe(board["id"], command(board["probe"], cwd=board["cwd"], timeout=90))
+    _heartbeat().notify_due()
+    verification = verify_job_recovery(board, initial.get("latest_incident", {}), sample,
+                                       Path(config["state_dir"]) / board["id"] / "publication")
+    with lock(path.parent / "queue.lock") as acquired:
+        if not acquired:
+            return {"status": "candidate_queue_busy", "board_id": board["id"]}
+        job = read_json(path)
+        if job != initial or hold_paths(board) or _recovery_denial(config, board, sample):
+            return {"status": "completion_superseded", "board_id": board["id"]}
+        if verification.get("verified") is True and verification.get("wait") is not True:
+            job.update(status="verified_healthy", verification=verification, latest_probe=sample,
+                       reconciled_at=time.time())
+            write_json(path, job)
+    return {"status": job["status"], "board_id": board["id"], "coding_attempts_incremented": False}
+
+
+def resume_pending_candidate(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
+    configured = next((b for b in config["boards"] if b["id"] == board["id"]), None)
+    if configured is None or observation_only(configured) or hold_paths(configured) or _recovery_denial(config, configured):
+        return {"status": "candidate_recovery_wait", "board_id": board["id"]}
+    board = configured
+    job = read_json(path)
+    if next_pending_candidate({**config, "boards": [board]}, time.time()) != (board, path):
+        return {"status": "candidate_recovery_wait", "board_id": board["id"]}
+    if not _retired_reconciliation_unit_closed(config, command):
+        return {"status": "candidate_owner_liveness_unknown", "board_id": board["id"]}
+    if job["status"] == "adopted_pending_probe":
+        return _verify_adopted_candidate(config, board, path, job["repair_unit_token"])
+    if not all(key in config["repair_worker"] for key in ("candidate_policy", "candidate_runtime")):
+        return {"status": "candidate_recovery_wait", "board_id": board["id"],
+                "reason": "original_candidate_owners_removed"}
+    unavailable = candidate_dispatch_preflight(config, board)
+    if unavailable:
+        return {"status": "candidate_recovery_wait", "board_id": board["id"], "reason": unavailable}
+    policy = config["repair_worker"]
+    storage = _storage_preflight(policy, path, config["state_dir"])
+    if storage:
+        return {"status": "candidate_recovery_wait", "board_id": board["id"], "reason": storage["reason"]}
+    with lock(path.parent / "queue.lock") as acquired:
+        if not acquired or read_json(path) != job or hold_paths(board) or _recovery_denial(config, board):
+            return {"status": "completion_superseded", "board_id": board["id"]}
+        if not _retired_reconciliation_unit_closed(config, command):
+            return {"status": "candidate_owner_liveness_unknown", "board_id": board["id"]}
+        job["candidate_next_resume_at"] = time.time() + 300
+        write_json(path, job)
+    argv = _candidate_unit_argv(config, board, job,
+        _candidate_bootstrap_argv(config, path, job, mode="resume"))
+    log_path = path.parent / ("candidate-resume-" + job["repair_unit_token"] + "-" + uuid.uuid4().hex + ".log")
+    try:
+        with log_path.open("xb") as log:
+            os.chmod(log_path, 0o600)
+            process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+            try:
+                code = _heartbeat().wait_for_process(process, timeout=policy.get("timeout_seconds", 2400) + 90)
+            except subprocess.TimeoutExpired:
+                command({"argv": ["systemctl", "--user", "stop", repair_job_unit(config)]}, cwd="/", timeout=45)
+                process.kill()
+                process.wait(timeout=10)
+                code = 124
+    except OSError as exc:
+        return {"status": "candidate_recovery_wait", "board_id": board["id"], "reason": type(exc).__name__}
+    return _candidate_finished(config, board, path, job["repair_unit_token"], code)
+
+
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
     limits = _repair_limits(config)
     if board["id"] not in limits:
@@ -1435,6 +1793,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         board = configured
     limit = limits[board["id"]]  # A copied board cannot remove policy or its cap.
     policy = dict(config["repair_worker"])
+    if read_json(path).get("status") in CANDIDATE_PENDING:
+        return resume_pending_candidate(config, board, path)
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
     if infrastructure_policy(board) is not None:
@@ -1512,6 +1872,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     denial = _recovery_denial(config, configured, initial)
     if denial:
         return {"status": "recovery_wait", "reason": denial, "board_id": board["id"]}
+    _heartbeat().notify_due()
     initial_at = time.time()
     if "service_fleet_binding" in board or infrastructure_policy(board) is not None:
         verification = verify_job_recovery(board, read_json(path).get("latest_incident", {}), initial,
@@ -1537,7 +1898,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                        if status == "retired_wait" and "wait_stall" in verification else {})}
     # Native probes can take up to 90 seconds. Recheck immediately before
     # claiming the slot, since a package upgrade may occur during that read.
-    unavailable = _launch_preflight(policy)
+    unavailable = candidate_dispatch_preflight(config, board) or _launch_preflight(policy)
     if unavailable:
         return _defer_unstarted_job(path, policy, unavailable, selection=selection, board=board)
     storage = _storage_preflight(policy, path, config["state_dir"])
@@ -1596,14 +1957,16 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     prompt.write_text(repair_prompt(board, incident, config, report, prior_report, handoff))
     os.chmod(prompt, 0o600)
     last_message = directory / f"last-message-{stamp}.txt"
-    inner = llm_router_repair_argv(
-        policy, prompt, last_message, workspace=Path(workspace),
-    )
+    isolated = isolated_candidate_required(board, policy)
+    inner = (_candidate_bootstrap_argv(config, path, job, mode="run", prompt=prompt)
+             if isolated else llm_router_repair_argv(
+                 policy, prompt, last_message, workspace=Path(workspace)))
     argv = ["systemd-run", "--user", "--wait", "--collect", "--pipe",
             f"--unit={unit}", "--property=KillMode=control-group",
             f"--property=RuntimeMaxSec={int(policy.get('timeout_seconds', 2400))}",
             "--property=TimeoutStopSec=30", "--property=Nice=10",
-            "--property=CPUWeight=20", "--property=MemoryHigh=8G",
+            "--property=CPUWeight=20", "--property=CPUQuota=100%", "--property=TasksMax=64",
+            "--property=MemoryHigh=8G",
             "--property=MemoryMax=16G", "--property=UMask=0077",
             *(f"--setenv={key}={_repair_temporary_directory(policy)}"
               for key in ("TMPDIR", "TEMP", "TMP")),
@@ -1611,6 +1974,8 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
             f"--setenv=IPFS_TASKBOARD_REPAIR_BOARD_ID={board['id']}",
             f"--setenv=IPFS_TASKBOARD_REPAIR_JOB_TOKEN={job['repair_unit_token']}",
             *inner]
+    if isolated:
+        argv = _candidate_unit_argv(config, board, job, inner)
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
     denial = _recovery_denial(config, configured, initial)
@@ -1630,13 +1995,16 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
                                        f"launcher_spawn_failed:{type(exc).__name__}",
                                        attempt=attempt, selection=claimed_selection, board=board)
         try:
-            returncode = process.wait(timeout=policy.get("timeout_seconds", 2400) + 90)
+            returncode = _heartbeat().wait_for_process(process, timeout=policy.get("timeout_seconds", 2400) + 90)
         except subprocess.TimeoutExpired:
             command({"argv": ["systemctl", "--user", "stop", unit]},
                     cwd=policy["cwd"], timeout=45)
             process.kill()
             process.wait(timeout=10)
             returncode = 124
+    _heartbeat().notify_due()
+    if isolated:
+        return _candidate_finished(config, board, path, job["repair_unit_token"], returncode)
     wait = board_wait_stall(config, board["id"])
     if wait:
         with lock(directory / "queue.lock") as acquired:
@@ -1707,14 +2075,35 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["enqueue", "run"])
+    parser.add_argument("mode", choices=["enqueue", "run", "reconcile"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--incident", type=Path)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--retired-job-sha256", action="append", default=[], metavar="BOARD=SHA256")
     args = parser.parse_args(argv)
+    if args.retired_job_sha256 and args.mode != "reconcile":
+        parser.error("--retired-job-sha256 is only valid for reconcile")
+    bindings = {}
+    for value in args.retired_job_sha256:
+        identifier, separator, digest = value.partition("=")
+        if (not separator or identifier in bindings
+                or re.fullmatch(r"[A-Za-z0-9_-]+", identifier) is None
+                or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
+            parser.error("retired bindings must be unique literal BOARD=SHA256 values")
+        bindings[identifier] = digest
+    if args.mode == "reconcile" and not bindings:
+        parser.error("reconcile requires --retired-job-sha256")
+    global _SERVICE_HEARTBEAT
+    _SERVICE_HEARTBEAT = SystemdHeartbeat.from_environment()
     config = load_config(args.config)
     repair_job_unit(config)
     config["_config_path"] = str(args.config.resolve())
+    if args.mode == "reconcile":
+        print(json.dumps({"schema": "agent-supervisor/operator-retired-reconciliation@1",
+                          "requested_retired_boards": sorted(bindings),
+                          "results": reconcile_queued_jobs(config, time.time(),
+                                                           retired_job_sha256=bindings)}, sort_keys=True), flush=True)
+        return 0
     if args.mode == "enqueue":
         if args.incident is None:
             parser.error("enqueue requires --incident")
@@ -1727,6 +2116,7 @@ def main(argv: list[str] | None = None) -> int:
     with lock(root / "repair-worker.lock") as acquired:
         if not acquired:
             return 0
+        _heartbeat().notify_due(force=True)
         while not stop.is_set():
             try:
                 job_unit = repair_job_unit(config)
@@ -1737,8 +2127,12 @@ def main(argv: list[str] | None = None) -> int:
                     command({"argv": ["systemctl", "--user", "stop",
                                       job_unit]},
                             cwd="/", timeout=45)
-                selected = next_job(config, time.time())
-                if selected:
+                _heartbeat().notify_due()
+                pending_candidate = next_pending_candidate(config, time.time())
+                selected = None if pending_candidate else next_job(config, time.time())
+                if pending_candidate:
+                    result = resume_pending_candidate(config, *pending_candidate)
+                elif selected:
                     write_json(root / "repair-worker.json", {"status": "running",
                         "board_id": selected[0]["id"], "observed_at": time.time()})
                     result = run_job(config, *selected)
@@ -1746,6 +2140,7 @@ def main(argv: list[str] | None = None) -> int:
                     result = queue_status(config, time.time())
                 write_json(root / "repair-worker.json", dict(result, observed_at=time.time()))
                 print(json.dumps(result), flush=True)
+                _heartbeat().notify_due()
             except Exception as exc:
                 write_json(root / "repair-worker.json", {"status": "error", "observed_at": time.time(),
                                                         "error": f"{type(exc).__name__}: {exc}"})
