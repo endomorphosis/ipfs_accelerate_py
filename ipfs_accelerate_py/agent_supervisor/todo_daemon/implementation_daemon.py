@@ -50052,7 +50052,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "returncode": int(completed.returncode),
             "output": output,
         }
-        if sys.platform != "linux":
+        if sys.platform == "linux":
+            # Expose the original report only after the native subreaper and
+            # process-group stream checks above have actually returned.
+            result["validation_process_custody"] = {
+                "schema": "native-validation-process-custody/v1", "supported": True,
+                **report,
+            }
+        else:
             result["validation_process_custody"] = {"supported": False, "scope": "direct_process_only"}
         if launcher_receipt is not None:
             result["validation_python_launcher"] = {
@@ -79227,6 +79234,15 @@ class DatabaseImplementationDaemon:
                     return observed
             raise
 
+    def run_native_metadata_validation(self, *, task_cid: str, expected_revision: int) -> dict[str, Any]:
+        """Run one signed execution-only metadata plan without provider authority."""
+        from .native_metadata_execution import execute_native_metadata_validation
+        with self._lock:
+            self.open()
+            return execute_native_metadata_validation(
+                self, task_cid=task_cid, expected_revision=expected_revision,
+            )
+
     def run_once(self) -> dict[str, Any]:
         """Preserve unsettled attempts while required completion evidence is absent."""
         from .completion_deferral import (
@@ -79653,6 +79669,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Exact native owner client scope for the inherited bootstrap")
     parser.add_argument("--task-context-bundle-artifact", default="")
     parser.add_argument("--task-context-bundle-sha256", default="")
+    parser.add_argument("--native-metadata-execution-task-cid", default="",
+                        help="Exact signed execution-only manual metadata task; requires --once --implement and an explicit single-owner slice")
+    parser.add_argument("--native-metadata-execution-task-revision", type=int, default=0,
+                        help="Expected canonical ready revision for that metadata task")
     parser.add_argument("--once", action="store_true", help="Run one backlog pass and exit")
     parser.add_argument("--interval", type=float, default=300.0, help="Seconds between backlog passes")
     parser.add_argument(
@@ -80175,6 +80195,16 @@ def main(argv: list[str] | None = None) -> None:
     # never when a model-hosting parent imports this module. Startup can wait
     # inside owner RPC or portal construction before the first live heartbeat;
     # retain its child stack without relaxing the lifecycle health deadline.
+    if args.native_metadata_execution_task_cid:
+        if not (args.once and args.implement and args.task_source_kind == "duckdb"
+                and args.authority_mode in {"embedded", "embedded_exclusive"}
+                and args.max_task_attempts == 1
+                and args.native_metadata_execution_task_revision > 0
+                and args.execution_slice_task_cid == [args.native_metadata_execution_task_cid]
+                and args.state_owner_bootstrap_fd == -1):
+            raise ValueError("native metadata execution requires an exact bounded single-owner invocation")
+    elif args.native_metadata_execution_task_revision:
+        raise ValueError("native metadata revision requires its exact task CID")
     native_startup_watchdog = args.state_owner_bootstrap_fd != -1
     startup_watchdog = None
     try:
@@ -80231,6 +80261,15 @@ def main(argv: list[str] | None = None) -> None:
                 if program is not None
                 else str(getattr(args, "task_source_kind", "") or "duckdb")
             )
+            metadata_source_kwargs = {}
+            if args.native_metadata_execution_task_cid:
+                from ..task_sources.database_task_source import DatabaseTaskSource
+                metadata_source_kwargs = {
+                    "task_source": DatabaseTaskSource(Path(database_path),
+                        owner_id="native-metadata-executor:" + str(args.owner_session_id),
+                        install_schema=False),
+                    "close_task_source": True,
+                }
             daemon: Any = DatabaseImplementationDaemon(
                 database_path=Path(database_path),
                 coordination_path=getattr(args, "coordination_path", None),
@@ -80257,6 +80296,7 @@ def main(argv: list[str] | None = None) -> None:
                 task_shard_index=args.task_shard_index,
                 strict_task_sharding=args.strict_task_sharding,
                 **owner_bootstrap,
+                **metadata_source_kwargs,
             )
             from ..runtime.native_dispatch_drain import from_native_admission
             if native_startup_watchdog:
@@ -80265,15 +80305,16 @@ def main(argv: list[str] | None = None) -> None:
                 admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
                 repo_root=REPO_ROOT,
             )
-            bind_database_portal_execution_from_args(
-                daemon,
-                args,
-                repo_root=REPO_ROOT,
-                portal_daemon_class=PortalImplementationDaemon,
-                configured_board_live_admission=(
-                    _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
-                ),
-            )
+            if not args.native_metadata_execution_task_cid:
+                bind_database_portal_execution_from_args(
+                    daemon,
+                    args,
+                    repo_root=REPO_ROOT,
+                    portal_daemon_class=PortalImplementationDaemon,
+                    configured_board_live_admission=(
+                        _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
+                    ),
+                )
             if native_startup_watchdog:
                 logger.info("Native owner startup stage: portal execution bound")
         else:
@@ -80420,6 +80461,13 @@ def main(argv: list[str] | None = None) -> None:
                 if use_database_daemon and owner_bootstrap and not args.implement:
                     from .native_owner_bootstrap import observe_typed_database_without_dispatch
                     result = observe_typed_database_without_dispatch(daemon)
+                elif args.native_metadata_execution_task_cid:
+                    result = daemon.run_native_metadata_validation(
+                        task_cid=args.native_metadata_execution_task_cid,
+                        expected_revision=args.native_metadata_execution_task_revision,
+                    )
+                    if result.get("passed") is not True:
+                        raise RuntimeError("native metadata execution failed; manual acceptance remains closed")
                 else:
                     result = daemon.run_once()
                 if use_database_daemon:

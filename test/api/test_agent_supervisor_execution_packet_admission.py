@@ -546,3 +546,578 @@ def test_readonly_repository_identity_matches_existing_bridge(scenario):
     assert s.mirrors == before
     with pytest.raises(ValueError, match="exact repository metadata mirroring control"):
         _repository(s.workspace, mirror=1)
+
+
+@pytest.mark.parametrize("location", ["body", "authored_task"])
+@pytest.mark.parametrize("value", [True, 0, 1, "true", None],
+                         ids=["required", "integer-zero", "integer-one", "string", "null"])
+def test_metadata_contract_cannot_admit_unbound_implementation_scope(scenario, location, value):
+    s = scenario
+    body = deepcopy(s.body)
+    body["requires_product_change_scope"] = False
+    target = body if location == "body" else body.setdefault("authored_task", {})
+    target["requires_product_change_scope"] = value
+    _upsert(s, body=body)
+    before = _snapshot(s)
+    with pytest.raises(ExecutionPacketAdmissionError, match="packet_implementation_scope_"):
+        _accept(s)
+    assert _snapshot(s) == before
+
+
+@pytest.mark.parametrize("location", ["body", "authored_task"])
+def test_explicit_false_implementation_requirement_preserves_metadata_admission(scenario, location):
+    s = scenario
+    body = deepcopy(s.body)
+    target = body if location == "body" else body.setdefault("authored_task", {})
+    target["requires_product_change_scope"] = False
+    _upsert(s, body=body)
+    _accept(s)
+    assert _check(s)
+
+
+def _portal_packet_selector_probe(*, forbid_queue=False):
+    """Only external collaborators are probes; the real selector stays intact."""
+    effects = []
+    queue_calls = []
+    retained = {"spent_attempts": {"FLAGGED": 5, "ELIGIBLE": 7},
+                "cooldowns": {"retained-other-task": "original-deadline"}}
+
+    def forbidden(label):
+        def fail(*_args, **_kwargs):
+            effects.append(label)
+            pytest.fail("selector attempted unsafe admission/repair effect: " + label)
+        return fail
+
+    def queue_call(label, result):
+        def call(identity):
+            if forbid_queue:
+                return forbidden(label)(identity)
+            queue_calls.append((label, identity))
+            return result
+        return call
+
+    queue = SimpleNamespace(
+        is_cooled_down=queue_call("cooldown", False),
+        get_penalty=queue_call("penalty", 0),
+        record_selection=queue_call("selection", None),
+        dirty=False,
+        save=forbidden("unexpected_queue_save"),
+    )
+    probe = SimpleNamespace(
+        manual_completion_authority_revalidation_only=False,
+        _manual_completion_authority_revalidation_only_task=lambda _task: False,
+        _task_has_blocking_pending_merge=lambda _task: False,
+        _strict_off_mission_deprioritized_task_ids=lambda _strategy: set(),
+        degradation_state=SimpleNamespace(degraded_submodules=lambda: []),
+        _inflight_submodule_paths=lambda: set(),
+        _canonical_ref=lambda task: "cid:" + task.task_id,
+        task_queue=queue,
+        _todo_vector_selection_context=lambda _tasks, _ready: {},
+        _todo_vector_selection_rank=lambda _task, _context: (),
+        _task_work_surface_rank=lambda _task: (),
+        _task_has_recent_no_change_outcome=lambda _task_id, _outcomes: False,
+        _plan_runtime_enabled=lambda: False,
+        _record_event=forbidden("unexpected_event"),
+        _run_implementation=forbidden("provider_dispatch"),
+        _require_provider_task_contract=forbidden("provider_contract"),
+    )
+    # These four repairs are intentionally absent from the primary caller.
+    # Transplanting the whole older qualified selector must fail this seam test.
+    for name in (
+        "_release_repaired_dependency_preflight_cooldowns",
+        "_release_repaired_read_only_validation_cooldowns",
+        "_release_obsolete_provider_repair_cooldowns",
+        "_release_obsolete_venv_launcher_cooldowns",
+    ):
+        setattr(probe, name, forbidden(name))
+    return probe, effects, queue_calls, retained
+
+
+def test_portal_packet_selection_flagged_only_has_no_queue_or_repair_effects(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import execution_packet_admission as packet_gate
+    observed = []
+    actual_predicate = packet_gate.execution_packet_required_metadata
+
+    def observe(metadata):
+        observed.append(dict(metadata))
+        return actual_predicate(metadata)
+
+    monkeypatch.setattr(packet_gate, "execution_packet_required_metadata", observe)
+    task = SimpleNamespace(task_id="FLAGGED", metadata={"execution packet required": "true"},
+        title="Flagged metadata work", acceptance="Preserve current authority", priority="P0",
+        track="ops", depends_on=())
+    probe, effects, queue_calls, retained = _portal_packet_selector_probe(forbid_queue=True)
+    before = deepcopy(retained)
+    statuses = {task.task_id: "ready"}
+    selected = PortalImplementationDaemon._select_next_task(
+        probe, [task], statuses, {}, {}, {}, downstream_unlock_by_task={})
+    assert selected is None
+    assert observed == [task.metadata]
+    assert effects == queue_calls == []
+    assert retained == before
+    assert statuses == {task.task_id: "ready"}
+
+
+def test_portal_packet_selection_preserves_eligible_peer_without_cooldown_repairs(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import execution_packet_admission as packet_gate
+    observed = []
+    actual_predicate = packet_gate.execution_packet_required_metadata
+
+    def observe(metadata):
+        observed.append(dict(metadata))
+        return actual_predicate(metadata)
+
+    monkeypatch.setattr(packet_gate, "execution_packet_required_metadata", observe)
+    flagged = SimpleNamespace(task_id="FLAGGED", metadata={"execution_packet_required": True},
+        title="Higher-priority flagged work", acceptance="Preserve authority", priority="P0",
+        track="ops", depends_on=())
+    eligible = SimpleNamespace(task_id="ELIGIBLE", metadata={}, title="Unflagged legacy work",
+        acceptance="Existing selection is allowed", priority="P1", track="ops", depends_on=())
+    probe, effects, queue_calls, retained = _portal_packet_selector_probe()
+    before = deepcopy(retained)
+    statuses = {"FLAGGED": "ready", "ELIGIBLE": "ready"}
+    selected = PortalImplementationDaemon._select_next_task(
+        probe, [flagged, eligible], statuses, {}, {}, {}, downstream_unlock_by_task={})
+    assert selected is eligible
+    assert observed == [flagged.metadata, eligible.metadata]
+    assert effects == []
+    assert queue_calls == [("cooldown", "cid:ELIGIBLE"),
+                           ("penalty", "cid:ELIGIBLE"),
+                           ("selection", "cid:ELIGIBLE")]
+    assert retained == before
+    assert statuses == {"FLAGGED": "ready", "ELIGIBLE": "ready"}
+# Dedicated native execution-only route. These cases use the original fixture
+# above: real temporary intent/coordinator databases, registered distinct local
+# profiles and genuine native signatures. Positive cases execute the declared
+# producer and verifier through the original validation scheduler.
+def _metadata_execution_policy(s):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import EXECUTION_POLICY_SCHEMA
+    return {"schema": EXECUTION_POLICY_SCHEMA, "task_cid": s.cid,
+        "purpose": "control_metadata_analysis", "execution_mode": "deterministic-only",
+        "completion_mode": "manual", "max_attempts": 1,
+        "provider_authority": False, "completion_authority": False}
+
+
+def _pure_metadata_task(*, policy_changes=None, body_changes=None):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import TaskRecord
+    # Pure original typed snapshot: no repository, profile, signature, database,
+    # scheduler, claim or execution is constructed for these early guard cases.
+    policy = _metadata_execution_policy(SimpleNamespace(cid="task:packet"))
+    policy.update(policy_changes or {})
+    body = {"completion": "manual", "provider_role": "deterministic-only",
+            "context_budget_tokens": "0", "execution_packet_required": True,
+            "code_edit_allowlist": [], "execution_packet_execution_policy": policy}
+    body.update(body_changes or {})
+    return TaskRecord(task_cid="task:packet", task_alias="PACKET-T", goal_cid="goal:packet",
+                      ordinal=0, status="ready", revision=1, body=body)
+
+
+def _prepare_metadata_execution(s, *, policy_changes=None, body_changes=None,
+                                producer=None, verifier=None, validations=None,
+                                accept=True, ready=True):
+    s.body.update(completion="manual", provider_role="deterministic-only",
+                  context_budget_tokens="0", execution_packet_execution_policy=_metadata_execution_policy(s))
+    s.body["execution_packet_execution_policy"].update(policy_changes or {})
+    s.body.update(body_changes or {})
+    (s.workspace / "producer.py").write_text(producer or (
+        "from pathlib import Path\n"
+        "Path('report.json').write_text('{\"metadata\":true}\\n')\n"
+        "Path('execution-order.txt').write_text('producer\\n')\n"))
+    (s.workspace / "verifier.py").write_text(verifier or (
+        "from pathlib import Path\nimport json\n"
+        "assert json.loads(Path('report.json').read_text()) == {'metadata': True}\n"
+        "assert Path('execution-order.txt').read_text() == 'producer\\n'\n"
+        "with Path('execution-order.txt').open('a') as f: f.write('verifier\\n')\n"))
+    (s.workspace / "precheck.py").write_text("raise SystemExit('precheck must not replace post-output verifier')\n")
+    post_verifier = [sys.executable, "-B", str(s.workspace / "verifier.py")]
+    s.packet["validation_argv"] = [sys.executable, "-B", str(s.workspace / "precheck.py")]
+    s.packet["test_allowlist"] = [str(s.workspace / "precheck.py"), str(s.workspace / "verifier.py")]
+    s.packet["source_descriptors"] = [_descriptor(s.workspace / name)
+                                      for name in ("producer.py", "verifier.py", "precheck.py")]
+    rows = validations if validations is not None else [
+        {"argv": s.packet["argv"], "purpose": "control_metadata_analysis", "role": "producer", "provider_allowed": False},
+        {"argv": post_verifier, "purpose": "control_metadata_analysis", "role": "independent_verifier", "provider_allowed": False}]
+    s.execution_argv = [s.packet["argv"], post_verifier]
+    _upsert(s, body=deepcopy(s.body), validations=rows)
+    if accept:
+        _accept(s)
+    if ready:
+        _cas(s, "ready")
+    return s.intent.get_task(s.cid)["revision"]
+
+
+def _metadata_daemon(s, **changes):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import DatabaseTaskSource
+    state = s.tmp_path / "metadata-executor-state"
+    state.mkdir(mode=0o700, exist_ok=True)
+    source = DatabaseTaskSource(s.intent.database_path, install_schema=False)
+    options = dict(database_path=s.intent.database_path,
+        coordination_path=s.tmp_path / "metadata-coordination.duckdb",
+        state_dir=state, state_prefix="single-metadata", owner_session_id="owner:metadata-execution-test",
+        authority_mode="embedded_exclusive", task_source_kind="duckdb",
+        task_source=source, close_task_source=True, max_task_attempts=1,
+        execution_slice_task_cids=(s.cid,), require_real_execution=True)
+    options.update(changes)
+    return DatabaseImplementationDaemon(**options)
+
+
+def test_native_metadata_execution_runs_declared_producer_and_distinct_verifier(scenario):
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    before = s.intent.get_task(s.cid)
+    with _metadata_daemon(s) as daemon:
+        result = daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert result["passed"] is result["claim_released"] is True
+        assert result["provider_dispatched"] is result["completion_authority"] is False
+        assert result["automatic_retry_admitted"] is False
+        assert [row["argv"] for row in result["commands"]] == s.execution_argv
+        assert s.execution_argv[1] != s.packet["validation_argv"]
+        assert (s.workspace / "execution-order.txt").read_text() == "producer\nverifier\n"
+        assert len(result["outputs"]) == 1 and result["outputs"][0]["path"] == str(s.workspace / "report.json")
+        assert Path(result["durable_result"]["path"]).is_file()
+        assert Path(result["release_closeout"]["path"]).is_file()
+        assert daemon.coordinator.get_lease(result["claim"]["lease_id"]).state.value == "released"
+        assert daemon.list_running_attempts() == []
+        with pytest.raises(DatabaseImplementationAuthorityError, match="no provider authority"):
+            daemon._require_provider_admission(SimpleNamespace(task_cid=s.cid))
+    after = s.intent.get_task(s.cid)
+    assert after["status"] == "blocked" and after["body"]["completion"] == "manual"
+    assert after["acceptance"] == before["acceptance"]
+    assert after["outputs"] == before["outputs"]
+    assert after["body"]["completion_receipt"]["completion_authority"] is False
+    assert after["body"]["completion_receipt"]["operation"] == "native_metadata_execution_awaiting_manual_acceptance"
+    snapshot = _snapshot(s)
+    assert snapshot["provider_invocations"] == snapshot["effect_claims"] == []
+    assert all(row["raw_observation"]["sha256"] for row in result["commands"])
+    # Exact native summaries contain no floats; full genuine scheduler timings
+    # remain preserved in their descriptor-bound ordinary result artifacts.
+    assert content_identity(result["commands"])
+    import json
+    for row in result["commands"]:
+        full = json.loads(Path(row["raw_observation"]["path"]).read_text())
+        assert type(full["throughput"]["elapsed_seconds"]) is float
+        assert full["results"][0]["validation_process_custody"]["children_reaped"] is True
+
+
+
+@pytest.mark.parametrize("change", [
+    {"max_attempts": 2}, {"max_attempts": True}, {"task_cid": "task:foreign"},
+    {"provider_authority": True}, {"completion_authority": True},
+    {"completion_mode": "auto"}, {"unreviewed_permission": True},
+])
+def test_native_metadata_execution_rejects_forged_execution_policy(change):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import NativeMetadataExecutionError, _policy
+    task = _pure_metadata_task(policy_changes=change)
+    before = deepcopy(task.to_dict())
+    with pytest.raises(NativeMetadataExecutionError, match="metadata_execution_policy"):
+        _policy(task)
+    assert task.to_dict() == before
+
+
+def test_native_metadata_execution_default_manual_remains_unclaimable(scenario):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import NativeMetadataExecutionError
+    s = scenario
+    revision = _prepare_metadata_execution(s, body_changes={"execution_packet_execution_policy": None})
+    before = _snapshot(s)
+    with _metadata_daemon(s) as daemon:
+        assert daemon.claim_next() is None
+        with pytest.raises(NativeMetadataExecutionError, match="policy_shape"):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+    assert _snapshot(s) == before
+
+
+@pytest.mark.parametrize("changes", [
+    {"context_budget_tokens": 0}, {"context_budget_tokens": "1"},
+    {"provider_role": "grok-implement"}, {"completion": "auto"},
+])
+def test_native_metadata_execution_rejects_model_or_automatic_modes(changes):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import NativeMetadataExecutionError, _policy
+    task = _pure_metadata_task(body_changes=changes)
+    before = deepcopy(task.to_dict())
+    with pytest.raises(NativeMetadataExecutionError, match="task_mode"):
+        _policy(task)
+    assert task.to_dict() == before
+
+
+def test_native_metadata_execution_rejects_different_signed_purpose(scenario):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import NativeMetadataExecutionError
+    s = scenario
+    revision = _prepare_metadata_execution(s, policy_changes={"purpose": "metadata_validation"})
+    before = _snapshot(s)
+    with _metadata_daemon(s) as daemon:
+        with pytest.raises(NativeMetadataExecutionError, match="packet_purpose_changed"):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+    assert _snapshot(s) == before
+
+
+def test_native_metadata_execution_missing_native_acceptance_creates_no_claim(scenario):
+    s = scenario
+    revision = _prepare_metadata_execution(s, accept=False, ready=False)
+    before = _snapshot(s)
+    with _metadata_daemon(s) as daemon:
+        with pytest.raises(ExecutionPacketAdmissionError):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+    assert _snapshot(s) == before and not (s.workspace / "report.json").exists()
+
+
+@pytest.mark.parametrize("fault", ["revision", "source", "signature"])
+def test_native_metadata_execution_stale_or_forged_native_acceptance_creates_no_claim(scenario, fault):
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    if fault == "revision":
+        revision += 1
+    elif fault == "source":
+        (s.workspace / "input.json").write_text("changed\n")
+    else:
+        envelope = _accept(s, parent=s.evidence_id)
+        envelope["binding"]["signature"] = "00" * 64
+        s.intent.record_evidence(task_cid=s.cid, evidence_kind=EVIDENCE_KIND,
+            digest=content_identity(envelope), evidence_id=s.evidence_id,
+            body={"execution_packet_contract": envelope})
+    before = _snapshot(s)
+    with _metadata_daemon(s) as daemon:
+        with pytest.raises((ExecutionPacketAdmissionError, ValueError)):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+    assert _snapshot(s) == before and not (s.workspace / "report.json").exists()
+
+
+def test_native_metadata_execution_rejects_unbound_declared_argv(scenario):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import NativeMetadataExecutionError
+    s = scenario
+    revision = _prepare_metadata_execution(s, validations=[{"argv": s.packet["validation_argv"]}])
+    before = _snapshot(s)
+    with _metadata_daemon(s) as daemon:
+        with pytest.raises(NativeMetadataExecutionError, match="declared_commands_changed"):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+    assert _snapshot(s) == before
+
+
+@pytest.mark.parametrize("configuration", [
+    {"execution_slice_task_cids": ()}, {"execution_slice_task_cids": ("task:foreign",)},
+    {"max_task_attempts": 2},
+])
+def test_native_metadata_execution_requires_exact_one_task_budget(configuration):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import NativeMetadataExecutionError, _invocation
+    args = dict(authority_mode="embedded_exclusive", max_task_attempts=1,
+                execution_slice_task_cids=frozenset({"task:packet"}), task_cid="task:packet")
+    args.update(configuration)
+    args["execution_slice_task_cids"] = frozenset(args["execution_slice_task_cids"])
+    with pytest.raises(NativeMetadataExecutionError, match="single_owner_slice"):
+        _invocation(**args)
+
+
+@pytest.mark.parametrize("failed_role", ["producer", "verifier"])
+def test_native_metadata_execution_real_failure_releases_without_completion(scenario, failed_role):
+    s = scenario
+    options = {failed_role: "raise SystemExit(7)\n"}
+    revision = _prepare_metadata_execution(s, **options)
+    with _metadata_daemon(s) as daemon:
+        result = daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert result["passed"] is False and result["claim_released"] is True
+        assert len(result["commands"]) == (1 if failed_role == "producer" else 2)
+        assert daemon.coordinator.get_lease(result["claim"]["lease_id"]).state.value == "released"
+    task = s.intent.get_task(s.cid)
+    assert task["status"] == "blocked" and task["body"]["completion"] == "manual"
+    assert task["body"]["completion_receipt"]["passed"] is False
+    assert _snapshot(s)["provider_invocations"] == []
+
+
+def test_native_metadata_execution_unknown_scheduler_outcome_retains_claim(scenario, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_metadata_execution as module
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    def lost_return(*args, **kwargs):
+        raise RuntimeError("lost scheduler outcome")
+    monkeypatch.setattr(module.ValidationScheduler, "run", lost_return)
+    with _metadata_daemon(s) as daemon:
+        with pytest.raises(RuntimeError, match="lost scheduler outcome"):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        current = s.intent.get_task(s.cid)
+        assert current["status"] == "in_progress"
+        lease = daemon.coordinator.get_lease(current["body"]["completion_receipt"]["lease_id"])
+        assert lease.state.value == "accepted"
+        assert any(r["evidence_kind"] == "native_metadata_execution"
+                   for r in s.intent.current_evidence_for_task(s.cid))
+        # This fixture's replacement never launches; the test author can close
+        # its exact synthetic claim after proving the runtime kept it unknown.
+        daemon.coordinator.release(lease, reason="fixture_lost_return_without_launch")
+    assert not (s.workspace / "report.json").exists()
+
+
+def test_native_metadata_execution_drift_between_commands_stops_verifier(scenario):
+    s = scenario
+    revision = _prepare_metadata_execution(s, producer=(
+        "from pathlib import Path\n"
+        "Path('report.json').write_text('{}\\n')\n"
+        "Path('input.json').write_text('drift\\n')\n"))
+    with _metadata_daemon(s) as daemon:
+        result = daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert result["passed"] is False and result["claim_released"] is True
+        assert len(result["commands"]) == 1
+    assert s.intent.get_task(s.cid)["status"] == "blocked"
+    assert not (s.workspace / "execution-order.txt").exists()
+
+
+def test_native_metadata_execution_candidate_cannot_automatically_retry_or_complete(scenario):
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    with _metadata_daemon(s) as daemon:
+        result = daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert result["passed"] is True
+        current = s.intent.get_task(s.cid)
+        before = _snapshot(s)
+        with pytest.raises((ExecutionPacketAdmissionError, ValueError)):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=current["revision"])
+        assert _snapshot(s) == before
+        assert daemon.claim_next() is None
+        assert s.intent.get_task(s.cid)["status"] == "blocked"
+def test_native_metadata_execution_existing_native_history_cannot_create_attempt_two(scenario):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_metadata_execution import NativeMetadataExecutionError
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    with _metadata_daemon(s) as daemon:
+        daemon.coordinator.register_task(task_cid=s.cid, body={"execution_packet_required": True})
+        claim = daemon.coordinator.claim_task(task_cid=s.cid, owner_session_id="owner:prior-manual",
+            execution_packet_authority=NativeExecutionPacketAuthority(daemon.task_source.intent))
+        lease = daemon.coordinator.get_lease(claim.lease_id)
+        daemon.coordinator.release(lease, reason="fixture_prior_execution")
+        before = daemon.coordinator.lease_events(scope_key=lease.scope_key, limit=100)
+        with pytest.raises(NativeMetadataExecutionError, match="prior_native_claim"):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert daemon.coordinator.lease_events(scope_key=lease.scope_key, limit=100) == before
+        assert daemon.coordinator.get_task_attempt(claim.attempt_id).attempt_number == 1
+    assert s.intent.get_task(s.cid)["status"] == "ready"
+    assert not (s.workspace / "report.json").exists()
+
+
+def test_native_metadata_execution_lost_claim_return_never_calls_claim_twice(scenario, monkeypatch):
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    with _metadata_daemon(s) as daemon:
+        original = daemon.coordinator.claim_task
+        issued = []
+        def lost_return(**kwargs):
+            claim = original(**kwargs)
+            issued.append(claim)
+            raise RuntimeError("lost original claim response")
+        with monkeypatch.context() as local:
+            local.setattr(daemon.coordinator, "claim_task", lost_return)
+            with pytest.raises(RuntimeError, match="lost original claim response"):
+                daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+            with pytest.raises(ValueError):
+                daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert len(issued) == 1
+        lease = daemon.coordinator.get_lease(issued[0].lease_id)
+        assert lease.state.value == "accepted"
+        assert s.intent.get_task(s.cid)["status"] == "ready"
+        # The fixture author knows no executor was called, and releases only
+        # this exact synthetic claim after proving the runtime retained it.
+        daemon.coordinator.release(lease, reason="fixture_claim_response_lost_without_launch")
+
+
+def test_native_metadata_execution_native_evidence_error_cannot_reclaim_even_new_contract(scenario, monkeypatch):
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    with _metadata_daemon(s) as daemon:
+        def refused_evidence(**kwargs):
+            raise OSError("native evidence write refused")
+        with monkeypatch.context() as local:
+            local.setattr(daemon.task_source.intent, "record_evidence", refused_evidence)
+            with pytest.raises(OSError, match="native evidence write refused"):
+                daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        # A fresh signature does not reset the stable task journal or budget.
+        _accept(s, parent=s.evidence_id)
+        with pytest.raises(FileExistsError):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert daemon.coordinator.lease_events(limit=100) == []
+    assert not (s.workspace / "report.json").exists()
+
+
+def test_native_metadata_execution_lost_cas_return_reconciles_exact_original_receipt(scenario, monkeypatch):
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    with _metadata_daemon(s) as daemon:
+        original = daemon.task_source.compare_and_set_status
+        calls = []
+        def lost_response(cid, expected_revision, status, receipt=None, **kwargs):
+            value = original(cid, expected_revision, status, receipt=receipt, **kwargs)
+            calls.append(status)
+            if status == "in_progress":
+                raise RuntimeError("lost committed CAS response")
+            return value
+        monkeypatch.setattr(daemon.task_source, "compare_and_set_status", lost_response)
+        result = daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert result["passed"] is result["claim_released"] is True
+        assert calls == ["in_progress", "blocked"]
+    assert s.intent.get_task(s.cid)["status"] == "blocked"
+    assert (s.workspace / "execution-order.txt").read_text() == "producer\nverifier\n"
+
+
+def test_native_metadata_execution_failed_claim_readback_retains_control_and_lease(scenario, monkeypatch):
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    with _metadata_daemon(s) as daemon:
+        original = daemon.task_source.get
+        def unavailable_after_claim(cid):
+            value = original(cid)
+            if value.status == "in_progress":
+                raise OSError("claimed readback unavailable")
+            return value
+        with monkeypatch.context() as local:
+            local.setattr(daemon.task_source, "get", unavailable_after_claim)
+            with pytest.raises(OSError, match="claimed readback unavailable"):
+                daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        current = s.intent.get_task(s.cid)
+        assert current["status"] == "in_progress"
+        lease = daemon.coordinator.get_lease(current["body"]["completion_receipt"]["lease_id"])
+        assert lease.state.value == "accepted"
+        assert not (s.workspace / "report.json").exists()
+        daemon.coordinator.release(lease, reason="fixture_readback_failed_without_executor_launch")
+
+
+@pytest.mark.parametrize("custody", [None, {"supported": True, "children_reaped": False}])
+def test_native_metadata_execution_returned_scheduler_unknown_does_not_release(scenario, monkeypatch, custody):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_metadata_execution as module
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    def unknown_result(self, commands, **kwargs):
+        row = {"command": commands[0].command, "cache_hit": False, "returncode": 75}
+        if custody is not None:
+            row["validation_process_custody"] = custody
+        return {"attempted": True, "passed": False, "elapsed_seconds": 0.25, "results": [row]}
+    monkeypatch.setattr(module.ValidationScheduler, "run", unknown_result)
+    with _metadata_daemon(s) as daemon:
+        with pytest.raises(module.NativeMetadataExecutionError, match="stop_witness_missing"):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        current = s.intent.get_task(s.cid)
+        assert current["status"] == "in_progress"
+        lease = daemon.coordinator.get_lease(current["body"]["completion_receipt"]["lease_id"])
+        assert lease.state.value == "accepted"
+        assert len(list(Path(daemon.execution_state_dir).glob("*.command-0.json"))) == 1
+        daemon.coordinator.release(lease, reason="fixture_returned_unknown_without_launch")
+
+
+def test_native_metadata_execution_late_observation_write_error_cannot_release(scenario, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_metadata_execution as module
+    s = scenario
+    revision = _prepare_metadata_execution(s)
+    original = module._durable_json
+    observations = []
+    def unavailable_observation(path, value):
+        if path.name.endswith(".command-0.json"):
+            observations.append(value)
+            raise OSError("raw observation fsync unavailable")
+        return original(path, value)
+    monkeypatch.setattr(module, "_durable_json", unavailable_observation)
+    with _metadata_daemon(s) as daemon:
+        with pytest.raises(OSError, match="raw observation fsync unavailable"):
+            daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        current = s.intent.get_task(s.cid)
+        assert current["status"] == "in_progress"
+        lease = daemon.coordinator.get_lease(current["body"]["completion_receipt"]["lease_id"])
+        assert lease.state.value == "accepted"
+        assert (s.workspace / "execution-order.txt").read_text() == "producer\n"
+        # This test's actual original runner returned a genuine stop witness;
+        # the runtime had deliberately not accepted it before fsync failed.
+        module._stopped_observation(observations[0], observations[0]["results"][0]["command"])
+        daemon.coordinator.release(lease, reason="fixture_real_stop_proven_after_failed_observation_write")
