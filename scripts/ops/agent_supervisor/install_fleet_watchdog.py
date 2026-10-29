@@ -15,7 +15,7 @@ from pathlib import Path
 
 MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "fleet_heals",
            "fleet_holds", "live_board_probe", "canonical_writer_custody",
-           "diagnostic_handoff", "storage_diagnostics")
+           "diagnostic_handoff", "storage_diagnostics", "maintenance_hold")
 
 
 def unit_directory(value: str) -> str:

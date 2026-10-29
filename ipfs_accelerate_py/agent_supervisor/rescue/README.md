@@ -76,6 +76,19 @@ observations verify old cgroup process births are gone before recording cleanup.
 Only actual board progress or configured repair-file content changes renew a
 bounded recovery budget.
 
+Temporary maintenance should use `maintenance_hold.maintenance_hold(path,
+reason=..., ttl_seconds=...)` from the maintenance process, with a deadline of
+at most 1800 seconds and an owned directory without group/other write access.
+Keep the watchdog running while the foreground is paused.
+The context manager archives its own exact marker when maintenance finishes.
+If that process dies, the leased-service watchdog (`--apply`) and fleet hold
+review can archive the unchanged registered inode after its deadline, retaining
+the original JSON and PID birth/boot/namespace identity. An expired lease with
+a live owner remains held. Unknown/manual markers, symlinks, unregistered
+hardlinks and uncertain owner observations remain held. Observation-only runs
+never release a marker. This does not reset recovery budgets or grant task
+completion, and ordinary checkout, cgroup and effect fences still apply.
+
 Semantic failure history is independently keyed by task and its declared
 execution contract. Service/worker PID changes, backoff clocks, log growth and
 native frames never erase it. Repeated provider failures, a required exhausted
