@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .fleet_watchdog import repair_hold_paths, write_json
+from .maintenance_hold import review_hold
 
 ASEH_SOURCE_HOLD_SCHEMA = "aseh/root-active-source-repair-hold@1"
 PCPR_DELETED_AUTHORITY_HOLD_SCHEMA = "pcpr/deleted-authority-hold@1"
@@ -78,6 +79,9 @@ def _deleted_authority_hold(path: str, payload: dict[str, Any] | None) -> bool:
 def review_one_hold(path: str, board: Mapping[str, Any],
                     observation: Mapping[str, Any]) -> dict[str, Any]:
     marker = Path(path)
+    leased = review_hold(marker, apply=True)
+    if leased.get("status") in {"released", "absent"}:
+        return leased
     payload = _read_json(marker)
     if payload and payload.get("schema") == ASEH_SOURCE_HOLD_SCHEMA:
         if payload.get("source_admission_verified") is True:
