@@ -573,3 +573,154 @@ def test_explicit_false_implementation_requirement_preserves_metadata_admission(
     _upsert(s, body=body)
     _accept(s)
     assert _check(s)
+
+
+def _portal_packet_selector_probe(*, forbid_queue=False):
+    """Probe collaborators; keep the public selector and merge predicate real."""
+    effects = []
+    queue_calls = []
+    repair_calls = []
+    merge_checks = []
+    retained = {"spent_attempts": {"FLAGGED": 5, "ELIGIBLE": 7},
+                "cooldowns": {"retained-other-task": "original-deadline"}}
+    canonical_refs = {
+        task_id: content_identity({"schema": "selector-fixture-current-revision/v1",
+                                   "task_id": task_id, "revision": 2})
+        for task_id in ("FLAGGED", "ELIGIBLE")
+    }
+
+    def forbidden(label):
+        def fail(*_args, **_kwargs):
+            effects.append(label)
+            pytest.fail("selector attempted an unexpected effect: " + label)
+        return fail
+
+    def queue_call(label, result):
+        def call(identity):
+            if forbid_queue:
+                return forbidden(label)(identity)
+            queue_calls.append((label, identity))
+            return result
+        return call
+
+    def has_pending(identity):
+        if forbid_queue:
+            return forbidden("merge_queue_lookup")(identity)
+        merge_checks.append(identity)
+        # Retained display-alias rows must not suppress the current revision.
+        return identity in canonical_refs
+
+    def public_repair(name):
+        def observe(ready_by_id):
+            if forbid_queue:
+                return forbidden(name)(ready_by_id)
+            repair_calls.append((name, dict(ready_by_id)))
+        return observe
+
+    queue = SimpleNamespace(
+        is_cooled_down=queue_call("cooldown", False),
+        get_penalty=queue_call("penalty", 0),
+        record_selection=queue_call("selection", None),
+        dirty=False,
+        save=forbidden("unexpected_queue_save"),
+    )
+    probe = SimpleNamespace(
+        manual_completion_authority_revalidation_only=False,
+        _manual_completion_authority_revalidation_only_task=lambda _task: False,
+        _strict_off_mission_deprioritized_task_ids=lambda _strategy: set(),
+        degradation_state=SimpleNamespace(degraded_submodules=lambda: []),
+        _inflight_submodule_paths=lambda: set(),
+        _canonical_ref=lambda task: canonical_refs[task.task_id],
+        merge_queue=SimpleNamespace(has_pending_for_task=has_pending),
+        _queued_merge_candidates=forbidden("stale_display_alias_reconciliation"),
+        _latest_implementation_finished_by_task=forbidden("stale_display_alias_history"),
+        _implementation_commit_was_reconciled=forbidden("stale_display_alias_commit"),
+        task_queue=queue,
+        _todo_vector_selection_context=lambda _tasks, _ready: {},
+        _todo_vector_selection_rank=lambda _task, _context: (),
+        _task_work_surface_rank=lambda _task: (),
+        _task_has_recent_no_change_outcome=lambda _task_id, _outcomes: False,
+        _plan_runtime_enabled=lambda: False,
+        _record_event=forbidden("unexpected_event"),
+        _run_implementation=forbidden("provider_dispatch"),
+        _require_provider_task_contract=forbidden("provider_contract"),
+    )
+    probe._task_has_blocking_pending_merge = (
+        lambda task: PortalImplementationDaemon._task_has_blocking_pending_merge(probe, task)
+    )
+    # These are legitimate public-selector collaborators. Observe their inputs
+    # without running unrelated repair campaigns or removing the public calls.
+    for name in (
+        "_release_repaired_dependency_preflight_cooldowns",
+        "_release_repaired_read_only_validation_cooldowns",
+        "_release_obsolete_provider_repair_cooldowns",
+        "_release_obsolete_venv_launcher_cooldowns",
+    ):
+        setattr(probe, name, public_repair(name))
+    return SimpleNamespace(daemon=probe, effects=effects, queue_calls=queue_calls,
+        repair_calls=repair_calls, merge_checks=merge_checks, retained=retained,
+        canonical_refs=canonical_refs)
+
+
+def test_portal_packet_selection_flagged_only_has_no_queue_or_repair_effects(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import execution_packet_admission as packet_gate
+    observed = []
+    actual_predicate = packet_gate.execution_packet_required_metadata
+
+    def observe(metadata):
+        observed.append(dict(metadata))
+        return actual_predicate(metadata)
+
+    monkeypatch.setattr(packet_gate, "execution_packet_required_metadata", observe)
+    task = SimpleNamespace(task_id="FLAGGED", metadata={"execution packet required": "true"},
+        title="Flagged metadata work", acceptance="Preserve current authority", priority="P0",
+        track="ops", depends_on=())
+    context = _portal_packet_selector_probe(forbid_queue=True)
+    before = deepcopy(context.retained)
+    statuses = {task.task_id: "ready"}
+    selected = PortalImplementationDaemon._select_next_task(
+        context.daemon, [task], statuses, {}, {}, {}, downstream_unlock_by_task={})
+    assert selected is None
+    assert observed == [task.metadata]
+    assert context.effects == context.queue_calls == context.repair_calls == context.merge_checks == []
+    assert context.retained == before
+    assert statuses == {task.task_id: "ready"}
+
+
+def test_portal_packet_selection_preserves_eligible_peer_and_public_cooldown_repairs(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import execution_packet_admission as packet_gate
+    observed = []
+    actual_predicate = packet_gate.execution_packet_required_metadata
+
+    def observe(metadata):
+        observed.append(dict(metadata))
+        return actual_predicate(metadata)
+
+    monkeypatch.setattr(packet_gate, "execution_packet_required_metadata", observe)
+    flagged = SimpleNamespace(task_id="FLAGGED", metadata={"execution_packet_required": True},
+        title="Higher-priority flagged work", acceptance="Preserve authority", priority="P0",
+        track="ops", depends_on=())
+    eligible = SimpleNamespace(task_id="ELIGIBLE", metadata={}, title="Unflagged legacy work",
+        acceptance="Existing selection is allowed", priority="P1", track="ops", depends_on=())
+    context = _portal_packet_selector_probe()
+    before = deepcopy(context.retained)
+    statuses = {"FLAGGED": "ready", "ELIGIBLE": "ready"}
+    selected = PortalImplementationDaemon._select_next_task(
+        context.daemon, [flagged, eligible], statuses, {}, {}, {}, downstream_unlock_by_task={})
+    assert selected is eligible
+    assert observed == [flagged.metadata, eligible.metadata]
+    assert context.effects == []
+    assert context.merge_checks == [context.canonical_refs["ELIGIBLE"]]
+    assert context.queue_calls == [("cooldown", context.canonical_refs["ELIGIBLE"]),
+                                   ("penalty", context.canonical_refs["ELIGIBLE"]),
+                                   ("selection", context.canonical_refs["ELIGIBLE"])]
+    assert [name for name, _ready in context.repair_calls] == [
+        "_release_repaired_dependency_preflight_cooldowns",
+        "_release_repaired_read_only_validation_cooldowns",
+        "_release_obsolete_provider_repair_cooldowns",
+        "_release_obsolete_venv_launcher_cooldowns",
+    ]
+    assert all(set(ready) == {"ELIGIBLE"} and ready["ELIGIBLE"] is eligible
+               for _name, ready in context.repair_calls)
+    assert context.retained == before
+    assert statuses == {"FLAGGED": "ready", "ELIGIBLE": "ready"}
