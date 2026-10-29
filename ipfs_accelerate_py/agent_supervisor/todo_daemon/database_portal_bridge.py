@@ -11728,12 +11728,31 @@ class DatabasePortalExecutionBridge:
             events = _accepted_source_events(paths.events)[0] if paths.events.exists() else []
             entered_validation = any(event.get("type") == "candidate_continuation_workspace_prepared"
                 and event.get("database_attempt_id") == attempt.attempt_id for event in events)
+            rejected = [event for event in events if event.get("type") == "worktree_reconciliation_validation_finished"
+                and event.get("task_id") == attempt.task_alias]
+            last_rejection = rejected[-1] if rejected else {}
+            tasks = daemon._load_tasks()
+            repaired_candidate = bool(len(tasks) == 1
+                and last_rejection.get("canonical_task_cid") == daemon._identity_for_task(tasks[0]).canonical_task_cid
+                and type(last_rejection.get("returncode")) is int and last_rejection["returncode"] != 0
+                and last_rejection.get("provider_dispatched") is False
+                and last_rejection.get("attempt_consumed") is False
+                and last_rejection.get("validation_result", {}).get("passed") is False
+                and last_rejection.get("merge_result", {}).get("merged") is False
+                and last_rejection.get("merge_result", {}).get("queued") is not True
+                and last_rejection.get("implementation_commit")
+                and last_rejection["implementation_commit"] != admission.request["candidate_commit"]
+                and not any(event.get("type") == "implementation_started" for event in events))
             recover_checkout = bool(previous is not None
                 and (previous.state.value == "preparing"
                      and previous.owner != current_process_birth(proc_root=daemon.worktree_lifecycle.proc_root)
                      or previous.is_terminal and previous.terminal_reason in {
                          "candidate_checkout_interrupted_before_execution", "controlled_restart_dead_owner"})
                 and not entered_validation and not retry.exists() and not retry.is_symlink())
+            # A separately admitted, materially changed candidate can repair
+            # an exact Native no-provider validation refusal. Unchanged bytes,
+            # ordinary providers and any accepted merge remain fenced.
+            recover_checkout = recover_checkout or repaired_candidate
         finally:
             daemon.close_event_runtime()
         if recover_checkout:

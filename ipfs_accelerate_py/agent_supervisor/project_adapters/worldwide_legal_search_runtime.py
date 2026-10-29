@@ -365,6 +365,16 @@ class CampaignRuntime:
         ledger = config.state_root / "control/action-ledger.json"
         if ledger.is_file():
             self._actions = read_json(ledger)
+        repaired_observations = False
+        for action in self._actions.values():
+            observation = action.get("observation", {})
+            if (action.get("request", {}).get("kind") == "reconcile"
+                    and observation.get("status") == "blocked" and observation.get("effects_verified") is False):
+                action["previous_unverified_terminal_observation"] = dict(observation)
+                action["observation"] = {**observation, "status": "unknown"}
+                repaired_observations = True
+        if repaired_observations:
+            atomic_json(ledger, self._actions)
         self._last_failure: dict[str, Any] = {}
         previous_status = config.state_root / "campaign-status.json"
         if previous_status.is_file():
@@ -412,7 +422,7 @@ class CampaignRuntime:
         self._retained_attempt_before_pass = False
         self._pending_controls: list[str] = [key for key, value in self._actions.items()
             if value.get("request", {}).get("kind") == "reconcile" and value.get("result", {}).get("status") == "accepted"
-            and value.get("observation", {}).get("status") == "running"]
+            and value.get("observation", {}).get("status") in {"running", "unknown"}]
         self._repair_thread: threading.Thread | None = None
         self._canary_refresh_lock = threading.Lock()
         self._canary_refresh_thread: threading.Thread | None = None
@@ -896,7 +906,10 @@ class CampaignRuntime:
                     # pre-callback proof establishes known no-provider effects.
                     evidence["known_pre_provider_failure"] = self._last_failure["receipt_id"]
                 unknown = self._last_failure.get("effects_unknown", False) or any(item.get("effects_unknown") for item in self._cached.get("native_blocked_tasks", []))
-                outcome = "succeeded" if not unknown else "blocked"
+                evidence["native_completion_projection"] = self._cached.get("native_completion_projection", "")
+                evidence["effects_unknown"] = bool(unknown)
+                action["reconciliation_evidence"] = evidence
+                outcome = "succeeded" if not unknown else "unknown"
                 action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
                     "status": outcome, "receipt": identity(evidence), "effects_verified": not unknown}
             except Exception as error:

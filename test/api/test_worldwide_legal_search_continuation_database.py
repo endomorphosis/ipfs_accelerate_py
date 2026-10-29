@@ -5,6 +5,7 @@ import json
 import hashlib
 import subprocess
 import sys
+from dataclasses import replace
 
 import pytest
 
@@ -112,3 +113,40 @@ subprocess.run(['git', 'worktree', 'add', '--no-checkout', '-b', body['branch'],
     assert not any(json.loads(line).get('type') == 'implementation_started' for line in paths.events.read_text().splitlines())
     if interrupted_checkout:
         assert fresh.exists() and not (fresh / 'feature.py').exists()  # Retained, never reset or removed.
+
+
+def test_material_candidate_repair_revalidates_the_same_native_attempt_without_a_model(native_continuation):
+    portal, attempt, paths, binding, admission, owner = native_continuation
+    candidate = Path(admission.request['worktree_path'])
+    def proposal(text):
+        (candidate / 'feature.py').write_text(text)
+        fixtures.git(candidate, 'add', 'feature.py')
+        fixtures.git(candidate, 'commit', '-m', 'Authored candidate source revision')
+        body = dict(admission.request)
+        body['candidate_commit'] = fixtures.git(candidate, 'rev-parse', 'HEAD')
+        body['candidate_tree'] = fixtures.git(candidate, 'rev-parse', 'HEAD^{tree}')
+        body['changed_files'] = fixtures.candidate_manifest(candidate, body['baseline_commit'], body['candidate_commit'])
+        from ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_continuation import identity
+        body['receipt_id'] = identity({k: v for k, v in body.items() if k != 'receipt_id'})
+        return replace(admission, request=body)
+    admitted = [proposal('VALUE =\n')]
+    bridge = DatabasePortalExecutionBridge(task_source=owner.task_source, attempt_root=paths.root.parent,
+        portal_factory=lambda *_: portal, repo_root=portal.repo_root, board_namespace='fixture-continuation',
+        merge_target_branch='main', prior_attempt_authority=owner.authorize_superseded_portal_attempt_binding,
+        candidate_reconciliation_loader=lambda **_kwargs: admitted[0])
+    routed = _RepositoryRoutedPortalBridge(lambda _alias: portal.repo_root, lambda _root: bridge,
+        attempt_root=paths.root.parent, max_task_attempts=3)
+    owner.bind_execution_callbacks(provider_fn=routed.run_provider, effect_fn=routed.apply_effect,
+        validation_fn=routed.validate_effect)
+    first = owner.run_once()
+    assert owner.get_attempt(attempt.attempt_id).status == 'running', json.dumps(first)
+    before = paths.events.read_bytes()
+    owner.run_once()
+    assert paths.events.read_bytes() == before  # No unbounded replay of the rejected bytes.
+    admitted[0] = proposal('VALUE = 2\n')
+    result = owner.run_once()
+    assert owner.get_attempt(attempt.attempt_id).status == 'succeeded', json.dumps(result)
+    assert owner.task_source.get_task(attempt.task_alias).status == 'completed'
+    assert owner.get_attempt(attempt.attempt_id).attempt_number == 2
+    assert owner.get_attempt(admission.request['predecessor_attempt_id']).status == 'failed'
+    assert not any(json.loads(line).get('type') == 'implementation_started' for line in paths.events.read_text().splitlines())

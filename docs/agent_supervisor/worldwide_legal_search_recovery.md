@@ -33,6 +33,18 @@ The sole execution replay is the explicit no-provider candidate checkout above.
 The original callback intent remains in the reconciliation event; acceptance
 still passes through the existing native receipt validation and completion CAS.
 
+An explicit new candidate admission may also repair a Native no-provider
+validation refusal. Its committed bytes must differ from the rejected commit;
+the exact task/contract, failed predecessor and paid history remain bound.
+Native's event chain must prove no model was started and no merge was accepted.
+Repeating the unchanged rejected candidate grants no new execution.
+
+Reconciliation with unresolved effects reports `unknown`, never a terminal
+`blocked` outcome with unverified effects. Legacy contradictory observations
+retain their original receipt and are rechecked by the native owner. This
+keeps the watchdog observing while uncertainty remains, without resetting its
+persisted action budget or treating a heartbeat as task completion.
+
 The one-shot command returns failure when native completion was not verified.
 The continuous service uses exit 75 for a fenced checkout restart or to reopen
 the unsliced frontier after candidate completion. Heartbeats and a successful

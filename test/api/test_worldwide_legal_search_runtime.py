@@ -42,6 +42,37 @@ FOREST = {"site": {"head": "1" * 40, "tree": "2" * 40}, "accelerate": {"head": "
 
 
 class RuntimeBoundaries(unittest.TestCase):
+    def test_uncertain_reconciliation_stays_nonterminal_and_does_not_crash_watchdog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(root / 'site', root / 'framework', root / 'state', root / 'plan.json', root / 'config.json')
+            atomic_json(config.plan_path, plan_fixture())
+            old = {'action_id': 'a' * 64, 'status': 'blocked', 'effects_verified': False, 'receipt': 'native:unknown'}
+            ledger = {'a' * 64: {'request': {'kind': 'reconcile'}, 'result': {'status': 'accepted'}, 'observation': old}}
+            atomic_json(config.state_root / 'control/action-ledger.json', ledger)
+            runtime = CampaignRuntime(config, {'admitted_plan_revision': 'plan', 'receipt_id': 'receipt'})
+            action = runtime._actions['a' * 64]
+            self.assertEqual(action['observation']['status'], 'unknown')
+            self.assertEqual(action['previous_unverified_terminal_observation'], old)
+            runtime._daemon = SimpleNamespace(**{name: (lambda: []) for name in (
+                'reconcile_prepared_task_completions', 'reconcile_terminal_portal_failures',
+                'reconcile_expired_running_attempts', 'reconcile_recoverable_portal_failure_rearms')})
+            runtime._last_failure = {'effects_unknown': True}
+            with patch.object(runtime, 'capture'):
+                runtime._reconcile_controls()
+            self.assertEqual(action['observation']['status'], 'unknown')
+            self.assertFalse(action['observation']['effects_verified'])
+            # Genuine later native reconciliation may settle the same action;
+            # it never creates a new action ID or replenishes the host budget.
+            runtime._last_failure = {}
+            runtime._cached = {'native_completion_projection': 'native:completed-projection'}
+            runtime._pending_controls.append('a' * 64)
+            with patch.object(runtime, 'capture'):
+                runtime._reconcile_controls()
+            self.assertEqual(action['observation']['status'], 'succeeded')
+            self.assertTrue(action['observation']['effects_verified'])
+            self.assertEqual(action['reconciliation_evidence']['native_completion_projection'], 'native:completed-projection')
+
     def test_pending_candidate_survives_restart_and_rejects_changed_request(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
