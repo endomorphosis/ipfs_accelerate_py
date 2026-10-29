@@ -19,6 +19,7 @@ import marshal
 import os
 from pathlib import Path
 import re
+import select
 import signal
 import socket
 import stat
@@ -32,18 +33,24 @@ from .command_processes import CommandProcessTree
 from .gate_recovery import evidence_file_fingerprint
 from .watchdog_guardian import (discover_watchdogs, _declared_storage_paths, _minimum_storage_bytes,
                                 _storage_status, _lane_storage_identity,
-                                lane_storage_emergency, watchdog_storage_emergency)
+                                lane_storage_emergency, watchdog_storage_emergency,
+                                _option, _python_entrypoint)
 from .storage_pressure import (check_storage_capacity, clear_emergency_status,
                                is_storage_pressure, publish_emergency_status)
-
-from .planned_work_watchdog import observe_planned_work
+from .planned_work_watchdog import observe_planned_work, collect_gate_blockers
+from .queue_hold_lease import (QUEUE_HOLD_LEASE_VERSION, review_queue_hold, expire_queue_hold,
+                               register_queue_hold, publisher_queue_hold_proof, expired_queue_hold_matches)
+from .previous_worker_context import build_previous_worker_context, context_environment
 
 
 SCHEMA = "ipfs_accelerate_py.agent_supervisor.repair-dispatcher@1"
 SERVICE_WATCHDOG_VERSION = 1
+LANE_ENVIRONMENT_GUARD_VERSION = 1
+WORKER_STORAGE_ADMISSION_VERSION = 1
 FLAGS = {"work_complete": False, "completion_authority": False}
 _HELD_STATES = {"paused", "draining", "stopping"}
 _COMPLETED = {"completed", "complete", "done"}
+_DESCENDANT_CLEANUP_GRACE_SECONDS = 5.0
 
 
 @dataclass
@@ -66,8 +73,15 @@ class Config:
     cooldown_seconds: float = 300.0
     max_cooldown_seconds: float = 3600.0
     max_attempts: int = 3
+    required_lane_env: tuple[str, ...] = ()
+    worker_minimum_free_bytes: int = 64 * 1024 * 1024
     _storage_retry_payload: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _storage_retry_path: Path | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if (type(self.worker_minimum_free_bytes) is not int
+                or not 1 <= self.worker_minimum_free_bytes <= 2**63 - 1):
+            raise ValueError("worker_minimum_free_bytes must be a positive signed64-bit integer")
 
 
 def _path(root: Path, value: str | Path) -> Path:
@@ -76,7 +90,11 @@ def _path(root: Path, value: str | Path) -> Path:
 
 
 def _json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text())
+    raw = path.read_text()
+    try:
+        value = json.loads(raw)
+    except RecursionError as exc:
+        raise ValueError('dispatcher metadata JSON nesting exceeds decoder limit') from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value
@@ -193,9 +211,100 @@ def _verify_owner(owner: dict[str, Any], config: Config) -> dict[str, Any]:
             "identity_reason": "module_manifest_repo_match" if verified else "owner_identity_mismatch"}
 
 
+def _verify_lane(
+    process: dict[str, Any], config: Config, manifest: dict[str, Any],
+    lane: dict[str, Any], status_path: Path, pid_path: Path,
+) -> dict[str, Any]:
+    """A recycled advisory PID is not evidence that this lane is running."""
+    if not process["alive"]:
+        return process
+    argv = process.get("argv", [])
+    mode, module, index = _python_entrypoint(argv)
+    verified = bool(argv) and bool(re.fullmatch(r"(?:python|pypy)(?:\d+(?:\.\d+)*)?", Path(argv[0]).name))
+    verified = (verified and mode == "module"
+                and module == "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume"
+                and argv[index] == "-m"
+                and all(flag in {"-u", "-B", "-E", "-s", "-S", "-I", "-O", "-OO"}
+                        for flag in argv[1:index]))
+    if verified:
+        application_args = argv[index + 2:]
+        cwd = Path(process.get("cwd") or config.repo_root)
+        paths = {"--repo-root": config.repo_root, "--status-path": status_path, "--pid-path": pid_path}
+        if manifest.get("todo_path"):
+            paths["--todo-path"] = _path(config.repo_root, manifest["todo_path"])
+        verified = _option(application_args, "--bundle-key") == lane["bundle_key"]
+        for name, expected in paths.items():
+            value = _option(application_args, name)
+            if not value or _path(cwd, value).resolve() != expected.resolve():
+                verified = False
+                break
+    return {**process, "alive": verified, "identity_verified": verified,
+            "identity_reason": "module_lane_repo_match" if verified else "lane_identity_mismatch"}
+
+
 def _public_process(process: dict[str, Any]) -> dict[str, Any]:
     # An unrelated reused PID may carry unrelated private argv; do not persist it.
     return {k: v for k, v in process.items() if k not in {"argv", "command", "cwd"}}
+
+
+def _lane_environment(process: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    """Compare explicitly allowed policy variables without publishing their values."""
+    if not keys:
+        return {"enabled": False}
+    if any(not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*_BUDGET_POLICY", key)
+           for key in keys):
+        return {"enabled": True, "verified": False, "reason": "invalid_required_key", "required_keys": []}
+    keys = tuple(sorted(set(keys)))
+    result = {"enabled": True, "verified": False, "pid": process.get("pid"),
+              "start_ticks": process.get("start_ticks"), "required_keys": list(keys)}
+    expected = {key: os.environ.get(key) for key in keys}
+    missing = [key for key in keys if not expected[key]]
+    if missing:
+        return {**result, "reason": "expected_environment_missing", "affected_keys": missing}
+    if not process.get("alive") or not process.get("identity_verified"):
+        return {**result, "reason": "lane_identity_unverified"}
+    pid = int(process["pid"])
+    expected_start = process.get("start_ticks")
+    try:
+        before = probe_process(pid)
+        uid_before = (Path("/proc") / str(pid)).stat().st_uid
+        if (not before["alive"] or before.get("start_ticks") != expected_start
+                or uid_before != os.getuid() or before.get("argv") != process.get("argv")
+                or before.get("cwd") != process.get("cwd")):
+            return {**result, "reason": "lane_identity_changed"}
+        raw = (Path("/proc") / str(pid) / "environ").read_bytes()
+        after = probe_process(pid)
+        uid_after = (Path("/proc") / str(pid)).stat().st_uid
+    except OSError:
+        # A process exit during /proc reads is ordinary identity uncertainty,
+        # not proof that a live lane has an unreadable policy environment.
+        try:
+            current = probe_process(pid)
+            current_uid = (Path("/proc") / str(pid)).stat().st_uid
+        except OSError:
+            return {**result, "reason": "lane_identity_changed"}
+        if (not current["alive"] or current.get("start_ticks") != expected_start
+                or current_uid != os.getuid() or current.get("argv") != process.get("argv")
+                or current.get("cwd") != process.get("cwd")):
+            return {**result, "reason": "lane_identity_changed"}
+        return {**result, "reason": "environment_unreadable"}
+    if (not after["alive"] or after.get("start_ticks") != expected_start
+            or uid_after != uid_before or uid_after != os.getuid()
+            or after.get("argv") != before.get("argv") or after.get("cwd") != before.get("cwd")):
+        return {**result, "reason": "lane_identity_changed"}
+    values: dict[bytes, list[bytes]] = {}
+    wanted = {key.encode() for key in keys}
+    for entry in raw.split(b"\0"):
+        name, separator, value = entry.partition(b"=")
+        if separator and name in wanted:
+            values.setdefault(name, []).append(value)
+    missing = [key for key in keys if key.encode() not in values]
+    if missing:
+        return {**result, "reason": "required_environment_missing", "affected_keys": missing}
+    mismatched = [key for key in keys if values[key.encode()] != [expected[key].encode()]]
+    if mismatched:
+        return {**result, "reason": "required_environment_mismatch", "affected_keys": mismatched}
+    return {**result, "verified": True, "reason": "required_environment_matches"}
 
 
 def _find_owner(
@@ -492,7 +601,9 @@ def observe(
     declared_storage = _declared_storage_paths(manifest, config.repo_root)
     minimum_free_bytes = _minimum_storage_bytes(manifest)
     owner_uncertain = bool(owner_errors)
-    holds = [str(p) for p in _configured_holds(config, manifest) if p.exists()]
+    queue_lease = review_queue_hold(config, now)
+    holds = [str(p) for p in _configured_holds(config, manifest) if p.exists()
+             and not expired_queue_hold_matches(config, p, now, queue_lease)]
     tasks: dict[str, dict[str, Any]] = {}
     if manifest.get("todo_path"):
         tasks = _tasks(_path(config.repo_root, manifest["todo_path"]), manifest.get("task_header_prefix", "## TASK-"))
@@ -505,6 +616,7 @@ def observe(
     source_digest = _digest({str(p): evidence_file_fingerprint(p) for p in sources})
     incidents: list[dict[str, Any]] = []
     snapshots = []
+    environment_reviews: list[dict[str, Any]] = []
 
     def incident(kind: str, lane: str = "", task: str = "", **evidence: Any) -> None:
         incidents.append({"kind": kind, "lane": lane, "task": task, "evidence": evidence})
@@ -520,9 +632,21 @@ def observe(
         except (OSError, ValueError) as exc:
             status, status_error = {}, str(exc)
         pid_path = directory / f"{prefix}_bundle_supervisor.pid"
-        if not pid_path.exists():
-            pid_path = directory / f"{prefix}_supervisor.pid"
-        process = probe(_pid(pid_path) or int(status.get("pid") or 0))
+        legacy_pid_path = directory / f"{prefix}_supervisor.pid"
+        if not pid_path.exists() and legacy_pid_path.exists():
+            pid_path = legacy_pid_path
+        process = _verify_lane(probe(_pid(pid_path) or int(status.get("pid") or 0)),
+                               config, manifest, lane, status_path, pid_path)
+        environment = _lane_environment(process, config.required_lane_env)
+        if environment.get("enabled") and not environment.get("verified"):
+            review = {"lane": key, **environment}
+            environment_reviews.append(review)
+            # An absent/unverified actor follows the existing bounded native
+            # recovery path. Environment uncertainty cannot bypass its normal
+            # startup/lease-rotation grace or authorize an extra repair worker.
+            if environment["reason"] not in {"lane_identity_unverified", "lane_identity_changed"}:
+                incident("lane_environment_review_needed", key,
+                         **{name: value for name, value in environment.items() if name not in {"enabled", "verified"}})
         emergency = lane_storage_emergency(status_path, process["pid"], config.repo_root.resolve())
         if emergency:
             status = {**status, **emergency["payload"], "pid": process["pid"]}
@@ -553,6 +677,8 @@ def observe(
                           "storage_pressure": storage_pressure, "emergency_identity_verified": bool(emergency),
                           "log_age_seconds": _age(log_path, now), "status_error": status_error,
                           "held": bool(intentional or lane_holds), "hold_paths": lane_holds})
+        if environment.get("enabled"):
+            snapshots[-1]["required_environment"] = environment
 
     eligible = [lane for lane in snapshots if not lane["held"]]
     has_work = bool(pending or any(lane["active_task_id"] for lane in eligible))
@@ -592,7 +718,7 @@ def observe(
             if lane["storage_pressure"]:
                 continue
             heartbeat_age = lane["heartbeat_age_seconds"]
-            if heartbeat_age is not None and heartbeat_age > config.heartbeat_seconds:
+            if (pending or task) and heartbeat_age is not None and heartbeat_age > config.heartbeat_seconds:
                 incident("lane_heartbeat_stale", key, task, age_seconds=heartbeat_age)
             if lane["state"] in {"blocked", "failed"} and (pending or task):
                 incident("lane_blocked", key, task, phase=phase, reasons=lane["backpressure_reasons"])
@@ -674,10 +800,23 @@ def observe(
     for key in list(state.get("lease_rotation_observations", {})):
         if key not in current_rotations:
             state["lease_rotation_observations"].pop(key)
-    planned_work = observe_planned_work(policy=manifest.get("planned_work_policy"),
+    policy = manifest.get("planned_work_policy")
+    frontier_gates = (collect_gate_blockers(repo_root=config.repo_root, manifest=manifest,
+                      lanes=eligible, ready=ready, now=now)
+                      if isinstance(policy, dict) and policy.get("enabled") is True and not holds
+                      else {"proofs": [], "reviews": []})
+    if frontier_gates["reviews"]:
+        provenance = _runtime_policy_provenance()
+        if provenance.get("loaded_policy_matches_disk") is False:
+            for review in frontier_gates["reviews"]:
+                incident("source_change_review_needed", review["lane"], review["task_id"],
+                         **{key: value for key, value in review.items() if key not in {"lane", "task_id"}},
+                         **provenance)
+    planned_work = observe_planned_work(policy=policy,
         repo_root=config.repo_root, tasks=tasks, lanes=snapshots, state=state, now=now,
         held=bool(holds) or owner_uncertain or bool(snapshots) and not eligible
-             or owner_pressure or any(lane["storage_pressure"] for lane in snapshots))
+             or owner_pressure or any(lane["storage_pressure"] for lane in snapshots),
+        gate_blockers=frontier_gates["proofs"])
     for entry in planned_work["incidents"]:
         incident(entry["kind"], **entry["evidence"])
     if planned_work.get("enabled"):
@@ -699,13 +838,16 @@ def observe(
             "report_path": str(report_path), "report_age_seconds": report_age,
             "pending_task_ids": pending, "selectable_task_ids": ready,
             "retry_waits": retry_waits, "source_provenance_reviews": provenance_reviews,
+            "lane_environment_reviews": environment_reviews,
             "native_rotation_grace": rotation_waits,
             "retry_failure_observation_pending": bool(exhausted_waits),
             "native_retry_wait_observed": bool(ready) and any(
                 lane["phase"] in {"attempt_retry_wait", "semantic_failure_wait"} for lane in eligible),
             "planned_work": planned_work,
+            "frontier_gate_reviews": frontier_gates["reviews"],
             "lanes": snapshots, "incidents": incidents, "signature": signature,
             "held": bool(holds) or owner_uncertain or (bool(snapshots) and not eligible), "hold_paths": holds,
+            **({"queue_hold_lease": queue_lease} if queue_lease["status"] != "absent" else {}),
             **FLAGS}
 
 
@@ -884,6 +1026,43 @@ def _stop_owned_worker(process: subprocess.Popen[Any]) -> None:
         process.wait()
 
 
+def _finish_worker_tree(tree: CommandProcessTree, *, term_already_sent: bool = False) -> None:
+    """Let observed descendants finish cleanup within one fixed grace period.
+
+    The registry contains pidfds opened while those exact births were owned.
+    Poll their exit readiness rather than trusting reusable PID numbers. Never
+    inspect or clear a hold: only its actual owner may release it in finally.
+    """
+    def live_handles() -> bool:
+        handles = [fd for _start, fd in tree._owned.values()]
+        if not handles:
+            return False
+        poller = select.poll()
+        for fd in handles:
+            poller.register(fd, select.POLLIN)
+        return len(poller.poll(0)) < len(handles)
+
+    try:
+        tree.snapshot()
+        if not term_already_sent:
+            tree.send_signal(signal.SIGTERM)
+        deadline = time.monotonic() + _DESCENDANT_CLEANUP_GRACE_SECONDS
+        while True:
+            tree.snapshot()
+            if not live_handles():
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.05, remaining))
+    finally:
+        try:
+            tree.snapshot()
+            tree.send_signal(signal.SIGKILL)
+        finally:
+            tree.close()
+
+
 def stop_adopted_worker(identity: dict[str, Any]) -> bool:
     """Stop only a recorded session leader after rechecking its birth identity."""
     pid = int(identity.get("pid") or 0)
@@ -914,13 +1093,13 @@ def stop_adopted_worker(identity: dict[str, Any]) -> bool:
             except ProcessLookupError:
                 pass
     finally:
-        tree.send_signal(signal.SIGKILL)
-        tree.close()
+        _finish_worker_tree(tree, term_already_sent=True)
     return True
 
 
 def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any]], None], *,
-               on_poll: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
+               on_poll: Callable[[dict[str, Any]], None] | None = None,
+               previous_worker_context_json: str | None = None) -> dict[str, Any]:
     if not config.worker_argv or config.prompt_path is None:
         return {"outcome": "configuration_error", "error": "worker argv and prompt path are required"}
     process = None
@@ -929,6 +1108,7 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
     try:
         with config.prompt_path.open("rb") as prompt, log_path.open("ab") as output:
             environment = dict(os.environ, REPAIR_DISPATCHER_STATUS_PATH=str(config.state_dir / "status.json"))
+            environment = context_environment(environment, previous_worker_context_json)
             process = subprocess.Popen(config.worker_argv, stdin=prompt, stdout=output, stderr=subprocess.STDOUT,
                                        cwd=config.repo_root, env=environment, start_new_session=True)
             tree = CommandProcessTree(process.pid)
@@ -964,11 +1144,7 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
         if process is not None and process.poll() is None:
             _stop_owned_worker(process)
         if tree is not None:
-            tree.snapshot()
-            tree.send_signal(signal.SIGTERM)
-            time.sleep(0.1)
-            tree.send_signal(signal.SIGKILL)
-            tree.close()
+            _finish_worker_tree(tree)
         if storage_result is not None:
             storage_result["owned_child_stopped"] = process is None or process.poll() is not None
 
@@ -1024,6 +1200,7 @@ def _retry_storage_payload(config: Config) -> OSError | None:
 
 def _save(config: Config, state: dict[str, Any], telemetry: dict[str, Any]) -> bool:
     telemetry.update(control_heartbeat_at=time.time(), control_pid=os.getpid(),
+                     queue_hold_lease_version=QUEUE_HOLD_LEASE_VERSION,
                      control_start_ticks=probe_process(os.getpid()).get("start_ticks"))
     pending = state
     try:
@@ -1052,6 +1229,7 @@ def tick(
     use_wall_clock = now is None
     now = time.time() if now is None else now
     state.update({"schema": SCHEMA, **FLAGS})
+    queue_retirement = expire_queue_hold(config, state, now, apply=apply)
     try:
         observation = observe(config, state, now=now, probe=probe)
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -1062,7 +1240,8 @@ def tick(
         return telemetry
     state["last_full_observation_at"] = observation["observed_at"]
     telemetry = {**observation, "last_full_observation_at": observation["observed_at"],
-                 "action": "observational", "apply": apply}
+                 "action": "observational", "apply": apply,
+                 **({"queue_hold_retirement": queue_retirement} if "retirement" in queue_retirement else {})}
     active = state.get("active_worker", {})
     if active:
         live = probe(int(active.get("pid") or 0))
@@ -1075,7 +1254,10 @@ def tick(
                 telemetry["reason"] = "adopted_worker_missing_deadline"
             elif now >= float(deadline):
                 if observation["held"]:
-                    telemetry["action"] = "held"
+                    # Preserve holds while making the expired original deadline explicit.
+                    telemetry.update(action="held", reason="adopted_worker_deadline_exceeded_while_held",
+                                     worker_deadline=float(deadline),
+                                     worker_overdue_seconds=max(0.0, now - float(deadline)), degraded=True)
                 elif not apply:
                     telemetry["action"] = "would_timeout_adopted_worker"
                 else:
@@ -1099,6 +1281,11 @@ def tick(
         telemetry.update({"action": "attention_required", "reason": "spawn_uncertain_after_dispatcher_interruption"})
         _save(config, state, telemetry)
         return telemetry
+    if any(review["reason"] in {"invalid_required_key", "expected_environment_missing"}
+           for review in observation["lane_environment_reviews"]):
+        telemetry["action"] = "lane_environment_configuration_error"
+        _save(config, state, telemetry)
+        return telemetry
     if observation.get("storage_pressure"):
         _storage_blocked(config, telemetry)
         _save(config, state, telemetry)
@@ -1106,7 +1293,8 @@ def tick(
     capacity = check_storage_capacity([config.state_dir, config.manifest_path.parent, config.repo_root,
                                        *([config.repair_lock_path.parent] if config.repair_lock_path else []),
                                        *(Path(path) for path in observation["storage_paths"])],
-                                      minimum_free_bytes=observation["storage_minimum_free_bytes"])
+                                      minimum_free_bytes=max(observation["storage_minimum_free_bytes"],
+                                                             config.worker_minimum_free_bytes))
     if not capacity["ok"]:
         _storage_blocked(config, telemetry, capacity=capacity)
         _save(config, state, telemetry)
@@ -1120,12 +1308,25 @@ def tick(
     if observation["held"]:
         telemetry["action"] = "owner_uncertain" if observation["owner_discovery_uncertain"] else "held"
     elif not signature:
+        planned_state = observation["planned_work"].get("state")
+        planned_wait = (observation["planned_work"].get("enabled") and planned_state not in
+                        {"disabled", "complete", "execution_available", "held", "materialization_grace"})
+        environment_identity_wait = any(review["reason"] == "lane_identity_changed"
+                                        for review in observation["lane_environment_reviews"])
         unresolved = (observation["retry_failure_observation_pending"] or
                       observation["native_retry_wait_observed"] or
                       bool(observation["native_rotation_grace"]) or
+                      environment_identity_wait or
+                      planned_wait or bool(observation["frontier_gate_reviews"]) or
                       bool(observation["source_provenance_reviews"]))
         telemetry["action"] = ("source_change_review_needed" if observation["source_provenance_reviews"]
+                               else "gate_evidence_review_needed" if observation["frontier_gate_reviews"]
                                else "native_lease_rotation_wait" if observation["native_rotation_grace"]
+                               else "lane_environment_identity_wait" if environment_identity_wait
+                               else "replan_deferred_active_work" if planned_state == "blocked_frontier_deferred"
+                               else "blocked_frontier_wait" if planned_state == "blocked_frontier_grace"
+                               else "waiting_external_gate" if planned_state == "waiting_external_gate"
+                               else "plan_dependency_wait" if planned_wait
                                else "retry_wait" if unresolved else "healthy")
         if state.get("unresolved_signature") and not unresolved:
             telemetry["action"] = "recovery_observed"
@@ -1265,7 +1466,9 @@ def _control_worker(config: Config, state: dict[str, Any], log_path: Path,
         _save(config, state, telemetry)
         _notify_control_watchdog()
 
-    return run_worker(config, log_path, on_start, on_poll=polled)
+    return run_worker(config, log_path, on_start, on_poll=polled,
+                      previous_worker_context_json=build_previous_worker_context(
+                          config.state_dir, state.get("last_worker")))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1279,6 +1482,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--worker-argv-json", help="JSON array of argv strings; shell interpretation is never used")
     parser.add_argument("--hold-path", type=Path, action="append", default=[])
     parser.add_argument("--evidence-path", type=Path, action="append", default=[])
+    parser.add_argument("--required-lane-env", action="append", default=[],
+                        help="require a nonsecret uppercase *_BUDGET_POLICY variable to match this dispatcher's environment")
     parser.add_argument("--once", action="store_true", help="observe one cycle; dispatch requires --apply")
     parser.add_argument("--apply", action="store_true", help="enable the explicitly configured repair worker")
     for option, default in (("interval", 30), ("heartbeat-seconds", 120), ("report-seconds", 600),
@@ -1286,7 +1491,11 @@ def main(argv: list[str] | None = None) -> int:
                             ("cooldown-seconds", 300), ("max-cooldown-seconds", 3600)):
         parser.add_argument(f"--{option}", type=float, default=default)
     parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--worker-min-free-bytes", dest="worker_minimum_free_bytes", type=int,
+                        default=64 * 1024 * 1024, help="minimum free bytes before admitting a new repair worker")
     args = parser.parse_args(argv)
+    if any(not re.fullmatch(r"[A-Z][A-Z0-9_]*_BUDGET_POLICY", key) for key in args.required_lane_env):
+        parser.error("--required-lane-env must name an uppercase *_BUDGET_POLICY key")
     try:
         worker_argv = json.loads(args.worker_argv_json) if args.worker_argv_json else []
     except ValueError:
@@ -1296,9 +1505,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.apply and (not worker_argv or not args.prompt_path):
         parser.error("--apply requires --worker-argv-json and --prompt-path")
     for name in ("interval", "heartbeat_seconds", "report_seconds", "quiet_seconds", "startup_grace_seconds",
-                 "worker_timeout", "cooldown_seconds", "max_cooldown_seconds", "max_attempts"):
+                 "worker_timeout", "cooldown_seconds", "max_cooldown_seconds", "max_attempts", "worker_minimum_free_bytes"):
         if getattr(args, name) <= 0:
             parser.error(f"{name} must be positive")
+    if args.worker_minimum_free_bytes > 2**63 - 1:
+        parser.error("worker_minimum_free_bytes exceeds signed64-bit bound")
     root = args.repo_root.resolve()
     manifest_path = _path(root, args.manifest_path).resolve()
     config = Config(manifest_path=manifest_path, repo_root=root,
@@ -1308,6 +1519,8 @@ def main(argv: list[str] | None = None) -> int:
                     repair_lock_path=_path(root, args.repair_lock_path) if args.repair_lock_path else None,
                     hold_paths=tuple(_path(root, p) for p in args.hold_path),
                     evidence_paths=tuple(_path(root, p) for p in args.evidence_path),
+                    required_lane_env=tuple(sorted(set(args.required_lane_env))),
+                    worker_minimum_free_bytes=args.worker_minimum_free_bytes,
                     **{key: getattr(args, key) for key in ("interval", "heartbeat_seconds", "report_seconds", "quiet_seconds",
                        "startup_grace_seconds", "worker_timeout", "cooldown_seconds", "max_cooldown_seconds", "max_attempts")})
     try:

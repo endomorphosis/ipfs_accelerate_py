@@ -2048,7 +2048,10 @@ def test_withheld_gate_stays_pending_and_an_exhausted_gate_can_be_rechecked(
     assert cycle["work_complete"] is False
     assert cycle["completion_authority"] is False
     assert "- Status: pending" in board.read_text(encoding="utf-8")
-    assert "VDG-060" not in attempts.read_text(encoding="utf-8")
+    saved = json.loads(attempts.read_text(encoding="utf-8"))
+    assert "VDG-060" not in saved
+    progress = saved["_validation_fixed_points"]["VDG-060"]["execution_progress"]
+    assert progress["semantic_failures"] == 0 and progress["gate_refusals"] == 1
     again = lane_resume.run_resume_cycle(**kwargs)
     assert again["phase"] == "gate_withheld"
     assert len(calls) == 2
@@ -2096,8 +2099,9 @@ def test_exhausted_hard_failure_waits_before_the_next_probe(
     waiting = lane_resume.run_resume_cycle(**kwargs)
     assert probed["phase"] == "deterministic_command_failed"
     assert probed["work_complete"] is False
-    assert waiting["state"] == "healthy"
+    assert waiting["state"] == "degraded"
     assert waiting["phase"] == "attempt_retry_wait"
+    assert waiting["next_retry_at_ms"] > 0
     assert waiting["terminal_reason"] == ""
     assert waiting["work_complete"] is False
     assert waiting["completion_authority"] is False

@@ -12,11 +12,12 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
-from .database_task_source import DatabaseTaskSource
+from .database_task_source import DatabaseTaskSource, MAX_QUERY_LIMIT
 from .quack_capabilities import probe_quack_capabilities
 
 TASKBOARD_INGEST_SCHEMA: Final = (
@@ -337,6 +338,11 @@ def validate_taskboard(board: Mapping[str, Any]) -> list[str]:
         if not isinstance(deps, Sequence) or isinstance(deps, (str, bytes)):
             errors.append(f"{alias}: dependencies are malformed")
     known = set(ids)
+    goal_references: dict[str, str] | None = None
+    try:
+        _goals, _edges, goal_references = _goal_population(board)
+    except TaskboardIngestError as exc:
+        errors.append(str(exc))
     for task in tasks:
         if not isinstance(task, Mapping):
             continue
@@ -352,6 +358,9 @@ def validate_taskboard(board: Mapping[str, Any]) -> list[str]:
             dep_id = str(dep).strip()
             if dep_id and dep_id not in known:
                 errors.append(f"{alias}: unknown dependency {dep_id}")
+        goal_ref = str(task.get("subgoal_id") or task.get("goal_id") or task.get("parent_goal_id") or "").strip()
+        if goal_ref and board.get("goals") and goal_references is not None and goal_ref not in goal_references:
+            errors.append(f"{alias}: unknown goal reference {goal_ref}")
     return _mirror_taskboard_validation(errors, board)
 
 
@@ -382,47 +391,99 @@ def _task_alias(task: Mapping[str, Any]) -> str:
     ).strip()
 
 
+def _goal_population(
+    board: Mapping[str, Any], *, plan_root: str = "",
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, str]]:
+    """Resolve hierarchy aliases before materialization; never flatten parents.
+
+    A normal subgoal is a goal record with parent_goal_cid and a subgoal edge.
+    Federated `subgoals` rows require separate tenant/federation identities and
+    are not fabricated by a taskboard import.
+    """
+
+    namespace = str(board.get("board_namespace") or board.get("title") or "taskboard")
+    if not plan_root:
+        revision = str(board.get("plan_revision") or board.get("plan_alias") or "plan")
+        plan_root = str(board.get("plan_root_cid") or _cid({"namespace": namespace, "plan": revision}))
+    raw = board.get("goals") or []
+    if not isinstance(raw, (list, tuple)):
+        raise TaskboardIngestError("goals must be a sequence of goal objects")
+    if not raw:
+        raw = [{"goal_id": "G-ROOT", "title": namespace, "status": "open"}]
+    goals: list[dict[str, Any]] = []
+    references: dict[str, str] = {}
+    cids: set[str] = set()
+    for index, goal in enumerate(raw, 1):
+        if not isinstance(goal, Mapping):
+            raise TaskboardIngestError(f"goal[{index}] is not an object")
+        identity = str(goal.get("goal_id") or goal.get("goal_alias") or f"G-{index}").strip()
+        # Preserve the existing goal_id-first alias/CID convention. A distinct
+        # declared goal_alias is still a valid reference to the same goal.
+        alias = identity
+        cid = str(goal.get("goal_cid") or _cid({"goal": identity, "plan": plan_root})).strip()
+        if not identity or not alias or not cid or any(c in identity + alias + cid for c in "\0\n\r"):
+            raise TaskboardIngestError("goal identities must be nonempty single-line values")
+        if cid in cids:
+            raise TaskboardIngestError(f"duplicate goal identity/CID: {identity}")
+        cids.add(cid)
+        for reference in {identity, str(goal.get("goal_alias") or identity).strip(), cid}:
+            if reference in references:
+                raise TaskboardIngestError(f"ambiguous or duplicate goal identity: {reference}")
+            references[reference] = cid
+        try:
+            raw_ordinal = goal.get("ordinal")
+            if raw_ordinal is not None and not isinstance(raw_ordinal, (str, int, float)):
+                raise TypeError("ordinal is not numeric text or a number")
+            ordinal = int(raw_ordinal or index)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise TaskboardIngestError(f"{identity}: invalid goal ordinal") from exc
+        if ordinal < 0:
+            raise TaskboardIngestError(f"{identity}: invalid goal ordinal")
+        goals.append({"goal_cid": cid, "goal_alias": alias, "goal_id": identity,
+                      "title": str(goal.get("title") or alias), "ordinal": ordinal,
+                      "status": str(goal.get("status") or "open")})
+    parents: dict[str, str] = {}
+    edges: list[dict[str, str]] = []
+    for goal, declaration in zip(goals, raw):
+        resolved: set[str] = set()
+        for key in ("parent", "parent_goal_id", "parent_goal_cid"):
+            reference = declaration.get(key)
+            if reference is None or reference == "":
+                continue
+            if not isinstance(reference, str) or reference.strip() not in references:
+                raise TaskboardIngestError(f"{goal['goal_id']}: unknown parent goal {reference!r}")
+            resolved.add(references[reference.strip()])
+        if len(resolved) > 1:
+            raise TaskboardIngestError(f"{goal['goal_id']}: conflicting parent goal references")
+        parent = next(iter(resolved), "")
+        if parent:
+            goal["parent_goal_cid"] = parent
+        parents[goal["goal_cid"]] = parent
+        if parent:
+            edges.append({"parent_goal_cid": parent, "child_goal_cid": goal["goal_cid"], "edge_kind": "subgoal"})
+    done: set[str] = set()
+    for identity in parents:
+        current = identity
+        chain: set[str] = set()
+        while current and current not in done:
+            if current in chain:
+                raise TaskboardIngestError("goal parent cycle is forbidden")
+            chain.add(current)
+            current = parents[current]
+        done.update(chain)
+    return goals, edges, references
+
+
 def board_to_population(board: Mapping[str, Any]) -> dict[str, Any]:
     tasks_in = list(board.get("tasks") or ())
-    goals_in = list(board.get("goals") or ())
     namespace = str(
         board.get("board_namespace") or board.get("title") or "taskboard"
     )
     plan_alias = str(board.get("plan_revision") or board.get("plan_alias") or "plan")
     plan_root = str(board.get("plan_root_cid") or _cid({"namespace": namespace, "plan": plan_alias}))
     tree_id = str(board.get("repository_tree_id") or _cid({"namespace": namespace, "tree": "local"}))
-    goal_cids: dict[str, str] = {}
-    goals: list[dict[str, Any]] = []
-    if not goals_in:
-        root_alias = "G-ROOT"
-        goal_cids[root_alias] = _cid({"goal": root_alias, "plan": plan_root})
-        goals.append(
-            {
-                "goal_cid": goal_cids[root_alias],
-                "goal_alias": root_alias,
-                "goal_id": root_alias,
-                "title": namespace,
-                "ordinal": 1,
-                "status": "open",
-            }
-        )
-    for index, goal in enumerate(goals_in, start=1):
-        if not isinstance(goal, Mapping):
-            continue
-        alias = str(goal.get("goal_id") or goal.get("goal_alias") or f"G-{index}")
-        cid = str(goal.get("goal_cid") or _cid({"goal": alias, "plan": plan_root}))
-        goal_cids[alias] = cid
-        goals.append(
-            {
-                "goal_cid": cid,
-                "goal_alias": alias,
-                "goal_id": alias,
-                "title": str(goal.get("title") or alias),
-                "ordinal": int(goal.get("ordinal") or index),
-                "status": str(goal.get("status") or "open"),
-            }
-        )
-    default_goal = next(iter(goal_cids.values()))
+    goals, goal_edges, goal_cids = _goal_population(board, plan_root=plan_root)
+    default_goal = next(goal["goal_cid"] for goal in goals if not goal.get("parent_goal_cid"))
     declared: dict[str, str] = {}
     for task in tasks_in:
         if not isinstance(task, Mapping):
@@ -439,7 +500,9 @@ def board_to_population(board: Mapping[str, Any]) -> dict[str, Any]:
             deps = [item.strip() for item in deps_raw.split(",") if item.strip()]
         else:
             deps = [str(item) for item in deps_raw]
-        goal_ref = str(task.get("subgoal_id") or task.get("goal_id") or task.get("parent_goal_id") or "")
+        goal_ref = str(task.get("subgoal_id") or task.get("goal_id") or task.get("parent_goal_id") or "").strip()
+        if goal_ref and board.get("goals") and goal_ref not in goal_cids:
+            raise TaskboardIngestError(f"{alias}: unknown goal reference {goal_ref}")
         goal_cid = goal_cids.get(goal_ref, default_goal)
         status = normalize_status(task.get("status") or "todo")
         body = dict(task)
@@ -469,6 +532,7 @@ def board_to_population(board: Mapping[str, Any]) -> dict[str, Any]:
         "repository_tree_id": tree_id,
         "plan_root_cid": plan_root,
         "goals": goals,
+        "goal_edges": goal_edges,
         "plans": [
             {
                 "plan_cid": plan_root,
@@ -534,7 +598,27 @@ def ingest_taskboard(
                 if str(task["task_alias"]) in existing
             ]
             to_load["tasks"] = kept
-        if to_load.get("tasks"):
+        hierarchy_backfill = False
+        if not to_load.get("tasks") and population.get("goal_edges"):
+            # Existing task rows may come from an older flat ingest. Repair
+            # only missing hierarchy, never rewrite already imported tasks.
+            session = nullcontext() if source.intent.uses_bound_connection else source.intent.read_session()
+            with session:
+                existing_edges = {
+                    (edge["parent_goal_cid"], edge["child_goal_cid"], edge["edge_kind"])
+                    for edge in source.list_goal_edges(limit=MAX_QUERY_LIMIT)
+                }
+                hierarchy_backfill = any(
+                    (edge["parent_goal_cid"], edge["child_goal_cid"], edge["edge_kind"]) not in existing_edges
+                    for edge in population["goal_edges"]
+                )
+                if not hierarchy_backfill:
+                    for goal in population["goals"]:
+                        current = source.get_goal(goal["goal_cid"])
+                        if current is None or str(current.get("parent_goal_cid") or "") != goal.get("parent_goal_cid", ""):
+                            hierarchy_backfill = True
+                            break
+        if to_load.get("tasks") or hierarchy_backfill:
             receipt = source.materialize(
                 to_load,
                 repository_tree_id=str(population["repository_tree_id"]),
@@ -568,6 +652,7 @@ def ingest_taskboard(
             "network_install_attempted": False,
         },
         "materialize_task_count": receipt.get("task_count"),
+        "hierarchy_backfilled": hierarchy_backfill,
         "ingest_cid": _cid(
             {
                 "store": str(store),

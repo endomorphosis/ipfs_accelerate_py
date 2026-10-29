@@ -11,12 +11,13 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 from typing import Any
 
 _DONE = {"completed", "complete", "done"}
 _RUNNABLE = {"pending", "todo", "ready", "blocked", "failed", "stuck"}
 _ACTIVE = {"running", "in_progress", "in-progress"}
-_RETRY_WAIT = {"attempt_retry_wait", "gate_retry_wait", "gate_withheld", "resource_wait"}
+_RETRY_WAIT = {"attempt_retry_wait", "semantic_failure_wait", "gate_retry_wait", "gate_withheld", "resource_wait"}
 _EXECUTION = {"deterministic_command", "validation", "gate_dependency_revalidation",
               "gate_revalidation", "gate_evidence_revalidation"}
 
@@ -72,12 +73,140 @@ def _dependencies_done(task: dict[str, Any], tasks: dict[str, dict[str, Any]]) -
             and all(tasks.get(dep, {}).get("status") in _DONE for dep in dependencies))
 
 
+def collect_gate_blockers(*, repo_root: Path, manifest: dict[str, Any],
+                          lanes: list[dict[str, Any]], ready: list[str], now: float) -> dict[str, Any]:
+    """Accept only native, source-current refusals, independently of poll phase."""
+    from .gate_recovery import gate_evidence, gate_source_contract
+    from .lane_resume import _command_contract, parse_deterministic_command
+    from .supervisor_watchdog import parse_todo_task_fields
+    proofs, reviews = [], []
+    try:
+        root = repo_root.resolve()
+        todo = Path(manifest["todo_path"])
+        todo = todo if todo.is_absolute() else root / todo
+        fields = dict(parse_todo_task_fields(todo.read_text(),
+                      task_header_prefix=manifest.get("task_header_prefix", "## TASK-")))
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"proofs": proofs, "reviews": reviews}
+    for lane in lanes:
+        if not lane.get("process", {}).get("alive") or not lane["process"].get("identity_verified"):
+            continue
+        try:
+            status = Path(lane["status_path"]).resolve()
+            status.relative_to(root)
+            attempt_path = status.with_name("lane_resume_attempts.json")
+            gate_path = status.with_name("lane_resume_attempts.gates.json")
+            ledger, gates = json.loads(attempt_path.read_text()), json.loads(gate_path.read_text())
+            if not isinstance(ledger, dict):
+                continue
+            fixed = ledger.get("_validation_fixed_points", {})
+            if not isinstance(gates, dict) or not isinstance(fixed, dict):
+                continue
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        for task_id in ready:
+            record = fixed.get(task_id, {})
+            progress = record.get("execution_progress", {}) if isinstance(record, dict) else {}
+            gate = gates.get(task_id, {})
+            if (not isinstance(progress, dict) or not isinstance(gate, dict)
+                    or progress.get("schema") != "agent-supervisor/execution-progress@1"
+                    or progress.get("state") != "gate_withheld"
+                    or type(progress.get("last_exit_code")) is not int or progress["last_exit_code"] != 75
+                    or progress.get("last_stage") not in {"command", "validation"}
+                    or type(progress.get("gate_refusals")) is not int or progress["gate_refusals"] < 1
+                    or type(progress.get("finished_at_ms")) is not int
+                    or not 0 < progress["finished_at_ms"] / 1000 <= now
+                    or type(gate.get("unchanged_probes")) is not int or gate["unchanged_probes"] < 1):
+                continue
+            try:
+                task = fields.get(task_id, {})
+                command = parse_deterministic_command(task.get("deterministic_command") or "", repo_root=root)
+                validation = parse_deterministic_command(task.get("validation") or "", repo_root=root)
+                if not command or (task.get("validation") and not validation):
+                    continue
+                contract = _command_contract(task, command, validation, repo_root=root)
+                fingerprint, evidence = gate_evidence(task_id, fields, repo_root=root, todo_path=todo,
+                    log_path=status.with_name("supervisor.log"))
+                source = gate_source_contract(evidence, contract)
+                if (progress.get("contract") != contract or gate.get("fingerprint") != fingerprint
+                        or gate.get("source_contract") != source):
+                    reviews.append({"lane": lane["lane"], "task_id": task_id,
+                                    "reason": "gate_refusal_evidence_not_current", "current_proof_accepted": False})
+                    continue
+                proofs.append({"lane": lane["lane"], "task_id": task_id, "contract": contract,
+                    "gate_fingerprint": fingerprint, "gate_source_contract": source,
+                    "withheld_stage": progress["last_stage"], "last_exit_code": 75,
+                    "validation_exit_code": gate.get("last_validation_exit_code"),
+                    "attempt_path": str(attempt_path), "gate_path": str(gate_path)})
+            except (OSError, ValueError, KeyError, TypeError):
+                reviews.append({"lane": lane["lane"], "task_id": task_id,
+                                "reason": "gate_refusal_evidence_unreadable", "current_proof_accepted": False})
+    return {"proofs": proofs, "reviews": reviews}
+
+
+def _blocked_frontier(*, result: dict[str, Any], tasks: dict[str, dict[str, Any]],
+                      lanes: list[dict[str, Any]], proofs: list[dict[str, Any]],
+                      state: dict[str, Any], now: float, held: bool) -> bool:
+    """Keep a semantic refusal clock while probes rotate; never mark tasks done."""
+    key = "blocked_frontier_observation"
+    if held or result["configuration_errors"]:
+        state.pop(key, None)
+        return False
+    ready = sorted(task_id for task_id, task in tasks.items()
+                   if task.get("status") in _RUNNABLE and _dependencies_done(task, tasks))
+    needed = sorted(set(ready) - result["deferred_tasks"].keys())
+    by_id = {p["task_id"]: p for p in proofs if isinstance(p, dict) and p.get("task_id") in needed
+             and all(isinstance(p.get(k), str) and re.fullmatch(r"[0-9a-f]{64}", p[k])
+                     for k in ("contract", "gate_fingerprint", "gate_source_contract"))}
+    prior = state.get(key, {})
+    base = result["contract_fingerprint"]
+    real_execution = any(lane.get("phase") in _EXECUTION and lane.get("phase") != "gate_dependency_revalidation"
+                         for lane in lanes)
+    all_blocked = bool(needed) and set(needed) <= by_id.keys()
+    if not all_blocked:
+        # An actual retry gets its original bounded opportunity, without a new
+        # grace period merely because its phase temporarily changed to running.
+        if (real_execution and isinstance(prior, dict) and prior.get("contract") == base
+                and type(prior.get("first_seen")) in (int, float)
+                and math.isfinite(prior["first_seen"]) and 0 <= prior["first_seen"] <= now):
+            result.update(state="blocked_frontier_deferred", maintenance_deferred=True,
+                          blocked_task_ids=prior.get("blocked_task_ids", []),
+                          first_seen=prior["first_seen"],
+                          replan_required=now - prior["first_seen"] >= result["grace_seconds"])
+            return True
+        state.pop(key, None)
+        return False
+    signature = _digest([{name: by_id[task][name] for name in
+                         ("task_id", "contract", "gate_fingerprint", "gate_source_contract")}
+                         for task in needed])
+    same = isinstance(prior, dict) and prior.get("contract") == base and prior.get("signature") == signature
+    first = prior.get("first_seen", now) if same else now
+    if type(first) not in (int, float) or not math.isfinite(first) or first > now:
+        first = now
+    state[key] = {"contract": base, "signature": signature, "first_seen": first,
+                  "last_seen": now, "blocked_task_ids": needed}
+    accepted_wait = set(needed) | result["deferred_tasks"].keys()
+    unsafe = any(lane.get("active_task_id") and not (
+                 lane.get("active_task_id") in accepted_wait and
+                 lane.get("phase") in (_RETRY_WAIT | {"gate_dependency_revalidation"})) for lane in lanes)
+    due = now - first >= result["grace_seconds"]
+    result.update(state="blocked_frontier_deferred" if unsafe else "plan_replan_required" if due else "blocked_frontier_grace",
+                  blocked_task_ids=needed, blocked_frontier_proofs=[by_id[t] for t in needed],
+                  first_seen=first, replan_required=due, maintenance_deferred=unsafe,
+                  blockage_fingerprint=signature)
+    if due and not unsafe:
+        result["incidents"] = [{"kind": "planned_work_blocked_frontier", "evidence": {
+            name: value for name, value in result.items() if name != "incidents"}}]
+    return True
+
+
 def observe_planned_work(*, policy: Any, repo_root: Path, tasks: dict[str, dict[str, Any]],
                          lanes: list[dict[str, Any]], state: dict[str, Any], now: float,
-                         held: bool = False) -> dict[str, Any]:
+                         held: bool = False, gate_blockers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Persist a stable grace clock and return evidence, without task writes."""
     if policy is None or isinstance(policy, dict) and policy.get("enabled", False) is False:
         state.pop("planned_work_observation", None)
+        state.pop("blocked_frontier_observation", None)
         return {"enabled": False, "state": "disabled", "incidents": []}
     errors: list[str] = []
     if not isinstance(policy, dict) or policy.get("enabled") is not True:
@@ -153,7 +282,7 @@ def observe_planned_work(*, policy: Any, repo_root: Path, tasks: dict[str, dict[
             if evidence.stat().st_size > 8 * 1024 * 1024:
                 raise ValueError("deferred evidence exceeds 8 MiB")
             input_hashes[declaration["evidence_path"]] = hashlib.sha256(evidence.read_bytes()).hexdigest()
-            if task_id in planned and now < parsed.timestamp():
+            if tasks[task_id].get("status") not in _DONE and now < parsed.timestamp():
                 deferred[task_id] = {**declaration, "state": "waiting_external_gate"}
         except (OSError, ValueError, TypeError) as exc:
             errors.append(f"{task_id}: {exc}")
@@ -169,6 +298,7 @@ def observe_planned_work(*, policy: Any, repo_root: Path, tasks: dict[str, dict[
     executing = [lane.get("lane", "") for lane in lanes if lane.get("phase") in _EXECUTION]
     runnable = sorted(task_id for task_id, task in tasks.items() if task.get("status") in _RUNNABLE
                       and task_id not in waiting
+                      and task_id not in deferred
                       and _dependencies_done(task, tasks))
     active = {task_id for task_id, task in tasks.items() if task.get("status") in _ACTIVE and task_id not in waiting}
     active.update(other_active)
@@ -182,6 +312,10 @@ def observe_planned_work(*, policy: Any, repo_root: Path, tasks: dict[str, dict[
               "executing_lanes": executing,
               "input_hashes": input_hashes, "contract_fingerprint": contract,
               "grace_seconds": grace, "incidents": [], "completion_authority": False}
+    if _blocked_frontier(result=result, tasks=tasks, lanes=lanes, proofs=gate_blockers or [],
+                         state=state, now=now, held=held):
+        state.pop("planned_work_observation", None)
+        return result
     # Both explicit flags permit continuation during native retry waits. The
     # independent-frontier flag also permits queued work, never an active command.
     if held or active or executing or (runnable and not independent) or not (materialize or errors):
