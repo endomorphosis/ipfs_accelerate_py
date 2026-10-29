@@ -35,7 +35,8 @@ def _need(value: Any, reason: str) -> None:
 
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(["git", "--no-optional-locks", "--no-replace-objects", *args],
-        cwd=root, text=True, capture_output=True, timeout=20, check=False)
+        cwd=root, text=True, capture_output=True,
+        timeout=180 if args[:2] == ("worktree", "add") else 60, check=False)
     _need(result.returncode == 0, "candidate_git_observation_failed")
     return result.stdout.strip()
 
@@ -201,6 +202,28 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
     # lifecycle cleanup both consume it. The request-bound hash remains unique.
     branch = ("implementation/" + attempt.task_alias.lower() + "-" + fresh_id
               + "-attempt-1-" + str(attempt.started_at_ms // 1000))
+    if fresh.exists() or fresh.is_symlink() or _git(repo, "branch", "--list", branch):
+        # A checkout can outlive a killed Git command. Never reset, remove or
+        # adopt that partial tree. Only Native's exact dead-owner CAS may retire
+        # its PREPARING claim, followed by one separate request-bound retry.
+        previous = portal_daemon.worktree_lifecycle.load_workspace(fresh)
+        _need(previous is not None, "candidate_fresh_workspace_already_exists")
+        _need(previous.state.value in {"preparing", "terminal"}
+            and previous.task_id == task.task_id and previous.canonical_task_cid == bound["canonical_task_cid"]
+            and previous.attempt == portal_daemon._worktree_lifecycle_attempt(task, 1)
+            and previous.branch == branch and Path(previous.state_dir) == paths.root.resolve(strict=True)
+            and Path(previous.repo_root) == repo, "candidate_interrupted_checkout_custody_unverified")
+        if previous.state.value == "preparing":
+            previous = portal_daemon.worktree_lifecycle.reclaim_dead_owner_for_controlled_restart(
+                fresh, expected_state_dir=paths.root,
+                reason="candidate_checkout_interrupted_before_execution")
+        _need(previous is not None and previous.is_terminal
+            and previous.terminal_reason == "candidate_checkout_interrupted_before_execution",
+            "candidate_interrupted_checkout_owner_not_fenced")
+        fresh_id = hashlib.sha256((fresh_id + ":checkout-retry-1").encode()).hexdigest()[:24]
+        fresh = portal_daemon.worktree_root.resolve(strict=True) / ("workspace_continuation_" + fresh_id)
+        branch = ("implementation/" + attempt.task_alias.lower() + "-" + fresh_id
+                  + "-attempt-1-" + str(attempt.started_at_ms // 1000))
     _need(not fresh.exists() and not fresh.is_symlink() and not _git(repo, "branch", "--list", branch),
         "candidate_fresh_workspace_already_exists")
     record = portal_daemon.worktree_lifecycle.begin_preparing(task_id=task.task_id,

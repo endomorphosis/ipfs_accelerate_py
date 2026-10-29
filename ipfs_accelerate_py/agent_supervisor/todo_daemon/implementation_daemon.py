@@ -76331,9 +76331,30 @@ class DatabaseImplementationDaemon:
                 self._require_native_provider_failure(attempt, prior, key)
                 raise DatabasePortalBridgeError("portal_provider_failed")
             if prior.get("callback_state") == "started_outcome_unknown":
-                from .database_portal_bridge import DatabasePortalBridgeDeferred
+                from .database_portal_bridge import DatabasePortalBridgeDeferred, DatabasePortalExecutionBridge
 
-                raise DatabasePortalBridgeDeferred("provider_callback_outcome_unknown")
+                official = self._resolve_native_portal_provider_callback(provider_fn or self._provider_fn, attempt)
+                bridge = getattr(official, "__self__", None)
+                accepted = None
+                if (type(bridge) is DatabasePortalExecutionBridge
+                        and getattr(official, "__func__", None) is DatabasePortalExecutionBridge.run_provider):
+                    accepted = bridge.recover_provider_callback(attempt)
+                if accepted is None:
+                    raise DatabasePortalBridgeDeferred("provider_callback_outcome_unknown")
+                bridge._require_accepted_provider(attempt, accepted)
+                self._protect_attempt_write(attempt)
+                changed = self._require_connection().execute(
+                    "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? "
+                    "WHERE attempt_id = ? AND idempotency_key = ? AND owner_session_id = ? "
+                    "AND task_cid = ? AND result_json = ? RETURNING invocation_id",
+                    [_database_daemon_json(dict(accepted)), self._now_ms(), attempt.attempt_id, key,
+                     self.owner_session_id, attempt.task_cid, _database_daemon_json(dict(prior))]).fetchone()
+                if changed is None:
+                    raise DatabaseImplementationAuthorityError("unknown callback changed before native acceptance reconciliation")
+                self._record_event("provider_callback_reconciled_from_native_acceptance", attempt_id=attempt.attempt_id,
+                    task_cid=attempt.task_cid, body={"previous_callback": dict(prior),
+                        "native_receipt_id": accepted["receipt_id"], "model_provider_redispatched": False})
+                return self._run_provider_impl(attempt, idempotency_key=key, provider_fn=provider_fn)
             if _unapplied_router_proposal(prior) and key != f"provider:{attempt.attempt_id}":
                 raise DatabaseImplementationAuthorityError("router refusal requires the canonical provider key")
             if self.require_real_execution and not _unapplied_router_proposal(prior) and (

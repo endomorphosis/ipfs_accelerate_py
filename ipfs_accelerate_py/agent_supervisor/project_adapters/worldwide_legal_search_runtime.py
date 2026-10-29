@@ -382,6 +382,24 @@ class CampaignRuntime:
         self._last_successful_pass: dict[str, Any] = {}
         self._native_terminal_result: dict[str, Any] = {}
         self._candidate_request_path: Path | None = None
+        self._candidate_request_sha256: str | None = None
+        self._candidate_completed = False
+        self._candidate_checkout_restart = False
+        pending = config.state_root / "control/pending-candidate-continuation.json"
+        if pending.is_file():
+            from .worldwide_legal_search_watchdog import read_owned_json
+            pointer = read_owned_json(pending)
+            candidate = Path(pointer.get("request_path", ""))
+            if candidate.is_absolute() and candidate.is_file():
+                read_owned_json(candidate)  # Bound and authenticate bytes before hashing them.
+            if (pointer.get("schema") != "wwl.pending-candidate-continuation@1"
+                    or pointer.get("run_id") != config.run_id or not candidate.is_absolute()
+                    or candidate.resolve(strict=True) != candidate or not candidate.is_relative_to(config.state_root)
+                    or hashlib.sha256(candidate.read_bytes()).hexdigest() != pointer.get("request_sha256")):
+                raise ValueError("pending candidate continuation custody differs")
+            self._candidate_request_path = candidate
+            self._candidate_request_sha256 = pointer["request_sha256"]
+            self._read_candidate_request()
         self._provider_activity_binding: dict[str, Any] = {}
         self._provider_activity_sequence = 0
         self._provider_activity: dict[str, Any] = {}
@@ -610,6 +628,9 @@ class CampaignRuntime:
         if path is None or not path.is_absolute() or path.resolve(strict=True) != path or not path.is_relative_to(self.config.state_root):
             raise ValueError("candidate continuation request must be an exact owned campaign path")
         request = read_owned_json(path)
+        expected = self._candidate_request_sha256
+        if expected is not None and hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError("pending candidate continuation custody differs")
         if request.get("run_id") != self.config.run_id or request.get("task_id") not in self.tasks:
             raise ValueError("candidate continuation request campaign or task differs")
         return request
@@ -797,6 +818,25 @@ class CampaignRuntime:
                 self._last_successful_pass = {"owner_pid": os.getpid(), "framework_revision": self._loaded_framework_revision,
                     "completed_at": time.time(), "result": self._last_result, "authority_revision": self._cached.get("authority_revision"),
                     "progress_token": self._cached.get("progress_token"), "receipt_id": identity(self._last_result)}
+                if (self._candidate_request_path is not None
+                        and selected == self._read_candidate_request()["task_id"]):
+                    native_receipt = self._cached.get("native_completion_receipts_by_alias", {}).get(selected)
+                    if not native_receipt:
+                        raise ValueError("candidate completion lacks its native receipt")
+                    pointer = self.config.state_root / "control/pending-candidate-continuation.json"
+                    if pointer.is_file():
+                        saved = read_json(pointer)
+                        if saved.get("request_path") != str(self._candidate_request_path) or saved.get("request_sha256") != hashlib.sha256(self._candidate_request_path.read_bytes()).hexdigest():
+                            raise ValueError("candidate continuation pointer changed before completion")
+                        atomic_json(self.config.state_root / "control/candidate-continuation-completed.json",
+                            {"schema": "wwl.candidate-continuation-completed@1", "request": saved,
+                             "task_id": selected, "native_completion_receipt": native_receipt,
+                             "native_projection": self._cached.get("native_completion_projection"),
+                             "paid_attempt_budget_reset": False, "completion_authority": False})
+                        pointer.unlink()
+                    self._last_failure = {}
+                    self._candidate_completed = True
+                    self.stop.set()  # Reopen the unsliced native task frontier.
             previous_task = str(self._last_failure.get("task_id") or "")
             if self._last_failure and (previous_task in self._cached.get("verified_task_ids", []) or (not previous_task and not self._cached.get("active_task_id"))):
                 self._last_failure = {}
@@ -825,6 +865,14 @@ class CampaignRuntime:
             payload["receipt_id"] = identity(payload)
             atomic_json(self.config.state_root / "failures" / (payload["failure_key"].split(":")[1] + ".json"), payload)
             self._last_failure = payload
+            command = getattr(error, "cmd", ())
+            if (isinstance(error, subprocess.TimeoutExpired) and self._candidate_request_path is not None
+                    and isinstance(command, (list, tuple)) and "worktree" in command
+                    and "add" in command):
+                # The service cgroup must drain before Native may fence the
+                # dead PREPARING owner and admit its sole fresh-checkout retry.
+                self._candidate_checkout_restart = True
+                self.stop.set()
         finally:
             self._passes += 1
 
@@ -1147,13 +1195,27 @@ def main(argv: list[str] | None = None) -> int:
                     if fence.get("owner_alive") is not False or fence.get("main_pid") != 0 or fence.get("cgroup_empty") is not True:
                         raise ValueError("candidate continuation requires the registered previous owner stopped and fenced")
                     runtime._candidate_request_path = args.request
+                    runtime._candidate_request_sha256 = hashlib.sha256(args.request.read_bytes()).hexdigest()
                     runtime._read_candidate_request()
+                    request_bytes = args.request.read_bytes()
+                    pending = config.state_root / "control/pending-candidate-continuation.json"
+                    pointer = {"schema": "wwl.pending-candidate-continuation@1", "run_id": config.run_id,
+                        "request_path": str(args.request), "request_sha256": hashlib.sha256(request_bytes).hexdigest()}
+                    if pending.exists() and read_json(pending) != pointer:
+                        raise ValueError("another candidate continuation is already pending")
+                    atomic_json(pending, pointer)
                 def request_stop(_signum: int, _frame: Any) -> None:
                     runtime.cancel.set()
                     runtime.stop.set()
                 signal.signal(signal.SIGTERM, request_stop)
                 signal.signal(signal.SIGINT, request_stop)
                 output = runtime.run(once=args.once or args.command == "continue-candidate")
+                if runtime._candidate_checkout_restart or (runtime._candidate_completed and args.command == "run"):
+                    print(json.dumps(output, sort_keys=True, default=str), flush=True)
+                    return 75
+                if args.command == "continue-candidate" and not runtime._candidate_completed:
+                    print(json.dumps(output, sort_keys=True, default=str), flush=True)
+                    return 1
                 if runtime._reload_request:
                     print(json.dumps(output, sort_keys=True, default=str), flush=True)
                     return 75

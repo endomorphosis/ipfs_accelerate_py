@@ -37,6 +37,7 @@ from ..merge.checkout_lock import checkout_repository_id
 from ..merge.worktree_lifecycle import (
     WorkspaceLifecycleRecord,
     WorktreeLifecycleError,
+    current_process_birth,
 )
 from ..proof.formal_verification_contracts import content_identity
 from ..task_sources.task_identity import canonical_task_identity
@@ -11685,6 +11686,56 @@ class DatabasePortalExecutionBridge:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
             if callable(close):
                 close()
+
+    def recover_provider_callback(self, attempt: Any) -> Mapping[str, Any] | None:
+        """Read accepted Native work, or resume one fenced candidate checkout.
+
+        An unknown ordinary provider is never invoked again. The sole replay
+        path is the explicit no-provider candidate protocol, with its exact
+        request-derived PREPARING lifecycle and Native dead-owner fence.
+        """
+        from .implementation_daemon import PortalImplementationDaemon
+        from ..project_adapters.worldwide_legal_search_continuation import CandidateContinuationAdmission
+
+        paths = self._paths(attempt)
+        if not paths.binding.is_file() or not paths.task_projection.is_file():
+            return None
+        record = self._record_for_attempt(self.task_source, attempt)
+        paths, binding = self._ensure_attempt_projection(attempt, record)
+        terminal = (_projection_status(self._verify_projection(paths, binding)) in _TERMINAL_STATUSES
+                    and self._has_completion_event(paths, str(binding["task_alias"])))
+        if not terminal and self.candidate_reconciliation_loader is None:
+            return None  # Do not even recreate an unknown ordinary provider's factory.
+        daemon = self.portal_factory(paths, str(binding.get("task_alias") or attempt.task_cid))
+        if type(daemon) is not PortalImplementationDaemon:
+            return None
+        recover_checkout = False
+        try:
+            if terminal:
+                return self._acceptance_receipt(attempt=attempt, paths=paths, binding=binding,
+                    summaries=[], merge_request_loader=getattr(getattr(daemon, "merge_queue", None), "get", None))
+            if self.candidate_reconciliation_loader is None:
+                return None
+            admission = self.candidate_reconciliation_loader(attempt=attempt, paths=paths,
+                binding=dict(binding), portal_daemon=daemon)
+            if type(admission) is not CandidateContinuationAdmission:
+                return None
+            fresh_id = hashlib.sha256((attempt.attempt_id + admission.request["receipt_id"]).encode()).hexdigest()[:24]
+            fresh = daemon.worktree_root.resolve(strict=True) / ("workspace_continuation_" + fresh_id)
+            previous = daemon.worktree_lifecycle.load_workspace(fresh)
+            retry_id = hashlib.sha256((fresh_id + ":checkout-retry-1").encode()).hexdigest()[:24]
+            retry = daemon.worktree_root.resolve(strict=True) / ("workspace_continuation_" + retry_id)
+            recover_checkout = bool(previous is not None
+                and previous.state.value in {"preparing", "terminal"}
+                and previous.owner != current_process_birth(proc_root=daemon.worktree_lifecycle.proc_root)
+                and not retry.exists() and not retry.is_symlink())
+        finally:
+            daemon.close_event_runtime()
+        if recover_checkout:
+            # run_provider's candidate branch authenticates the genuine live
+            # prior-attempt authority before any lifecycle/checkout mutation.
+            return self.run_provider(attempt)
+        return None
 
     @staticmethod
     def _require_accepted_provider(attempt: Any, provider_result: Mapping[str, Any]) -> str:

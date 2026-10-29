@@ -42,6 +42,24 @@ FOREST = {"site": {"head": "1" * 40, "tree": "2" * 40}, "accelerate": {"head": "
 
 
 class RuntimeBoundaries(unittest.TestCase):
+    def test_pending_candidate_survives_restart_and_rejects_changed_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(root / 'site', root / 'framework', root / 'state', root / 'plan.json', root / 'config.json')
+            atomic_json(config.plan_path, plan_fixture())
+            request = config.state_root / 'maintenance/candidate.json'
+            atomic_json(request, {'run_id': config.run_id, 'task_id': 'WWL-001'})
+            atomic_json(config.state_root / 'control/pending-candidate-continuation.json', {
+                'schema': 'wwl.pending-candidate-continuation@1', 'run_id': config.run_id,
+                'request_path': str(request), 'request_sha256': hashlib.sha256(request.read_bytes()).hexdigest()})
+            runtime = CampaignRuntime(config, {'admitted_plan_revision': 'plan', 'receipt_id': 'receipt'})
+            self.assertEqual(runtime._candidate_request_path, request)
+            atomic_json(request, {'run_id': config.run_id, 'task_id': 'WWL-000'})
+            with self.assertRaisesRegex(ValueError, 'pending candidate continuation custody differs'):
+                runtime._read_candidate_request()
+            with self.assertRaisesRegex(ValueError, 'pending candidate continuation custody differs'):
+                CampaignRuntime(config, {'admitted_plan_revision': 'plan', 'receipt_id': 'receipt'})
+
     def test_dependency_order_is_derived_not_file_order(self):
         plan = plan_fixture()
         plan["tasks"].reverse()
