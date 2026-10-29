@@ -450,6 +450,12 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command,
                         results.append({"board_id": board["id"], "status": "retired_complete"})
             continue
         wait = board_wait_stall(config, board["id"])
+        if wait == "complete":
+            cached = read_json(root / board["id"] / "state.json").get("observation")
+            if isinstance(cached, dict) and cached.get("completion_candidate") is True:
+                # A publication request selects a fresh recheck; it cannot
+                # retire this queue entry or grant publication authority.
+                wait = None
         if wait and not retired_recheck:
             with lock(path.parent / "queue.lock") as acquired:
                 if acquired:
