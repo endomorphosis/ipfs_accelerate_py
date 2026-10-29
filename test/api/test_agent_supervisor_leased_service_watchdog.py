@@ -8,6 +8,8 @@ import hashlib
 import json
 import os
 import socket
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -131,6 +133,26 @@ def test_real_trampoline_shape_and_healthy_foreground_are_accepted(case):
     assert result["native_process_count"] == 1
     assert case.host.restarts == 0
     assert result["completion_authority"] is result["work_complete"] is False
+
+
+def test_crashed_maintenance_can_resume_the_registered_owner_without_resetting_budget(case):
+    marker = case.config.status_path.parent / "HOLD"
+    marker.parent.chmod(0o700)
+    script = ("from pathlib import Path; import sys; "
+              "from ipfs_accelerate_py.agent_supervisor.rescue.maintenance_hold import create_hold; "
+              "create_hold(Path(sys.argv[1]), reason='source repair', ttl_seconds=10, now=900)")
+    subprocess.run([sys.executable, "-c", script, str(marker)], check=True, timeout=20)
+    assert case.observe(now=1000)["action"] == "operator_hold"
+    assert marker.exists()  # Observation alone does not release even expired leases.
+    case.host.processes.clear()
+    case.host.view.update(ActiveState="inactive", MainPID="0")
+    resumed = case.observe(now=1000, apply=True)
+    assert resumed["hold_reviews"][0]["status"] == "released"
+    assert not marker.exists() and case.host.restarts == 0
+    result = case.observe(now=1011, apply=True)
+    assert result["action"] == "service_restart_requested"
+    assert result["restart_attempts"] == 1 and case.host.restarts == 1
+    assert result["completion_authority"] is False
 
 
 def test_host_uses_supported_property_arguments_and_structured_execstart(case, monkeypatch):

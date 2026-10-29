@@ -26,6 +26,7 @@ from typing import Any, Mapping
 
 from .watchdog_guardian import acquire_lock, atomic_json
 from . import semantic_recovery
+from .maintenance_hold import review_hold
 from .storage_pressure import (
     check_storage_capacity, clear_emergency_status, is_storage_pressure,
     publish_emergency_status, read_emergency_status,
@@ -484,14 +485,23 @@ class LeasedServiceWatchdog:
                                "fragment": c.unit_fragment_sha256})
         return {"unit": unit, "main": main, "child": child, "protected": protected, "lease": lease, "fingerprint": fingerprint}
 
-    def _holds(self) -> bool:
+    def _holds(self, *, apply: bool = False, now: float | None = None) -> bool:
         c = self.config
         directories = {c.repo_root, c.state_dir, c.status_path.parent}
         for directory in c.status_path.parents:
             if directory == c.repo_root or c.repo_root in directory.parents:
                 directories.add(directory)
-        return any((directory / name).exists() for directory in directories for name in STOP_NAMES) or any(
-            _path(c.repo_root, raw).exists() for raw in c.hold_paths)
+        paths = {directory / name for directory in directories for name in STOP_NAMES}
+        paths.update(_path(c.repo_root, raw) for raw in c.hold_paths)
+        self.hold_reviews = []
+        held = False
+        for path in sorted(paths):
+            if not os.path.lexists(path):
+                continue
+            review = review_hold(path, apply=apply, now=now)
+            self.hold_reviews.append(review)
+            held = held or os.path.lexists(path)
+        return held
 
     def _scope(self, task_id: str, tasks: Mapping[str, Mapping[str, str]]) -> None:
         c = self.config
@@ -715,7 +725,10 @@ class LeasedServiceWatchdog:
                                   "observed_at": now, "action": "observe", "incidents": [],
                                   "work_complete": False, "completion_authority": False, "body_free": True}
         try:
-            if self._holds():
+            held = self._holds(apply=apply, now=now)
+            if self.hold_reviews:
+                result["hold_reviews"] = self.hold_reviews
+            if held:
                 result.update(action="operator_hold", reason="operator_hold")
                 return self._finish(result)
             capacity = self._capacity()
