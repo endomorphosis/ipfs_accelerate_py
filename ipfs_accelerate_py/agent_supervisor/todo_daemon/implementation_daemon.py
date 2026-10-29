@@ -76109,6 +76109,8 @@ class DatabaseImplementationDaemon:
             [owner],
         ).fetchall()
         attempts = [self._attempt_from_row(row) for row in rows]
+        if not attempts:
+            return []
         from .unresolved_interruption import continuation_admitted
 
         attempts = [item for item in attempts if not continuation_admitted(self, item)]
