@@ -164,9 +164,15 @@ def native_grok_observation(payload: object, *, exit_code: int | None, timed_out
     outcome = _outcome_observation(payload, exit_code=exit_code, timed_out=timed_out)
     if type(payload) is not dict:
         return outcome
+    try:
+        from .grok_prompt_accounting import project_grok_prompt_accounting
+        accounting = {"native_grok_prompt_accounting": project_grok_prompt_accounting(payload)}
+    except Exception:
+        # Optional diagnostics cannot replace an observed native outcome.
+        accounting = {}
     usage = payload.get("usage")
     if type(usage) is not dict:
-        return outcome
+        return {**outcome, **accounting}
     result = {}
     for name, aliases in _FIELDS.items():
         values = [usage[key] for key in aliases if key in usage]
@@ -174,7 +180,7 @@ def native_grok_observation(payload: object, *, exit_code: int | None, timed_out
                 and len(set(values)) == 1):
             result["native_grok_" + name] = values[0]
     if not result:
-        return outcome
+        return {**outcome, **accounting}
     result["native_grok_usage_observed"] = True
     # A successful process does not independently prove a complete billed total.
     result["native_grok_task_complete"] = outcome["native_grok_reason_code"] == "end_turn"
@@ -182,7 +188,9 @@ def native_grok_observation(payload: object, *, exit_code: int | None, timed_out
         result["native_grok_usage_complete"] = not payload["usage_is_incomplete"]
     result["native_grok_usage_sha256"] = hashlib.sha256(
         json.dumps({k: result[k] for k in sorted(result)}, sort_keys=True).encode()).hexdigest()
-    return {**result, **outcome}
+    # Keep the historical scalar usage digest and counters unchanged. Model
+    # rows describe the same prompt ledger and are never additional usage.
+    return {**result, **outcome, **accounting}
 
 
 def grok_usage_receipt(observation: dict) -> dict | None:

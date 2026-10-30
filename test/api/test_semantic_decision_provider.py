@@ -396,7 +396,14 @@ def test_grok_adapter_retains_final_envelope_scope_without_promoting_generic_usa
     assert receipt["provider_output_token_cap_enforced"] is False
     assert "provider_usage_complete" not in receipt
     assert "private-authored-native-body" not in json.dumps(receipt)
-    assert "side_model" not in json.dumps(receipt)
+    assert '"side_model"' not in json.dumps(receipt)
+    accounting = receipt["native_prompt_accounting"]
+    row, = accounting["model_usage"]["rows"]
+    assert row["model_id_sha256"] == hashlib.sha256(b"side_model").hexdigest()
+    assert row["counters"]["input_tokens"] == {"status": "valid", "value": 999}
+    assert accounting["coverage"]["includes_side_model_calls"] is False
+    assert accounting["coverage"]["auxiliary_tokens"] is None
+    assert accounting["summation_permitted"] is False
 
 
 @pytest.mark.parametrize("usage,expected", [
