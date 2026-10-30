@@ -1,0 +1,55 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-104",
+  "title": "Classify blockers and continue independent ready work",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G090",
+  "subgoal_id": "WWL-G090.S1",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_blockers",
+  "depends_on": ["WWL-101"],
+  "blocker_kinds": [
+    "dependency-running",
+    "software-defect",
+    "source-outage",
+    "gated-input",
+    "credentials",
+    "permission",
+    "hold",
+    "exhausted-budget"
+  ],
+  "recheck_reasons": ["admitted_probe", "prerequisite_changed"],
+  "hold_markers": ["HOLD", "STOP", "OPERATOR_STOP"],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "test/api/test_worldwide_legal_search_blockers.py",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_blockers.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-104.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_blockers.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_blockers.py", "-q"],
+    "result": "21 passed",
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "The classifier distinguishes the eight blocker kinds and names independent ready tasks. It does not start work, admit a repair, signal a process, or write native task status.",
+    "A blocked task is rechecked only by an unconsumed admitted probe whose not_before has arrived, or by a changed prerequisite. Heartbeats, logs, pids, attempts and the clock do not qualify.",
+    "An admitted probe does not clear a hold, mark unknown effects known, or refund a budget. Exhaustion that did not come from the WWL-100 progress ledger is sticky. When the ledger has the incident, the ledger is the budget authority.",
+    "dependency-running waits on live work and is not an idle failure. A campaign hold continues nothing. A task hold does not stop independent ready work.",
+    "A software defect requires a reproducer body whose digest equals the receipt. Unknown effects are not relabeled as that defect.",
+    "Input aliases accept the watchdog names. rights maps to permission, source_unavailable maps to source-outage, and budget maps to exhausted-budget. Gated input stays separate. HTTP 401, 403 and 429 map to credentials, permission and source-outage. Any other non-success status is refused.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The blocker suite was executed with the workspace virtualenv that provides pytest 9.1.1.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}
