@@ -1,4 +1,4 @@
-"""Admit worldwide legal search goals and tasks through the native task source.
+"""Admit worldwide legal search goals and bind the explicit Grok agent route.
 
 ``goals.objectives.md`` and ``tasks.todo.md`` are bootstrap projections. Live
 identities, dependencies, readiness and status live only in an isolated
@@ -6,13 +6,24 @@ identities, dependencies, readiness and status live only in an isolated
 objective heap and linted before any database file is created. The root's ten
 children are an explicit breadth admission: the native default of eight is
 rejected rather than inherited.
+
+Provider execution uses ``ipfs_accelerate_py.llm_router``'s explicit agent
+route: ``grok_cli`` / ``grok-4.7``, emergency policy
+``grok_quota_auth_or_unavailable``, and Codex only after a typed pre-effect
+failure on an unchanged workspace. This module decides and records that route.
+The only process it launches is the admitted tiny live canary.
 """
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import inspect
 import json
+import os
 import re
+import subprocess
+import sys
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -422,3 +433,450 @@ def admit_goals_and_tasks(
             if any(status in {"complete", "completed", "done"} for status in receipt["task_statuses"].values()):
                 raise WorldwideAdmissionError("initial admission applied a terminal markdown or plan status")
             return receipt
+
+
+ROUTE_SCHEMA = "worldwide-legal-search.explicit-agent-route@1"
+TELEMETRY_SCHEMA = "worldwide-legal-search.provider-route-telemetry@1"
+CANARY_ADMISSION_SCHEMA = "worldwide-legal-search.tiny-live-canary-admission@1"
+CANARY_RESULT_SCHEMA = "worldwide-legal-search.tiny-live-canary@1"
+ROUTER_NAME = "ipfs_accelerate_py.llm_router"
+PRIMARY_PROVIDER = "grok_cli"
+PRIMARY_MODEL = "grok-4.7"
+FALLBACK_PROVIDER = "codex_cli"
+FALLBACK_MODEL_ADMISSION = "resolve from admitted existing Codex configuration"
+ROUTE_POLICY = "grok_quota_auth_or_unavailable"
+_ROUTE_STAGES = frozenset({"implementation", "canary"})
+_TYPED_PRE_EFFECT_KINDS = frozenset({
+    "grok_quota_exhausted",
+    "authentication_failure",
+    "launch_failure",
+})
+_CANARY_PROMPT = "WWL-003 admitted tiny route canary\n"
+_CANARY_TASK_ID = "WWL-003"
+_CANARY_ATTEMPT = 1
+CANONICAL_ROUTING = {
+    "router": ROUTER_NAME,
+    "primary_provider": PRIMARY_PROVIDER,
+    "primary_model": PRIMARY_MODEL,
+    "fallback_provider": FALLBACK_PROVIDER,
+    "fallback_model": FALLBACK_MODEL_ADMISSION,
+    "policy": ROUTE_POLICY,
+    "fallback_conditions": (
+        "typed quota exhaustion",
+        "typed authentication failure",
+        "typed launch unavailability",
+    ),
+    "unchanged_workspace_required": True,
+    "unknown_effects_require_reconciliation": True,
+    "mandatory_routine_codex_review": False,
+}
+
+
+class WorldwideRouteError(ValueError):
+    """The campaign route cannot be bound or a fallback would be ambiguous."""
+
+
+def _route_modules():
+    from ... import llm_router
+    from . import worldwide_legal_search_provider as provider
+
+    if provider.MODEL != PRIMARY_MODEL or provider.POLICY != ROUTE_POLICY:
+        raise WorldwideRouteError("provider adapter drifted from grok_cli/grok-4.7 emergency policy")
+    if llm_router.GROK_QUOTA_AUTH_OR_UNAVAILABLE_AGENT_ROUTE_POLICY != ROUTE_POLICY:
+        raise WorldwideRouteError("llm_router explicit agent policy is not the campaign emergency policy")
+    return llm_router, provider
+
+
+def _routing_view(plan: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(plan, Mapping):
+        raise WorldwideRouteError("campaign plan must be an object")
+    routing = plan.get("routing")
+    if not isinstance(routing, Mapping) or isinstance(routing, (str, bytes)):
+        raise WorldwideRouteError("campaign routing must be an object")
+    return dict(routing)
+
+
+def require_canonical_routing(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed unless the plan names the canonical explicit agent route."""
+    routing = _routing_view(plan)
+    expected = dict(CANONICAL_ROUTING)
+    expected["fallback_conditions"] = list(CANONICAL_ROUTING["fallback_conditions"])
+    if set(routing) != set(expected) or any(routing[key] != expected[key] for key in expected):
+        raise WorldwideRouteError("campaign routing is not the canonical grok_cli/grok-4.7 emergency Codex route")
+    _route_modules()
+    return expected
+
+
+def snapshot_workspace(workspace: Path | str):
+    """Hash the candidate workspace with the router's side-effect snapshot."""
+    llm_router, _provider = _route_modules()
+    return llm_router.snapshot_agent_cli_workspace(workspace)
+
+
+def trusted_pre_effect_receipt(kind: str, *, returncode: int, activity: str, reason: str) -> str:
+    """Serialize one body-free receipt through the canonical router helper."""
+    llm_router, _provider = _route_modules()
+    try:
+        classification = llm_router.AgentCLIFailureClassification(
+            llm_router.AgentCLIProviderFailureKind(kind),
+            reason,
+        )
+        return llm_router.serialize_agent_cli_failure_receipt(
+            classification,
+            returncode=returncode,
+            activity_state=llm_router.AgentCLIActivityState(activity),
+        )
+    except (ValueError, llm_router.LLMRouterError) as exc:
+        raise WorldwideRouteError("trusted pre-effect receipt is not canonical") from exc
+
+
+def bind_explicit_agent_route(
+    plan: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    workspace: Path | str,
+    task_id: str,
+    attempt: int,
+    python_executable: str | None = None,
+) -> dict[str, Any]:
+    """Build the production runner argv. This does not launch a provider."""
+    routing = require_canonical_routing(plan)
+    _llm_router, provider = _route_modules()
+    try:
+        argv = provider.build_provider_argv(
+            config,
+            workspace=Path(workspace),
+            task_id=task_id,
+            attempt=attempt,
+            python_executable=python_executable,
+        )
+    except (OSError, ValueError, KeyError) as exc:
+        raise WorldwideRouteError(str(exc)) from exc
+    primary = json.loads(argv[argv.index("--primary-command-json") + 1])
+    if (
+        argv[argv.index("--primary-provider") + 1] != "grok"
+        or argv[argv.index("--fallback-provider") + 1] != "codex"
+        or argv[argv.index("--fallback-policy") + 1] != ROUTE_POLICY
+        or argv[argv.index("--probe-grok-model") + 1] != PRIMARY_MODEL
+        or primary[primary.index("--model") + 1] != PRIMARY_MODEL
+        or primary[primary.index("--mode") + 1] != "agent"
+        or "--probe-route-readiness" not in argv
+        or "--primary-unavailable-kind" in argv
+        or "--dangerously-bypass-approvals-and-sandbox" in argv
+    ):
+        raise WorldwideRouteError("explicit agent argv drifted from the canonical grok_cli/grok-4.7 route")
+    return {
+        "schema": ROUTE_SCHEMA,
+        "router": routing["router"],
+        "primary_provider": PRIMARY_PROVIDER,
+        "primary_model": PRIMARY_MODEL,
+        "fallback_provider": FALLBACK_PROVIDER,
+        "fallback_policy": ROUTE_POLICY,
+        "fallback_model_admission": FALLBACK_MODEL_ADMISSION,
+        "unchanged_workspace_required": True,
+        "unknown_effects_require_reconciliation": True,
+        "mandatory_routine_codex_review": False,
+        "task_id": task_id,
+        "attempt": attempt,
+        "stage": "implementation",
+        "argv": argv,
+        "launched": False,
+        "hosted_model_invocations": 0,
+        "paid_provider_calls": 0,
+        "completion_authority": False,
+    }
+
+
+def _workspace_unchanged(before: Any, after: Any) -> bool:
+    return bool(
+        getattr(before, "reliable", False)
+        and getattr(after, "reliable", False)
+        and getattr(before, "digest", "")
+        and before.digest == after.digest
+    )
+
+
+def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    encoded = _canonical(payload).encode("utf-8")
+    if len(encoded) > 16 * 1024:
+        raise WorldwideRouteError("route telemetry exceeds its body-free bound")
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "wb", closefd=True) as handle:
+            descriptor = -1
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+
+
+def evaluate_emergency_fallback(
+    workspace: Path | str,
+    *,
+    task_id: str,
+    attempt: int,
+    stage: str,
+    primary_result: Any,
+    workspace_before: Any,
+    telemetry_path: Path | str,
+    trusted_failure_receipt: str = "",
+    primary_unavailable_kind: str | None = None,
+) -> dict[str, Any]:
+    """Apply the canonical pre-effect route and persist one telemetry record.
+
+    Codex is selected only for typed quota, authentication, or launch failure
+    before side effects, and only when the candidate digest is unchanged.
+    Timeout, transport, malformed output, generic failure, started or unknown
+    activity, an unreliable snapshot, and a mutated workspace stay on the
+    primary attempt for reconciliation. This function does not launch a model.
+    """
+    llm_router, provider = _route_modules()
+    if stage not in _ROUTE_STAGES or provider._TASK_RE.fullmatch(task_id) is None or type(attempt) is not int or attempt < 1:
+        raise WorldwideRouteError("emergency fallback needs a native task, positive attempt, and known stage")
+    if not isinstance(primary_result, llm_router.AgentCLIProviderResult):
+        raise WorldwideRouteError("primary result must be the canonical agent CLI result")
+    root = Path(workspace)
+    after = snapshot_workspace(root)
+    unchanged = _workspace_unchanged(workspace_before, after)
+    try:
+        decision = llm_router.route_agent_cli_failure(
+            policy=ROUTE_POLICY,
+            primary_provider="grok",
+            fallback_provider="codex",
+            primary_result=primary_result,
+            workspace_before=workspace_before,
+            workspace_after=after,
+            trusted_failure_receipt=trusted_failure_receipt,
+            primary_unavailable_kind=primary_unavailable_kind,
+            receipt_binding={"task_id": task_id, "attempt": attempt, "stage": stage},
+        )
+    except llm_router.LLMRouterError as exc:
+        raise WorldwideRouteError(str(exc)) from exc
+    should_fallback = bool(decision.should_fallback and unchanged)
+    if decision.should_fallback and not unchanged:
+        reliable = bool(getattr(workspace_before, "reliable", False) and after.reliable and getattr(workspace_before, "digest", "") and after.digest)
+        terminal = "side_effects_started" if reliable else "workspace_snapshot_unavailable"
+    else:
+        terminal = decision.terminal_reason
+    kind = decision.classification.kind.value
+    if should_fallback and kind not in _TYPED_PRE_EFFECT_KINDS:
+        raise WorldwideRouteError("emergency fallback selected a non-typed failure")
+    route_record = dict(decision.route_record) if should_fallback and decision.route_record is not None else None
+    if route_record is not None:
+        if route_record.get("route") != "fallback" or route_record.get("side_effects_started") is not False:
+            raise WorldwideRouteError("canonical route record does not describe a pre-effect fallback")
+        if route_record.get("completion_authority") is not False or route_record.get("fallback_policy") != ROUTE_POLICY:
+            raise WorldwideRouteError("canonical route record drifted from the emergency policy")
+    telemetry = {
+        "schema": TELEMETRY_SCHEMA,
+        "router": ROUTER_NAME,
+        "task_id": task_id,
+        "attempt": attempt,
+        "stage": stage,
+        "primary_provider": PRIMARY_PROVIDER,
+        "primary_model": PRIMARY_MODEL,
+        "fallback_provider": FALLBACK_PROVIDER,
+        "fallback_policy": ROUTE_POLICY,
+        "workspace_digest": after.digest if after.reliable else "",
+        "workspace_unchanged": unchanged,
+        "decision": "fallback" if should_fallback else "reconcile",
+        "terminal_reason": terminal,
+        "failure_kind": kind,
+        "reason_code": decision.classification.reason_code,
+        "side_effects_started": terminal == "side_effects_started",
+        "effects_ambiguous": terminal in {"side_effects_started", "workspace_snapshot_unavailable"},
+        "route_record": route_record,
+        "hosted_model_invocations": 0,
+        "paid_provider_calls": 0,
+        "completion_authority": False,
+    }
+    _write_json(Path(telemetry_path), telemetry)
+    return telemetry
+
+
+def admitted_tiny_canary() -> dict[str, Any]:
+    """The only live provider execution this binding is allowed to start."""
+    prompt_digest = hashlib.sha256(_CANARY_PROMPT.encode("utf-8")).hexdigest()
+    return {
+        "schema": CANARY_ADMISSION_SCHEMA,
+        "task_id": _CANARY_TASK_ID,
+        "attempt": _CANARY_ATTEMPT,
+        "stage": "canary",
+        "prompt_sha256": prompt_digest,
+        "max_prompt_bytes": 64,
+        "primary_unavailable_kind": "launch_failure",
+        "hosted_model_invocations": 0,
+        "paid_provider_calls": 0,
+        "probe_route_readiness": False,
+        "completion_authority": False,
+    }
+
+
+def _canary_paths(state_root: Path) -> tuple[Path, Path, Path, Path]:
+    root = state_root / "state" / "ptr_lane_worldwide_legal_search" / "provider_route_receipts" / _CANARY_TASK_ID
+    return (
+        root / f"provider-route-attempt-{_CANARY_ATTEMPT}.json",
+        root / "tiny-live-canary.json",
+        state_root / "canary" / "fallback.py",
+        state_root / "canary" / "invoked",
+    )
+
+
+def run_admitted_tiny_canary(
+    admission: Mapping[str, Any],
+    *,
+    workspace: Path | str,
+    state_root: Path | str,
+    python_executable: str | None = None,
+) -> dict[str, Any]:
+    """Run one non-charging canary through the real fallback runner.
+
+    Primary launch is the typed pre-dispatch ``launch_failure`` condition, so
+    Grok is not started. The fallback process is a local script that checks
+    the admitted prompt and writes a marker outside the candidate workspace.
+    A second call, a different admission, a hosted probe, or a workspace
+    change is refused.
+    """
+    expected = admitted_tiny_canary()
+    if not isinstance(admission, Mapping) or _canonical(dict(admission)) != _canonical(expected):
+        raise WorldwideRouteError("tiny live canary admission does not match the admitted contract")
+    if len(_CANARY_PROMPT.encode("utf-8")) > int(expected["max_prompt_bytes"]):
+        raise WorldwideRouteError("admitted canary prompt exceeds its byte bound")
+    candidate = Path(workspace).expanduser().resolve(strict=True)
+    state = Path(state_root).expanduser().resolve(strict=True)
+    if not candidate.is_dir() or not state.is_dir() or candidate == state or candidate.is_relative_to(state) or state.is_relative_to(candidate):
+        raise WorldwideRouteError("canary workspace and state root must be disjoint directories")
+    receipt_path, envelope_path, script_path, marker_path = _canary_paths(state)
+    if receipt_path.exists() or envelope_path.exists() or marker_path.exists():
+        raise WorldwideRouteError("admitted tiny live canary already ran")
+    python = str(python_executable or sys.executable)
+    if Path(python).expanduser().is_absolute() is False:
+        raise WorldwideRouteError("canary python must be an absolute interpreter")
+    _llm_router, _provider = _route_modules()
+    from .. import provider_fallback_runner
+    from ..validation.validation_runtime import PROOF_REUSE_STATE_ROOT_ENV, PROVIDER_PROTECTED_STATE_ROOT_ENV
+
+    script_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    script_path.write_text(
+        "import pathlib, sys\n"
+        f"expected = {_CANARY_PROMPT!r}\n"
+        "prompt = sys.stdin.read()\n"
+        "marker = pathlib.Path(sys.argv[1])\n"
+        "if prompt != expected:\n"
+        "    raise SystemExit(3)\n"
+        "marker.write_text('admitted-tiny-canary\\n', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    before = snapshot_workspace(candidate)
+    if not before.reliable:
+        raise WorldwideRouteError("canary workspace snapshot is unavailable")
+    with tempfile.TemporaryDirectory(prefix="wwl-route-canary-home-") as private_home_text:
+        private_home = Path(private_home_text)
+        grok_home = private_home / "empty-grok"
+        grok_home.mkdir(mode=0o700)
+        env = os.environ.copy()
+        env["HOME"] = str(private_home)
+        env["GROK_HOME"] = str(grok_home)
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        for name in (
+            "CODEX_HOME",
+            "IPFS_ACCELERATE_AGENT_VALIDATION_PATH",
+            PROOF_REUSE_STATE_ROOT_ENV,
+            PROVIDER_PROTECTED_STATE_ROOT_ENV,
+            "XAI_API_KEY",
+            "GROK_AUTH_PROVIDER_COMMAND",
+            "IPFS_ACCELERATE_PY_XAI_API_KEY",
+            "ipfs_accelerate_py_XAI_API_KEY",
+            "IPFS_DATASETS_PY_XAI_API_KEY",
+        ):
+            env.pop(name, None)
+        command = [
+            python,
+            str(Path(provider_fallback_runner.__file__).resolve()),
+            "--workspace", str(candidate),
+            "--primary-provider", "grok",
+            "--fallback-provider", "codex",
+            "--primary-command-json", "[]",
+            "--fallback-command-json", json.dumps([python, str(script_path), str(marker_path)], separators=(",", ":")),
+            "--fallback-policy", ROUTE_POLICY,
+            "--primary-unavailable-kind", "launch_failure",
+            "--route-receipt-path", str(receipt_path),
+            "--route-task-id", _CANARY_TASK_ID,
+            "--route-attempt", str(_CANARY_ATTEMPT),
+            "--route-stage", "canary",
+        ]
+        if "--probe-route-readiness" in command or "--model" in command:
+            raise WorldwideRouteError("tiny canary must not probe or pin a hosted model command")
+        try:
+            completed = subprocess.run(
+                command,
+                input=_CANARY_PROMPT,
+                text=True,
+                cwd=candidate,
+                env=env,
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise WorldwideRouteError("admitted tiny live canary could not start") from exc
+    after = snapshot_workspace(candidate)
+    if completed.returncode != 0 or not marker_path.is_file() or marker_path.read_text(encoding="utf-8") != "admitted-tiny-canary\n":
+        raise WorldwideRouteError("admitted tiny live canary did not complete on the local fallback: " + completed.stderr[-500:])
+    if not _workspace_unchanged(before, after):
+        raise WorldwideRouteError("admitted tiny live canary changed the candidate workspace")
+    try:
+        route_record = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise WorldwideRouteError("canary route telemetry is missing") from exc
+    if (
+        not isinstance(route_record, dict)
+        or route_record.get("schema") != "ipfs_accelerate_py/provider-route@1"
+        or route_record.get("route") != "fallback"
+        or route_record.get("failure_kind") != "launch_failure"
+        or route_record.get("fallback_policy") != ROUTE_POLICY
+        or route_record.get("primary_provider") != "grok"
+        or route_record.get("fallback_provider") != "codex"
+        or route_record.get("side_effects_started") is not False
+        or route_record.get("completion_authority") is not False
+        or route_record.get("task_id") != _CANARY_TASK_ID
+        or route_record.get("attempt") != _CANARY_ATTEMPT
+        or route_record.get("stage") != "canary"
+        or route_record.get("primary_returncode") is not None
+    ):
+        raise WorldwideRouteError("canary route telemetry is not a typed pre-effect fallback")
+    envelope = {
+        "schema": CANARY_RESULT_SCHEMA,
+        "admission": expected,
+        "router": ROUTER_NAME,
+        "primary_provider": PRIMARY_PROVIDER,
+        "primary_model": PRIMARY_MODEL,
+        "fallback_provider": FALLBACK_PROVIDER,
+        "fallback_policy": ROUTE_POLICY,
+        "fallback_executable": "admitted-local-canary",
+        "probe_route_readiness": False,
+        "workspace_digest_before": before.digest,
+        "workspace_digest_after": after.digest,
+        "workspace_unchanged": True,
+        "decision": "fallback",
+        "terminal_reason": "fallback_selected",
+        "failure_kind": "launch_failure",
+        "side_effects_started": False,
+        "effects_ambiguous": False,
+        "route_record": route_record,
+        "fallback_invoked": True,
+        "hosted_model_invocations": 0,
+        "paid_provider_calls": 0,
+        "completion_authority": False,
+    }
+    _write_json(envelope_path, envelope)
+    return envelope
