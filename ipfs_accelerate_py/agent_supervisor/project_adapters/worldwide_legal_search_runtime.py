@@ -234,6 +234,8 @@ def repair_pipeline_binding(config: CampaignConfig) -> dict[str, Any]:
     policy = read_json(config.plan_path.with_name("watchdog.policy.json"))
     paths = ["ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_runtime.py",
         "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_provider.py",
+        "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_watchdog.py",
+        "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_host_lifecycle.py",
         "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_continuation.py",
         "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_goals.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
@@ -839,6 +841,7 @@ class CampaignRuntime:
 
     def _run_pass(self) -> None:
         self._provider_callback_entered = False
+        pending_candidate_task = ""
         try:
             self.capture()
             self._retained_attempt_before_pass = bool(self._daemon.list_running_attempts())
@@ -846,6 +849,16 @@ class CampaignRuntime:
             self._last_result = dict(self._daemon.run_once())
             self.capture()
             implementation = self._last_result.get("implementation_result") or {}
+            if self._candidate_request_path is not None:
+                pending_candidate_task = str(self._read_candidate_request()["task_id"])
+                if (self._last_result.get("selection_idle_reason") == "no_ready_tasks"
+                        and pending_candidate_task in self._cached.get("ready_task_ids", [])
+                        and not self._last_result.get("active_task_id") and not implementation
+                        and not self._daemon.list_running_attempts()):
+                    # A ready admitted candidate needs an explicit native
+                    # selection result. Preserve its custody and surface this
+                    # contradiction for diagnosis instead of renewing idle.
+                    raise RuntimeError("pending_native_candidate_ready_but_native_selection_is_idle")
             selected = str(self._last_result.get("active_task_id") or implementation.get("task_alias") or "")
             if implementation.get("status") in {"blocked", "failed"}:
                 self._native_terminal_result = {**dict(implementation), "task_alias": selected}
@@ -896,7 +909,7 @@ class CampaignRuntime:
             payload = {"schema": "wwl.native-failure@1", "run_id": self.config.run_id, "error_class": type(error).__name__,
                 "reason": str(error)[:1500], "failure_key": identity([type(error).__name__, str(error)[:500]]),
                 "source_revision": git(self.config.framework_root, "rev-parse", "HEAD"), "observed_at": time.time(), "effects_unknown": unknown,
-                "task_id": self._cached.get("active_task_id", ""), "provider_callback_entered": self._provider_callback_entered,
+                "task_id": self._cached.get("active_task_id", "") or pending_candidate_task, "provider_callback_entered": self._provider_callback_entered,
                 "retained_attempt_before_pass": self._retained_attempt_before_pass, "phase": self._cached.get("stage", "preselection"),
                 "traceback": "".join(trace.format())[-12000:], "source_frames": frames,
                 "reproduce_argv": [self.config.python_executable, "-m", MODULE, "run", "--config", str(self.config.config_path), "--once"],
@@ -1466,4 +1479,7 @@ def repair_once(config: CampaignConfig, request_path: Path) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # `python -m` executes this file as __main__. Construct the owner in the
+    # canonical module so exact native class and method checks remain valid.
+    from importlib import import_module
+    raise SystemExit(import_module(MODULE).main())
