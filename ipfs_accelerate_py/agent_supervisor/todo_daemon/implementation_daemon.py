@@ -48203,6 +48203,122 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             replayable.add(proposal_id)
         return tuple(sorted(replayable))
 
+    def _current_admitted_test_failure(
+        self,
+        result: Mapping[str, Any],
+        *,
+        task: PortalTask,
+        workspace_path: Path,
+        baseline_ref: str,
+    ) -> bool:
+        """Prove that staging alone cannot repair this current test failure.
+
+        This is only a rescue optimization. It never admits failed validation
+        and deliberately leaves unknown, stale, or preflight evidence alone.
+        """
+
+        from ..validation.proposal_validation import ProposalValidationResult
+
+        live = result.get("proposal_validation")
+        gate = result.get("proposal_gate")
+        failed_tests = result.get("failed_tests")
+        failed_commands = result.get("failed_commands")
+        if not (
+            type(live) is ProposalValidationResult
+            and live.accepted is True
+            and type(gate) is dict
+            and gate.get("accepted") is True
+            and gate.get("proposal_id") == live.proposal.proposal_id
+            and gate.get("receipt_id") == live.receipt.receipt_id
+            and type(gate.get("changed_paths")) in (list, tuple)
+            and len(gate["changed_paths"]) <= 128
+            and all(type(path) is str for path in gate["changed_paths"])
+            and tuple(gate["changed_paths"]) == live.proposal.changed_paths
+            and live.proposal.task_id == task.task_id
+            and live.proposal.repository_tree_id == baseline_ref
+            and result.get("passed") is False
+            and result.get("attempted") is True
+            and result.get("error") == "validation_command_failed"
+            and result.get("source_unchanged") is not False
+            and type(failed_tests) in (list, tuple)
+            and 0 < len(failed_tests) <= 128
+            and all(type(node) is str and "::" in node for node in failed_tests)
+            and type(failed_commands) in (list, tuple)
+            and 0 < len(failed_commands) <= 128
+            and all(type(command) is str for command in failed_commands)
+        ):
+            return False
+        rows = result.get("results")
+        exception_types = result.get("exception_types")
+        assertion_error = (
+            type(exception_types) in (list, tuple)
+            and "AssertionError" in exception_types
+        )
+        if type(rows) not in (list, tuple) or not 0 < len(rows) <= 128 or not any(
+            type(row) is dict
+            and type(row.get("returncode")) is int
+            and row["returncode"] > 0
+            and row.get("command") in failed_commands
+            and all(row.get(key) is False for key in (
+                "cache_hit", "timed_out"
+            ))
+            and type(row.get("validation_python_launcher")) is dict
+            and row["validation_python_launcher"].get("sealed") is True
+            and (
+                row.get("infrastructure_failure") is False
+                or ("infrastructure_failure" not in row
+                    and "native_executor_failure" not in row
+                    and row.get("error") in (None, "")
+                    and assertion_error)
+            )
+            and (
+                "native_executor_failure" not in row
+                or row["native_executor_failure"] is False
+                or (type(row["native_executor_failure"]) is dict
+                    and row["native_executor_failure"] == {"returncode": 1}
+                    and row.get("error") == "failed_assertion")
+            )
+            and all(type(row.get(key)) is str and row[key] for key in (
+                "started_at", "finished_at"
+            ))
+            and row.get("source_unchanged") is not False
+            and row.get("error") in (None, "", "failed_assertion")
+            and (row.get("error") == "failed_assertion" or assertion_error)
+            for row in rows
+        ):
+            return False
+        expected = task_declared_output_paths(task)
+        entries = live.proposal.candidate_diff
+        if not expected or len(expected) > 128 or not entries or len(entries) > 128:
+            return False
+        try:
+            for relative in expected:
+                if type(relative) is not str:
+                    return False
+                target = workspace_path / relative
+                if (not self._repo_relative_path_safe(relative)
+                        or self._path_crosses_live_symlink(workspace_path, relative)
+                        or target.is_symlink() or not target.is_file()):
+                    return False
+            for entry in entries:
+                relative = entry.new_path
+                source = entry.after_source
+                if type(relative) is not str:
+                    return False
+                target = workspace_path / relative
+                if (not self._repo_relative_path_safe(relative)
+                        or self._path_crosses_live_symlink(workspace_path, relative)
+                        or type(source) is not str
+                        or target.is_symlink() or not target.is_file()):
+                    return False
+                encoded = source.encode("utf-8")
+                with target.open("rb") as handle:
+                    if handle.read(len(encoded) + 1) != encoded:
+                        return False
+        except (OSError, UnicodeError, ValueError):
+            return False
+        return True
+
     def _automatic_implementation_rescue(
         self,
         *,
@@ -48335,6 +48451,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 expected_outputs_present_on_disk=present,
                 dirty_in_scope_paths=dirty,
                 missing_expected_outputs=missing,
+                current_admitted_test_failure=self._current_admitted_test_failure(
+                    result, task=task, workspace_path=workspace_path,
+                    baseline_ref=baseline_ref,
+                ),
                 # This method runs before commit, merge queue admission, or
                 # any accepted transition. Candidate edits in the fenced
                 # worktree are not authoritative effects.
