@@ -33,6 +33,13 @@ turn an external dependency into an indefinite retry. A campaign's declared
 final acceptance producer and Native completion verifier must still prove its
 release requirements against the current source.
 
+Failure review retains Native's live proposal binding for candidate checks but
+reads its matching compact path projection for diagnostics. Only the identical,
+exact Native result type is normalized in a review-only copy. Missing,
+contradictory or truncated paths remain incomplete; unknown objects never gain
+scope authority. This removes a misleading diagnostic and does not authorize
+another provider call after a turn limit or turn a failed test into acceptance.
+
 The focused regression module
 `test/api/test_supervisor_exhausted_frontier_terminal.py` exercises the real
 control-plane state store, ordinary maintenance and harmless sealed children.
