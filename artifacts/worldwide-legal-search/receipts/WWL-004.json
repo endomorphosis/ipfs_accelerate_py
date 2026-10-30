@@ -1,0 +1,44 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-004",
+  "title": "Bind native lifecycle and the watchdog adapter protocol",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G010",
+  "subgoal_id": "WWL-G010.S2",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_watchdog",
+  "operations": ["ready", "observe", "dispatch", "verify"],
+  "authorities": [
+    "lifecycle_restart",
+    "rescue_planner",
+    "rescue_request_factory",
+    "rescue_orchestrator",
+    "rescue_execution_request_factory",
+    "current_tree_completion",
+    "process_fence",
+    "incident_deduplication"
+  ],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_watchdog.py",
+    "test/api/test_worldwide_legal_search_watchdog_bindings.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-004.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_watchdog_bindings.py",
+    "-q"
+  ],
+  "limitations": [
+    "Rescue planning and execution run only when RescuePlanner and RescueOrchestrator instances are bound. The adapter does not select a provider or call a model.",
+    "Current-tree verification reads native proof and does not write task status or grant completion authority.",
+    "Process fencing refuses a lifecycle restart that preserves the previous process birth and replays a stored fence without a second restart.",
+    "A durable incident claim rejects a second action id for the same incident. Replaying the original action stays idempotent.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The bindings suite was executed with the workspace virtualenv that provides pytest 9.1.1.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}
