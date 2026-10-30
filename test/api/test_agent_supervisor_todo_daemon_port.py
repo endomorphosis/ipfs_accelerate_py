@@ -10657,7 +10657,7 @@ def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     assert expired["stalled_without_active_worker"] is True
 
 
-def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
+def test_implementation_supervisor_stops_after_child_loop_restart_exhaustion(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
@@ -10683,6 +10683,11 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
                 )
             return SupervisorLoopResult(status="stopped", restart_count=0, last_run_id="second")
 
+        def _safe_write_status(self, status, **kwargs):
+            assert status == "max_restarts_reached"
+            assert kwargs["extra"]["restart_count"] == 2
+            return True
+
     supervisor = TodoImplementationSupervisor(
         TodoSupervisorConfig(
             todo_path=repo / "todo.md",
@@ -10691,7 +10696,7 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
             events_path=state_dir / "supervisor_events.jsonl",
             state_dir=state_dir,
             check_interval=0.01,
-            max_restarts=1,
+            max_restarts=2,
             repo_root=repo,
         )
     )
@@ -10710,8 +10715,9 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
 
     supervisor.run_forever()
 
-    assert RecoveringLoop.calls == 2
-    assert run_once_calls == [False, True]
+    assert RecoveringLoop.calls == 1
+    assert run_once_calls == [False]
+    assert supervisor.restart_count == 2
     events = [
         json.loads(line)
         for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -10720,13 +10726,11 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     assert [event["type"] for event in events] == [
         "supervisor_preflight_maintenance_pass",
         "supervisor_loop_finished",
-        "supervisor_loop_recovery_pass",
-        "supervisor_loop_restarting_after_recovery",
-        "supervisor_loop_finished",
+        "supervisor_restart_budget_exhausted",
     ]
     assert events[1]["status"] == "max_restarts_reached"
-    assert events[2]["recovery"]["recovered"] is True
-    assert events[-1]["status"] == "stopped"
+    assert events[-1]["restart_count"] == 2
+    assert events[-1]["max_restarts"] == 2
 
 
 def test_implementation_supervisor_source_reload_bypasses_stale_recovery(

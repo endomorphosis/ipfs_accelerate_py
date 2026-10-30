@@ -11098,11 +11098,18 @@ class PortalImplementationSupervisor:
             }
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
+        # Reconciliation and guardrail release above get the first opportunity
+        # to recover existing work. Exhausted paid attempts are then an explicit
+        # blocker, not an indefinitely healthy idle lane or a restart request.
+        attempt_budget_blocker = self._attempt_budget_exhaustion_status(
+            PortalTaskState.load(self.config.state_path)
+        )
         update_maintenance_phase("supervisor_check_event")
         self._record_event(
             "supervisor_check",
             {
-                "stuck": False,
+                "stuck": bool(attempt_budget_blocker),
+                "selection_blocker": attempt_budget_blocker,
                 "active_task_id": state.active_task_id,
                 "completed_count": state.completed_count,
                 "worktree_reconciliation_candidate_count": int(
@@ -11184,7 +11191,9 @@ class PortalImplementationSupervisor:
             },
         )
         return {
-            "stuck": False,
+            "stuck": bool(attempt_budget_blocker),
+            "selection_blocker": attempt_budget_blocker,
+            "reason": "task_attempt_budget_exhausted" if attempt_budget_blocker else "",
             "active_task_id": state.active_task_id,
             "completed_count": state.completed_count,
             "retry_budget_count": len(retry_budget_findings),
@@ -11307,18 +11316,34 @@ class PortalImplementationSupervisor:
         self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
+            loop_config = self.build_supervisor_loop_config()
+            if self.config.max_restarts > 0:
+                # The outer recovery loop is part of the same supervisor
+                # lifetime. A new shared loop must inherit the remaining
+                # allowance rather than mint another full restart budget.
+                remaining_restarts = max(0, self.config.max_restarts - self.restart_count)
+                if remaining_restarts == 0:
+                    self._record_event("supervisor_restart_budget_exhausted", {
+                        "restart_count": self.restart_count,
+                        "max_restarts": self.config.max_restarts,
+                        "attempt_budget_consumed": False,
+                        "provider_invocation_consumed": False,
+                    })
+                    return
+                loop_config = replace(loop_config, max_restarts=remaining_restarts)
             loop = self.shared_supervisor_loop_class(
-                self.build_supervisor_loop_config(),
+                loop_config,
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
             )
             loop.stale_heartbeat_hook = self._supervisor_loop_watchdog_decision
             result = loop.run()
-            self.restart_count = result.restart_count
+            self.restart_count += result.restart_count
             self._worktree_worker_phase = ""
             self._last_worktree_worker_seen_monotonic = None
             result_payload = {
                 "status": result.status,
-                "restart_count": result.restart_count,
+                "restart_count": self.restart_count,
+                "loop_restart_count": result.restart_count,
                 "last_exit_code": result.last_exit_code,
                 "last_recycle_reason": result.last_recycle_reason,
                 "last_run_id": result.last_run_id,
@@ -11335,6 +11360,19 @@ class PortalImplementationSupervisor:
                 )
                 self._reload_for_control_plane_update()
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
+                return
+            if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
+                terminal = {**result_payload, "max_restarts": self.config.max_restarts,
+                            "attempt_budget_consumed": False,
+                            "provider_invocation_consumed": False}
+                self._record_event("supervisor_restart_budget_exhausted", terminal)
+                loop._safe_write_status(
+                    "max_restarts_reached", run_id=result.last_run_id,
+                    log_path=result.last_log_path, last_exit_code=result.last_exit_code,
+                    extra={"restart_count": self.restart_count,
+                           "restart_budget_exhausted": True,
+                           "max_restarts": self.config.max_restarts},
+                )
                 return
 
             if (
@@ -11546,6 +11584,141 @@ class PortalImplementationSupervisor:
             status_extra_fields=dict(proof_rollout_status_fields),
         )
 
+    def _attempt_budget_exhaustion_status(
+        self, state: PortalTaskState,
+    ) -> dict[str, Any]:
+        """Describe a fully spent legacy frontier without authorizing retries."""
+
+        if (
+            self._database_authority_enabled()
+            or self.config.max_task_attempts <= 0
+            or state.active_task_id
+            or state.implementation_in_progress
+            or state.active_phase
+            or state.selection_idle_reason
+            != "all_selectable_ready_tasks_reached_max_task_attempts"
+            or state.selectable_ready_count
+            or state.selectable_ready_task_ids
+            or state.eligible_ready_count
+            or state.eligible_ready_task_ids
+            or not state.ready_task_ids
+            or state.ready_count != len(state.ready_task_ids)
+            or len(set(state.ready_task_ids)) != len(state.ready_task_ids)
+        ):
+            return {}
+        # A successful candidate callback can complete a board card before the
+        # next daemon pass refreshes its projection. Never stop on that stale
+        # ready list, or on a newly held/blocked card.
+        try:
+            tasks = {task.task_id: task for task in parse_task_file(
+                self.config.todo_path, self.config.task_prefix
+            )}
+            source_sha256 = hashlib.sha256(self.config.todo_path.read_bytes()).hexdigest()
+        except (OSError, ValueError):
+            return {}
+        # Dependency and hold metadata do not all participate in a task CID.
+        # Recompute the simple board frontier as a freshness check, never as
+        # dispatch authority. Any disagreement leaves Native free to refresh.
+        from .implementation_daemon import dependency_satisfied_references
+        satisfied = dependency_satisfied_references(list(tasks.values()),
+            completed_task_ids=[task.task_id for task in tasks.values() if task.status == "completed"],
+            assumed_completed_references=self.config.assumed_completed_task_ids)
+        ready_now = {task.task_id for task in tasks.values()
+            if str(task.status).lower() in {"todo", "ready", "pending"}
+            and all(reference in satisfied for reference in task.depends_on)
+            and not any(str(value).strip().lower() in {"1", "true", "yes"}
+                        for key, value in task.metadata.items()
+                        if str(key).lower().replace("_", " ").strip() == "manual hold")}
+        if ready_now != set(state.ready_task_ids):
+            return {}
+        limited = []
+        for task_id in sorted(set(state.ready_task_ids)):
+            task = tasks.get(task_id)
+            identity = state.task_identities.get(task_id, {})
+            if not isinstance(identity, Mapping):
+                return {}
+            cid = str(identity.get("canonical_task_cid") or "")
+            count = state.implementation_attempts_by_cid.get(cid)
+            if (task is None or str(task.status).lower() not in {"todo", "ready", "pending"}
+                    or state.task_statuses.get(task_id) != "ready" or not cid
+                    or task.canonical_task_cid != cid
+                    or task.canonical_task_key != identity.get("canonical_task_key")
+                    or type(count) is not int or count < self.config.max_task_attempts):
+                return {}
+            limited.append({"task_id": task_id, "canonical_task_cid": cid,
+                            "attempt_count": count})
+        return {"reason": "task_attempt_budget_exhausted", "limited_tasks": limited,
+                "max_task_attempts": self.config.max_task_attempts,
+                "task_source_sha256": source_sha256,
+                "attempt_budget_consumed": False, "provider_invocation_consumed": False,
+                "completion_authority": False, "operator_successor_required": True}
+
+    def _refresh_exhausted_frontier_release_requirements(
+        self, blocker: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Try an explicitly configured evidence producer once per incident.
+
+        No refill, task generation, paid rearm or completion callback is
+        authorized here. Produced artifacts still undergo normal independent
+        reconciliation, and a failure cannot turn into an idle retry loop.
+        """
+        command = str(self.config.objective_goal_completion_artifact_refresh_command or "").strip()
+        if (not self.config.objective_reconcile_goal_completion or not command
+                or not (self.config.objective_goal_completion_gate_path
+                        or self.config.objective_goal_completion_evidence_path)):
+            return {"attempted": False, "reason": "not_configured"}
+        timeout = self.config.objective_goal_completion_artifact_refresh_timeout_seconds
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout) or timeout <= 0):
+            return {"attempted": False, "status": "failed", "reason": "invalid_refresh_timeout"}
+        # A producer may touch board trivia. That must not mint another
+        # producer allowance for the same canonical frontier and config.
+        stable_frontier = {key: value for key, value in blocker.items()
+                           if key != "task_source_sha256"}
+        incident = hashlib.sha256(json.dumps({"blocker": stable_frontier, "command": command,
+            "gate_path": str(self.config.objective_goal_completion_gate_path or ""),
+            "evidence_path": str(self.config.objective_goal_completion_evidence_path or ""),
+            "objective_path": str(self.config.objective_path or "")}, sort_keys=True).encode()).hexdigest()
+        outcomes = getattr(self, "_exhausted_frontier_release_outcomes", None)
+        if outcomes is None:
+            outcomes = self._exhausted_frontier_release_outcomes = {}
+        if incident in outcomes:
+            return {**outcomes[incident], "replayed": True}
+        lease, guard = self._acquire_implementation_maintenance_lease()
+        if lease is None:
+            return {"attempted": False, "reason": str(guard.get("reason") or "maintenance_blocked"),
+                    "blocked": True}
+        # Consume this in-process incident intent before launching argv. A
+        # partial write or producer timeout must not launch it again.
+        outcome = {"attempted": True, "incident": incident, "status": "started",
+                   "completion_authority": False, "attempt_budget_consumed": False,
+                   "provider_invocation_consumed": False}
+        outcomes[incident] = outcome
+        daemon_pid = self._read_managed_daemon_pid()
+        update_release_phase, finish_release = self._begin_supervisor_maintenance_heartbeat(
+            "release_requirements", daemon_pid=daemon_pid,
+            daemon_process_birth=read_process_birth(daemon_pid) if daemon_pid else None)
+        try:
+            self._held_implementation_maintenance_lease = lease
+            outcome["producer"] = self._refresh_objective_goal_completion_artifacts()
+            update_release_phase("release_requirements_reconciliation")
+            from ..objectives.objective_daemon import default_objective_path
+            objective = self.config.objective_path or default_objective_path(self.config.repo_root)
+            if not objective.is_absolute():
+                objective = self.config.repo_root / objective
+            outcome["reconciliation"] = self._reconcile_objective_goal_completion_artifacts(
+                objective_path=objective)
+            outcome["status"] = ("reconciled" if outcome["reconciliation"].get("attempted") is True
+                                 else "unavailable")
+        except (ObjectiveCompletionArtifactRefreshError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            outcome.update(status="failed", error_type=type(exc).__name__, error=str(exc)[:1000])
+        finally:
+            finish_release("failed" if outcome["status"] == "failed" else "completed")
+            self._held_implementation_maintenance_lease = None
+            self._release_implementation_maintenance_lease(lease)
+        self._record_event("exhausted_frontier_release_requirements_checked", outcome)
+        return dict(outcome)
+
     def _supervisor_loop_watchdog_decision(
         self,
         _loop: SupervisorLoop,
@@ -11567,6 +11740,7 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.keep_running()
 
         state = PortalTaskState.load(self.config.state_path)
+        initial_attempt_budget_blocker = self._attempt_budget_exhaustion_status(state)
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
         database_authority = self._database_authority_enabled()
         readiness: dict[str, Any] | None = None
@@ -11900,6 +12074,37 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.recycle(
                 "main_checkout_merge_state_repaired",
                 detail=main_checkout_repair,
+            )
+        attempt_budget_blocker = result.get("selection_blocker")
+        if attempt_budget_blocker:
+            # A final task start, candidate completion, source edit or budget
+            # transition wins over the earlier diagnosis. No projection or
+            # attempt counter is rewritten to obtain terminal authority.
+            current = PortalTaskState.load(self.config.state_path)
+            current_blocker = self._attempt_budget_exhaustion_status(current)
+            if (not initial_attempt_budget_blocker
+                    or current_blocker != initial_attempt_budget_blocker
+                    or attempt_budget_blocker != current_blocker):
+                return SupervisorLoopDecision.keep_running()
+            release_requirements = self._refresh_exhausted_frontier_release_requirements(current_blocker)
+            if release_requirements.get("blocked"):
+                return SupervisorLoopDecision.keep_running()
+            current = PortalTaskState.load(self.config.state_path)
+            if self._attempt_budget_exhaustion_status(current) != current_blocker:
+                return SupervisorLoopDecision.keep_running()
+            guard = self._database_authority_terminal_guard(state=current, child=_child)
+            protected = self._implementation_protected_maintenance_guard()
+            fields = {"selection_blocker": current_blocker,
+                      "release_requirements": release_requirements,
+                      "attempt_budget_terminal_pending": not (
+                          guard.get("safe") is True and not protected.get("blocked")),
+                      "attempt_budget_terminal_guard": guard}
+            self._set_loop_status_fields(_loop, fields)
+            if guard.get("safe") is not True or protected.get("blocked"):
+                return SupervisorLoopDecision.keep_running()
+            self._record_event("task_attempt_budget_exhausted", fields)
+            return SupervisorLoopDecision.stop(
+                "task_attempt_budget_exhausted", status="task_attempt_budget_exhausted"
             )
         if result.get("stuck"):
             return SupervisorLoopDecision.recycle(
@@ -21338,8 +21543,11 @@ class PortalImplementationSupervisor:
             "run_hammer_leanstral_hparam.sh",
             "uscode_modal_daemon_runner",
         )
+        def command_text(item: Mapping[str, Any]) -> str:
+            command = item.get("argv") or item.get("cmdline") or ()
+            return (command if isinstance(command, str) else " ".join(command)).lower()
         return any(
-            any(marker in " ".join(item.get("cmdline") or ()).lower() for marker in markers)
+            any(marker in command_text(item) for marker in markers)
             for item in descendant_processes(daemon_pid)
         )
 
