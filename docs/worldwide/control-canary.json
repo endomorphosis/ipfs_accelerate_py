@@ -1,0 +1,149 @@
+{
+  "schema": "worldwide-legal-search.control-canary@1",
+  "task_id": "WWL-005",
+  "title": "Demonstrate canary supervision and recovery before scaling",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G010",
+  "subgoal_id": "WWL-G010.S2",
+  "depends_on": [
+    "WWL-004",
+    "WWL-105"
+  ],
+  "readiness_schema": "wwl.control-canary.readiness@1",
+  "proofs": [
+    "native_admission",
+    "grok_execution",
+    "independent_validation",
+    "merge",
+    "worker_death_recovery",
+    "validated_code_repair_promotion"
+  ],
+  "predecessor_suites": [
+    {
+      "name": "fault",
+      "task_id": "WWL-103",
+      "test": "test/api/test_worldwide_legal_search_faults.py",
+      "receipt": "artifacts/worldwide-legal-search/receipts/WWL-103.json",
+      "passed": 16,
+      "validation_argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/test_worldwide_legal_search_faults.py",
+        "-q"
+      ]
+    },
+    {
+      "name": "blocker",
+      "task_id": "WWL-104",
+      "test": "test/api/test_worldwide_legal_search_blockers.py",
+      "receipt": "artifacts/worldwide-legal-search/receipts/WWL-104.json",
+      "passed": 21,
+      "validation_argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/test_worldwide_legal_search_blockers.py",
+        "-q"
+      ]
+    },
+    {
+      "name": "restart",
+      "task_id": "WWL-105",
+      "test": "test/api/test_worldwide_legal_search_watchdog_restart.py",
+      "receipt": "artifacts/worldwide-legal-search/receipts/WWL-105.json",
+      "passed": 12,
+      "validation_argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/test_worldwide_legal_search_watchdog_restart.py",
+        "-q"
+      ]
+    }
+  ],
+  "dependency_receipts": [
+    {
+      "task_id": "WWL-004",
+      "receipt": "artifacts/worldwide-legal-search/receipts/WWL-004.json",
+      "validation_argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "test/api/test_worldwide_legal_search_watchdog_bindings.py",
+        "-q"
+      ]
+    }
+  ],
+  "accepted_revision_argv": [
+    "git",
+    "rev-parse",
+    "HEAD"
+  ],
+  "accepted_tree_argv": [
+    "git",
+    "rev-parse",
+    "HEAD^{tree}"
+  ],
+  "hosted_model_invocations": 0,
+  "paid_provider_calls": 0,
+  "grok_execution": {
+    "router": "ipfs_accelerate_py.llm_router",
+    "primary_provider": "grok_cli",
+    "primary_model": "grok-4.7",
+    "fallback_policy": "grok_quota_auth_or_unavailable",
+    "runner": "provider_fallback_runner.py",
+    "primary_runner": "grok_cli_runner.py",
+    "admitted_canary_schema": "worldwide-legal-search.tiny-live-canary@1",
+    "primary_unavailable_kind": "launch_failure",
+    "hosted_model_invoked": false
+  },
+  "sustained_watchdog_repair_authorized": false,
+  "corpus_expansion_authorized": false,
+  "blocked_until_this_canary": [
+    "WWL-010"
+  ],
+  "host_publish_readiness": {
+    "control_canary_verified": false,
+    "bootstrap_only": true
+  },
+  "completion_authority": false,
+  "execution_completed": false,
+  "self_certified_completion": false,
+  "component_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py": "ed0efb8eb22314031729a9f46b1dc8780d605eabbb00f5fdb229b428e4f85d15",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search.py": "a25f4fc8aee53825ef84cfed6e823f00b88d430207d5294cfd8c87d31e43372f",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_blockers.py": "dce56cda06e907f80b23501f7258ec324dcc172890ae82a50a53214a917fd0ba",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_canary.py": "bd514984825c9559fa3fbf257231b891739a12916038b15bd5a53a6a29309423",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_continuation.py": "2962f33876b4a54f7e3691f9ccb1d20793624e27144764abaa55533ed9f12fab",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_goals.py": "45ab6c79e47f4b09b32f9428e34ddc9e2e0fa3ef7e79732a7e16a60ab0a1b26a",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_host_lifecycle.py": "03e9a4660a4b166532b64a1e1bd3ce542f6d83634019d1790f55023fa944dc71",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_migration.py": "0a9f211bd4b86a8c8d8cf201d380e02aee510207d525583a290abd32b2b65a25",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_progress.py": "f01ac43fc2435e4df12b6a97707a15fdba2d9198e031fc8bfcddca51cdcbbdc4",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_provider.py": "e32a04f6d0be96552570544665551656bbd87a106ec48921a47eb968e64c8d9a",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_recovery.py": "180d9ed3d14a3b1d9ce6a13c87a30e7c8b964ef892348e4c15097b1398282ca8",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_repair.py": "50bb63c5b115eb2cb248b7ea312c9ad523ac966409b605eaef27991cb5696345",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_runtime.py": "fab239e45177d193ff6b89d881f78ac905c556792348dd2752f4d4b1426c7e16",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_watchdog.py": "751d48204ad353a133b39fcadc89b540eaf3fce0a38672dce9deeede1904ec9a",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_watchdog_policy.py": "907be96f41329d605f9a9b3f9fe292277971f0d38356bd01c3a4c5250d8240d1",
+    "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py": "ab2669cfa77c47356ce373a27b410a06793e9ebc145a7b19c460de1236948936",
+    "ipfs_accelerate_py/agent_supervisor/rescue/repair_dispatcher.py": "39ff8d769566e923172bca01abdeb2e2519e887d8fba67bc13625f52ae756a84",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": "ca33c327719206b2c6d5e2f3a271263647f403619af5f0ad031fc33526de9538",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py": "c51fa30013b1de11d7ec4f47999a1410d1c9cb05d25ecbb7ca0091e2763bbd5f",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py": "ba1464838f260483786356eb0137d471eeb7510d2a3affb87f07ef66b4549fea",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": "5563b49211d84fb946634e3ff0e78240b925b7eb7e9d292015740b189f60932f",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": "e36efe2581ef703e5ed2eed7f36294bde5164fc3efee43ecdbacf111f7aac50d",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "01fbe1684a0589f0a66cb46436bc3da262696bb2e0d3dce3c266f03a91ee54d6",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/dependency_preflight_retry.py": "f3424aa14b07954d5bc541c875469b16c0bed6015ced61f734135a4b9ed527be",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/fenced_candidate_retirement.py": "6d5f53ce293135ec7c73f518378003deb4b41b17ee93a34d4fe9bb46a3000a4d",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "ca72ada900a847ec40add9101821d2b87c72a03f935b707646566583de761399",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": "f3870946b36d1e5e11ac46cf872792ab4cbf0eef8be329cd42e5ce3400da7007",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_validation_failure_retry.py": "288fd48fbe21af202a430b65dadd3cc703a90cc864182ec68a13e6aad36e9033",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "297955715016ccc54dcf583570deb589cff9030518f515b8e8457e5b7df3bb84",
+    "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py": "eadafdc7177a848dcb0dbd9db794a9b128bcf07249b0b7b9eb497cecffa16133",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py": "8c5d7316c0e706dd469422f69f157f990a356c361af0039bdc75b2d591f7ec3b",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": "8e70bc6ca4c58954baa2327abf39a91b2fd827039d1117ae6f455c964496f3ec",
+    "ipfs_accelerate_py/llm_router.py": "eaebc6b09999732e8a815b1a2c1f40d4d6f7b3a4c27f89dbb85bb6063a705e89"
+  }
+}
