@@ -1307,3 +1307,128 @@ def test_watchdog_closing_query_is_skipped_when_local_observation_consumes_reser
     assert result["healthy"] is True and result["issues"] == []
     assert json.loads(Path(config["health_path"]).read_text())["healthy"] is True
     _assert_watchdog_observation_only(attachment)
+
+
+@pytest.mark.parametrize("reason,context", [
+    ("todo_read_failed", "startup"),
+    ("task_source_invalid", "stale"),
+    ("task_source_read_failed:OSError", "completed"),
+    ("todo_read_failed", "backlog"),
+    ("task_source_invalid", "unsharded"),
+    ("task_source_read_failed:ValueError", "fresh"),
+])
+def test_task_source_failure_never_proves_idle_or_authorizes_restart(config, reason, context):
+    lane = config["lanes"][0]
+    per_lane = lane["monitor_config"]
+    if context == "unsharded":
+        per_lane.update(task_shard_count=1, task_shard_index=0)
+    stamp = NOW - 10_000 if context == "stale" else NOW - 5
+    state = {"board_namespace": "shared-board", "heartbeat_at": stamp,
+             "last_progress_at": stamp, "implementation_in_progress": False,
+             "task_count": 0, "ready_count": 0, "selectable_ready_count": 0,
+             "selection_idle_reason": reason}
+    if context == "completed":
+        state.update(task_count=8, completed_count=8)
+    if context == "backlog":
+        state.update(task_count=3, ready_count=3, selectable_ready_count=3)
+    write_json(per_lane["checkpoint_path"], {"projection": {"task_state": state}})
+    write_events(lane, [{"type": "daemon_no_tasks", "timestamp": stamp,
+                        "board_namespace": "shared-board", "reason": reason, "task_count": 0}])
+    observed = fleet.lane_monitor.collect_evidence(per_lane, NOW)
+    assert observed["selection_idle_reason"] == reason
+    assert observed["state_source"] == per_lane["checkpoint_path"]
+    monotonic = 10_000.0
+    age = 5 if context == "startup" else 1_000
+    service = {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+               "ExecMainStartTimestampMonotonic": str(int((monotonic - age) * 1_000_000))}
+    # Even an otherwise restartable inner-recovery diagnosis cannot repair a
+    # missing board. The monitor must expose the original source failure.
+    observed["native_recovery"] = {"expired": True, "quiescent": True}
+    result = fleet.lane_monitor.evaluate_health(per_lane, service, observed, {}, NOW, monotonic)
+    assert result["status"] == "task_source_unavailable"
+    assert result["healthy"] is False and result["restart_eligible"] is False
+    assert reason in result["reason"]
+
+
+@pytest.mark.parametrize("reason", ["todo_read_failed", "task_source_invalid", "task_source_read_failed:OSError"])
+def test_task_source_failure_preserves_actual_active_worker_health(config, reason):
+    lane = config["lanes"][0]
+    per_lane = lane["monitor_config"]
+    write_json(per_lane["native_state_path"], {
+        "heartbeat_at": NOW - 5, "implementation_in_progress": True,
+        "active_phase": "implementation", "active_task_id": "T0",
+        "active_task_started_at": NOW - 30, "selection_idle_reason": reason,
+    })
+    write_events(lane, [])
+    observed = fleet.lane_monitor.collect_evidence(per_lane, NOW)
+    assert observed["active"] is True
+    service = {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+               "ExecMainStartTimestampMonotonic": "9000000000"}
+    result = fleet.lane_monitor.evaluate_health(per_lane, service, observed, {}, NOW, 10_000)
+    assert result["status"] == "working" and result["healthy"] is True
+    assert result["restart_eligible"] is False
+
+
+@pytest.mark.parametrize("reason", [None, "", "no_tasks_found", "todo_read_failed discussed in a note",
+                                   "task_source_read_failed", "task_source_invalidated"])
+def test_task_source_failure_recognition_is_structured_not_prose(config, reason):
+    per_lane = config["lanes"][0]["monitor_config"]
+    observed = {"state_available": True, "last_heartbeat_at_epoch": NOW - 5,
+                "last_progress_at_epoch": NOW - 5, "active": False,
+                "ready_count": 0, "task_count": 0, "selection_idle_reason": reason}
+    service = {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+               "ExecMainStartTimestampMonotonic": "9000000000"}
+    result = fleet.lane_monitor.evaluate_health(per_lane, service, observed, {}, NOW, 10_000)
+    assert result["status"] == "idle" and result["healthy"] is True
+    assert result["restart_eligible"] is False
+
+
+@pytest.mark.parametrize("reason", ["todo_read_failed", "task_source_invalid", "task_source_read_failed:OSError"])
+def test_fresh_successful_pass_clears_older_task_source_failure(config, reason):
+    lane = config["lanes"][0]
+    per_lane = lane["monitor_config"]
+    write_json(per_lane["checkpoint_path"], {"projection": {"task_state": {
+        "heartbeat_at": NOW - 300, "selection_idle_reason": reason,
+        "task_count": 0, "ready_count": 0, "selectable_ready_count": 0,
+    }}})
+    checkpoint_bytes = Path(per_lane["checkpoint_path"]).read_bytes()
+    write_events(lane, [
+        {"type": "daemon_no_tasks", "timestamp": NOW - 299,
+         "board_namespace": "shared-board", "reason": reason, "task_count": 0},
+        {"type": "daemon_pass", "timestamp": NOW - 1,
+         "board_namespace": "shared-board", "selection_idle_reason": "no_tasks_found",
+         "task_count": 0, "ready_count": 0, "selectable_ready_count": 0},
+    ])
+    observed = fleet.lane_monitor.collect_evidence(per_lane, NOW)
+    assert observed["selection_idle_reason"] == "no_tasks_found"
+    service = {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+               "ExecMainStartTimestampMonotonic": "9000000000"}
+    result = fleet.lane_monitor.evaluate_health(per_lane, service, observed, {}, NOW, 10_000)
+    assert result["status"] == "idle" and result["healthy"] is True
+    assert result["restart_eligible"] is False
+    assert Path(per_lane["checkpoint_path"]).read_bytes() == checkpoint_bytes
+
+
+@pytest.mark.parametrize("active_state", ["failed", "active"])
+def test_task_source_failure_does_not_hide_missing_service_process(config, active_state):
+    per_lane = config["lanes"][0]["monitor_config"]
+    observed = {"state_available": True, "last_heartbeat_at_epoch": NOW - 5,
+                "active": False, "selection_idle_reason": "todo_read_failed"}
+    service = {"LoadState": "loaded", "ActiveState": active_state, "MainPID": "0",
+               "ExecMainStartTimestampMonotonic": "9000000000"}
+    result = fleet.lane_monitor.evaluate_health(per_lane, service, observed, {}, NOW, 10_000)
+    assert result["status"] == "service_dead" and result["healthy"] is False
+    assert result["restart_eligible"] is True
+
+
+def test_task_source_failure_report_bounds_reason_without_exception_payload(config):
+    per_lane = config["lanes"][0]["monitor_config"]
+    reason = "task_source_read_failed:" + "X" * 1_000
+    observed = {"state_available": True, "last_heartbeat_at_epoch": NOW - 5,
+                "active": False, "selection_idle_reason": reason}
+    service = {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+               "ExecMainStartTimestampMonotonic": "9000000000"}
+    result = fleet.lane_monitor.evaluate_health(per_lane, service, observed, {}, NOW, 10_000)
+    assert result["status"] == "task_source_unavailable"
+    assert result["reason"] == "Native task source is unavailable: " + reason[:128]
+    assert result["healthy"] is False and result["restart_eligible"] is False
