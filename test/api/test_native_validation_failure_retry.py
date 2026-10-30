@@ -32,7 +32,7 @@ def _chain(tmp_path):
     # Keep the actual installed governance plugins importable in this tiny
     # authored repository; sealed Python deliberately ignores editable .pth.
     criterion = 'PYTHONPATH=' + shlex.quote(str(Path(__file__).resolve().parents[2])) + ' python3 -m pytest -q test_result.py'
-    population['tasks'][0].update(outputs=[{'path':'result.py'}],
+    population['tasks'][0].update(outputs=[{'path':'result.py'}, {'path':'test_result.py'}],
         validation=[criterion], completion='auto',
         acceptance='The actual Python result is two.')
     owner.materialize_population(population)
