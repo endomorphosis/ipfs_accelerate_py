@@ -9,10 +9,18 @@ WATCHDOG.md observe, dispatch and verify run over the existing native
 authorities: ``lifecycle_restart`` through ``restart_lane``, rescue
 planner/orchestrator request factories, current-tree completion proof,
 process-birth fencing and a durable incident claim.
+
+A published recovery also seals the loop's charged attempts, cooldown and
+stop/hold markers. Restarting the loop and the supervisor reloads that seal
+and refuses a refund. The optional user-systemd guardian may start only the
+registered watchdog loop, and only when the hold markers are absent and the
+restart bound still has room.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 import math
@@ -20,10 +28,11 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 import time
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 MAX_BYTES = 1_048_576
 ACTION_ID = re.compile(r"[0-9a-f]{64}")
@@ -32,6 +41,16 @@ COMPLETION_PROOF_FIELDS = (
     "schema", "run_id", "accepted_tree", "required_task_ids", "verified_task_ids",
     "runnable_count", "task_id", "effects_unknown", "hold",
 )
+HOLD_MARKERS = ("HOLD", "STOP", "OPERATOR_STOP")
+LOOP_UNIT = "worldwide-legal-search-watchdog.service"
+SUPERVISOR_UNIT = "worldwide-legal-search-supervisor.service"
+LOOP_MODULE = "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_watchdog"
+SUPERVISOR_MODULE = "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime"
+ATTEMPT_KEYS = ("reconcile", "recover", "diagnose", "repair")
+GUARDIAN_RESTART_BOUND = 3
+GUARDIAN_WINDOW_SECONDS = 1800
+GUARDIAN_RESTART_SECONDS = 30
+CANONICAL_PYTHON = "/usr/bin/python3.12"
 
 
 class WatchdogBridgeError(ValueError):
@@ -126,6 +145,343 @@ def publish_once(path: Path, payload: Mapping[str, Any]) -> None:
             os.close(directory)
     finally:
         os.unlink(temporary)
+
+
+def hold_markers(state_root: Path) -> list[str]:
+    """Filesystem pause markers. A stale projection cannot hide one."""
+    return [name for name in HOLD_MARKERS if os.path.lexists(state_root / name)]
+
+
+def _systemd_token(value: str) -> str:
+    if not isinstance(value, str) or not value or any(character.isspace() or character in "\"'\\$" for character in value):
+        raise WatchdogBridgeError("registered loop path must be one systemd argument")
+    return value
+
+
+def _systemd_exec_arg(value: str) -> str:
+    """Quote one ExecStart argument. Plain paths stay bare; JSON uses single quotes."""
+    if not isinstance(value, str) or value == "" or "\n" in value or "\r" in value or "\x00" in value:
+        raise WatchdogBridgeError("registered loop path must be one systemd argument")
+    if not any(character.isspace() or character in "\"'\\$" for character in value):
+        return value
+    if "'" in value or "\\" in value or "$" in value:
+        raise WatchdogBridgeError("registered loop path must be one systemd argument")
+    return "'" + value + "'"
+
+
+def empty_restart_journal(run_id: str) -> dict[str, Any]:
+    return {
+        "schema": "wwl.watchdog.restart-journal@1", "run_id": run_id, "actions": {},
+        "sealed_hold_markers": [], "required_task_ids": [], "loop_policy_digest": "",
+        "guardian_restarts": [], "completion_authority": False,
+    }
+
+
+def _journal_file(state_root: Path) -> Path:
+    return state_root / "watchdog" / "restart-journal.json"
+
+
+def atomic_replace(path: Path, payload: Mapping[str, Any]) -> None:
+    """Replace one owned JSON object. Callers hold the journal lock."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if path.parent.stat().st_uid != os.getuid():
+        raise WatchdogBridgeError("restart journal directory is not owned")
+    raw = canonical(payload) + b"\n"
+    if len(raw) > MAX_BYTES:
+        raise WatchdogBridgeError("restart journal exceeds its bound")
+    descriptor, temporary = tempfile.mkstemp(prefix=".restart-journal-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(raw)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+@contextlib.contextmanager
+def journal_lock(state_root: Path):
+    directory = state_root / "watchdog"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(directory / "restart-journal.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        if os.fstat(descriptor).st_uid != os.getuid():
+            raise WatchdogBridgeError("restart journal lock is not owned")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def _finite_number(value: Any, *, minimum: float = 0) -> float:
+    if isinstance(value, bool) or type(value) not in (int, float) or not math.isfinite(value) or value < minimum:
+        raise WatchdogBridgeError("restart accounting must be a finite number")
+    return float(value)
+
+
+def _attempt_map(value: Mapping[str, Any]) -> dict[str, int]:
+    attempts = {}
+    for key in ATTEMPT_KEYS:
+        raw = value.get(key, 0)
+        if isinstance(raw, bool) or type(raw) is not int or raw < 0:
+            raise WatchdogBridgeError("invalid durable incident accounting")
+        attempts[key] = raw
+    return attempts
+
+
+def load_restart_journal(state_root: Path, run_id: str) -> dict[str, Any]:
+    path = _journal_file(state_root)
+    try:
+        value = read_owned_json(path)
+    except FileNotFoundError:
+        return empty_restart_journal(run_id)
+    if (value.get("schema") != "wwl.watchdog.restart-journal@1" or value.get("run_id") != run_id
+            or value.get("completion_authority") is not False or not isinstance(value.get("actions"), dict)
+            or not isinstance(value.get("guardian_restarts"), list)
+            or not isinstance(value.get("sealed_hold_markers"), list)
+            or not isinstance(value.get("required_task_ids"), list)):
+        raise WatchdogBridgeError("restart journal run differs")
+    for stamp in value["guardian_restarts"]:
+        _finite_number(stamp)
+    for name in value["sealed_hold_markers"]:
+        if name not in HOLD_MARKERS:
+            raise WatchdogBridgeError("restart journal names an unknown hold marker")
+    return value
+
+
+def update_restart_journal(state_root: Path, run_id: str, mutator: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+    with journal_lock(state_root):
+        journal = load_restart_journal(state_root, run_id)
+        mutator(journal)
+        if journal.get("schema") != "wwl.watchdog.restart-journal@1" or journal.get("run_id") != run_id or journal.get("completion_authority") is not False:
+            raise WatchdogBridgeError("restart journal lost its run scope")
+        atomic_replace(_journal_file(state_root), journal)
+        stored = read_owned_json(_journal_file(state_root))
+        if canonical(stored) != canonical(journal):
+            raise WatchdogBridgeError("restart journal changed while it was sealed")
+        return stored
+
+
+def _action_places(loop_state: Mapping[str, Any], action_id: str) -> list[Mapping[str, Any]]:
+    places: list[Mapping[str, Any]] = []
+    outbox = loop_state.get("outbox")
+    if isinstance(outbox, Mapping):
+        places.append(outbox)
+    for bucket in ("inflight", "uncertain_actions"):
+        found = loop_state.get(bucket, {})
+        if isinstance(found, Mapping):
+            item = found.get(action_id)
+            if isinstance(item, Mapping):
+                places.append(item)
+    return places
+
+
+def _covers_action(stored: Mapping[str, Any], action: Mapping[str, Any]) -> bool:
+    return all(stored.get(key) == value for key, value in action.items())
+
+
+def _require_loop_state(loop_state: Mapping[str, Any], action: Mapping[str, Any], run_id: str) -> dict[str, Any]:
+    if loop_state.get("schema") != "wwl.watchdog.state@1" or loop_state.get("run_id") != run_id:
+        raise WatchdogBridgeError("restarted loop state run differs")
+    if not isinstance(loop_state.get("policy_digest"), str) or not loop_state["policy_digest"]:
+        raise WatchdogBridgeError("restarted loop policy digest differs")
+    if not isinstance(loop_state.get("incidents"), dict) or not isinstance(loop_state.get("required_task_ids"), list):
+        raise WatchdogBridgeError("restarted loop state is missing its incident ledger")
+    for key in ("actions", "repairs"):
+        if isinstance(loop_state.get(key), bool) or type(loop_state.get(key)) is not int or loop_state[key] < 0:
+            raise WatchdogBridgeError("invalid durable budget counter")
+    incident_id = action.get("incident_id")
+    incident = loop_state["incidents"].get(incident_id) if isinstance(incident_id, str) else None
+    if not isinstance(incident, Mapping):
+        raise WatchdogBridgeError("restarted loop lost the in-flight incident")
+    _attempt_map(incident)
+    _finite_number(incident.get("next_action_at"))
+    if not any(_covers_action(item, action) for item in _action_places(loop_state, action["action_id"])):
+        raise WatchdogBridgeError("restarted loop lost the in-flight recovery")
+    return dict(incident)
+
+
+def _accounting_from_loop(loop_state: Mapping[str, Any], incident: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "attempts": _attempt_map(incident),
+        "cooldown_until": _finite_number(incident.get("next_action_at")),
+        "campaign_actions": loop_state["actions"],
+        "campaign_repairs": loop_state["repairs"],
+    }
+
+
+def _require_accounting(loop_state: Mapping[str, Any], incident: Mapping[str, Any], record: Mapping[str, Any]) -> None:
+    """A restarted ledger may charge more later. It may not refund or shorten a wait."""
+    if record.get("attempts") is None:
+        return
+    current = _attempt_map(incident)
+    sealed = _attempt_map(record["attempts"])
+    if any(current[key] < sealed[key] for key in ATTEMPT_KEYS):
+        raise WatchdogBridgeError("attempt accounting regressed")
+    if loop_state["actions"] < record["campaign_actions"] or loop_state["repairs"] < record["campaign_repairs"]:
+        raise WatchdogBridgeError("attempt accounting regressed")
+    if _finite_number(incident.get("next_action_at")) < _finite_number(record["cooldown_until"]):
+        raise WatchdogBridgeError("cooldown moved earlier")
+
+
+class OptionalSystemdLoopGuardian:
+    """Revive only the registered watchdog loop. This does not install the unit.
+
+    Start is refused while a hold marker exists, after the bounded restart
+    window is spent, or when the unit fragment is any other command.
+    """
+
+    def __init__(self, *, repository: Path, state_root: Path, run_id: str, loop_script: Path, command: Callable[..., str] | None = None, clock=time.time, show: Callable[[], Mapping[str, str]] | None = None, fragment_path: Path | None = None, python: str = CANONICAL_PYTHON, max_restarts: int = GUARDIAN_RESTART_BOUND, window_seconds: float = GUARDIAN_WINDOW_SECONDS):
+        self.repository = repository.expanduser().resolve(strict=True)
+        self.state_root = state_root.expanduser().resolve(strict=True)
+        self.loop_script = Path(loop_script)
+        if not run_id or self.loop_script.name != "watchdog_loop.py":
+            raise WatchdogBridgeError("guardian may revive only the registered watchdog loop")
+        if isinstance(max_restarts, bool) or type(max_restarts) is not int or not 1 <= max_restarts <= 8:
+            raise WatchdogBridgeError("guardian restart bound is outside the campaign limit")
+        self.window_seconds = _finite_number(window_seconds, minimum=1)
+        self.max_restarts = max_restarts
+        self.run_id = run_id
+        self.clock = clock
+        self.command = command
+        self.show = show
+        self.python = _systemd_token(python)
+        self.state_path = self.state_root / "watchdog" / "state.json"
+        self.fragment_path = fragment_path or (Path.home() / ".config" / "systemd" / "user" / LOOP_UNIT)
+        self.adapter_argv = [
+            self.python, "-m", LOOP_MODULE, "--repository", _systemd_token(str(self.repository)),
+            "--state-root", _systemd_token(str(self.state_root)), "--run-id", _systemd_token(run_id),
+        ]
+        self.loop_argv = [
+            self.python, _systemd_token(str(self.loop_script)),
+            "--adapter-argv-json", json.dumps(self.adapter_argv, separators=(",", ":")),
+            "--state", _systemd_token(str(self.state_path)), "--execute",
+        ]
+
+    def render_unit(self) -> str:
+        pre = " ".join(_systemd_exec_arg(part) for part in [*self.adapter_argv, "guardian-start-check"])
+        start = " ".join(_systemd_exec_arg(part) for part in self.loop_argv)
+        if SUPERVISOR_MODULE in start or SUPERVISOR_UNIT in start or start.count("watchdog_loop.py") != 1:
+            raise WatchdogBridgeError("guardian unit would start something other than this loop")
+        lines = [
+            "[Unit]",
+            "Description=Optional worldwide legal-search watchdog loop",
+            "Documentation=docs/worldwide/host-operation.md",
+            "StartLimitIntervalSec=" + str(int(self.window_seconds)),
+            "StartLimitBurst=" + str(self.max_restarts),
+            "",
+            "[Service]",
+            "Type=simple",
+            "Restart=on-failure",
+            "RestartSec=" + str(GUARDIAN_RESTART_SECONDS),
+            "KillMode=control-group",
+            "ExecStartPre=" + pre,
+            "ExecStart=" + start,
+            "",
+            "[Install]",
+            "WantedBy=default.target",
+            "",
+        ]
+        return "\n".join(lines)
+
+    def _run(self, argv: list[str], timeout: float) -> str:
+        if self.command is not None:
+            produced = self.command(argv, timeout)
+            return produced if isinstance(produced, str) else ""
+        try:
+            result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=max(0.1, timeout), check=False)
+        except subprocess.TimeoutExpired as error:
+            raise WatchdogBridgeError("registered watchdog guardian command exceeded its bound") from error
+        if result.returncode:
+            raise WatchdogBridgeError("registered watchdog guardian command failed: " + str(result.returncode))
+        return result.stdout
+
+    def _show_unit(self) -> dict[str, str]:
+        if self.show is not None:
+            shown = self.show()
+            if not isinstance(shown, Mapping):
+                raise WatchdogBridgeError("systemd show must be an object")
+            return {str(key): str(value) for key, value in shown.items()}
+        raw = self._run(["systemctl", "--user", "show", LOOP_UNIT, "--property=Id,FragmentPath,ActiveState,MainPID"], 5)
+        return dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
+
+    def _restarts_in_window(self, journal: Mapping[str, Any] | None = None) -> list[float]:
+        source = journal if journal is not None else load_restart_journal(self.state_root, self.run_id)
+        now = float(self.clock())
+        return [float(stamp) for stamp in source.get("guardian_restarts", []) if now - self.window_seconds < float(stamp) <= now]
+
+    def start_check(self) -> dict[str, Any]:
+        """Hold-aware admission for this unit only. This method starts nothing."""
+        markers = hold_markers(self.state_root)
+        report = {
+            "schema": "wwl.watchdog.guardian-start@1", "unit": LOOP_UNIT, "run_id": self.run_id,
+            "hold_markers": markers, "started_units": [], "completion_authority": False,
+            "restart_bound": self.max_restarts, "window_seconds": self.window_seconds,
+        }
+        if markers:
+            return {**report, "may_start": False, "reason": "hold_blocks_start"}
+        try:
+            used = self._restarts_in_window()
+        except (OSError, ValueError) as error:
+            return {**report, "may_start": False, "reason": "restart_journal_unreadable", "error": str(error)}
+        if len(used) >= self.max_restarts:
+            return {**report, "may_start": False, "reason": "restart_bound_exhausted", "restarts_in_window": len(used)}
+        try:
+            shown = self._show_unit()
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            return {**report, "may_start": False, "reason": "systemd_show_failed", "error": str(error), "restarts_in_window": len(used)}
+        if shown.get("Id") != LOOP_UNIT:
+            return {**report, "may_start": False, "reason": "unregistered_unit", "restarts_in_window": len(used)}
+        fragment = Path(shown.get("FragmentPath") or "")
+        expected = self.render_unit()
+        starts = [line for line in expected.splitlines() if line.startswith("ExecStart=")]
+        if (fragment != Path(self.fragment_path) or not fragment.is_file() or fragment.is_symlink()
+                or fragment.stat().st_uid != os.getuid()):
+            return {**report, "may_start": False, "reason": "fragment_not_registered", "restarts_in_window": len(used)}
+        try:
+            text = fragment.read_text(encoding="utf-8")
+        except OSError as error:
+            return {**report, "may_start": False, "reason": "fragment_not_registered", "error": str(error), "restarts_in_window": len(used)}
+        observed_starts = [line for line in text.splitlines() if line.startswith("ExecStart=")]
+        if text != expected or len(starts) != 1 or observed_starts != starts or SUPERVISOR_MODULE in text or SUPERVISOR_UNIT in text:
+            return {**report, "may_start": False, "reason": "fragment_does_not_match_registered_loop", "restarts_in_window": len(used)}
+        if shown.get("ActiveState") == "active" and shown.get("MainPID") not in {None, "", "0"}:
+            return {**report, "may_start": False, "reason": "registered_loop_already_running", "restarts_in_window": len(used)}
+        return {**report, "may_start": True, "reason": "registered_loop_start_allowed", "restarts_in_window": len(used)}
+
+    def revive(self) -> dict[str, Any]:
+        """Start ``worldwide-legal-search-watchdog.service`` when the start check allows it."""
+        check = self.start_check()
+        if check.get("may_start") is not True:
+            return {**check, "revived": False}
+        charged = False
+
+        def mutate(journal: dict[str, Any]) -> None:
+            nonlocal charged
+            now = float(self.clock())
+            used = [float(stamp) for stamp in journal["guardian_restarts"] if now - self.window_seconds < float(stamp) <= now]
+            if len(used) >= self.max_restarts:
+                raise WatchdogBridgeError("restart_bound_exhausted")
+            journal["guardian_restarts"].append(now)
+            charged = True
+
+        try:
+            update_restart_journal(self.state_root, self.run_id, mutate)
+        except WatchdogBridgeError as error:
+            return {**check, "may_start": False, "revived": False, "reason": str(error)}
+        try:
+            self._run(["systemctl", "--user", "start", LOOP_UNIT], 5)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            # The charge stays. A failed start is not a refund and is not another unit.
+            return {**check, "revived": False, "reason": "registered_loop_start_failed", "restart_charged": charged, "error": str(error), "started_units": []}
+        return {**check, "revived": True, "reason": "registered_loop_revived", "restart_charged": charged, "started_units": [LOOP_UNIT]}
 
 
 def _mapping_result(value: Any) -> dict[str, Any]:
@@ -362,6 +718,8 @@ class WorldwideWatchdogBridge:
                     or (bool(snapshot.get("hold")) and not released)}
         if reviews:
             snapshot["hold_reviews"] = reviews
+        if snapshot["hold"]:
+            self._record_stop_hold(hold_markers(self.state_root))
         # Canonical heartbeat, progress token and source revision are retained.
         observations = {item["action_id"]: item for item in snapshot.get("action_observations", [])}
         for action_id in request.get("action_ids", []):
@@ -691,11 +1049,13 @@ class WorldwideWatchdogBridge:
         if host is not None and (action["kind"] == "recover" or (action["kind"] == "reconcile" and (not host["owner_alive"] or snapshot.get("source_projection_stale")))):
             return self._host_recover(action, host_path)
         publish_once(path, action)
+        self._seal_published_action(action, status="inflight")
         return self._wait_result(action, path, timeout_seconds)
 
     def _host_recover(self, action: Mapping[str, Any], path: Path) -> dict[str, Any]:
         publish_once(self.state_root / "control/host-before" / path.name, self.host_lifecycle.probe())
         publish_once(path, action)
+        self._seal_published_action(action, status="inflight")
         result = self.host_lifecycle.recover(dict(action))
         receipt = result["receipt"]
         observation = {"schema": "wwl.watchdog.action-observation@1", "action_id": action["action_id"],
@@ -1027,16 +1387,125 @@ class WorldwideWatchdogBridge:
             verdict = self._completion_verification(snapshot)
         return {**dict(verdict), "snapshot_accepted_tree": snapshot.get("accepted_tree", "")}
 
+    def _seal_published_action(self, action: Mapping[str, Any], *, status: str) -> None:
+        """Bind the published recovery to the loop ledger before the effect returns.
+
+        Missing loop state still records the action identity. A present loop
+        state must already contain that action and its charged counters.
+        """
+        state_path = self.state_root / "watchdog" / "state.json"
+        loop_state = read_owned_json(state_path) if state_path.is_file() else None
+        incident = _require_loop_state(loop_state, action, self.run_id) if loop_state is not None else None
+        accounting = _accounting_from_loop(loop_state, incident) if incident is not None and loop_state is not None else None
+        markers = hold_markers(self.state_root)
+
+        def mutate(journal: dict[str, Any]) -> None:
+            if accounting is not None:
+                if journal["loop_policy_digest"] and journal["loop_policy_digest"] != loop_state["policy_digest"]:
+                    raise WatchdogBridgeError("restarted loop policy digest differs")
+                journal["loop_policy_digest"] = loop_state["policy_digest"]
+                journal["required_task_ids"] = list(dict.fromkeys([*journal["required_task_ids"], *loop_state["required_task_ids"]]))
+            journal["sealed_hold_markers"] = list(dict.fromkeys([*journal["sealed_hold_markers"], *markers]))
+            prior = journal["actions"].get(action["action_id"])
+            record = {
+                "action": dict(action), "status": status, "incident_id": action.get("incident_id", ""),
+                "request_identity": identity(action), "hold_markers": markers,
+                "attempts": None if accounting is None else accounting["attempts"],
+                "cooldown_until": None if accounting is None else accounting["cooldown_until"],
+                "campaign_actions": None if accounting is None else accounting["campaign_actions"],
+                "campaign_repairs": None if accounting is None else accounting["campaign_repairs"],
+            }
+            if prior is not None:
+                if prior.get("request_identity") != record["request_identity"]:
+                    raise WatchdogBridgeError("action id reused with a different request")
+                if accounting is not None and prior.get("attempts") is not None:
+                    _require_accounting(loop_state, incident, prior)
+                    record["attempts"] = {key: max(prior["attempts"][key], accounting["attempts"][key]) for key in ATTEMPT_KEYS}
+                    record["cooldown_until"] = max(float(prior["cooldown_until"]), accounting["cooldown_until"])
+                    record["campaign_actions"] = max(prior["campaign_actions"], accounting["campaign_actions"])
+                    record["campaign_repairs"] = max(prior["campaign_repairs"], accounting["campaign_repairs"])
+            journal["actions"][action["action_id"]] = record
+
+        update_restart_journal(self.state_root, self.run_id, mutate)
+
+    def _record_stop_hold(self, markers: list[str]) -> None:
+        """Remember a pause that arrived while a recovery journal already exists.
+
+        Observation does not create a journal and does not delete the marker.
+        """
+        if not markers or not _journal_file(self.state_root).is_file():
+            return
+
+        def mutate(journal: dict[str, Any]) -> None:
+            journal["sealed_hold_markers"] = list(dict.fromkeys([*journal["sealed_hold_markers"], *markers]))
+
+        update_restart_journal(self.state_root, self.run_id, mutate)
+
+    def resume_after_restart(self) -> dict[str, Any]:
+        """Reload the sealed loop and the supervisor journal without charging again.
+
+        A new bridge is the restarted supervisor. The loop state file is the
+        restarted loop. Deduplication, cooldown, attempt counts and stop/hold
+        markers must still match the seal.
+        """
+        journal = load_restart_journal(self.state_root, self.run_id)
+        pending = [record for record in journal["actions"].values() if record.get("status") == "inflight" and isinstance(record.get("action"), dict)]
+        if not pending:
+            raise WatchdogBridgeError("restart resume has no in-flight recovery")
+        try:
+            loop_state = read_owned_json(self.state_root / "watchdog" / "state.json")
+        except FileNotFoundError:
+            raise WatchdogBridgeError("restarted loop state is missing") from None
+        if journal.get("loop_policy_digest") and loop_state.get("policy_digest") != journal["loop_policy_digest"]:
+            raise WatchdogBridgeError("restarted loop policy digest differs")
+        required = journal.get("required_task_ids") or []
+        if required and not set(required) <= set(loop_state.get("required_task_ids") or []):
+            raise WatchdogBridgeError("restart pruned admitted tasks")
+        current_markers = hold_markers(self.state_root)
+        missing = [name for name in journal.get("sealed_hold_markers", []) if name not in current_markers]
+        if missing:
+            raise WatchdogBridgeError("stop/hold did not survive restart")
+        resumed = []
+        for record in pending:
+            action = record["action"]
+            incident = _require_loop_state(loop_state, action, self.run_id)
+            _require_accounting(loop_state, incident, record)
+            claim_path = self._incident_path(action)
+            if claim_path is None:
+                raise WatchdogBridgeError("durable incident claim differs after restart")
+            claim = read_owned_json(claim_path)
+            if claim.get("run_id") != self.run_id or claim.get("incident_id") != action.get("incident_id") or claim.get("action_id") != action["action_id"] or claim.get("request_identity") != identity(action):
+                raise WatchdogBridgeError("durable incident claim differs after restart")
+            resumed.append({
+                "action_id": action["action_id"], "incident_id": action.get("incident_id", ""), "kind": action.get("kind"),
+                "attempt_accounting": {**_attempt_map(incident), "actions": loop_state["actions"], "repairs": loop_state["repairs"]},
+                "cooldown_until": _finite_number(incident.get("next_action_at")),
+            })
+        return {
+            "schema": "wwl.watchdog.restart-resume@1", "run_id": self.run_id, "inflight": resumed,
+            "hold_markers": current_markers, "deduplicated": True, "attempts_refunded": False,
+            "cooldown_reset": False, "hold_cleared": False, "loop_restarted": True,
+            "supervisor_restarted": True, "completion_authority": False,
+        }
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", type=Path, required=True)
     parser.add_argument("--state-root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
+    parser.add_argument("--loop-script", type=Path)
     parser.add_argument("--dispatch-timeout", type=float, default=50)
-    parser.add_argument("operation", choices=("ready", "observe", "dispatch", "verify"))
+    parser.add_argument("operation", choices=("ready", "observe", "dispatch", "verify", "guardian-start-check"))
     args = parser.parse_args(argv)
     try:
+        if args.operation == "guardian-start-check":
+            if args.loop_script is None:
+                raise WatchdogBridgeError("guardian start check requires the registered loop script")
+            guardian = OptionalSystemdLoopGuardian(repository=args.repository, state_root=args.state_root, run_id=args.run_id, loop_script=args.loop_script)
+            result = guardian.start_check()
+            print(json.dumps(result, sort_keys=True, allow_nan=False))
+            return 0 if result.get("may_start") is True else 2
         raw = sys.stdin.buffer.read(MAX_BYTES + 1)
         if len(raw) > MAX_BYTES:
             raise WatchdogBridgeError("request exceeds its bound")
