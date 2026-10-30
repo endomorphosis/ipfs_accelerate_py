@@ -1,0 +1,70 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-103",
+  "title": "Test quota fallback unknown effects and repair nonconvergence",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G090",
+  "subgoal_id": "WWL-G090.S2",
+  "adapters": [
+    "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search",
+    "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_progress",
+    "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_recovery",
+    "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_repair",
+    "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_blockers",
+    "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_watchdog"
+  ],
+  "depends_on": ["WWL-102"],
+  "router": "ipfs_accelerate_py.llm_router",
+  "primary_provider": "grok_cli",
+  "primary_model": "grok-4.7",
+  "fallback_policy": "grok_quota_auth_or_unavailable",
+  "repair_limit": 2,
+  "recover_limit": 2,
+  "injected_faults": [
+    "quota",
+    "auth",
+    "unavailable",
+    "transport_loss_after_mutation",
+    "malformed_output",
+    "dead_supervisor",
+    "live_heartbeat_frozen_progress",
+    "repeated_repair_defects"
+  ],
+  "invariants": [
+    "no duplicate writer",
+    "no false success",
+    "no attempt refund"
+  ],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "test/api/test_worldwide_legal_search_faults.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-103.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_faults.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_faults.py", "-q"],
+    "result": "16 passed",
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "The suite injects quota exhaustion, authentication failure, launch unavailability, transport loss after a workspace mutation, malformed output, a dead supervisor, live heartbeats, and repeated repair of one defect. It does not launch Grok, Codex, or a hosted model.",
+    "Typed quota, authentication, and launch unavailability select the emergency Codex route only before side effects and only when the workspace digest is unchanged. That route is not task success and does not open a second writer.",
+    "Transport loss after a mutation, malformed output, started or unknown activity, and a forged receipt stay on reconciliation. Unknown effects block isolated repair and block rebinding a dead supervisor.",
+    "A live heartbeat, a pid change, and a repeated attempt do not move the progress cursor and do not refund a spent task, provider, recover, or repair budget.",
+    "One defect has one repair task. A nested action while that writer is open is a duplicate writer and does not spend another repair. Repeated defects stop at the repair limit of 2. A merge that reports unknown effects or omits its receipt is not promotion.",
+    "No duplicate writer, false success, or attempt refund is accepted. A checkpoint that lowers a spent repair or recover count is rejected. An observation that asks for a refund or a reset is rejected.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The fault suite was executed with the workspace virtualenv that provides pytest 9.1.1.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}
