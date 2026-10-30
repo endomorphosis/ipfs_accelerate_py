@@ -78,6 +78,11 @@ def infrastructure_classification(observation: dict[str, Any], board: dict[str, 
         return None
     sample = dict(observation, complete=False)
     reasons = set(str(x) for x in sample.get("reason_codes", []))
+    if "board_checkout_missing" in reasons:
+        # Local asset preflight did not launch a probe. A missing report cannot
+        # turn this existing wait into a malformed diagnostic or a coding job.
+        sample.update(health="unknown", completion_candidate=False, busy=False)
+        return sample, "board_checkout_missing"
     if board.get("probe_profile") == "native_catalogue":
         sample.update(completion_candidate=False, busy=False)
         binding = board.get("native_catalogue_binding")

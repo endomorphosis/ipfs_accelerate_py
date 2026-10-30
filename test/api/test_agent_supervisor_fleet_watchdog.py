@@ -2703,3 +2703,63 @@ def test_load_config_preserves_optional_liveness_for_nonfatal_cycle_validation(t
     value = {"state_dir": str(tmp_path), "boards": [_board(tmp_path)], "liveness_identity": profile}
     path.write_text(json.dumps(value))
     assert fleet.load_config(path)["liveness_identity"] == profile
+
+
+@pytest.mark.parametrize("profile", ["native_catalogue", "service_fleet_report"])
+def test_infrastructure_missing_checkout_preserves_wait_and_budgets(tmp_path, profile):
+    board = _infrastructure_board(tmp_path)
+    if profile == "service_fleet_report":
+        board.pop("probe_profile")
+        board.pop("native_catalogue_binding")
+        board["service_fleet_binding"] = {"board_namespace": "engineering",
+            "max_age_seconds": 30, "lanes": {"lane-0": "engineering.service"}}
+    missing = tmp_path / "deleted-checkout"
+    board["cwd"] = str(missing)
+    missing_details = fleet.missing_board_checkout(board)
+    assert missing_details is not None
+    observation = fleet.checkout_missing_observation(board["id"], missing_details)
+    previous = {"health": "unknown", "attempts": 3, "ensure_attempts": 2, "last_progress_at": 10,
+        "next_action_at": 500, "incident_since": 20,
+        "infrastructure_budget": {"status": "available", "actions": 2, "total_actions": 7}}
+    state = fleet.assess(observation, previous, board, 100)
+    assert state["stall_class"] == "board_checkout_missing"
+    assert state["observation"]["reason_codes"] == ["board_checkout_missing"]
+    assert state["health"] == "unknown"
+    assert state["observation"]["complete"] is False
+    assert state["observation"].get("completion_candidate") is False
+    assert state["observation"].get("busy") is False
+    for key, value in previous.items():
+        assert state[key] == value
+    assert fleet.select_action(state, board, 1000) == ""
+    assert not missing.exists()
+
+
+@pytest.mark.parametrize("profile", ["native_catalogue", "service_fleet_report"])
+def test_infrastructure_missing_checkout_does_not_run_commands_or_charge(tmp_path, profile):
+    board = _infrastructure_board(tmp_path)
+    if profile == "service_fleet_report":
+        board.pop("probe_profile")
+        board.pop("native_catalogue_binding")
+        board["service_fleet_binding"] = {"board_namespace": "engineering",
+            "max_age_seconds": 30, "lanes": {"lane-0": "engineering.service"}}
+    board["cwd"] = str(tmp_path / "missing-checkout")
+    board["ensure"] = {"argv": ["forbidden-ensure"]}
+    directory = tmp_path / board["id"]
+    directory.mkdir()
+    budget = directory / "infrastructure-budget.json"
+    budget.write_text(json.dumps({"schema": "agent-supervisor/infrastructure-budget@1",
+        "board_id": board["id"], "window_started_at": 90, "actions": 2,
+        "total_actions": 7, "circuit_open_until": 0}))
+    original_budget = budget.read_bytes()
+    state = directory / "state.json"
+    state.write_text(json.dumps({"attempts": 3, "ensure_attempts": 2,
+        "last_progress_at": 10, "next_action_at": 500, "incident_since": 20}))
+    def forbidden(*args, **kwargs):
+        pytest.fail("missing checkout cannot launch a probe, ensure or repair")
+    observed = fleet.tick_board(board, tmp_path, apply=True, runner=forbidden, now=100)
+    assert observed["stall_class"] == "board_checkout_missing"
+    assert observed["planned_action"] == ""
+    assert observed["attempts"] == 3 and observed["ensure_attempts"] == 2
+    assert observed["next_action_at"] == 500 and observed["last_progress_at"] == 10
+    assert budget.read_bytes() == original_budget
+    assert not (tmp_path / "missing-checkout").exists()
