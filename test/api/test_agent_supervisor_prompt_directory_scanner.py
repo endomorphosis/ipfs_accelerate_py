@@ -15,8 +15,8 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_directory_scanner import 
     OptionalAnalysisResult,
     RepositoryAllowlistError,
     ScanSymlinkError,
-    SecretLeakageError,
     UnstableDirectoryScanError,
+    bind_prompt_request_to_scanner,
     build_repository_allowlist,
     repository_root_cid,
     scan_prompt_directory,
@@ -273,8 +273,14 @@ def test_allowlist_symlink_nested_repository_and_output_escapes_fail_closed(
         )
 
     os.symlink("src/service.py", repository / "alias.py")
-    with pytest.raises(ScanSymlinkError, match="symlink"):
-        scan_prompt_directory(request, repository_allowlist=allowlist)
+    linked = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
+    assert "alias.py: symlink_not_admitted" in "\n".join(linked.receipt.exclusions)
+    assert "alias.py" not in {
+        entry.path for entry in linked.program_behavior.repository.entries
+    }
+    assert "src/service.py" in {
+        entry.path for entry in linked.program_behavior.repository.entries
+    }
     (repository / "alias.py").unlink()
 
     nested = repository / "nested"
@@ -296,6 +302,85 @@ def test_allowlist_symlink_nested_repository_and_output_escapes_fail_closed(
         scan_prompt_directory(escaped_request, repository_allowlist=allowlist)
 
 
+def test_committed_gitlink_is_excluded_without_reading_nested_bytes(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    child = tmp_path / "child"
+    child.mkdir()
+    _git(child, "init", "-q")
+    _git(child, "config", "user.name", "Scanner Test")
+    _git(child, "config", "user.email", "scanner@example.invalid")
+    sentinel = "SUBMODULE_SENTINEL_not_in_parent_scan"
+    (child / "secret_body.py").write_text(f"# {sentinel}\n", encoding="utf-8")
+    _git(child, "add", "secret_body.py")
+    _git(child, "commit", "-qm", "child")
+    oid = _git(child, "rev-parse", "HEAD")
+    _git(
+        repository,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{oid},vendor/child",
+    )
+    _git(repository, "commit", "-qm", "record gitlink")
+    populated = repository / "vendor" / "child"
+    populated.mkdir(parents=True)
+    (populated / "secret_body.py").write_text(f"# {sentinel}\n", encoding="utf-8")
+    (populated / ".git").write_text("gitdir: /tmp/not-a-parent-file\n", encoding="utf-8")
+    request, allowlist = _request(repository)
+
+    details = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
+
+    rendered = "\n".join(details.receipt.exclusions)
+    assert "vendor/child: nested_gitlink" in rendered
+    assert sentinel not in details.receipt.to_json()
+    paths = {entry.path for entry in details.program_behavior.repository.entries}
+    assert "src/service.py" in paths
+    assert "vendor/child" not in paths
+    assert all(not path.startswith("vendor/child/") for path in paths)
+    assert "vendor/child" in details.program_behavior.repository.excluded_paths
+
+
+def test_bind_replaces_observation_identities_and_reuses_one_behavior_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path)
+    request, allowlist = _request(repository)
+    wrong = replace(
+        request,
+        repository_root_cid="sha256:" + ("ab" * 32),
+        allowlist_cid="sha256:" + ("cd" * 32),
+        program_root=_cid("observed-program"),
+    )
+    with pytest.raises(RepositoryAllowlistError, match="allowlist"):
+        scan_prompt_directory(wrong, repository_allowlist=allowlist)
+
+    calls = {"n": 0}
+    original = program_behavior.build_program_behavior
+
+    def _counted(*args: object, **kwargs: object) -> object:
+        calls["n"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(program_behavior, "build_program_behavior", _counted)
+    bound = bind_prompt_request_to_scanner(wrong, allowlist)
+    first = scan_prompt_directory_detailed(bound, repository_allowlist=allowlist)
+    assert calls["n"] == 1
+    assert bound.allowlist_cid == allowlist.allowlist_cid
+    assert bound.repository_root_cid == repository_root_cid(repository)
+    assert bound.program_root == first.receipt.program_root
+    assert first.receipt.request_cid == bound.request_cid
+    assert bound.program_root != wrong.program_root
+    second = scan_prompt_directory_detailed(
+        bound, repository_allowlist=allowlist, clock_ms=lambda: 20
+    )
+    assert calls["n"] == 2
+    assert second.receipt.scan_cid == first.receipt.scan_cid
+    assert second.receipt.program_root == bound.program_root
+
+
 def test_secret_content_rejected_without_leaking_value_and_optional_is_lazy(
     tmp_path: Path,
 ) -> None:
@@ -307,9 +392,14 @@ def test_secret_content_rejected_without_leaking_value_and_optional_is_lazy(
     )
     request, allowlist = _request(repository)
 
-    with pytest.raises(SecretLeakageError) as raised:
-        scan_prompt_directory(request, repository_allowlist=allowlist)
-    assert secret_value not in str(raised.value)
+    rejected = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
+    rendered = "\n".join(rejected.receipt.exclusions)
+    assert "src/unsafe.py: credential_or_key_material" in rendered
+    assert secret_value not in rejected.receipt.to_json()
+    assert all(
+        entry.path != "src/unsafe.py"
+        for entry in rejected.program_behavior.repository.entries
+    )
 
     (repository / "src" / "unsafe.py").unlink()
     calls: list[object] = []
@@ -381,3 +471,23 @@ def test_budget_truncation_is_exact_and_post_analysis_mutation_is_rejected(
     monkeypatch.setattr(program_behavior, "build_program_behavior", mutate_after_behavior)
     with pytest.raises(UnstableDirectoryScanError, match="changed"):
         scan_prompt_directory(request, repository_allowlist=allowlist)
+
+
+def test_python_over_the_behavior_bound_is_excluded_and_the_scan_continues(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    (repository / "src" / "wide.py").write_text(
+        "\n".join(f"value_{index} = {index}" for index in range(300)) + "\n",
+        encoding="utf-8",
+    )
+    request, allowlist = _request(
+        repository,
+        budget=_budget(max_symbols=1, max_files=8),
+    )
+    scanned = scan_prompt_directory_detailed(request, repository_allowlist=allowlist)
+    admitted = {entry.path for entry in scanned.program_behavior.repository.entries}
+    assert "src/service.py" in admitted
+    assert "src/wide.py" not in admitted
+    assert "src/wide.py: program_behavior_bound" in "\n".join(scanned.receipt.exclusions)
+    assert scanned.receipt.truncated is True

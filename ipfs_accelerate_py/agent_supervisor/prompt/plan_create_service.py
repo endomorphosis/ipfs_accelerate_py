@@ -23,6 +23,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
+import subprocess
 import threading
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
@@ -1039,6 +1041,111 @@ def freeze_plan_create_input_snapshot(
     return PlanCreateInputSnapshot.from_request(_coerce_request(request), materials=materials)
 
 
+# Same shape the symbolic planner accepts as a codebase path. A colon marks
+# an identifier such as "proof:goal", not a repository path.
+_SYMBOLIC_SCOPE_PATH = re.compile(r"^[A-Za-z0-9._-][A-Za-z0-9._/+-]*$")
+# prepare_planning_context adds a small skipped-IR record before the budget check.
+_SYMBOLIC_CONTEXT_MARGIN_BYTES = 2048
+
+
+def _symbolic_scope_path(value: str) -> bool:
+    """True for a relative scope entry the deterministic baseline may name."""
+
+    if not value or value in {".", ".."} or value.startswith(("/", "\\")):
+        return False
+    if "\\" in value or ":" in value:
+        return False
+    parts = value.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return False
+    return _SYMBOLIC_SCOPE_PATH.fullmatch(value) is not None
+
+
+def _repository_paths_within_budget(
+    context: Mapping[str, Any],
+    paths: Sequence[str],
+    *,
+    limit: int,
+) -> tuple[str, ...]:
+    """Keep scope paths whose context JSON stays inside the symbolic input budget."""
+
+    selected: list[str] = []
+    ceiling = max(0, int(limit) - _SYMBOLIC_CONTEXT_MARGIN_BYTES)
+    for path in paths:
+        trial = {**dict(context), "repository_paths": [*selected, path]}
+        encoded = json.dumps(
+            trial,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        if len(encoded) > ceiling:
+            break
+        selected.append(path)
+    return tuple(selected)
+
+
+def _whole_repository_scope_paths(root: Path) -> tuple[str, ...]:
+    """Return top-level relative scope paths, excluding gitlinks and dot paths."""
+
+    gitlinks: set[str] = set()
+    try:
+        listed = subprocess.run(
+            (
+                "git",
+                "-c",
+                "core.quotepath=false",
+                "-C",
+                str(root),
+                "ls-tree",
+                "-z",
+                "HEAD",
+            ),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        listed = None
+    if listed is not None and listed.returncode == 0:
+        for record in listed.stdout.split(b"\0"):
+            if not record or b"\t" not in record:
+                continue
+            metadata, raw_path = record.split(b"\t", 1)
+            try:
+                mode, kind, _object_id = metadata.decode("ascii").split()
+                path = raw_path.decode("utf-8")
+            except (UnicodeDecodeError, ValueError):
+                continue
+            if kind == "commit" or mode == "160000":
+                gitlinks.add(path)
+    try:
+        children = sorted(root.iterdir(), key=lambda item: item.name)
+    except OSError:
+        return ()
+    paths: list[str] = []
+    for child in children:
+        name = child.name
+        if (
+            not name
+            or name.startswith(".")
+            or name in gitlinks
+            or "/" in name
+            or "\\" in name
+        ):
+            continue
+        try:
+            if child.is_symlink():
+                continue
+        except OSError:
+            continue
+        paths.append(name)
+    return tuple(paths)
+
+
 def plan_create_request_from_workflow(
     workflow_request: Any,
     *,
@@ -1075,11 +1182,12 @@ def plan_create_request_from_workflow(
         scope = "." if str(relative) in ("", ".") else str(relative).replace("\\", "/")
     except Exception:
         scope = "."
-    # The workflow scan layer denotes a root scan as "."; canonical plan
-    # contracts reject root path values (plan_revision_contracts
-    # ._relative_path), where an unnarrowed whole-repository scope is
-    # represented by the empty scope_paths tuple.
-    projected_scope_paths = () if scope in ("", ".") else (scope,)
+    # The workflow scan layer denotes a root scan as ".". Project that scan
+    # into the actual top-level scope, excluding gitlinks and private dot
+    # paths, rather than losing its observed source paths in an empty tuple.
+    projected_scope_paths = (
+        _whole_repository_scope_paths(root_path) if scope in ("", ".") else (scope,)
+    )
     prompt_source = getattr(workflow_request, "prompt_source", None)
     prompt_cid = str(
         getattr(prompt_source, "content_id", None)
@@ -1814,6 +1922,26 @@ class PlanCreateService:
                 )
             except TypeError:
                 planner = self.candidate_planner
+        # Provenance on the default intent is the scope itself. A repository-root
+        # prompt scopes top-level names, which have no slash, so the symbolic
+        # baseline does not treat them as provenance paths. They are still the
+        # observed in-scope entries. Do not invent "." and do not replace a
+        # caller-supplied repository_paths list.
+        if "repository_paths" not in context:
+            admissible = tuple(
+                path for path in request.scope_paths if _symbolic_scope_path(path)
+            )
+            token_limit = int(
+                getattr(getattr(planner, "bounds", None), "max_provider_input_tokens", 12_288)
+                or 12_288
+            )
+            fitted = _repository_paths_within_budget(
+                context,
+                admissible,
+                limit=token_limit * 4,
+            )
+            if fitted:
+                context["repository_paths"] = list(fitted)
         shared_detail_ids = (snapshot.bounds_digest, snapshot.snapshot_cid)
         try:
             portfolio = planner.plan(

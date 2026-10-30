@@ -97,6 +97,7 @@ from .typed_state_owner import (
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_OPERATION,
     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
+    TypedStateOwnerConnection,
     TypedStateOwnerError,
     _legacy_unstall_recovery_receipt,
     _post_merge_retry_queue_receipt,
@@ -1799,8 +1800,11 @@ class QuackStateClient:
                 if seed_generation:
                     self._seed_generation_if_missing(adapter)
                 generation = self._load_generation(adapter)
-                identity = self._observe_store_identity(adapter, generation)
                 expected = expected_identity or self.expected_identity
+                identity = self._observe_store_identity(
+                    adapter, generation, transport_mode=endpoint.mode,
+                    expected_identity=expected,
+                )
                 if expected is not None:
                     self._verify_identity(expected, identity, generation)
                 owner_session_id = str(
@@ -5180,6 +5184,9 @@ class QuackStateClient:
         self,
         adapter: _ConnectionAdapter,
         generation: StoreGeneration,
+        *,
+        transport_mode: TransportMode | None = None,
+        expected_identity: ControlPlaneStoreIdentity | None = None,
     ) -> ControlPlaneStoreIdentity:
         meta_rows = self._execute_template(adapter, "whoami_metadata", None)
         meta = {str(row["key"]): str(row["value"]) for row in meta_rows}
@@ -5199,12 +5206,36 @@ class QuackStateClient:
         extension_fingerprint = ""
         if self.expected_identity is not None:
             extension_fingerprint = self.expected_identity.extension_fingerprint
+        fallback_expectation = expected_identity or self.expected_identity
+        repository_id = (
+            fallback_expectation.repository_id
+            if fallback_expectation is not None
+            else "repository:local"
+        )
+        if (
+            transport_mode is TransportMode.QUACK
+            and isinstance(adapter.raw, TypedStateOwnerConnection)
+        ):
+            # This identity came from the admitted typed-owner open reply.
+            # Embedded and injected DB-API fixtures do not supply this proof.
+            owner_identity = adapter.raw.identity
+            advertised_repository = owner_identity.get("repository_id")
+            if advertised_repository is not None and type(advertised_repository) is not str:
+                raise QuackClientIdentityError(
+                    "typed owner repository identity is not a string"
+                )
+            if advertised_repository and advertised_repository.strip():
+                repository_id = advertised_repository
+            elif expected_identity is not None:
+                raise QuackClientIdentityError(
+                    "typed owner advertised no repository identity for the expectation"
+                )
+            else:
+                # Older typed-owner fixtures did not publish this field. Their
+                # unbound fallback is not an authenticated repository identity.
+                repository_id = "repository:local"
         return ControlPlaneStoreIdentity(
-            repository_id=(
-                self.expected_identity.repository_id
-                if self.expected_identity is not None
-                else "repository:local"
-            ),
+            repository_id=repository_id,
             database_uuid=generation.database_uuid,
             store_id=self.store_id,
             schema_revision=generation.schema_revision,
@@ -5221,6 +5252,10 @@ class QuackStateClient:
         observed: ControlPlaneStoreIdentity,
         generation: StoreGeneration,
     ) -> None:
+        if expected.repository_id != observed.repository_id:
+            raise QuackClientIdentityError(
+                "repository_id mismatch between client expectation and typed owner"
+            )
         if expected.store_id != observed.store_id:
             raise QuackClientIdentityError(
                 f"store_id mismatch: expected {expected.store_id}, "

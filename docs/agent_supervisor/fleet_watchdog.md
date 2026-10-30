@@ -27,6 +27,227 @@ grace period, while transient kernel waits can clear before repair. Holds and
 native recovery admission still apply, and providers in other lanes remain
 visible. These diagnostics do not authorize signalling or callback replay.
 
+## LegalIR service fleet
+
+The existing LegalIR deployment retains four implementation services:
+`legal-ir-autoencoder-v1.service` and `legal-ir-autoencoder-v1-lane-{1,2,3}.service`.
+`legal-ir-autoencoder-v1-monitor.timer` runs the bounded
+`board_service_fleet_monitor.py` oneshot every 60 seconds, with five-second
+accuracy. `config/legal_ir_autoencoder_fleet_monitor.json` names the four
+`legal_ir_autoencoder_lane_{0,1,2,3}_monitor.json` configurations, each bound to
+one exact service, state directory, board namespace and task shard. These are
+host-specific deployment configurations; preserve their existing bindings.
+
+The native monitor separates parent heartbeat, worker liveness and useful task
+progress. Polling and task selection cannot renew the ready-work deadline.
+Fresh active work remains healthy within its absolute deadline; a stale worker,
+expired task deadline, stale parent heartbeat or stalled eligible ready backlog
+can qualify for recovery. A fresh completed board with no runnable work is
+healthy idle, without asserting completion of the wider legal programme.
+Dependency waits and typed retry, quota, resource or native policy fences remain
+visible without a service restart. Review and legal-meaning gates remain closed;
+observations do not supply their missing decisions.
+
+Each lane permits only its configured unit's restart, with a 600-second cooldown
+and at most four charged attempts per hour. The attempt and restart intent are
+durable before the effect; corrupt budget state suppresses recovery. Immediately
+before charging, the monitor refreshes native evidence and checks the same
+systemd `MainPID` and `ExecMainStartTimestampMonotonic` service birth. Changed or
+unverifiable identity, newly active work, recovered idle or a native fence
+suppresses the restart without charging. A replacement generation receives a
+fresh ready-work window. These are sequential observations, not an atomic
+snapshot or a generation-conditioned `systemctl restart`; changes after the
+recheck remain possible.
+
+The monitor writes per-lane health/recovery records and the shared
+`data/legal-ir-autoencoder-v1/fleet-health.json` and `fleet-events.jsonl` beneath
+the existing LegalIR worktree. Repeated structured failures, duplicate active
+tasks and stale merge receipt projections remain diagnostics, without a fleet
+restart or task mutation. The existing `ipfs-taskboard-legal-ir-watchdog.service`
+reads that report through its installed `service_fleet_probe` with exact expected
+lane/unit bindings and a 180-second freshness limit. Persistent incidents enter
+its existing durable `incident.json` and repair queue; the existing
+`ipfs-taskboard-legal-ir-repair.service` dispatches the configured repair worker.
+No additional loop, queue or task-state owner is needed. Native child recovery,
+claim ownership, holds, retry budgets and acceptance gates retain their authority;
+repair success still requires a fresh configured probe.
+
+Inspect the native timer, diagnostic services and retained evidence:
+
+```sh
+systemctl --user status legal-ir-autoencoder-v1-monitor.timer \
+  ipfs-taskboard-legal-ir-watchdog.service ipfs-taskboard-legal-ir-repair.service
+journalctl --user -u legal-ir-autoencoder-v1-monitor.service -n 5 --no-pager
+cat /home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/fleet-health.json
+cat ~/.local/state/ipfs-taskboard-watchdog/legal-ir/status.json
+```
+
+The diagnostic configuration is
+`~/.config/ipfs-taskboard-watchdog/legal-ir/fleet.json`; its `state_dir` contains
+`legal-ir/incident.json` when an incident exists and `repairs/legal-ir/` for
+retained jobs, prompts, reports and logs. For source maintenance, stop only the
+native monitor timer and running oneshot before installing the verified monitor
+source; preserve the four implementation lanes and diagnostic services. Restart
+the same timer afterward. For protected board, plan or worker-source maintenance,
+use the existing fleet quiescence procedure instead: pause both native recovery
+timers and diagnostic watchdog/repair dispatch, stop the worker target, then
+verify provider children and native claims have quiesced before writing. Restore
+the same services only after contract validation. Never remove claims manually
+or bypass review/resource gates. This prevents recovery from fighting intentional
+maintenance. Enabled user units and user lingering provide persistence across
+logout.
+
+From the supervisor repository, the focused failure-injection suite is:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -o addopts= \
+  -o cache_dir=/tmp/legal-ir-monitor-pytest-cache \
+  test/api/test_board_service_monitor.py test/api/test_board_service_fleet_monitor.py
+```
+
+Qualification on public base `a8f18f6a3fc9a1d3f5efe8307dcff2b25a8cb95f` passed
+all **160 tests**. The cases cover bounded recovery, changed/reused PID births,
+fresh worker/completed-idle/resource-fence suppression and unreadable evidence.
+
+## Optional watchdog self-liveness observation
+
+The existing fleet monitor can observe the dedicated watchdog itself through an
+optional `watchdog_liveness` attachment. Qualify and adopt the producer and
+monitor together before configuring it. Older watchdog reports contain no
+process/profile declaration and remain explicitly unbound; a recent timestamp
+alone cannot establish their producer.
+
+In the watchdog fleet configuration, add this optional producer profile:
+
+```json
+{
+  "liveness_identity": {
+    "schema": "agent-supervisor/watchdog-liveness-profile@1",
+    "deployment_id": "accepted-release-id",
+    "source_sha256": "<qualified-source-sha256>"
+  }
+}
+```
+
+In the existing board-service fleet monitor configuration, bind the same profile:
+
+```json
+{
+  "watchdog_liveness": {
+    "schema": "agent-supervisor/watchdog-liveness-binding@1",
+    "service": "ipfs-taskboard-legal-ir-watchdog.service",
+    "status_path": "/home/operator/.local/state/ipfs-taskboard-watchdog/legal-ir/status.json",
+    "deployment_id": "accepted-release-id",
+    "source_sha256": "<qualified-source-sha256>",
+    "stale_after_seconds": 180,
+    "startup_grace_seconds": 300,
+    "operator_hold": false
+  }
+}
+```
+
+Replace the example deployment, absolute path and SHA256 with the original
+owner's admitted bindings; the digest must be64 lowercase hexadecimal characters.
+The profile is a declaration, **not imported-byte attestation or source
+qualification**. Original source/runtime adoption remains independently required.
+Omitting these optional keys preserves the existing report and monitor behavior.
+
+The producer records its own kernel PID/birth/boot identity. The monitor compares
+opening and closing report, systemd and kernel-process observations, matching the
+declared profile and checking report age against a closing wall clock and verified
+monotonic service birth. These are sequential consistency checks, not an atomic
+snapshot. Missing initial reports receive only the configured startup grace;
+legacy, malformed, replaced, future, pre-start or different-generation reports
+remain unavailable. `operator_hold` and inactive services never grant recovery.
+
+The optional attachment uses an 80-second deadline from fleet-cycle entry,
+reserving ten seconds of the existing 90-second oneshot for publication. It
+requires 35 seconds before the first existing 15-second unit query and 20 before
+the closing query. Slow lane checks or local observations therefore produce
+`unavailable` with `observation_budget_exhausted` and preserve fleet publication.
+These checks reserve time for bounded operations; they do not impose a hard
+operating-system deadline on filesystem I/O.
+
+Read `watchdog_liveness.status`, `attention_required` and `reason_codes` in the
+existing fleet health report. Repeated identical consecutive incidents share an
+`incident_id`; transitions use the existing action observation log. This separate
+attachment never changes lane health, aggregate issues, restart eligibility,
+repair budgets or CLI lane-health exit status. Existing fleet probes use those
+aggregate fields as repair triggers, so a self-liveness warning must not feed
+back into an automatic coding/restart loop. No additional queue or daemon is
+created. A stale result is a diagnostic for the original owner, not restart,
+signalling, code-adoption or task-completion authority.
+
+## Isolated LegalIR diagnostic profile
+
+`install_fleet_watchdog.py --profile legal-ir` stages a separate instance of these same watchdog/repair owners. It consumes the existing minute LegalIR fleet-monitor report and does not add another lane monitor. The six-board global configuration, units, operator holds and repair history remain unchanged. Use this profile when the global runtime/source bindings require their own separate review.
+
+Prepare a host inventory containing exactly one `service_fleet_report` board with an absolute report path, namespace,180-second freshness limit and explicit lane-to-service bindings. Its ensure command must be empty: the existing LegalIR service monitor retains exact-service recovery. The diagnostic board cannot acquire publication or completion authority.
+
+```sh
+python3 scripts/ops/agent_supervisor/install_fleet_watchdog.py \
+  --profile legal-ir --inventory /path/to/legal-ir-inventory.json \
+  --repair-cwd /accepted/accelerate-development-checkout --dry-run
+```
+
+Review the returned file postimages, then repeat without `--dry-run` to stage them. Profile staging performs no systemctl commands; `--enable` records intent only. Activate explicitly through `systemctl --user daemon-reload` and enable/start only `ipfs-taskboard-legal-ir-watchdog.service` and `ipfs-taskboard-legal-ir-repair.service`. Existing installations require exact idempotence or an explicit reconciliation; they are never silently overwritten.
+
+Configuration lives in `~/.config/ipfs-taskboard-watchdog/legal-ir/`; state and repair evidence live in `~/.local/state/ipfs-taskboard-watchdog/legal-ir/`. The dedicated coding unit is `ipfs-taskboard-legal-ir-repair-job.service`, preventing collision with the global dispatcher. The profile inherits the operator's existing repair model/argv, uses the explicitly selected development checkout, and limits this diagnostic board to three cumulative coding attempts with visible `repair_budget_exhausted` escalation.
+
+The report probe validates regular bounded JSON, freshness, namespace, exact lane/service population, counts and native liveness. Confirmed empty engineering work stays healthy without advancing a progress timestamp or claiming task/goal completion. Newly runnable work starts its own stall interval. A fresh bound dependency wait is a noncoding wait. Stale, malformed or foreign reports cannot prove recovery; a coding exit code alone cannot do so either. A fresh bound report can verify diagnostic runtime recovery only, retaining all semantic/task/goal authority as false.
+
+The completed135-task legacy engineering board and the separate34-goal/64-task LegalIR programme retain distinct scopes. Before corpus-worker cutover, reviewed execution packets and authenticated native task/goal scope must be admitted through the existing owners. This diagnostic profile does not rematerialize that population, rearm attempts, approve legal meanings or declare the US Code formalized.
+
+### Observe the scientific programme before enabling recovery
+
+An additional entry in the existing fleet can set `"observation_only": true`.
+This is a strict Boolean operator policy, not a probe result. The watchdog
+continues its configured status probe, health/progress assessment and local
+observation writes, including while holds are present. It selects no recovery
+action and preserves retained recovery counters, pending intent and cooldown.
+It does not review holds, stop a repair unit, heal an owner, enqueue a coding
+job or publish. Existing queued/running repair records remain unchanged and
+appear as held with reason `observation_only`; direct enqueue and job execution
+also enforce the configured policy. Other fleet entries retain their policy.
+This does not cancel workers that were already running.
+
+Native healing also requires exactly one explicit absolute `--inventory` in
+the configured probe, with any `--board` matching the configured identity.
+The selected inventory must contain exactly one matching entry with absolute
+checkout/database paths, and its checkout must match the configured `cwd`.
+Missing, malformed, foreign or incomplete inventories do not fall back to
+`~/.config/ipfs-taskboard-watchdog/inventory.json`. Board names and observed
+unit names alone cannot establish ownership. Unbound fleet heals and direct
+dump/attach/collapse/restart paths refuse before their first effect. Tests of
+these paths must supply a private inventory or assert that refusal.
+
+Use an admitted read-only native status command as the probe. The policy does
+not make an arbitrary operator-configured command read-only. Keep the native
+owner's `bind_database_status_scope` binding to the exact board namespace,
+plan root, repository tree and complete task CID population. Its status-only
+grant has no command operations. Do not open the live database or substitute
+saved `status`/`ready` projections for that authenticated read.
+
+The corresponding `live_board_probe` inventory entry can additionally pin
+`native_population`, an object with exactly `task_cids` and `goal_cids`.
+Each is a complete list of 1–512 unique nonblank identities, at most256
+characters each. Copy the accepted inventories, not aliases, counts or a sample.
+The probe checks both sets against the admitted database status and completion
+projection. Missing, added, substituted or duplicate identities reject the
+observation. A pinned entry cannot fall back to daemon task/readiness counts;
+rejected native completion flags cannot close the board. Omitting the pin
+preserves the existing unpinned adapters.
+
+For LegalIR, retain distinct entry identities for the legacy engineering fleet
+and the `legal-ir-span-graph-lean-refinement-20261016` scientific programme.
+The latter's retained inventory is34 goals/64 tasks; its historical blocked
+snapshot is not current status. Reuse the existing G090/LIR-9004 handoff and
+scientific observation controls. A fresh owner/status binding and compatible
+probe must be qualified before enrollment. This policy adds no LIR launcher,
+task population, credential or execution packet. Enable recovery only through
+an explicit subsequent operator configuration after its native capability,
+retry/resource budgets and independent verification are admitted.
+
 ## Operation
 
 Each board may explicitly configure read-only active-storage checks:
@@ -179,8 +400,19 @@ controls to deploy it. It can commit and normally push validated changes under
 the user's authorization. Unknown faults may need several repair jobs; an
 unresolved fault remains visible rather than becoming a fabricated success.
 
-Coding jobs use the installed Codex CLI's unattended execution and the user's
-existing authentication. They retain the configured model choice. See the
+Coding jobs use the existing packaged Grok-to-Codex fallback owner and the user's
+existing authentication. `repair_worker.argv` supplies the Codex fallback command.
+An optional `repair_worker.implementation_route` uses the existing complete
+six-field route validator to bind the primary model, fallback model/reasoning and
+hard-quota-only boundary. For the LegalIR route, set Grok4.7, Codex `gpt-6.1-sol`
+and high reasoning, and include explicit matching `--model gpt-6.1-sol` and
+`-c 'model_reasoning_effort="high"'` in the fallback argv. Actual primary and
+readiness-probe models then share this binding; conflicting or missing fallback
+options fail before queue changes. The validator is included in the immutable
+installed runtime. Other configurations without this optional binding preserve
+their existing route and model behavior. This does not change task acceptance,
+repair-attempt limits, resource admission or live configuration automatically.
+See the
 [official unattended execution documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
 No local model service is started; the existing llama-server mask is retained.
 
@@ -283,6 +515,23 @@ ordinary push. Conflicts, stale evidence, changed gitlinks without dependencies,
 dirty validation output or failed tests produce a retained hold for repair.
 There are no force pushes, resets of live checkouts or automatic branch deletion.
 
+Publication uses an exact-head pull request and ordinary GitHub merge rules.
+Required hosted checks and reviews must pass, with the candidate head checked
+again immediately before merging. Local validation does not replace a missing
+required hosted result. The publisher never uses administrative merge rights
+when billing, quota or another service outage prevents a check from running.
+
+A confirmed GitHub Actions billing lock retains the tested candidate and its
+pull request as a retryable publication hold. Billing diagnosis uses bounded
+check-run annotations from GitHub Actions on that exact candidate; failures on
+another commit or repository do not establish this candidate's state. The
+watchdog waits with its publication backoff instead of launching a code repair
+for the account outage. After checks recover, the next publication attempt
+reuses the retained candidate and rechecks GitHub readiness. An already merged
+pull request at the exact candidate remains idempotent. Restoring account
+eligibility requires the account owner's action; neither a billing observation
+nor local test success authorizes changing billing or branch protection.
+
 ## Install and inspect
 
 From a tested supervisor checkout, provide a host-specific inventory and a
@@ -296,7 +545,20 @@ python3 scripts/ops/agent_supervisor/install_fleet_watchdog.py \
 
 The installer creates a content-addressed standalone runtime under
 `~/.local/lib/ipfs-taskboard-watchdog/releases/`, avoiding optional provider
-imports and sealed-checkout module shadowing. It writes:
+imports and sealed-checkout module shadowing.
+
+Generated watchdog and repair units check that their immutable release directory,
+selected module and configuration exist before starting. Missing prerequisites
+skip startup instead of entering a restart loop. A released unit does not require
+the original development checkout. Generated native ensure units check their
+own working directory and configuration; externally owned service units retain
+their original launch contract.
+
+These path checks do not recreate deleted source, databases or native authority.
+Restore and admit the original prerequisites before requesting the existing
+launcher again. Preserve maintenance holds and unresolved attempt history.
+
+The installer writes:
 
 * Configuration: `~/.config/ipfs-taskboard-watchdog/fleet.json`
 * Inventory: `~/.config/ipfs-taskboard-watchdog/inventory.json`
@@ -555,3 +817,424 @@ The read session controls resource lifetime only. It does not begin a read
 transaction, freeze task heads, grant authority, or replace native source/owner
 admission. The caller must retain the final snapshot comparison and retry only
 the typed observation drift that the native restart-check contract permits.
+
+
+## Infrastructure-only recovery for scientific and engineering observations
+
+The opt-in `recovery_policy.profile = "infrastructure-only/v1"` keeps the existing
+watchdog, repair queue, provider route and worker. It never invokes native ensure,
+unstall, publication or supervisor-heal recipes. Configure `repairable_stalls`
+from the closed infrastructure allowlist, `max_actions_per_window`,
+`window_seconds`, `circuit_breaker_seconds`, and the existing positive
+`max_repair_attempts` board cap. The separate per-board
+`infrastructure-budget.json` is reserved before action and survives symptom,
+progress-token and healthy-sample changes. Corrupt accounting opens the circuit;
+the original evidence must be reconciled rather than deleted. A new time window
+may admit diagnostic actions after its circuit interval, while actual coding
+attempts retain their existing cumulative cap.
+
+Optional `stop_own_repair_on_wait` defaults to false. When explicitly true, a wait
+can stop only the exact board/attempt token reported by the configured systemd
+repair unit, under the original queue lock. A missing or foreign token cannot
+stop a different board's job. Any configured hold, including a dangling symlink,
+fences all recovery and hold review; observation can continue. Holds are never
+automatically cleared by this profile.
+
+For `probe_profile = "native_catalogue"`, bind `native_catalogue_binding` to the
+exact `board_namespace`, `plan_root_cid`, `repository_tree_id`,
+`population_sha256` and finite positive `max_age_seconds`. Fresh bound catalogue
+observations remain blocked when activation, review, exhausted-attempt or unknown
+provider-outcome gates remain. Missing/stale/mismatched observations are unknown,
+never healthy. Only explicitly allowed read/timeout/import observer faults may
+enqueue infrastructure diagnosis. Scope/population mismatches are manual waits.
+Repair workers may fix observer/import/service/reporting code and regressions;
+they may not create, replace or repair the native database/WAL, activate tasks,
+reset budgets, change source populations or approve legal meaning.
+
+A fresh blocked readback can verify observer recovery with
+`scope="infrastructure_observer"`, `observer_verified=true`, and task health still
+`blocked`. It supplies no native task, goal, completion or publication authority.
+The same opt-in policy can monitor the existing service-fleet engineering bridge;
+its original monitor retains lane restart authority and completed/no-runnable
+fleets remain healthy and idle. Give each namespace its own board ID and state
+subdirectory; retain a single existing repair worker and its scoped queue locks.
+
+### Monitor pauses, runnable stalls and durable repair deadlines
+
+A fresh service-fleet report can classify an explicit native retry or resource
+fence as `service_fleet_backpressure_wait`, even when the paused lane reports
+positive ready/selectable counts. The lane must be live, inactive, explicitly
+non-restart-eligible and report backpressure with no action. Namespace, exact
+lane/service bindings, counts, report/native timestamps and the complete monitor
+issue population remain mandatory. Missing provenance, another unhealthy lane,
+stale or dead workers and additional monitor faults cannot receive this exemption.
+
+An all-paused fleet waits without another coding repair. Independently runnable
+or active peer work remains visible. A genuinely stalled ready peer retains its
+finite scheduling interval and passes a closed `service-fleet-scheduling-stall/v1`
+frame through assessment, policy classification and enqueue. The frame binds the
+board, unchanged progress token, threshold, interval anchor and fresh observation.
+Pausing clears only the runnable scheduling anchor; it does not invent accepted
+work, advance meaningful progress or reset action/attempt accounting. A fresh
+pause discovered during repair prelaunch, reconciliation or completion retires
+the exact job as a wait, with false native/task/goal completion authority.
+
+Repair argv selects the existing physical
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py` adapter beside the fallback
+owner, rather than the package alias that resolves to the domain runtime runner.
+It retains `--require-terminal-quota-frame`. The private failure-receipt channel
+recognizes the original exact direct-script form and its explicit Python `-P`
+form; foreign scripts, same-basename replacements and ambiguous interpreter
+options do not gain that channel. The existing sealed module protocol remains
+separate. Exact quota-frame validation and quota-only Codex fallback are unchanged;
+an argparse error or missing trusted failure receipt is not a quota event.
+
+For `infrastructure-only/v1`, a future durable `next_attempt_at` remains a lower
+bound through queue selection, quick-failure handling, route/workspace migration,
+enqueue, source/progress reconciliation, productive continuation and final claim.
+The direct worker checks it before service commands and again under the queue
+lock. Early preflight/storage/spawn refusals retain the deadline even after a
+backward clock step. Existing known-unstarted accounting remains distinct from a
+consumed coding attempt. Infrastructure attempts stay cumulative across legacy-compatible completion
+paths; this profile still requires its positive cumulative cap; healthy samples, source changes and successful
+coding exits cannot replenish them. Existing daily action windows, circuits,
+operator holds and exact board/unit/attempt cancellation remain in force.
+
+The focused classification cohort passed 110 authored cases / 330 phases. The
+separate physical-provider/deadline cohort passed 55 cases / 165 phases, using
+explicit fake Popen, service, readiness and snapshot seams while retaining the
+real quota parser and receipt decision. Neither contacted a provider/service or
+opened a native database. A third, separate cohort passed six unchanged original
+route/adapter cases / 18 phases in 1.10 seconds, with zero guard denials. These
+counts retain their own populations and are not pooled with earlier generations.
+Three older generic cooldown expectations also fail on unchanged `9daede14`;
+their raw failures and baseline attribution remain retained and supply no passing
+credit. Broader generic collection required unrelated native-state fixtures; its
+guard also refused an old native-heal service call and an old subprocess smoke
+before execution. Those attempts are not passing tests. The full generic suites,
+real provider fallback and live service repair remain unqualified by these cohorts.
+
+Deployment of this generation remains a separate reviewed step. Preserve the
+spent three-action window and three-attempt repair history; neither the source
+fix nor a service restart rearms the old job. Keep the scientific UNKNOWN outcome
+and retry refusal distinct from engineering completion. Adoption must retain
+explicit and old/new cwd operator markers, change only the reviewed source
+locations, and require fresh post-start observations for both existing namespaces.
+An old status file or a successful coding-process exit is insufficient.
+
+## SAWM runtime path compatibility
+
+Bind the existing SAWM service through a persistent `90-sawm-runtime-path.conf`
+that takes precedence over a generated `81` overlay path. Keep its launcher,
+readiness helper, schema/migration modules and five declared SQL resources in a
+matched runtime bundle outside disposable Git worktrees. The bundle manifest
+uses `sawm/schema-compatibility-runtime@1`; pin its SHA256 in the service argv.
+Hash and retain every Python/shell body during staging and immediately before
+activation: `manifest.files` is reference metadata, while the launcher enforces
+the external manifest pin and SQL hashes. Code commitments require that external
+staging control. Do not silently replace an active content-addressed generation.
+
+The schema binding recipe preflights its selected shell/Python assets before
+creating or replacing a drop-in. A missing, empty or symlinked asset produces
+`supervisor_runtime_assets_unavailable` and preserves existing bindings. This
+availability check does not establish integrity or permit an owner restart.
+
+The compatible invocation is:
+
+```sh
+bash "$runtime/ipfs_accelerate_py/agent_supervisor/rescue/sawm_supervise_with_heal_overlay.sh" \
+  "$runtime" "$sealed_sawm_checkout" \
+  "$runtime/ipfs_accelerate_py/agent_supervisor/rescue/sealed_board_supervisor_launch.py" \
+  --sealed-runtime "$manifest_sha256"
+```
+
+Only an exact SAWM `quack-start` invocation receives the two compatibility
+modules, installed in migration/schema order with frozen, hash-verified SQL.
+Scheduler/client commands retain the original sealed package, provider policy
+and capsule-origin checks. The previous default and `--pin-only` paths remain
+available. A newer scheduler's provider constants must not substitute for an
+older accepted SAWM configuration.
+
+Use cold help, shell/unit syntax checks, resource/launcher tests and native
+bootstrap/catalog readback before startup. A ready status file is a hint; verify
+`owner_ready` and `peer_authenticated_observation` through the original SAWM
+`status` API, then check fresh coordinator/lane process births and heartbeats.
+Startup and serving do not establish task, goal or semantic completion.
+
+M70 explicitly retains its live generation-48 owner. Do not stop or restart it
+to fix a client launcher, reset reservations, change generation or rewrite task
+budgets. A reviewed live entrypoint patch must preserve the owner identity,
+SQL/schema/native bodies and record the selected code-file drift separately;
+select a new complete bundle for subsequent starts. Preserve operator holds and
+use the existing per-board watchdog maintenance fence while recovery actors are
+being qualified. Fresh lane heartbeats alone do not prove useful task progress
+or authorize an external owner restart.
+
+## Retained attempts and owner recovery
+
+`expired_attempt_settlement_unavailable` means a real callback's outcome is
+unknown. An expired lease cannot establish whether that callback ran. The
+watchdog classifies this as `retained_attempt_settlement_wait` before stale
+in-progress, unclaimed-todo and retrying heuristics. A later lane's settlement
+wait takes precedence over the first lane's ordinary `no_ready_tasks` result.
+The marker withholds recovery; it cannot authorize a retry or completion.
+
+For runtimes that publish daemon pass heartbeats rather than task-state JSON,
+set `daemon_pass_heartbeat_paths` on the probe inventory board to an ordered
+list of absolute paths, one per lane (`max_lanes`). The adapter reports only a
+settlement-wait marker from the declared heartbeat schema when the daemon's
+PID, process birth and boot match and its completion timestamp is at most 120
+seconds old. Counts, writes and completion flags in that file confer no
+authority. Missing or stale metadata does not release an owner-retention policy.
+
+For an accepted owner whose native contract forbids external replacement, put
+this operator policy on its fleet board and on its service monitor config:
+
+```json
+{
+  "recovery_policy": {
+    "schema": "agent-supervisor/owner-retention@1",
+    "mode": "retain",
+    "profile_id": "semantic-addressed-world-model-v1/m70",
+    "reason": "The accepted M70 contract retains the generation-48 owner."
+  }
+}
+```
+
+`profile_id` identifies the operator's native contract; it is not a capability
+or grant. Only the four shown policy fields are accepted. A present malformed
+policy fails closed. Boards without this policy retain their existing recovery
+contract; the expired-callback denial applies independently of configuration.
+
+During a denial, the watchdog still probes and records health. It preserves
+attempt counters, cooldowns, pending repairs, operator holds and live repair
+workers. It does not cancel a shared repair cgroup, review away a hold, launch
+a coding repair, rearm tasks, clear sidecars, signal processes, dump/import a
+database or replace the owner. Direct heal helpers and the service monitor
+apply the same denial before their effects. Existing native workers can still
+process independently admitted work; the watchdog adds no task pause or grant.
+
+Automatic diagnosis distinguishes an unresolved callback from a missing
+runtime asset or stale client. The existing native completion and terminal
+failure reconciliations may settle exact receipt-backed outcomes. They must
+preserve UNKNOWN outcomes. Do not add a generic settlement RPC or infer a
+non-dispatch receipt from elapsed time. A cached unresolved incident remains
+retained until its evidence is explicitly superseded after native settlement;
+removing an operator policy alone does not establish callback custody.
+
+For deployment, qualify a board-scoped runtime with private inventories and
+hermetic effect stubs before enabling it. Preserve the accepted owner's
+identity and the other boards' recovery policies. A health/readiness sample
+must never replenish the task attempt budget or establish semantic completion.
+
+
+## Shared recovery-policy boundaries
+
+The watchdog and coding-repair queue accept both original closed policy
+families through the shared `recovery_policy` owner. A valid
+`infrastructure-only/v1` policy can enter only the existing bounded diagnostic
+repair path. Its required action window, circuit, allowlist and cumulative
+repair cap remain mandatory. A valid `owner-retention@1` policy records health
+while retaining the original owner and withholding recovery effects. A policy
+that mixes the two schemas or adds an unknown field is denied.
+
+Only the watchdog and coding-repair owners opt into infrastructure diagnosis.
+The default policy guard used by native heal helpers and service restart
+monitoring refuses native recovery under an infrastructure-only policy. This
+separates compatible observer/code repair from owner replacement; policy
+compatibility does not grant native task or provider authority.
+
+An UNKNOWN callback or retained-attempt marker overrides infrastructure
+classification and repair eligibility. Its observation preserves queue bytes,
+spent counters, durable deadlines, live workers and operator holds. It cannot
+trigger the old unscoped shared-unit cancellation path. The existing exact
+board, unit and attempt cancellation remains the only wait-cancellation owner
+when its policy and custody conditions allow that operation.
+
+Qualify a combined source generation with both policy cohorts and explicit
+cross-policy positive and denial controls before adopting it. Historical
+qualifications stay attributed to their original source generations. Source
+integration alone does not install a runtime or settle a blocked task.
+
+
+The immutable watchdog release includes its shared policy and runtime-asset
+helpers. Its cold import must succeed without a development overlay. Provider
+execution still belongs to the explicitly configured full repair engine. If
+the small watchdog bundle has no physical Grok adapter, argv construction uses
+only that engine's existing adapter and provider assets. Missing, empty or
+symlinked selected assets fail preflight before a coding attempt is charged;
+there is no PATH search or alternate provider-script fallback. The original
+source/request generation bindings remain required for deployment and launch.
+
+## LegalIR recovery integration qualification (2026-10-28)
+
+The shared policy guard accepts the closed infrastructure-diagnosis and owner-
+retention policies without mixing their authorities. UNKNOWN callbacks, retained
+attempts and operator holds still withhold recovery. Diagnostic observer repair
+cannot rearm tasks, replace the native owner or replenish spent budgets.
+
+Both native blocked-task callers use the same current-reason classifier. An
+allowed marker must be the current reason or code, optionally followed by colon-
+delimited detail; a marker quoted in descriptions or history cannot authorize a
+retry. Selected current or retained receipt metadata denies automatic rearm for
+UNKNOWN outcomes, retained custody, cleanup, explicit retry refusal or exhausted
+budgets. Malformed, boolean or negative spent counters fail closed even without a
+maximum. Nonpositive remaining counts and invalid maxima also withhold rearm;
+local candidate readiness cannot override these denials.
+
+The catalogue observer validates retained receipts against the task CID, earlier
+revision and canonical receipt hash. It reports historical UNKNOWN outcomes and
+spent/retry-refused budgets separately from a later independent factual
+completion. Empty normalized tables establish neither zero attempts nor provider
+success. The repair worker also preserves a future queued `next_attempt_at`
+before cached wait reconciliation can retire the job or touch its service,
+workspace or probe; retention, holds and cumulative budget checks retain priority.
+
+The immutable cold release includes `recovery_policy` and `runtime_assets` along
+with its diagnostic dependencies. Its small bundle binds a missing physical Grok
+adapter only through the explicitly configured full repair engine's existing
+adapter, router and fallback assets. Missing, empty or symlinked selected assets
+fail before charging an attempt; PATH lookup supplies no replacement.
+
+Qualification passed 630 regular parent cases / 1,890 phases plus 456 separately
+counted subtest calls (1,086 JUnit tests, 20.804 seconds), with zero guard denials,
+on original resource source `d6b8c9bd`. This includes 44 selected Datasets pure AST
+cases; it does not qualify normal Datasets package or full CLI integration. A
+separate original-parented run passed all 22 physical cases / 66 phases on
+resource source `4c351874`, with unchanged Accelerate product hashes. Its
+precharged private fixtures retain seven symlinks, two FIFOs and the real hardlink
+pair; the strict owned attempt remains regular-file only. Both runs closed their
+original native resources and source custody and released their storage
+reservations. Earlier failed attempts retain their original dispositions.
+
+The [source evidence capsule](evidence/legal-ir-recovery-interop-20261028.json)
+binds both original results, owner closeouts, source hashes and independent
+review receipts to their retained evidence paths. These qualifications do not
+attest runtime rollout, actual provider/model work, legal fidelity or native task
+completion. Stale `in_progress` automatic unstall remains unchanged and outside
+this blocked-task fix. LIR-9001 requires its separate independent native
+verification.
+
+## Native catalogue continuation lineage
+
+The existing `legal-ir-native-task-population/v1` diagnostic profile keeps its
+single-root contract. A native `steer` amendment preserves existing tasks'
+original plan CIDs and attaches additions to a continuation root. Rewriting
+historical task roots to satisfy the v1 observer would destroy that lineage.
+
+The opt-in `legal-ir-native-task-population/v2` profile observes this layout
+through the same bounded read-only catalogue worker. Select it by supplying a
+new immutable population file and its exact SHA256 through the existing CLI;
+the configured plan root and repository tree bind the active tip. Existing
+CLI arguments and v1 behavior are unchanged. An arbitrary `lineage` key in a
+v1 plan record cannot select v2 validation.
+
+The v2 population has exactly `schema`, `board_namespace`, `plan_root_cid`,
+`repository_tree_id`, `tasks`, `goals` and `plans`. Each task binds its exact
+CID, alias, goal, original plan, objective and dependencies. Each goal binds
+its CID, alias, objective and parent. Plans are ordered from genesis to the
+active tip and bind their CID, goal, native status, revision, raw `body_json`
+SHA256 and these body fields:
+
+```text
+repository_tree_id, continuation_of, continued_by,
+revision_cid, delta_cid, idempotency_key
+```
+
+JSON null in one of these manifest body bindings means that the key is
+literally absent from the native body. It does not match a native null value
+or act as a wildcard. Genesis may lack historical fields; continuation bodies
+must carry their tree/revision/delta/idempotency bindings. Each predecessor
+must be `continued`, the final plan `active`, and every continuation must name
+the exact predecessor and unchanged root goal. At most 64 roots are accepted.
+An amendment-only active tip may have no tasks born under it.
+
+Validation refuses undeclared task origins, unrelated or forked roots, cycles,
+extra/missing scoped plans or goals, body/revision drift and dependency changes.
+The worker checks all rows in one existing read-only SQL snapshot with bounded
+rows, disabled external access and before/after database/WAL metadata checks.
+The v2 profile retains the original unknown-outcome, retry and incomplete
+attempt-history diagnostics. It still reports `not_activated` and
+`not_established`; a lineage match is no executor-health or task-admission grant.
+
+Build the selected diagnostic population from the responsible native owner's
+post-amendment readback, then qualify its configuration/binding cutover. A pure
+amendment preview cannot supply the new native plan revisions or body hashes.
+Keep the current deployed population selected until that readback exists;
+adding this profile never applies an amendment, rearms a task, clears a budget,
+replaces an owner or modifies a live database.
+
+### Current-main publisher and native binding follow-up
+
+The current generation reuses merged PR308's publisher fix: an unavailable
+required hosted check retains the exact candidate PR for retry; local checks and
+billing diagnosis cannot authorize an administrative merge. It also preserves
+current-main's explicit inventory fence before native heal. The retained-owner
+tests now supply a real private inventory and exercise the production read before
+asserting the independent policy denial.
+
+A separate focused cohort passed 268 parents / 804 phases, without subtests, in
+8.622 JUnit seconds: 112 publisher cases, 78 native-heal binding cases, 59 shared
+policy cases and 19 watchdog integration cases. All 14 immutable-runtime source
+modules are bound among 210 source inputs; 42 installed Git/Python/helper inputs
+remain separately typed. All 1,061 audited private subprocesses reached terminal
+states. Original native tracking observed at most eight processes; its resources,
+source custody and storage closed positively. Private fixtures retain 66 genuine
+hardlinked regular paths without repacking or cleanup.
+
+Full phase and subprocess records remain in separate hash-bound exports listed
+in the source evidence capsule. Earlier 630-parent/456-subtest and 22-physical
+qualifications retain their own source/resource generations. Focused attempts
+v01--v03 retain their failed qualification and storage dispositions, including
+the earlier raw passing tests whose closing source audit failed. They supply no
+additional passing credit. Runtime activation and fresh acceptance require their
+separate closed control receipts; this qualification supplies no provider/model
+work, legal fidelity or native task-completion authority.
+
+Fresh read-only acceptance subsequently verified the deployed d4d227c1e0 source
+and immutable release `0e549c8e1fc814fe82e9`, including all 14 runtime modules,
+both service process births, configured/proc argv and environment, four exact
+configuration files, preserved histories and two fresh samples. Both units stayed
+at PIDs 2377224/2377225. Engineering was healthy and idle at 145/145; four
+concurrent completed engineering cards are separately attributed work. Science
+remained 1 completed / 63 blocked at cursor 217, with UNKNOWN and retry refusal
+retained and no budget reset.
+
+The first cutover check failed after applying its files and starting the units
+because it compared volatile systemctl `ExecStart` display fields. A first
+read-only check also retained its outdated 141-card expectation. Both failures
+remain recorded. The later read-only acceptance performed no restart, service
+mutation, provider/model invocation or native task mutation. Its receipt is new
+evidence, rather than a rewrite of either failure.
+
+The restored PR307 lineage extension belongs to the separate publication
+worktree and requires its own fresh qualification. It has not changed the active
+runtime source or selected population; the accepted deployment above does not
+qualify that new extension or admit a native plan amendment.
+
+### Publication-only continuation qualification
+
+The restored continuation observer passed its separate current-source cohort:
+54 new lineage cases plus 33 existing nonphysical observer cases, 87 parents /
+261 phases without subtests, in 19.660 JUnit seconds. Its 29 bounded private
+reader invocations comprise 28 established legacy reads and one new isolated
+lineage worker. Parent SQL fixtures and the isolated worker used pinned
+DuckDB 1.4.3 / NumPy 2.1.3; Pytest 9 reporting was loaded separately. The unchanged
+original regular validation owner closed source, native processes and storage
+with zero guard denials.
+
+The earlier missing-attempt pre-owner refusal and the overly narrow one-worker
+harness failure remain recorded with their original dispositions. Their results
+are not pooled into the passing cohort. This qualifies the publication source's
+lineage diagnostics; the active d4d227c1e0 runtime and its selected population
+remain unchanged. A native continuation amendment or later runtime cutover still
+requires its own owner readback and admission.
+
+Independent review binds the exact APUB probe/test bytes, all 203 request pins
+and six separately typed installed inputs to that original positive closeout.
+The evidence capsule retains the source, record and review hashes for this scope.
+
+The publication branch also merges upstream `ea6ebfa29e` without changing any of
+the 29 observed source origins from the 87-case cohort. The changed router and
+documentation inputs were unused by that cohort and retain no new qualification
+credit. The accepted active checkout and release remain unchanged.

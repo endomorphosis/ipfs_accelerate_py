@@ -1864,6 +1864,7 @@ class DatabasePortalExecutionBridge:
         max_passes: int = 4,
         max_task_attempts: int = 0,
         prior_attempt_authority: PriorAttemptAuthority | None = None,
+        provider_handoff_binder: Any = None,
     ) -> None:
         if not callable(portal_factory):
             raise TypeError("portal_factory must be callable")
@@ -1936,6 +1937,9 @@ class DatabasePortalExecutionBridge:
         ):
             raise TypeError("prior_attempt_authority must be callable")
         self.prior_attempt_authority = prior_attempt_authority
+        if provider_handoff_binder is not None and not callable(provider_handoff_binder):
+            raise TypeError("provider_handoff_binder must be an owner-only callable or None")
+        self.provider_handoff_binder = provider_handoff_binder
 
     def _paths(self, attempt: Any) -> DatabasePortalAttemptPaths:
         root = self.attempt_root / _attempt_key(attempt.attempt_id)
@@ -11369,6 +11373,14 @@ class DatabasePortalExecutionBridge:
             ):
                 raise DatabasePortalBridgeError(
                     "Portal daemon returned invalid database attempt authority"
+                )
+            if self.provider_handoff_binder is not None:
+                # The exact live attempt object stays inside its database
+                # owner process. The Portal mapping above is lifecycle-only;
+                # the binder independently guards its actual DB claim/fence.
+                self.provider_handoff_binder(
+                    portal_daemon=daemon, attempt=attempt, paths=paths,
+                    binding=dict(binding),
                 )
             merge_queue = getattr(daemon, "merge_queue", None)
             merge_request_loader = getattr(merge_queue, "get", None)

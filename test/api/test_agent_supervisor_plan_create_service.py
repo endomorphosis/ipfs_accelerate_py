@@ -499,6 +499,43 @@ def test_input_snapshot_round_trip_is_content_addressed() -> None:
     assert restored.request_cid == request.request_cid
 
 
+def test_repository_root_scope_names_support_the_deterministic_baseline() -> None:
+    """A top-level scope name has no slash and is still an observed scope path."""
+
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.facade import (
+        _plan_create_ir_absence_only,
+    )
+
+    service = PlanCreateService()
+    receipt = service.preview_create(_create_request(scope_paths=("src",)))
+    reasons = set(receipt.rejection_reasons)
+    candidate = next(
+        item
+        for item in receipt.stage_results
+        if item.stage is PlanCreateStage.CANDIDATE
+    )
+    assert candidate.passed
+    assert receipt.verdict is PlanCreateVerdict.REVIEW_ONLY
+    assert "ir_admission_materials_absent" in reasons
+    assert "candidate_failed:SymbolicCandidatePlanningError" not in reasons
+    assert _plan_create_ir_absence_only(
+        {
+            "status": receipt.verdict.value,
+            "rejection_reasons": receipt.rejection_reasons,
+        }
+    )
+    assert receipt.read_only is True
+
+
+def test_caller_supplied_empty_repository_paths_stay_fail_closed() -> None:
+    service = PlanCreateService()
+    receipt = service.preview_create(
+        _create_request(scope_paths=("src",)),
+        materials=PlanCreateMaterials(candidate_context={"repository_paths": []}),
+    )
+    assert "candidate_failed:SymbolicCandidatePlanningError" in receipt.rejection_reasons
+
+
 def test_structural_preview_is_review_only_without_ir_admission_materials() -> None:
     service = PlanCreateService()
     receipt = service.preview_create(

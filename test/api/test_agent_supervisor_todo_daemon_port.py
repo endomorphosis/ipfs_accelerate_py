@@ -10657,7 +10657,7 @@ def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     assert expired["stalled_without_active_worker"] is True
 
 
-def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
+def test_implementation_supervisor_stops_after_child_loop_restart_exhaustion(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
@@ -10683,6 +10683,11 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
                 )
             return SupervisorLoopResult(status="stopped", restart_count=0, last_run_id="second")
 
+        def _safe_write_status(self, status, **kwargs):
+            assert status == "max_restarts_reached"
+            assert kwargs["extra"]["restart_count"] == 2
+            return True
+
     supervisor = TodoImplementationSupervisor(
         TodoSupervisorConfig(
             todo_path=repo / "todo.md",
@@ -10691,7 +10696,7 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
             events_path=state_dir / "supervisor_events.jsonl",
             state_dir=state_dir,
             check_interval=0.01,
-            max_restarts=1,
+            max_restarts=2,
             repo_root=repo,
         )
     )
@@ -10710,8 +10715,9 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
 
     supervisor.run_forever()
 
-    assert RecoveringLoop.calls == 2
-    assert run_once_calls == [False, True]
+    assert RecoveringLoop.calls == 1
+    assert run_once_calls == [False]
+    assert supervisor.restart_count == 2
     events = [
         json.loads(line)
         for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -10720,13 +10726,11 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     assert [event["type"] for event in events] == [
         "supervisor_preflight_maintenance_pass",
         "supervisor_loop_finished",
-        "supervisor_loop_recovery_pass",
-        "supervisor_loop_restarting_after_recovery",
-        "supervisor_loop_finished",
+        "supervisor_restart_budget_exhausted",
     ]
     assert events[1]["status"] == "max_restarts_reached"
-    assert events[2]["recovery"]["recovered"] is True
-    assert events[-1]["status"] == "stopped"
+    assert events[-1]["restart_count"] == 2
+    assert events[-1]["max_restarts"] == 2
 
 
 def test_implementation_supervisor_source_reload_bypasses_stale_recovery(
@@ -17357,6 +17361,7 @@ def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_childr
 ):
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
         implementation_supervisor as implementation_supervisor_module,
+        supervisor as supervisor_helpers,
     )
 
     repo = tmp_path / "repo"
@@ -17374,7 +17379,7 @@ def test_implementation_supervisor_treats_legal_ir_runs_as_bounded_active_childr
     )
     monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 1234)
     monkeypatch.setattr(
-        implementation_supervisor_module,
+        supervisor_helpers,
         "descendant_processes",
         lambda _pid: [
             {
@@ -30920,33 +30925,15 @@ def test_implementation_supervisor_keeps_failed_recovered_candidate_unmerged(
 
 def test_validation_command_runner_classifies_playwright_host_preflight_failure(
     tmp_path,
-    monkeypatch,
 ):
     output = (
         "Playwright host dependency preflight failed on Linux.\n"
         "browser bundle is not installed under /var/cache/ms-playwright\n"
     )
-    calls = []
-
-    def fake_run(*args, **_kwargs):
-        calls.append(args[0])
-        if len(calls) == 1:
-            return subprocess.CompletedProcess(
-                args=args[0],
-                returncode=0,
-                stdout="",
-            )
-        return subprocess.CompletedProcess(
-            args=args[0],
-            returncode=1,
-            stdout=output,
-        )
-
-    monkeypatch.setattr(
-        implementation_daemon_module.subprocess,
-        "run",
-        fake_run,
-    )
+    # Exercise the real sealed command/custody boundary without invoking npx
+    # or requiring an installed browser. These are the actual failure markers
+    # the public runner classifies, emitted by an ordinary local command.
+    command = "python -c " + shlex.quote("print(" + repr(output) + "); raise SystemExit(1)")
     environment = validation_environment_for_runner(
         build_validation_environment(),
         TodoImplementationDaemon._validation_command_runner,
@@ -30954,7 +30941,7 @@ def test_validation_command_runner_classifies_playwright_host_preflight_failure(
 
     result = TodoImplementationDaemon._validation_command_runner(
         spec=SimpleNamespace(
-            command="npx playwright test",
+            command=command,
             raw_command="npx playwright test",
         ),
         workspace_path=tmp_path,
@@ -30962,7 +30949,6 @@ def test_validation_command_runner_classifies_playwright_host_preflight_failure(
         environment=environment,
     )
 
-    assert len(calls) == 2
     assert result["returncode"] == 1
     assert result["infrastructure_failure"] is True
     assert (

@@ -275,6 +275,44 @@ def descendant_processes(root_pid: Any) -> list[JsonDict]:
     return found
 
 
+def active_validation_subprocess_exists(root_pid: Any) -> bool:
+    """Recognize existing validation markers in actual descendant commands.
+
+    The shared producer exposes scalar ``cmdline`` diagnostics and exact
+    procfs ``argv``. Prefer argv; legacy callers supplying scalar or tokenized
+    command text remain supported. Never join a scalar string as characters.
+    This is an observation only, not process ownership or completion authority.
+    """
+    markers = (
+        "playwright", "run_playwright_test.mjs", "pytest", "vitest",
+        "npm run test", "npm run evidence", "release-readiness-gate",
+        "audit-release-evidence-freshness", "build-virtual-desktop-release-evidence",
+        "tsc --noemit", "run_legal_ir_10m_smoke.sh", "run_legal_ir_8h_canary.sh",
+        "run_hammer_leanstral_smoke.sh", "run_hammer_leanstral_hparam.sh",
+        "uscode_modal_daemon_runner",
+    )
+    for item in descendant_processes(root_pid):
+        command = item.get("argv") or item.get("cmdline")
+        if isinstance(command, str):
+            text = command
+        elif isinstance(command, (list, tuple)) and all(isinstance(part, str) for part in command):
+            text = " ".join(command)
+        else:
+            continue
+        if any(marker in text.lower() for marker in markers):
+            ticks = item.get("start_ticks")
+            if ticks is not None:
+                pid = item.get("pid")
+                if (type(pid) is not int or pid <= 1 or type(ticks) is not int or ticks <= 0
+                        or not pid_alive(pid) or _process_start_ticks(pid) != ticks):
+                    continue
+                argv = item.get("argv")
+                if argv and _process_command_argv(pid) != tuple(argv):
+                    continue
+            return True
+    return False
+
+
 def _strict_procfs_process_identity(
     path: Path,
 ) -> tuple[int, int, str] | None:

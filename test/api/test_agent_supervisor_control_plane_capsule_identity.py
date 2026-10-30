@@ -467,7 +467,15 @@ def test_reviewed_capsule_manifest_closes_identity_dependencies() -> None:
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0003_state_server_restart_identity.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
     }.issubset(dependencies)
+    from ipfs_accelerate_py.agent_supervisor.task_sources import control_plane_migrations
+
+    assert set(llm_router._AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES) == {
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/" + name
+        for name in control_plane_migrations.REQUIRED_PACKAGE_SQL_FILENAMES
+    }
+
 
 
 def test_bundled_schema_resource_failures_keep_typed_install_surface(
@@ -566,6 +574,7 @@ def test_explicit_sql_directory_never_reads_bundled_resources(
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0003_state_server_restart_identity.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
     ],
 )
 def test_capsule_missing_identity_dependency_is_denied(
@@ -590,6 +599,7 @@ def test_capsule_missing_identity_dependency_is_denied(
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
         "0003_state_server_restart_identity.sql",
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql",
     ],
 )
 def test_capsule_substituted_identity_dependency_is_denied(
@@ -698,6 +708,7 @@ assert migration_ids == [
     "0002_causal_event_federation_core",
     "0003_state_server_restart_identity",
     "0004_hash_observations",
+    "0005_tasks_index_repair",
 ]
 assert catalog.fingerprint() == sys.argv[2]
 assert schema.default_control_plane_schema().sql_text() == catalog.get(1).sql_text
@@ -712,6 +723,10 @@ assert (
 assert (
     migrations.read_bundled_sql_text("0004_hash_observations.sql")
     == catalog.get(4).sql_text
+)
+assert (
+    migrations.read_bundled_sql_text("0005_tasks_index_repair.sql")
+    == catalog.get(5).sql_text
 )
 operational = schema.load_datasets_authoritative_operational_catalog()
 assert operational.latest_version == 2
@@ -811,6 +826,7 @@ def test_real_isolated_sealed_capsule_loads_exact_bundled_sql_resources(
         "0002_causal_event_federation_core",
         "0003_state_server_restart_identity",
         "0004_hash_observations",
+        "0005_tasks_index_repair",
     ]
     source = _clean_control_plane_source(tmp_path / "source")
     pin = _real_materialized_pin(source, tmp_path / "capsules")
@@ -920,10 +936,10 @@ def test_real_materializer_hashes_a_new_tracked_sql_migration(
     source = _clean_control_plane_source(tmp_path / "source")
     relative = (
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
-        "0005_future_capsule_contract.sql"
+        "0006_future_capsule_contract.sql"
     )
     migration = source / relative
-    migration.write_text("SELECT 5;\n", encoding="utf-8")
+    migration.write_text("SELECT 6;\n", encoding="utf-8")
     migration.chmod(0o644)
     _git(source, "add", "--", relative)
     _git(source, "commit", "-qm", "add tracked SQL migration")
@@ -936,7 +952,7 @@ def test_real_materializer_hashes_a_new_tracked_sql_migration(
         ).read_text(encoding="utf-8")
     )
     assert manifest["files"][relative] == (
-        "sha256:" + hashlib.sha256(b"SELECT 5;\n").hexdigest()
+        "sha256:" + hashlib.sha256(b"SELECT 6;\n").hexdigest()
     )
 
 
@@ -1018,7 +1034,7 @@ def test_real_materializer_denies_a_missing_required_sql_migration(
     source = _clean_control_plane_source(tmp_path / "source")
     relative = (
         "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
-        "0004_hash_observations.sql"
+        "0005_tasks_index_repair.sql"
     )
     (source / relative).unlink()
     _git(source, "add", "--", relative)
@@ -1027,3 +1043,115 @@ def test_real_materializer_denies_a_missing_required_sql_migration(
     completed = _run_real_materialize(source, tmp_path / "capsules")
     assert completed.returncode != 0
     assert "missing a dependency" in completed.stderr
+
+
+def test_archive_above_former_limit_keeps_deterministic_sealing(tmp_path: Path) -> None:
+    from ipfs_accelerate_py import agent_implementation_route as route
+    import fcntl
+
+    payloads = _inert_required_payloads()
+    block = b"#" + b"x" * (4 * 1024 * 1024 - 2) + b"\n"
+    for index in range(17):
+        payloads[f"ipfs_accelerate_py/agent_supervisor/capacity_{index:02d}.py"] = block
+    pin = _write_capsule(tmp_path / "capsule", payloads)
+    assert llm_router.build_agent_implementation_control_plane_pin(
+        runner_path=pin.runner_path, capsule_root=pin.capsule_root
+    ) == pin
+    sealed = llm_router.seal_agent_implementation_control_plane_capsule(pin)
+    try:
+        size = os.fstat(sealed.descriptor).st_size
+        assert 64 * 1024 * 1024 < size <= route._AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES
+        assert sealed.archive_sha256 == pin.archive_sha256
+        assert route.verify_agent_implementation_sealed_control_plane(pin, sealed.descriptor) == sealed.executable_path
+        required = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SEAL
+        assert fcntl.fcntl(sealed.descriptor, fcntl.F_GET_SEALS) & required == required
+        with pytest.raises(OSError):
+            os.write(sealed.descriptor, b"substitution")
+    finally:
+        os.close(sealed.descriptor)
+
+
+def test_archive_payload_budget_rejects_cumulative_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ipfs_accelerate_py import agent_implementation_route as route
+    monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES", 1024 * 1024)
+    payloads = _inert_required_payloads()
+    for index in range(2):
+        payloads[f"ipfs_accelerate_py/agent_supervisor/payload_{index}.py"] = b"#" + b"x" * (600 * 1024)
+    with pytest.raises(ValueError, match="archive payload is oversized"):
+        _write_capsule(tmp_path / "capsule", payloads)
+
+
+def test_archive_overhead_has_its_own_finite_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ipfs_accelerate_py import agent_implementation_route as route
+    monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_MAX_ARCHIVE_OVERHEAD_BYTES", 128)
+    with pytest.raises(ValueError, match="archive overhead is oversized"):
+        _write_capsule(tmp_path / "capsule", _inert_required_payloads())
+
+
+def test_archive_final_byte_ceiling_is_enforced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ipfs_accelerate_py import agent_implementation_route as route
+    monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES", 1024)
+    with pytest.raises(ValueError, match="archive is oversized"):
+        _write_capsule(tmp_path / "capsule", _inert_required_payloads())
+
+
+def test_archive_capacity_preserves_four_mib_per_file_limit(tmp_path: Path) -> None:
+    payloads = _inert_required_payloads()
+    payloads["ipfs_accelerate_py/agent_supervisor/oversized.py"] = b"#" + b"x" * (4 * 1024 * 1024)
+    with pytest.raises(ValueError, match="file is not immutable enough"):
+        _write_capsule(tmp_path / "capsule", payloads)
+
+
+def test_sealed_descriptor_rejects_archive_above_absolute_bound(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ipfs_accelerate_py import agent_implementation_route as route
+    pin = _write_capsule(tmp_path / "capsule", _inert_required_payloads())
+    sealed = llm_router.seal_agent_implementation_control_plane_capsule(pin)
+    try:
+        monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES", os.fstat(sealed.descriptor).st_size - 1)
+        with pytest.raises(ValueError, match="descriptor is not sealed"):
+            route.verify_agent_implementation_sealed_control_plane(pin, sealed.descriptor)
+    finally:
+        os.close(sealed.descriptor)
+
+
+def test_head_payload_budget_stops_before_loading_overflow_blob(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ipfs_accelerate_py import agent_implementation_route as route
+    root = tmp_path / "source"
+    payloads = _inert_required_payloads()
+    for index in range(2):
+        payloads[f"ipfs_accelerate_py/agent_supervisor/payload_{index}.py"] = b"#" + b"x" * (600 * 1024)
+    for name, value in payloads.items():
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(value)
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "capsule-test@example.invalid")
+    _git(root, "config", "user.name", "Capsule Test")
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "bounded source payload")
+    head = _git(root, "rev-parse", "HEAD")
+    calls = []
+    original = route._agent_git_output
+    def observe(repository, arguments, **kwargs):
+        calls.append(tuple(arguments))
+        return original(repository, arguments, **kwargs)
+    monkeypatch.setattr(route, "_agent_git_output", observe)
+    monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES", 1024 * 1024)
+    with pytest.raises(ValueError, match="source payload is oversized"):
+        route._agent_control_plane_head_payloads(root, source_head=head)
+    assert sum(call[:2] == ("cat-file", "-s") for call in calls) == 1 + sum(
+        call[:2] == ("cat-file", "blob") for call in calls
+    )
+
+
+def test_current_normal_daemon_import_has_real_sealed_source_capsule() -> None:
+    from ipfs_accelerate_py import agent_implementation_route as route
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as daemon
+    pin = daemon._IMPORTED_CONTROL_PLANE_CAPSULE
+    sealed = daemon._IMPORTED_CONTROL_PLANE_LAUNCH
+    assert pin is not None
+    assert sealed is not None
+    source = Path(daemon.__file__).resolve(strict=True).parents[3]
+    assert (pin.source_head, pin.source_tree) == route.agent_implementation_control_plane_source_generation(source)
+    assert route.verify_agent_implementation_sealed_control_plane(pin, sealed.descriptor) == sealed.executable_path
+    assert sealed.archive_sha256 == pin.archive_sha256

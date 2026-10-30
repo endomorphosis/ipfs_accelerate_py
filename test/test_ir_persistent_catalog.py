@@ -429,3 +429,184 @@ def test_real_private_duckdb_wrong_table_fails_closed(tmp_path):
     before = path.read_bytes()
     with pytest.raises(IRPersistentCatalogError): IRPersistentCatalogSource(path=path).load()
     assert path.read_bytes() == before
+
+
+
+def _source4096_logical_identity(record):
+    """Independent serialization of the datasets importer's fixed v2 identity."""
+    declaration = record["huggingface_config"]["ir_checkpoint"]
+    source = deepcopy(declaration["source_representation"])
+    source["evidence_pins"] = sorted(
+        [{"bytes": item["bytes"], "sha256": item["sha256"]} for item in source["evidence_pins"]], key=_raw)
+    return {"asset_binding_schema": "ir-source-representation-binding/v2",
+        **{name: declaration[name] for name in ("ir_family_id", "dimension", "dimension_role", "role", "schema_version", "task_id")},
+        "checkpoint_sha256": declaration["original_checkpoint_pin"]["sha256"],
+        "source_representation": source}
+
+
+def _source4096_record(*, producer_profile="leanstral4096:cpu1:last:l2:single-sequence:tokens512:layer-reclaim:v3"):
+    """Synthetic declarations with deliberately nonexistent evidence paths."""
+    record = _record("legal_ir", checkpoint="synthetic-source4096", role="retained-engineering-step2", trained=True)
+    declaration = record["huggingface_config"]["ir_checkpoint"]
+    declaration.update(asset_binding_schema="ir-source-representation-binding/v2",
+        dimension=4096, dimension_role="source_input_representation_width",
+        schema_version="bound-native4096-source-span-checkpoint/v1",
+        task_id="source_text_and_representation_to_legal_ir",
+        source_representation={"schema": "ir-native4096-source-profile/v1",
+            "expected_producer": {"profile": producer_profile, "model_sha256": "a" * 64,
+                "worker_sha256": "b" * 64, "worker_source_sha256": "c" * 64,
+                "owner_source_sha256": "d" * 64, "vocabulary_owner_source_sha256": "e" * 64,
+                "library_sha256": {"/nonexistent/synthetic-native-library.so": "f" * 64}},
+            "pooling": "last", "normalization": "l2", "attention": "causal", "context_tokens": 512,
+            "sequences": 1, "source_text_required": True,
+            "evidence_pins": [{"path": "/nonexistent/synthetic-native-evidence.json", "bytes": 32, "sha256": "e" * 64}],
+            "evidence_scope": "pinned_historical_metadata_only", "ordinary_receipt_is_capability": False})
+    record["model_id"] = declaration["record_id"] = "ir-model-source-binding/v2:" + hashlib.sha256(
+        _raw(_source4096_logical_identity(record))).hexdigest()
+    record["huggingface_config"].update(complete_runtime_io_contract=False,
+        native_execution_verified_by_importer=False, source_compatibility_verified=False,
+        live_native_capability_restored=False)
+    record.update(model_type="decoder_only", architecture="utf8-byte-bidirectional-gru-native-4096-film-spans/v1")
+    return record
+
+
+@pytest.mark.parametrize("profile", [
+    "leanstral4096:cpu1:last:l2:single-sequence:tokens512:lazy-mmap:v2",
+    "leanstral4096:cpu1:last:l2:single-sequence:tokens512:layer-reclaim:v3"])
+def test_source4096_v2_metadata_mixes_with_original_lanes_without_new_capability(tmp_path, profile):
+    source = _source4096_record(producer_profile=profile)
+    legacy = [_record("legal_ir", dimension=width, checkpoint=f"legacy-{width}") for width in (8, 384, 768)]
+    detached = _record("intent_ir", None, "source_tokens", checkpoint="detached")
+    result = IRPersistentCatalogSource(path=_store(tmp_path, [*legacy, detached, source])).load()
+    assert len(result.ir_bindings) == 5
+    for record in [*legacy, detached, source]:
+        selected = result.resolve_ir_binding(_selection(record))["selected_binding"]
+        assert selected["record_id"] == record["model_id"]
+        assert selected["declaration"] == record["huggingface_config"]["ir_checkpoint"]
+        assert selected["original_checkpoint_bytes_verified"] is False
+        assert selected["runtime_observation_performed"] is False
+    selected = result.resolve_ir_binding(_selection(source))["selected_binding"]
+    assert selected["dimension"] == 4096
+    assert selected["dimension_role"] == "source_input_representation_width"
+    assert all(item.capabilities == () for item in result.models + result.providers)
+    assert all(item.lifecycle is LifecycleState.DECLARED for item in result.models + result.providers)
+    assert result.snapshot.bindings == result.snapshot.deployments == ()
+    assert not any(result.to_dict()["authority"].values())
+    labels = [dict(model.labels) for model in result.models]
+    assert any(label.get("ir.dimension") == "4096" for label in labels)
+
+
+def test_source4096_declared_evidence_is_never_opened_or_imported(tmp_path, monkeypatch):
+    record = _source4096_record()
+    path = _store(tmp_path, [record])
+    genuine_open = ir_source.os.open
+    opened = []
+    def selected_store_only(target, flags, *args, **kwargs):
+        assert Path(target) == path
+        opened.append(str(target))
+        return genuine_open(target, flags, *args, **kwargs)
+    monkeypatch.setattr(ir_source.os, "open", selected_store_only)
+    before = set(sys.modules)
+    result = IRPersistentCatalogSource(path=path).load()
+    assert len(result.ir_bindings) == 1 and opened == [str(path)]
+    added = set(sys.modules) - before
+    assert "ipfs_accelerate_py.model_manager" not in added
+    assert not any(name == "torch" or name.startswith(("torch.", "ipfs_datasets_py.")) for name in added)
+
+
+@pytest.mark.parametrize("mutation", ["family", "dimension", "bool_dimension", "latent_role", "schema", "task",
+    "profile", "format", "binding_schema", "missing_source", "extra_identity", "source_schema", "source_text",
+    "context", "capability", "producer_content", "evidence_sha", "evidence_extra", "duplicate_evidence",
+    "ready", "native_flag", "missing_native_flag", "unknown_record_version", "legacy_record_prefix"])
+def test_malformed_source4096_peer_refuses_whole_load(tmp_path, mutation):
+    record = _source4096_record()
+    config = record["huggingface_config"]
+    declaration = config["ir_checkpoint"]
+    source = declaration["source_representation"]
+    if mutation == "family": declaration["ir_family_id"] = "security_ir"
+    elif mutation == "dimension": declaration["dimension"] = 384
+    elif mutation == "bool_dimension": declaration["dimension"] = True
+    elif mutation == "latent_role": declaration["dimension_role"] = "latent"
+    elif mutation == "schema": declaration["schema_version"] = "future-source/v3"
+    elif mutation == "task": declaration["task_id"] = "vector_only_reconstruction"
+    elif mutation == "profile": declaration["profile_id"] = "invented-profile"
+    elif mutation == "format": declaration["format_id"] = "invented-format"
+    elif mutation == "binding_schema": declaration["asset_binding_schema"] = "foreign/v2"
+    elif mutation == "missing_source": declaration.pop("source_representation")
+    elif mutation == "extra_identity": declaration["native_verified"] = True
+    elif mutation == "source_schema": source["schema"] = "future-native/v2"
+    elif mutation == "source_text": source["source_text_required"] = False
+    elif mutation == "context": source["context_tokens"] = 8192
+    elif mutation == "capability": source["ordinary_receipt_is_capability"] = True
+    elif mutation == "producer_content": source["expected_producer"]["model_sha256"] = "1" * 64
+    elif mutation == "evidence_sha": source["evidence_pins"][0]["sha256"] = "A" * 64
+    elif mutation == "evidence_extra": source["evidence_pins"][0]["native_verified"] = True
+    elif mutation == "duplicate_evidence": source["evidence_pins"].append(deepcopy(source["evidence_pins"][0]))
+    elif mutation == "ready": declaration["runtime_ready"] = True
+    elif mutation == "native_flag": config["native_execution_verified_by_importer"] = True
+    elif mutation == "missing_native_flag": config.pop("source_compatibility_verified")
+    elif mutation == "unknown_record_version":
+        declaration["record_id"] = record["model_id"] = record["model_id"].replace("/v2:", "/v3:")
+    else:
+        declaration["record_id"] = record["model_id"] = record["model_id"].replace("ir-model-source-binding/v2:", "ir-model-asset-binding/v1:")
+    with pytest.raises(IRPersistentCatalogError):
+        IRPersistentCatalogSource(path=_store(tmp_path, [_record(), record])).load()
+
+
+@pytest.mark.parametrize("field,value", [("dimension", 384), ("dimension", True), ("ir_family_id", "security_ir"),
+    ("dimension_role", "latent"), ("schema_version", "future/v2"), ("task_id", "vector_only_reconstruction")])
+def test_source4096_bad_selectors_refuse_before_selected_store_access(tmp_path, monkeypatch, field, value):
+    record = _source4096_record()
+    source = IRPersistentCatalogSource(path=tmp_path / "never-opened.duckdb")
+    def forbidden():
+        pytest.fail("malformed source4096 selector reached store access")
+    monkeypatch.setattr(source, "load", forbidden)
+    request = _selection(record)
+    request[field] = value
+    with pytest.raises(IRPersistentCatalogError):
+        source.resolve_ir_binding(request)
+
+
+def test_source4096_lost_declaration_does_not_fall_back_to_generic_projection(tmp_path):
+    record = _source4096_record()
+    record["huggingface_config"] = {}
+    with pytest.raises(IRPersistentCatalogError, match="lacks checkpoint"):
+        IRPersistentCatalogSource(path=_store(tmp_path, [record])).load()
+
+
+def test_source4096_evidence_locator_is_not_part_of_logical_record_id(tmp_path):
+    record = _source4096_record()
+    old_id = record["model_id"]
+    record["huggingface_config"]["ir_checkpoint"]["source_representation"]["evidence_pins"][0]["path"] = "/another/nonexistent/evidence.json"
+    result = IRPersistentCatalogSource(path=_store(tmp_path, [record])).load()
+    assert result.ir_bindings[0]["record_id"] == old_id
+
+
+def test_source4096_failed_refresh_preserves_previous_mixed_snapshot(tmp_path):
+    record = _source4096_record()
+    path = _store(tmp_path, [_record(), record])
+    source = IRPersistentCatalogSource(path=path)
+    catalog = AIServiceCatalog({source.source: source})
+    before = catalog.snapshot()
+    record["huggingface_config"]["ir_checkpoint"]["source_representation"]["expected_producer"]["worker_sha256"] = "0" * 64
+    path.write_bytes(_raw([_record(), record]))
+    refused = catalog.refresh([source.source])
+    assert refused.failed == (source.source,) and refused.snapshot is before
+    assert len(before.models) == 2
+    assert catalog.resolve(operation=Operation.TEXT_GENERATE).candidates == ()
+
+
+def test_source4096_empty_historical_evidence_declaration_keeps_importer_identity(tmp_path):
+    record = _source4096_record()
+    declaration = record["huggingface_config"]["ir_checkpoint"]
+    evidence = declaration["source_representation"]["evidence_pins"][0]
+    evidence.update(bytes=0, sha256=hashlib.sha256(b"").hexdigest())
+    # The importer permits an opaque empty historical file; no evidence path is opened here.
+    record["model_id"] = declaration["record_id"] = "ir-model-source-binding/v2:" + hashlib.sha256(
+        _raw(_source4096_logical_identity(record))).hexdigest()
+    result = IRPersistentCatalogSource(path=_store(tmp_path, [record])).load()
+    selected = result.resolve_ir_binding(_selection(record))["selected_binding"]
+    assert selected["record_id"] == record["model_id"]
+    assert selected["declaration"]["source_representation"]["evidence_pins"][0] == evidence
+    assert selected["original_checkpoint_bytes_verified"] is False
+    assert not any(result.to_dict()["authority"].values())

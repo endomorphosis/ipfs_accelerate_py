@@ -1034,6 +1034,48 @@ def _runner_supports_hermetic_validation(runner: ValidationRunner) -> bool:
     return "runtime_context" in signature.parameters
 
 
+# Diagnostic payload bound only; execution deadlines and resource limits are unchanged.
+_TIMEOUT_OUTPUT_CHARACTERS = 64 * 1024
+_TIMEOUT_OUTPUT_TRUNCATION = "\n...[timeout output truncated]...\n"
+
+
+def _timeout_output_text(value: object, *, limit: int) -> tuple[str, bool]:
+    """Keep the beginning and final progress of one bounded timeout stream."""
+
+    value = value if isinstance(value, bytes) else str(value or "")
+    truncated = len(value) > limit
+    if truncated:
+        remaining = limit - len(_TIMEOUT_OUTPUT_TRUNCATION)
+        head = (remaining + 1) // 2
+        tail = remaining // 2
+        marker = (
+            _TIMEOUT_OUTPUT_TRUNCATION.encode("utf-8")
+            if isinstance(value, bytes)
+            else _TIMEOUT_OUTPUT_TRUNCATION
+        )
+        value = value[:head] + marker + value[-tail:]
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return value, truncated
+
+
+def _timeout_result(exc: subprocess.TimeoutExpired) -> dict[str, object]:
+    """Retain partial stdout and stderr without turning a timeout into success."""
+
+    stdout, stderr = exc.stdout or "", exc.stderr or ""
+    separator = "\n[stderr]\n" if stderr else ""
+    count = int(bool(stdout)) + int(bool(stderr))
+    limit = (_TIMEOUT_OUTPUT_CHARACTERS - len(separator)) // max(1, count)
+    output, stdout_truncated = _timeout_output_text(stdout, limit=limit)
+    error, stderr_truncated = _timeout_output_text(stderr, limit=limit)
+    return {
+        "returncode": 124,
+        "timed_out": True,
+        "output": output + separator + error,
+        "output_truncated": stdout_truncated or stderr_truncated,
+    }
+
+
 @hermetic_validation_runner
 def run_validation_command(
     *,
@@ -1089,17 +1131,12 @@ def run_validation_command(
             "output": completed.stdout or "",
         }
     except subprocess.TimeoutExpired as exc:
-        output = exc.stdout or ""
-        if isinstance(output, bytes):
-            output = output.decode("utf-8", errors="replace")
         return {
             "command": spec.command,
             "raw_command": spec.raw_command or spec.command,
             "started_at": started_at,
             "finished_at": utc_now(),
-            "returncode": 124,
-            "timed_out": True,
-            "output": output,
+            **_timeout_result(exc),
         }
 
 
@@ -5349,6 +5386,7 @@ class ValidationScheduler:
                         "error": cancellation_token.reason or "cancelled",
                     }
                 else:
+                    attempt_started_at = utc_now()
                     try:
                         runner_kwargs: dict[str, object] = {
                             "spec": spec,
@@ -5435,11 +5473,11 @@ class ValidationScheduler:
                                     cancellation_token.reason or "cancelled"
                                 ),
                             }
-                    except subprocess.TimeoutExpired:
+                    except subprocess.TimeoutExpired as exc:
                         attempt = {
-                            "returncode": 124,
-                            "timed_out": True,
-                            "output": "",
+                            **_timeout_result(exc),
+                            "started_at": attempt_started_at,
+                            "finished_at": utc_now(),
                         }
                     except Exception as exc:
                         attempt = {

@@ -38,6 +38,7 @@ CONTAINERFILE_SHA256 = "b256241b381c9611c1a2fd42677641bed45d18135f693a9d82effb16
 BASE_IMAGE_ID = "sha256:95d16dfcd4ab8b61154e2280ab9fe4afa2ef03e5eefa8a689e86571e8a1b32cf"
 PROFILE = "ordinary-task-toolchain-v1"
 LABEL = "2026-10-16-ordinary-v1"
+ARCHITECTURE = "arm64"
 SOURCE_DATE_EPOCH = 1792108800  # 2026-10-16 00:00:00 UTC.
 SITE = PurePosixPath("opt/ipfs-validation-site-packages")
 MAX_LOCK_BYTES = 64 * 1024
@@ -122,7 +123,7 @@ def load_lock(path: Path) -> BuildLock:
     value = json.loads(raw)
     if (not isinstance(value, dict) or value.get("schema") != "legal-ir-ordinary-worker-wheels@1"
             or value.get("python") != "cp312" or value.get("os") != "linux"
-            or value.get("architecture") != "arm64"
+            or value.get("architecture") != ARCHITECTURE
             or value.get("base_image_id") != BASE_IMAGE_ID
             or value.get("old_authority_image_required") is not False):
         raise BuildInputError("invalid_lock_contract")
@@ -428,7 +429,7 @@ def stage_worker_context(*, output: Path, lock_path: Path, containerfile: Path) 
         (rootfs / directory).mkdir(mode=0o755, parents=True, exist_ok=True)
     profile = {"schema": "legal-ir-ordinary-worker-profile@1", "profile": PROFILE,
                "label": LABEL, "base_image_id": lock.base_image_id, "wheel_lock_sha256": lock.sha256,
-               "architecture": "arm64", "python": "cp312", "host_mounts_required": [
+               "architecture": ARCHITECTURE, "python": "cp312", "host_mounts_required": [
                    "/usr:read-only", "/etc/ssl/certs:read-only",
                    "/usr/bin/python3.12:/opt/ipfs-task-tools/bin/python:read-only"],
                "provider_binaries": "explicit trusted host mounts; not embedded",

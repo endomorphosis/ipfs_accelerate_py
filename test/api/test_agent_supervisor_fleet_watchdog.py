@@ -34,7 +34,7 @@ import importlib.util, json, pathlib, sys, types
 package = types.ModuleType('isolated_fleet')
 package.__path__ = []
 sys.modules[package.__name__] = package
-for name in ('live_board_probe', 'fleet_watchdog'):
+for name in ('recovery_policy', 'live_board_probe', 'fleet_watchdog'):
     spec = importlib.util.spec_from_file_location(
         'isolated_fleet.' + name, pathlib.Path(sys.argv[1]) / (name + '.py'))
     module = importlib.util.module_from_spec(spec)
@@ -837,6 +837,65 @@ def test_ready_owner_after_ensure_does_not_block_receipt_heal():
     assert fleet.select_action(state, board, 100) == "supervisor_heal"
     state["last_action"] = "supervisor_heal"
     assert fleet.select_action(state, board, 100) == ""
+
+
+@pytest.mark.parametrize("stall", ["owner_missing", "owner_live_status_unreadable",
+    "independent_todos_unclaimed", "ready_owner_missing_lanes", "stalled_no_progress"])
+@pytest.mark.parametrize("last_action", ["ensure", "supervisor_heal", "repair"])
+def test_native_recovery_retains_durable_cooldown_for_unchanged_work(tmp_path, monkeypatch, stall, last_action):
+    board = _board(tmp_path, failure_grace_seconds=0, blocked_grace_seconds=0)
+    monkeypatch.setattr(fleet, "_ensure_unit_already_active", lambda _: False)
+    state = {"health": "degraded", "stall_class": stall,
+             "observation": _observation(health="degraded"), "incident_since": 0,
+             "last_action": last_action, "next_action_at": 130,
+             "attempts": 7, "ensure_attempts": 2,
+             "last_action_result": {"returncode": 0, "stdout": '{"status":"queued"}'}}
+    original = json.loads(json.dumps(state))
+    assert fleet.select_action(state, board, 101) == ""
+    assert fleet.select_action(state, board, 131) in {"ensure", "supervisor_heal"}
+    assert state == original
+
+
+def test_repeated_missing_owner_and_native_heal_wait_each_keep_their_cooldown(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    board = _board(tmp_path, failure_grace_seconds=0)
+    runner = Runner(_observation(health="stopped", recovery_action="ensure",
+                                 reason_codes=["owner_missing"]))
+    root = tmp_path / "watch"
+    heals = []
+    def heal(*args, **kwargs):
+        heals.append(True)
+        return {"status": "wait", "recipe": "owner_live_status_unreadable"}
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal", heal)
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=100)
+    assert first["last_action"] == "ensure" and first["next_action_at"] == 130
+    runner.observation["reason_codes"] = ["owner_process_missing_or_birth_mismatch"]
+    waiting = fleet.tick_board(board, root, apply=True, runner=runner, now=101)
+    assert waiting["planned_action"] == "" and waiting["attempts"] == 1
+    assert not heals
+    recovered = fleet.tick_board(board, root, apply=True, runner=runner, now=131)
+    assert recovered["last_action"] == "supervisor_heal" and len(heals) == 1
+    assert recovered["next_action_at"] == 161 and recovered["ensure_attempts"] == 1
+    waiting = fleet.tick_board(board, root, apply=True, runner=runner, now=132)
+    assert waiting["planned_action"] == "" and waiting["attempts"] == 2 and len(heals) == 1
+    assert len([call for call in runner.calls if call["argv"] == ["ensure"]]) == 1
+
+
+@pytest.mark.parametrize("pending_action", ["ensure", "supervisor_heal", "repair"])
+@pytest.mark.parametrize("ready_after_ensure", [False, True])
+def test_interrupted_native_recovery_does_not_use_queued_repair_to_bypass_cooldown(tmp_path, pending_action, ready_after_ensure):
+    state = {"health": "stopped", "stall_class": "owner_missing",
+             "observation": _observation(health="stopped", recovery_action="ensure"),
+             "incident_since": 0, "next_action_at": 130, "pending_action": pending_action,
+             "last_action": "repair", "attempts": 7, "ensure_attempts": 2,
+             "last_action_result": {"returncode": 0, "stdout": '{"status":"queued"}'}}
+    if ready_after_ensure:
+        state.update(stall_class="blocked_without_independent_work", last_action="ensure")
+        state["observation"]["details"] = {"owner_ready": True}
+    before = json.loads(json.dumps(state))
+    assert fleet.select_action(state, _board(tmp_path), 101) == ""
+    assert state == before
 
 
 def test_local_validation_heal_retries_unstall_on_cooldown(tmp_path, monkeypatch):
@@ -1754,3 +1813,953 @@ def test_extra_gate_recursion_selects_supervisor_heal_not_ensure_or_llm():
         "max_ensure_attempts": 2,
     }
     assert fleet.select_action(state, board, 100) == "supervisor_heal"
+
+
+def _service_fleet_case(now=1000.0, *, ready=0):
+    units = {"lane-0": "legal-ir-autoencoder-v1.service",
+             "lane-1": "legal-ir-autoencoder-v1-lane-1.service"}
+    board = dict(id="legal-ir", stall_seconds=60,
+                 service_fleet_binding=dict(board_namespace="legal-ir-autoencoder-v1",
+                                            max_age_seconds=180, lanes=units))
+    lanes = [dict(lane_id=k, service=v, healthy=True, checked_at_epoch=now,
+                  native_status_at_epoch=now, native_daemon_pid_alive=True, active=False, ready_count=ready,
+                  selectable_ready_count=ready, global_ready_count=ready,
+                  blocked_count=0, waiting_count=0, task_count=135 + ready,
+                  completed_count=135) for k, v in units.items()]
+    report = dict(schema="service-fleet-diagnostic/v1",
+                  board_namespace="legal-ir-autoencoder-v1", checked_at_epoch=now,
+                  completion_authority=False, lanes=lanes,
+                  work_availability="runnable_work" if ready else "no_runnable_work")
+    observation = dict(board_id="legal-ir", health="healthy", complete=False,
+                       completion_candidate=False, busy=False, reason_codes=[],
+                       progress_token="same-work", details=dict(service_fleet=report,
+                                                               completion_authority=False))
+    return board, observation
+
+
+def test_confirmed_exhausted_service_fleet_is_idle_without_fake_progress():
+    board, observation = _service_fleet_case()
+    previous = dict(last_progress_at=1, progress_token="same-work")
+    state = fleet.assess(observation, previous, board, 1000)
+    assert state["health"] == "healthy"
+    assert state["idle_without_runnable_work"] is True
+    assert state["last_progress_at"] == 1
+    assert state["observation"]["complete"] is False
+    assert state["observation"]["completion_candidate"] is False
+    assert fleet.select_action(state, board, 1000) == ""
+    board, observation = _service_fleet_case(100000)
+    later = fleet.assess(observation, state, board, 100000)
+    assert later["health"] == "healthy"
+    assert later["last_progress_at"] == 1
+
+
+@pytest.mark.parametrize("fault", ["stale", "future", "namespace", "service", "missing_lane",
+                                  "duplicate_lane", "boolean_count", "authority", "candidate",
+                                  "ready_hidden", "unsettled_hidden", "unconfigured"])
+def test_unbound_or_incomplete_service_idle_cannot_suppress_stall(fault):
+    board, observation = _service_fleet_case()
+    report = observation["details"]["service_fleet"]
+    if fault == "stale":
+        report["checked_at_epoch"] = 819
+    elif fault == "future":
+        report["checked_at_epoch"] = 1001
+    elif fault == "namespace":
+        report["board_namespace"] = "another-board"
+    elif fault == "service":
+        report["lanes"][0]["service"] = "other.service"
+    elif fault == "missing_lane":
+        report["lanes"].pop()
+    elif fault == "duplicate_lane":
+        report["lanes"][1] = dict(report["lanes"][0])
+    elif fault == "boolean_count":
+        report["lanes"][0]["ready_count"] = False
+    elif fault == "authority":
+        report["completion_authority"] = True
+    elif fault == "candidate":
+        observation["completion_candidate"] = True
+    elif fault == "ready_hidden":
+        report["lanes"][0]["ready_count"] = 1
+    elif fault == "unsettled_hidden":
+        report["lanes"][0]["completed_count"] = 134
+    elif fault == "unconfigured":
+        board.pop("service_fleet_binding")
+    assert fleet._service_fleet_availability(observation, board, 1000) == ""
+    if fault != "candidate":
+        state = fleet.assess(observation, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+        assert state["health"] == "stalled"
+
+
+def test_service_work_gets_stall_interval_without_counting_idle_as_progress():
+    board, idle = _service_fleet_case(1000)
+    state = fleet.assess(idle, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+    board, work = _service_fleet_case(10000, ready=1)
+    state = fleet.assess(work, state, board, 10000)
+    assert state["health"] == "healthy"
+    assert state["work_available_since"] == 10000
+    assert state["last_progress_at"] == 1
+    # Refreshed monitor observations and heartbeat times cannot renew this interval.
+    board, work = _service_fleet_case(10059, ready=1)
+    state = fleet.assess(work, state, board, 10059)
+    assert state["health"] == "healthy"
+    board, work = _service_fleet_case(10060, ready=1)
+    state = fleet.assess(work, state, board, 10060)
+    assert state["health"] == "stalled"
+    assert state["work_available_since"] == 10000
+    assert state["last_progress_at"] == 1
+
+
+def test_unknown_probe_does_not_restart_existing_service_work_deadline():
+    board, observation = _service_fleet_case(1000, ready=1)
+    state = fleet.assess(observation, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+    unknown = dict(observation, health="unknown", details={}, reason_codes=["probe_failed"])
+    state = fleet.assess(unknown, state, board, 1030)
+    board, observation = _service_fleet_case(1060, ready=1)
+    state = fleet.assess(observation, state, board, 1060)
+    assert state["health"] == "stalled"
+    assert state["work_available_since"] == 1000
+
+
+def test_confirmed_service_dependency_wait_does_not_enqueue_code_repair():
+    board, observation = _service_fleet_case(1000)
+    report = observation["details"]["service_fleet"]
+    for lane in report["lanes"]:
+        lane.update(task_count=136, completed_count=135, waiting_count=1)
+    report["work_availability"] = "dependency_wait"
+    observation.update(health="blocked", reason_codes=["external_dependency_wait"])
+    state = fleet.assess(observation, dict(last_progress_at=1, progress_token="same-work"), board, 1000)
+    assert state["health"] == "blocked"
+    assert state["stall_class"] == "external_dependency_wait"
+    assert fleet.select_action(state, board, 100000) == ""
+    assert state["last_progress_at"] == 1
+    # A ready task or stale source report cannot supply this exemption.
+    report["lanes"][0]["ready_count"] = 1
+    assert fleet._service_fleet_availability(observation, board, 1000) == ""
+    report["lanes"][0]["ready_count"] = 0
+    assert fleet._service_fleet_availability(observation, board, 1181) == ""
+
+
+def test_service_fleet_stall_tick_enqueues_bounded_repair_without_native_heal(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_repair as repair
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal",
+                        lambda *a, **k: pytest.fail("diagnostic stall must not heal a native owner"))
+    board, observation = _service_fleet_case(1000, ready=1)
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]},
+                 repair={"argv": ["repair", "enqueue"]}, hold_files=[],
+                 failure_grace_seconds=10, blocked_grace_seconds=20,
+                 cooldown_seconds=30, max_backoff_seconds=3600, max_repair_attempts=3)
+    root = tmp_path / "watch"
+    cfg = dict(state_dir=str(root), boards=[board], repair_worker={"cwd": str(tmp_path)})
+    queued = []
+
+    def enqueue_actual(spec, **kwargs):
+        assert spec["argv"][:3] == ["repair", "enqueue", "--incident"]
+        result = repair.enqueue(cfg, Path(spec["argv"][3]))
+        queued.append(result)
+        return dict(returncode=0, stdout=json.dumps(result), stderr="")
+
+    runner = Runner(observation, action=enqueue_actual)
+
+    def tick(now):
+        runner.observation = _service_fleet_case(now, ready=1)[1]
+        return fleet.tick_board(board, root, apply=True, runner=runner, now=now)
+
+    assert tick(1000)["health"] == "healthy"
+    assert tick(1060)["health"] == "stalled"
+    assert tick(1079)["planned_action"] == ""
+    assert queued == []  # Full failure grace follows the work deadline.
+    state = tick(1080)
+    assert state["last_action"] == "repair"
+    assert state["next_action_at"] == 1110
+    assert len(queued) == 1 and queued[0]["status"] == "queued"
+    path = root / "repairs/legal-ir/job.json"
+    job = fleet.read_json(path)
+    assert job["latest_incident"]["action"] == "repair"
+    assert job["latest_incident"]["observation"]["complete"] is False
+    assert repair.next_job(cfg, time.time() + 1)[0]["id"] == "legal-ir"
+    assert tick(1081)["planned_action"] == ""
+    assert tick(1109)["planned_action"] == ""
+    assert len(queued) == 1
+
+    # The existing queue owns provider-attempt accounting. A new watchdog
+    # notification cannot replenish the configured three spent attempts.
+    job.update(attempts=3, status="queued", next_attempt_at=0)
+    fleet.write_json(path, job)
+    tick(1110)
+    assert len(queued) == 2 and queued[-1]["status"] == "escalated"
+    assert fleet.read_json(path)["attempts"] == 3
+    assert repair.next_job(cfg, 9999) is None
+    assert tick(1169)["planned_action"] == ""
+    tick(1170)
+    assert len(queued) == 3 and queued[-1]["status"] == "escalated"
+    assert fleet.read_json(path)["attempts"] == 3
+    assert repair.next_job(cfg, 9999) is None
+
+
+@pytest.mark.parametrize("availability", ["no_runnable_work", "dependency_wait"])
+def test_service_fleet_idle_and_dependency_tick_never_enqueue_repair(tmp_path, monkeypatch, availability):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal",
+                        lambda *a, **k: pytest.fail("idle or dependency wait cannot heal a native owner"))
+    board, observation = _service_fleet_case()
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]},
+                 repair={"argv": ["repair", "enqueue"]}, hold_files=[],
+                 blocked_grace_seconds=0, cooldown_seconds=30, max_repair_attempts=3)
+    runner = Runner(observation, action=lambda *a, **k: pytest.fail("wait cannot enqueue coding repair"))
+    for now in (1000, 2000, 100000):
+        runner.observation = _service_fleet_case(now)[1]
+        if availability == "dependency_wait":
+            report = runner.observation["details"]["service_fleet"]
+            report["work_availability"] = availability
+            for lane in report["lanes"]:
+                lane.update(task_count=136, waiting_count=1)
+            runner.observation.update(health="blocked", reason_codes=["external_dependency_wait"])
+        state = fleet.tick_board(board, tmp_path / "watch", apply=True, runner=runner, now=now)
+        assert state["planned_action"] == ""
+        assert state["observation"]["complete"] is False
+    assert all(call["argv"] == ["probe"] for call in runner.calls)
+
+
+def _wait_cancel_cycle(tmp_path, monkeypatch, *, job_status="running", policy=None):
+    board = _board(tmp_path)
+    root = tmp_path / "watch"
+    config = dict(state_dir=str(root), boards=[board])
+    if policy is not None:
+        config["repair_worker"] = policy
+    job = root / "repairs/spar/job.json"
+    if job_status is not None:
+        fleet.write_json(job, {"board_id": "spar", "status": job_status, "attempts": 2,
+                              "repair_job_unit": (policy or {}).get("job_unit", "ipfs-taskboard-repair-job.service"),
+                              "repair_unit_token": "a" * 32})
+    foreign = root / "repairs/foreign/job.json"
+    fleet.write_json(foreign, {"status": "running", "attempts": 7})
+    original_foreign = foreign.read_bytes()
+    observation = _observation(completion_candidate=True,
+                               details={"native_completion_authority": False})
+    calls = []
+
+    def command(spec, **kwargs):
+        calls.append(list(spec["argv"]))
+        if spec["argv"] == ["probe"]:
+            return _result(observation)
+        if spec["argv"][:3] == ["systemctl", "--user", "show"]:
+            return {"returncode": 0, "stdout": "IPFS_TASKBOARD_REPAIR_BOARD_ID=spar "
+                    "IPFS_TASKBOARD_REPAIR_JOB_TOKEN=" + "a" * 32, "stderr": ""}
+        assert spec["argv"][:3] == ["systemctl", "--user", "stop"]
+        return {"returncode": 0, "stdout": "", "stderr": ""}
+
+    original_tick = fleet.tick_board
+
+    def tick(*args, **kwargs):
+        kwargs["runner"] = command
+        return original_tick(*args, **kwargs)
+
+    monkeypatch.setattr(fleet, "tick_board", tick)
+    monkeypatch.setattr(fleet, "command", command)
+    monkeypatch.setattr(fleet.subprocess, "Popen",
+                        lambda *a, **kw: pytest.fail("live process launch is forbidden"))
+    return config, calls, job, foreign, original_foreign
+
+
+@pytest.mark.parametrize("unit", [None, "ipfs-taskboard-legal-ir-repair-job.service"])
+def test_wait_cancel_uses_configured_job_unit_and_preserves_foreign_job(tmp_path, monkeypatch, unit):
+    policy = {} if unit is None else {"job_unit": unit}
+    config, calls, job, foreign, original = _wait_cancel_cycle(tmp_path, monkeypatch, policy=policy)
+    job_before = job.read_bytes()
+    report = fleet.run_cycle(config, apply=True)
+    assert report["boards"]["spar"]["stall_class"] == "missing_independent_clause_evidence"
+    selected_unit = unit or "ipfs-taskboard-repair-job.service"
+    assert calls == [["probe"], ["systemctl", "--user", "show", selected_unit,
+                                "--property=Environment", "--value"],
+                    ["systemctl", "--user", "stop", selected_unit]]
+    assert foreign.read_bytes() == original
+    assert job.read_bytes() == job_before
+
+
+@pytest.mark.parametrize("unit", [None, "--all.service", "../other.service", "other*.service",
+                                  "other.timer", "other service.service", 3])
+def test_wait_cancel_invalid_config_refuses_before_probe_or_state_mutation(tmp_path, monkeypatch, unit):
+    config, calls, job, foreign, original = _wait_cancel_cycle(
+        tmp_path, monkeypatch, policy={"job_unit": unit})
+    before = job.read_bytes()
+    with pytest.raises(ValueError, match="job_unit must be a literal service unit"):
+        fleet.run_cycle(config, apply=True)
+    assert calls == []
+    assert job.read_bytes() == before and foreign.read_bytes() == original
+    assert not (Path(config["state_dir"]) / "spar").exists()
+
+
+@pytest.mark.parametrize("status", [None, "queued", "failed", "completed"])
+def test_wait_cancel_without_running_job_does_not_stop_any_unit(tmp_path, monkeypatch, status):
+    config, calls, job, foreign, original = _wait_cancel_cycle(
+        tmp_path, monkeypatch, job_status=status,
+        policy={"job_unit": "ipfs-taskboard-legal-ir-repair-job.service"})
+    before = job.read_bytes() if job.exists() else None
+    fleet.run_cycle(config, apply=True)
+    assert calls == [["probe"]]
+    assert (job.read_bytes() if job.exists() else None) == before
+    assert foreign.read_bytes() == original
+
+
+def test_wait_cancel_observation_only_cycle_does_not_stop_running_job(tmp_path, monkeypatch):
+    config, calls, job, foreign, original = _wait_cancel_cycle(
+        tmp_path, monkeypatch, policy={"job_unit": "ipfs-taskboard-legal-ir-repair-job.service"})
+    before = job.read_bytes()
+    fleet.run_cycle(config, apply=False)
+    assert calls == [["probe"]]
+    assert job.read_bytes() == before and foreign.read_bytes() == original
+
+
+# Opt-in observer recovery has a separate, durable action budget and no native authority.
+def _infrastructure_board(tmp_path):
+    return {"id": "legal-ir-scientific", "cwd": str(tmp_path),
+            "probe": {"argv": ["probe"]}, "repair": {"argv": ["repair"]},
+            "probe_profile": "native_catalogue", "hold_files": [],
+            "failure_grace_seconds": 0, "cooldown_seconds": 1, "max_backoff_seconds": 1,
+            "max_repair_attempts": 3,
+            "native_catalogue_binding": {"board_namespace": "scientific", "plan_root_cid": "plan",
+                "repository_tree_id": "tree", "population_sha256": "a" * 64, "max_age_seconds": 30},
+            "recovery_policy": {"profile": "infrastructure-only/v1",
+                "repairable_stalls": ["probe_failed", "native_catalogue_read_unavailable"],
+                "max_actions_per_window": 3, "window_seconds": 1000, "circuit_breaker_seconds": 100}}
+
+
+def _catalogue_sample(now=100, reason="native_catalogue_activation_missing", *, fresh=True):
+    return {"board_id": "legal-ir-scientific", "health": "blocked" if fresh else "unknown",
+            "complete": False, "completion_candidate": False, "reason_codes": [reason],
+            "details": {"native_catalogue": {"schema": "native-catalogue-diagnostic/v1",
+                "board_namespace": "scientific", "plan_root_cid": "plan", "repository_tree_id": "tree",
+                "population_sha256": "a" * 64, "checked_at_epoch": now if fresh else None, "probe_observed_at_epoch": now, "fresh_read": fresh,
+                "activation_state": "not_activated", "counts": {"blocked": 64},
+                "completion_authority": False}}}
+
+
+@pytest.mark.parametrize("reason", ["native_catalogue_activation_missing", "native_catalogue_expected_blocked",
+    "native_catalogue_provider_outcome_unknown", "native_catalogue_attempt_budget_exhausted",
+    "native_catalogue_scope_mismatch", "native_catalogue_population_invalid"])
+def test_infrastructure_scientific_waits_never_dispatch_recovery(tmp_path, monkeypatch, reason):
+    board = _infrastructure_board(tmp_path)
+    board["ensure"] = {"argv": ["forbidden-native-ensure"]}
+    calls = []
+    def runner(spec, **kwargs):
+        calls.append(spec["argv"])
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(_catalogue_sample(reason=reason))}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("no native command authorized"))
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=100)
+    assert state["health"] in {"blocked", "unknown"}
+    assert state["planned_action"] == ""
+    assert state["observation"]["complete"] is False
+    assert calls == [["probe"]]
+    assert not (tmp_path / board["id"] / "infrastructure-budget.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ["namespace", "future", "stale", "authority", "counts", "missing"])
+def test_infrastructure_invalid_catalogue_evidence_is_not_healthy(tmp_path, mutation):
+    board = _infrastructure_board(tmp_path)
+    sample = _catalogue_sample()
+    report = sample["details"]["native_catalogue"]
+    if mutation == "namespace": report["board_namespace"] = "other"
+    elif mutation == "future": report["checked_at_epoch"] = 101
+    elif mutation == "stale": report["checked_at_epoch"] = 1
+    elif mutation == "authority": report["completion_authority"] = True
+    elif mutation == "counts": report["counts"] = {"blocked": True}
+    else: sample["details"].clear()
+    sample.update(health="healthy", complete=True, completion_candidate=True)
+    state = fleet.assess(sample, {}, board, 100)
+    assert state["health"] == "unknown"
+    assert state["observation"]["complete"] is False
+    assert state["observation"]["completion_candidate"] is False
+    assert fleet.select_action(state, board, 100) == ""
+
+
+def test_infrastructure_action_budget_survives_symptoms_tokens_and_one_good_read(tmp_path):
+    board = _infrastructure_board(tmp_path)
+    calls = []
+    current = {"fresh": False}
+    def runner(spec, **kwargs):
+        if spec["argv"] == ["probe"]:
+            reason = "native_catalogue_activation_missing" if current["fresh"] else "native_catalogue_read_unavailable"
+            sample = _catalogue_sample(now=current["now"], reason=reason, fresh=current["fresh"])
+            sample["progress_token"] = str(current["now"])
+            return {"returncode": 0, "stdout": json.dumps(sample)}
+        calls.append(spec["argv"])
+        return {"returncode": 0, "stdout": "{}"}
+    for at in (100, 101):
+        current["now"] = at
+        fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=at)
+    current.update(now=102, fresh=True)
+    fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=102)
+    current.update(now=103, fresh=False)
+    fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=103)
+    current["now"] = 104
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=104)
+    assert len(calls) == 3
+    assert state["infrastructure_budget"]["status"] == "open"
+    assert fleet.read_json(tmp_path / board["id"] / "infrastructure-budget.json")["total_actions"] == 3
+
+
+def test_infrastructure_corrupt_budget_and_dangling_hold_do_not_repair(tmp_path):
+    board = _infrastructure_board(tmp_path)
+    directory = tmp_path / board["id"]
+    directory.mkdir()
+    budget = directory / "infrastructure-budget.json"
+    budget.write_text("{")
+    sample = _catalogue_sample(reason="native_catalogue_read_unavailable", fresh=False)
+    def runner(spec, **kwargs):
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(sample)}
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=100)
+    assert state["infrastructure_budget"]["reason"] == "infrastructure_budget_invalid"
+    assert budget.read_text() == "{"
+    hold = tmp_path / "HOLD"
+    hold.symlink_to(tmp_path / "absent")
+    board["hold_files"] = [str(hold)]
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=101)
+    assert state["health"] == "operator_hold"
+    assert hold.is_symlink() and budget.read_text() == "{"
+
+
+@pytest.mark.parametrize("change", ["profile", "unknown", "cap", "stall", "time"])
+def test_infrastructure_policy_is_closed_before_commands(tmp_path, change):
+    board = _infrastructure_board(tmp_path)
+    if change == "profile": board["recovery_policy"]["profile"] = "native-heal"
+    elif change == "unknown": board["recovery_policy"]["reset_attempts"] = True
+    elif change == "cap": board.pop("max_repair_attempts")
+    elif change == "stall": board["recovery_policy"]["repairable_stalls"] = ["native_catalogue_attempt_budget_exhausted"]
+    else: board["recovery_policy"]["window_seconds"] = float("nan")
+    with pytest.raises(ValueError): fleet.infrastructure_policy(board)
+
+
+
+def test_infrastructure_tick_assesses_after_real_probe_without_allowing_future_clocks(tmp_path, monkeypatch):
+    board = _infrastructure_board(tmp_path)
+    clock = [100.0]
+    monkeypatch.setattr(fleet.time, "time", lambda: clock[0])
+    def elapsed_probe(spec, **kwargs):
+        assert spec["argv"] == ["probe"]
+        clock[0] = 101.0
+        return {"returncode": 0, "stdout": json.dumps(_catalogue_sample(now=101.0))}
+    observed = fleet.tick_board(board, tmp_path, apply=True, runner=elapsed_probe)
+    assert observed["observed_at"] == 101.0
+    assert observed["health"] == "blocked"
+    assert observed["stall_class"] == "native_catalogue_activation_missing"
+    assert observed["planned_action"] == ""
+    clock[0] = 102.0
+    def future_probe(spec, **kwargs):
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(_catalogue_sample(now=103.0))}
+    future = fleet.tick_board(board, tmp_path, apply=True, runner=future_probe)
+    assert future["observed_at"] == 102.0
+    assert future["health"] == "unknown"
+    assert future["stall_class"] == "native_catalogue_probe_invalid"
+    assert future["planned_action"] == ""
+
+
+
+def _backpressure_service_fleet_case(now=1000.0, *, independent_ready=False, active_peer=False):
+    """Typed diagnostic fixture, not evidence of an observed live fleet."""
+    board, observation = _service_fleet_case(now)
+    report = observation["details"]["service_fleet"]
+    for lane in report["lanes"]:
+        lane.update(status="completed", action="none", restart_eligible=False,
+                    selection_idle_reason="no_shard_selectable_ready_tasks", native_progress_status=None,
+                    global_ready_count=2, task_count=137)
+    first, peer = report["lanes"]
+    first.update(healthy=False, status="backpressure", ready_count=2, selectable_ready_count=2,
+                 selection_idle_reason="implementation_retry_deferred:all_eligible_ready_tasks_in_cooldown",
+                 native_progress_status="backpressure")
+    peer.update(active=active_peer, ready_count=int(independent_ready), selectable_ready_count=int(independent_ready))
+    report.update(monitor_healthy=False, monitor_issues=[{
+        "code": "lane_unhealthy", "lane_id": first["lane_id"], "status": "backpressure"}],
+        work_availability="runnable_work" if independent_ready or active_peer else "backpressure_wait")
+    observation.update(health="healthy" if independent_ready or active_peer else "blocked", busy=active_peer,
+        reason_codes=["service_fleet_work_observed"] if independent_ready or active_peer else ["service_fleet_backpressure_wait"])
+    return board, observation
+
+
+def test_cooldown_wait_pauses_scheduling_clock_without_resetting_progress_or_recovery_counters():
+    board, waiting = _backpressure_service_fleet_case()
+    previous = {"last_progress_at": 100, "progress_token": "same-work", "work_available_since": 100,
+                "attempts": 3, "repair_attempts": 3, "next_action_at": 9000,
+                "infrastructure_budget": {"status": "open", "actions": 3, "total_actions": 3}}
+    state = fleet.assess(waiting, previous, board, 1000)
+    assert state["health"] == "blocked" and state["stall_class"] == "service_fleet_backpressure_wait"
+    assert "work_available_since" not in state
+    for key in ("last_progress_at", "progress_token", "attempts", "repair_attempts", "next_action_at", "infrastructure_budget"):
+        assert state[key] == previous[key]
+    board, ready = _service_fleet_case(2000, ready=1)
+    resumed = fleet.assess(ready, state, board, 2000)
+    assert resumed["health"] == "healthy" and resumed["work_available_since"] == 2000
+    assert resumed["last_progress_at"] == 100
+    board, ready = _service_fleet_case(2059, ready=1)
+    assert fleet.assess(ready, resumed, board, 2059)["health"] == "healthy"
+    board, ready = _service_fleet_case(2060, ready=1)
+    assert fleet.assess(ready, resumed, board, 2060)["health"] == "stalled"
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_cooldown_does_not_hide_independent_lane_work_or_its_finite_deadline(active):
+    board, value = _backpressure_service_fleet_case(independent_ready=not active, active_peer=active)
+    previous = {"last_progress_at": 100, "progress_token": "same-work", "work_available_since": 900}
+    state = fleet.assess(value, previous, board, 1000)
+    assert fleet._service_fleet_availability(value, board, 1000) == "runnable_work"
+    assert state["health"] == ("healthy" if active else "stalled")
+    assert state["last_progress_at"] == 100
+    assert state["work_available_since"] == 900
+
+
+@pytest.mark.parametrize("damage", ["unbound", "stale", "dead", "active", "restart", "missing_restart",
+                                  "missing_reason", "long_reason", "control_character", "missing_issues", "extra_issue",
+                                  "wrong_issue_lane", "healthy_contradiction", "hidden_peer_ready"])
+def test_forged_or_incomplete_cooldown_diagnostics_do_not_authorize_a_wait(damage):
+    board, value = _backpressure_service_fleet_case()
+    report = value["details"]["service_fleet"]
+    lane = report["lanes"][0]
+    if damage == "unbound": board.pop("service_fleet_binding")
+    elif damage == "stale": lane["native_status_at_epoch"] = 819
+    elif damage == "dead": lane["native_daemon_pid_alive"] = False
+    elif damage == "active": lane["active"] = True
+    elif damage == "restart": lane["restart_eligible"] = True
+    elif damage == "missing_restart": lane.pop("restart_eligible")
+    elif damage == "missing_reason": lane.update(selection_idle_reason="", native_progress_status=None)
+    elif damage == "long_reason": lane.update(selection_idle_reason="implementation_retry_deferred:" + "x" * 256, native_progress_status=None)
+    elif damage == "control_character": lane.update(selection_idle_reason="implementation_retry_deferred:cooldown\n", native_progress_status=None)
+    elif damage == "missing_issues": report.pop("monitor_issues")
+    elif damage == "extra_issue": report["monitor_issues"].append({"code": "duplicate_active_tasks"})
+    elif damage == "wrong_issue_lane": report["monitor_issues"][0]["lane_id"] = "other"
+    elif damage == "healthy_contradiction": report["monitor_healthy"] = True
+    elif damage == "hidden_peer_ready": report["lanes"][1]["selectable_ready_count"] = 1
+    assert fleet._service_fleet_availability(value, board, 1000) == ""
+
+
+def test_reconstructed_monitor_to_probe_to_watchdog_wait_preserves_durable_action_budget(tmp_path, monkeypatch):
+    """Run the original monitor decision with fixture evidence, not a live PID."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import board_service_monitor as monitor
+    from ipfs_accelerate_py.agent_supervisor.rescue import service_fleet_probe as probe
+
+    board, template = _service_fleet_case()
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]}, repair={"argv": ["forbidden-repair"]},
+                 ensure={"argv": ["forbidden-ensure"]}, hold_files=[], failure_grace_seconds=0,
+                 cooldown_seconds=30, max_repair_attempts=3,
+                 recovery_policy={"profile": "infrastructure-only/v1",
+                    "repairable_stalls": ["service_fleet_unhealthy", "stalled_no_progress"],
+                    "max_actions_per_window": 3, "window_seconds": 86400, "circuit_breaker_seconds": 3600})
+    native_idle = "implementation_retry_deferred:all_eligible_ready_tasks_in_cooldown"
+    rows = []
+    for index, (lane_id, unit) in enumerate(board["service_fleet_binding"]["lanes"].items()):
+        evidence = {name: 0 for name in probe.COUNT_FIELDS}
+        evidence.update(ready_count=1 if index == 0 else 0, selectable_ready_count=1 if index == 0 else 0,
+            global_ready_count=1, task_count=136, completed_count=135, namespace_mismatch=False, active=False,
+            native_daemon_pid_alive=True, native_status_at_epoch=1000, last_heartbeat_at_epoch=1000, state_available=True,
+            last_progress_at_epoch=100, last_work_event_at_epoch=100, implement=True,
+            native_progress_status="backpressure" if index == 0 else None,
+            selection_idle_reason=native_idle if index == 0 else "no_shard_selectable_ready_tasks")
+        decision = monitor.evaluate_health({"startup_grace_seconds": 0, "heartbeat_timeout_seconds": 60,
+            "progress_timeout_seconds": 600}, {"LoadState": "loaded", "ActiveState": "active", "MainPID": "123",
+            "ExecMainStartTimestampMonotonic": "1000000"}, evidence, {}, 1000, 1000)
+        rows.append({"lane_id": lane_id, "health": {"schema": probe.LANE_SCHEMA, "service": unit,
+            "board_namespace": board["service_fleet_binding"]["board_namespace"], "checked_at_epoch": 1000,
+            "action": "none", **decision, "evidence": evidence}})
+    issues = [{"code": "lane_unhealthy", "lane_id": row["lane_id"], "status": row["health"]["status"]}
+              for row in rows if not row["health"]["healthy"]]
+    report = {"schema": probe.REPORT_SCHEMA, "checked_at_epoch": 1000, "healthy": not issues,
+              "status": "attention_required", "completion_authority": False, "lane_count": len(rows),
+              "lanes": rows, "issues": issues}
+    path = tmp_path / "monitor-report.json"
+    path.write_text(json.dumps(report))
+    observation = probe.observe_service_fleet(path, board_id=board["id"],
+        board_namespace=board["service_fleet_binding"]["board_namespace"],
+        expected_units=board["service_fleet_binding"]["lanes"], now=1000)
+    directory = tmp_path / board["id"]
+    directory.mkdir()
+    budget = directory / "infrastructure-budget.json"
+    budget.write_text(json.dumps({"schema": "agent-supervisor/infrastructure-budget@1", "board_id": board["id"],
+        "window_started_at": 900, "actions": 3, "total_actions": 3, "circuit_open_until": 4500}))
+    original_budget = budget.read_bytes()
+    calls = []
+    def runner(spec, **kwargs):
+        calls.append(spec["argv"])
+        assert spec["argv"] == ["probe"]
+        return {"returncode": 0, "stdout": json.dumps(observation)}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("no recovery/native command authorized"))
+    state = fleet.tick_board(board, tmp_path, apply=True, runner=runner, now=1000)
+    assert state["health"] == "blocked" and state["stall_class"] == "service_fleet_backpressure_wait"
+    assert state["planned_action"] == "" and calls == [["probe"]]
+    assert budget.read_bytes() == original_budget
+    assert state["observation"]["complete"] is False
+
+
+def _cooldown_infrastructure_policy():
+    return {"profile": "infrastructure-only/v1", "repairable_stalls": ["stalled_no_progress"],
+            "max_actions_per_window": 3, "window_seconds": 86400, "circuit_breaker_seconds": 3600}
+
+
+def test_mixed_runnable_stall_survives_infrastructure_reclassification_and_actual_enqueue(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_repair as repair
+
+    board, observation = _backpressure_service_fleet_case(independent_ready=True)
+    board.update(cwd=str(tmp_path), probe={"argv": ["probe"]}, repair={"argv": ["repair", "enqueue"]},
+        hold_files=[], failure_grace_seconds=0, cooldown_seconds=30, max_repair_attempts=3,
+        recovery_policy=_cooldown_infrastructure_policy())
+    root = tmp_path / "watch"
+    config = {"state_dir": str(root), "boards": [board], "repair_worker": {"cwd": str(tmp_path)}}
+    queued = []
+    clock = {"now": 1000}
+    monkeypatch.setattr(repair.time, "time", lambda: clock["now"])
+    def enqueue_actual(spec, **kwargs):
+        assert spec["argv"][:3] == ["repair", "enqueue", "--incident"]
+        value = repair.enqueue(config, Path(spec["argv"][3]))
+        queued.append(value)
+        return {"returncode": 0, "stdout": json.dumps(value), "stderr": ""}
+    runner = Runner(observation, action=enqueue_actual)
+    first = fleet.tick_board(board, root, apply=True, runner=runner, now=1000)
+    assert first["health"] == "healthy" and queued == []
+    _, runner.observation = _backpressure_service_fleet_case(1060, independent_ready=True)
+    clock["now"] = 1060
+    state = fleet.tick_board(board, root, apply=True, runner=runner, now=1060)
+    assert state["health"] == "stalled" and state["stall_class"] == "stalled_no_progress"
+    assert fleet._service_fleet_availability(state["observation"], board, 1060) == "runnable_work"
+    assert fleet.infrastructure_repair_allowed(board, state["observation"], 1060)
+    assert state["last_action"] == "repair" and len(queued) == 1
+    assert queued[0]["status"] == "queued" and queued[0]["board_id"] == "legal-ir"
+    job = fleet.read_json(root / "repairs/legal-ir/job.json")
+    assert job["latest_incident"]["observation"]["complete"] is False
+    queued_class = fleet.infrastructure_classification(job["latest_incident"]["observation"], board, 1060)
+    assert queued_class[1] == "stalled_no_progress"
+    assert fleet.read_json(root / "legal-ir/infrastructure-budget.json")["total_actions"] == 1
+
+
+@pytest.mark.parametrize("damage", ["missing", "future", "deadline_not_elapsed", "token", "board", "threshold",
+                                  "reason", "busy", "extra_field", "nonfinite_anchor"])
+def test_runnable_stall_frame_is_closed_fresh_and_bound_to_its_original_diagnostic(damage):
+    board, observation = _backpressure_service_fleet_case(independent_ready=True)
+    board.update(max_repair_attempts=3, recovery_policy=_cooldown_infrastructure_policy())
+    previous = {"last_progress_at": 100, "progress_token": "same-work", "work_available_since": 900}
+    state = fleet.assess(observation, previous, board, 1000)
+    assert state["stall_class"] == "stalled_no_progress"
+    sample = state["observation"]
+    frame = sample["details"]["service_fleet_scheduling_stall"]
+    if damage == "missing": sample["details"].pop("service_fleet_scheduling_stall")
+    elif damage == "future": frame["observed_at_epoch"] = 1001
+    elif damage == "deadline_not_elapsed": frame["anchor_at_epoch"] = 999
+    elif damage == "token": frame["progress_token"] = "different-work"
+    elif damage == "board": frame["board_id"] = "other"
+    elif damage == "threshold": frame["stall_seconds"] = 61
+    elif damage == "reason": sample["reason_codes"].remove("no_task_progress")
+    elif damage == "busy": sample["busy"] = True
+    elif damage == "extra_field": frame["admitted"] = True
+    elif damage == "nonfinite_anchor": frame["anchor_at_epoch"] = float("nan")
+    assert fleet._service_fleet_availability(sample, board, 1000) == ""
+    assert not fleet.infrastructure_repair_allowed(board, sample, 1000)
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", [], {}])
+def test_observation_only_configuration_requires_an_operator_boolean(tmp_path, value):
+    path = tmp_path / "fleet.json"
+    path.write_text(json.dumps({"boards": [_board(tmp_path, observation_only=value)]}))
+    with pytest.raises(ValueError, match="observation_only"):
+        fleet.load_config(path)
+
+
+@pytest.mark.parametrize("value", [None, False, True])
+def test_observation_only_configuration_keeps_legacy_and_boolean_policies(tmp_path, value):
+    board = _board(tmp_path)
+    if value is not None:
+        board["observation_only"] = value
+    path = tmp_path / "fleet.json"
+    path.write_text(json.dumps({"boards": [board]}))
+    assert fleet.load_config(path)["boards"] == [board]
+
+
+@pytest.mark.parametrize("health,stall,publication", [
+    ("unknown", "probe_failed", False),
+    ("stopped", "owner_missing", False),
+    ("stalled", "stalled_no_progress", False),
+    ("blocked", "configured_control_plane_dirty", False),
+    ("complete", "complete", False),
+    ("complete", "complete", True),
+])
+def test_observation_only_selection_cannot_authorize_any_recovery(
+        tmp_path, health, stall, publication):
+    board = _board(tmp_path, observation_only=True)
+    if publication:
+        board["publication"] = {"manifest": "must-not-publish"}
+    state = {"health": health, "stall_class": stall, "incident_since": 0,
+             "next_action_at": 0, "observation": _observation(
+                 health=health, complete=health == "complete")}
+    assert fleet.select_action(state, board, 1000) == ""
+
+
+@pytest.mark.parametrize("scenario", [
+    "healthy", "unknown", "repair", "native_heal", "publication",
+    "completion_review", "wait_with_running_job", "hold_review",
+])
+def test_observation_only_applied_tick_preserves_recovery_custody(
+        tmp_path, monkeypatch, scenario):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_completion, fleet_heals, fleet_holds
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("an observation-only board cannot perform recovery side effects")
+
+    monkeypatch.setattr(fleet, "command", forbidden)
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal", forbidden)
+    monkeypatch.setattr(fleet_holds, "review_board_holds", forbidden)
+    monkeypatch.setattr(fleet_completion, "publish_completed_board", forbidden)
+    board = _board(tmp_path, observation_only=True, failure_grace_seconds=0,
+                   blocked_grace_seconds=0)
+    observation = _observation(progress_token="new-observed-work")
+    if scenario == "unknown":
+        observation.update(health="unknown", reason_codes=["probe_failed"])
+    elif scenario == "repair":
+        observation.update(health="stalled", reason_codes=["no_task_progress"])
+    elif scenario == "native_heal":
+        observation.update(health="stopped", reason_codes=["owner_missing"],
+                           recovery_action="ensure")
+    elif scenario in {"publication", "completion_review"}:
+        observation.update(health="complete", complete=True)
+        if scenario == "publication":
+            board["publication"] = {"manifest": "must-not-publish"}
+    elif scenario == "wait_with_running_job":
+        observation.update(completion_candidate=True,
+                           details={"native_completion_authority": False})
+    elif scenario == "hold_review":
+        hold = tmp_path / "OPERATOR_STOP"
+        hold.write_text("retained operator custody")
+        board["hold_files"] = [str(hold)]
+    root = tmp_path / "watch"
+    recovery = {"attempts": 7, "ensure_attempts": 2, "pending_action": "repair",
+                "next_action_at": 7777, "last_action": "ensure", "last_action_at": 15,
+                "last_action_result": {"status": "failed", "receipt": "retained"}}
+    fleet.write_json(root / "spar/state.json", {
+        **recovery, "board_id": "spar", "health": "healthy", "last_progress_at": 1,
+        "progress_token": "old-observed-work", "observation": _observation()})
+    job = root / "repairs/spar/job.json"
+    fleet.write_json(job, {"status": "running", "attempts": 3, "next_attempt_at": 8888})
+    job_before = job.read_bytes()
+    calls = []
+
+    def probe_only(spec, **kwargs):
+        calls.append(spec)
+        assert spec == board["probe"]
+        return _result(observation)
+
+    state = fleet.tick_board(board, root, apply=True, runner=probe_only, now=1000,
+                             repair_unit="ipfs-taskboard-legal-ir-repair-job.service")
+    assert calls == [board["probe"]]
+    assert state["planned_action"] == ""
+    assert state["observation"] == observation
+    assert state["observed_at"] == state["last_progress_at"] == 1000
+    assert {key: state[key] for key in recovery} == recovery
+    assert fleet.read_json(root / "spar/state.json") == state
+    assert job.read_bytes() == job_before
+    assert not (root / "spar/incident.json").exists()
+    assert not (root / "spar/last_action.json").exists()
+    if scenario == "hold_review":
+        assert hold.read_text() == "retained operator custody"
+
+
+def test_explicit_false_observation_policy_retains_normal_recovery_selection(tmp_path):
+    board = _board(tmp_path, observation_only=False)
+    state = {"health": "unknown", "stall_class": "probe_failed", "incident_since": 0,
+             "next_action_at": 0, "observation": _observation(health="unknown")}
+    assert fleet.select_action(state, board, 1000) == "repair"
+
+
+# Optional producer identity is observational metadata, never recovery authority.
+def _liveness_profile(**changes):
+    return {"schema": "agent-supervisor/watchdog-liveness-profile@1",
+            "deployment_id": "legal-ir:release-01", "source_sha256": "a" * 64,
+            **changes}
+
+
+def _liveness_cycle(tmp_path, monkeypatch, *, profile=...):
+    observation = {"board_id": "kept", "health": "blocked", "reason_codes": ["review_required"]}
+    config = {"state_dir": str(tmp_path), "boards": [{"id": "kept"}]}
+    if profile is not ...:
+        config["liveness_identity"] = profile
+    monkeypatch.setattr(fleet, "tick_board", lambda *args, **kwargs: observation)
+    monkeypatch.setattr(fleet.time, "time", lambda: 1234.5)
+    published = []
+    exports = []
+    monkeypatch.setattr(fleet, "write_json", lambda path, report: published.append((path, report)))
+    monkeypatch.setattr(fleet, "write_ducklake_fleet_health", lambda path, report: exports.append((path, report)))
+    report = fleet.run_cycle(config, apply=True)
+    assert report["boards"] == {"kept": observation}
+    assert published == [(tmp_path / "status.json", report)]
+    assert exports == [(tmp_path, report)]
+    return report, config
+
+
+def test_run_cycle_without_liveness_preserves_legacy_shape_and_skips_metadata(tmp_path, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("legacy cycle must not read optional process metadata")
+
+    monkeypatch.setattr(fleet, "process_identity", forbidden)
+    monkeypatch.setattr(fleet, "_watchdog_liveness", forbidden)
+    report, _ = _liveness_cycle(tmp_path, monkeypatch)
+    assert report == {"schema": "agent-supervisor/fleet-watchdog@1", "observed_at": 1234.5,
+                      "apply": True, "boards": {"kept": {"board_id": "kept", "health": "blocked",
+                                                        "reason_codes": ["review_required"]}}}
+
+
+def test_run_cycle_liveness_is_a_declared_profile_with_own_birth_only(tmp_path, monkeypatch):
+    calls = []
+    profile = _liveness_profile()
+
+    def identity(pid):
+        calls.append(pid)
+        return {"pid": pid, "start_time_ticks": 456,
+                "boot_id": "12345678-1234-1234-1234-123456789abc",
+                "argv": ["private argument"], "cwd": "/not-a-source-attestation"}
+
+    monkeypatch.setattr(fleet, "process_identity", identity)
+    report, config = _liveness_cycle(tmp_path, monkeypatch, profile=profile)
+    assert calls == [os.getpid()]
+    assert report["liveness"] == {
+        "schema": "agent-supervisor/watchdog-liveness@1", "available": True,
+        "process": {"pid": os.getpid(), "birth_ticks": 456,
+                    "boot_id": "12345678-1234-1234-1234-123456789abc"},
+        "profile": {"deployment_id": "legal-ir:release-01", "source_sha256": "a" * 64},
+        "source_binding": "declared_profile_only", "action_authority": False,
+    }
+    report["liveness"]["profile"]["deployment_id"] = "caller-change"
+    assert config["liveness_identity"] == profile == _liveness_profile()
+
+
+@pytest.mark.parametrize("profile", [
+    None, [], True, "profile", {},
+    _liveness_profile(schema="wrong"),
+    _liveness_profile(deployment_id=""),
+    _liveness_profile(deployment_id=" "),
+    _liveness_profile(deployment_id="name\n"),
+    _liveness_profile(deployment_id="x" * 129),
+    _liveness_profile(deployment_id=True),
+    _liveness_profile(deployment_id=math.nan),
+    _liveness_profile(source_sha256="A" * 64),
+    _liveness_profile(source_sha256="a" * 63),
+    _liveness_profile(source_sha256=math.nan),
+    _liveness_profile(extra=True),
+])
+def test_run_cycle_malformed_liveness_preserves_results_without_metadata_reads(tmp_path, monkeypatch, profile):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid profile must not read process metadata")
+
+    monkeypatch.setattr(fleet, "process_identity", forbidden)
+    report, _ = _liveness_cycle(tmp_path, monkeypatch, profile=profile)
+    assert report["liveness"] == {
+        "schema": "agent-supervisor/watchdog-liveness@1", "available": False,
+        "reason_code": "invalid_liveness_profile", "source_binding": "declared_profile_only",
+        "action_authority": False,
+    }
+
+
+@pytest.mark.parametrize("change", [
+    "empty", "not_object", "foreign_pid", "boolean_pid", "string_birth",
+    "boolean_birth", "zero_birth", "nan_birth", "invalid_boot", "missing_boot", "error",
+])
+def test_run_cycle_unavailable_own_birth_keeps_board_report(tmp_path, monkeypatch, change):
+    def identity(pid):
+        if change == "error":
+            raise OSError("private metadata failure must not appear in report")
+        if change == "empty":
+            return {}
+        if change == "not_object":
+            return None
+        value = {"pid": pid, "start_time_ticks": 456,
+                 "boot_id": "12345678-1234-1234-1234-123456789abc"}
+        if change == "foreign_pid":
+            value["pid"] = pid + 1
+        elif change == "boolean_pid":
+            value["pid"] = True
+        elif change == "string_birth":
+            value["start_time_ticks"] = "456"
+        elif change == "boolean_birth":
+            value["start_time_ticks"] = True
+        elif change == "zero_birth":
+            value["start_time_ticks"] = 0
+        elif change == "nan_birth":
+            value["start_time_ticks"] = math.nan
+        elif change == "invalid_boot":
+            value["boot_id"] = "not-a-uuid"
+        elif change == "missing_boot":
+            value.pop("boot_id")
+        return value
+
+    monkeypatch.setattr(fleet, "process_identity", identity)
+    report, _ = _liveness_cycle(tmp_path, monkeypatch, profile=_liveness_profile())
+    assert report["liveness"] == {
+        "schema": "agent-supervisor/watchdog-liveness@1", "available": False,
+        "reason_code": "process_identity_unavailable", "source_binding": "declared_profile_only",
+        "profile": {"deployment_id": "legal-ir:release-01", "source_sha256": "a" * 64},
+        "action_authority": False,
+    }
+
+
+def test_load_config_preserves_optional_liveness_for_nonfatal_cycle_validation(tmp_path):
+    path = tmp_path / "fleet.json"
+    profile = _liveness_profile(deployment_id="bad token with spaces")
+    value = {"state_dir": str(tmp_path), "boards": [_board(tmp_path)], "liveness_identity": profile}
+    path.write_text(json.dumps(value))
+    assert fleet.load_config(path)["liveness_identity"] == profile
+
+
+@pytest.mark.parametrize("profile", ["native_catalogue", "service_fleet_report"])
+def test_infrastructure_missing_checkout_preserves_wait_and_budgets(tmp_path, profile):
+    board = _infrastructure_board(tmp_path)
+    if profile == "service_fleet_report":
+        board.pop("probe_profile")
+        board.pop("native_catalogue_binding")
+        board["service_fleet_binding"] = {"board_namespace": "engineering",
+            "max_age_seconds": 30, "lanes": {"lane-0": "engineering.service"}}
+    missing = tmp_path / "deleted-checkout"
+    board["cwd"] = str(missing)
+    missing_details = fleet.missing_board_checkout(board)
+    assert missing_details is not None
+    observation = fleet.checkout_missing_observation(board["id"], missing_details)
+    previous = {"health": "unknown", "attempts": 3, "ensure_attempts": 2, "last_progress_at": 10,
+        "next_action_at": 500, "incident_since": 20,
+        "infrastructure_budget": {"status": "available", "actions": 2, "total_actions": 7}}
+    state = fleet.assess(observation, previous, board, 100)
+    assert state["stall_class"] == "board_checkout_missing"
+    assert state["observation"]["reason_codes"] == ["board_checkout_missing"]
+    assert state["health"] == "unknown"
+    assert state["observation"]["complete"] is False
+    assert state["observation"].get("completion_candidate") is False
+    assert state["observation"].get("busy") is False
+    for key, value in previous.items():
+        assert state[key] == value
+    assert fleet.select_action(state, board, 1000) == ""
+    assert not missing.exists()
+
+
+@pytest.mark.parametrize("profile", ["native_catalogue", "service_fleet_report"])
+def test_infrastructure_missing_checkout_does_not_run_commands_or_charge(tmp_path, profile):
+    board = _infrastructure_board(tmp_path)
+    if profile == "service_fleet_report":
+        board.pop("probe_profile")
+        board.pop("native_catalogue_binding")
+        board["service_fleet_binding"] = {"board_namespace": "engineering",
+            "max_age_seconds": 30, "lanes": {"lane-0": "engineering.service"}}
+    board["cwd"] = str(tmp_path / "missing-checkout")
+    board["ensure"] = {"argv": ["forbidden-ensure"]}
+    directory = tmp_path / board["id"]
+    directory.mkdir()
+    budget = directory / "infrastructure-budget.json"
+    budget.write_text(json.dumps({"schema": "agent-supervisor/infrastructure-budget@1",
+        "board_id": board["id"], "window_started_at": 90, "actions": 2,
+        "total_actions": 7, "circuit_open_until": 0}))
+    original_budget = budget.read_bytes()
+    state = directory / "state.json"
+    state.write_text(json.dumps({"attempts": 3, "ensure_attempts": 2,
+        "last_progress_at": 10, "next_action_at": 500, "incident_since": 20}))
+    def forbidden(*args, **kwargs):
+        pytest.fail("missing checkout cannot launch a probe, ensure or repair")
+    observed = fleet.tick_board(board, tmp_path, apply=True, runner=forbidden, now=100)
+    assert observed["stall_class"] == "board_checkout_missing"
+    assert observed["planned_action"] == ""
+    assert observed["attempts"] == 3 and observed["ensure_attempts"] == 2
+    assert observed["next_action_at"] == 500 and observed["last_progress_at"] == 10
+    assert budget.read_bytes() == original_budget
+    assert not (tmp_path / "missing-checkout").exists()

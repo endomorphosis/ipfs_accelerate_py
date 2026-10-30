@@ -1,0 +1,64 @@
+{
+  "actual_published_metadata_projection_count": 3,
+  "authority": {
+    "native_execution_verified": false,
+    "proof_authority": false,
+    "runtime_ready": false,
+    "teacher_qualified": false
+  },
+  "checkpoint_schemas": [
+    "native-4096-source-span-checkpoint/v1",
+    "bound-native4096-source-span-checkpoint/v1"
+  ],
+  "completed": true,
+  "deselected": 2,
+  "exclusions": {
+    "test_missing_empty_symlink_and_oversized_store_refuse": "Physical symlink excluded by regular-file-only owned attempt.",
+    "test_private_fifo_replacement_before_open_refuses_without_blocking": "Physical FIFO excluded by regular-file-only owned attempt."
+  },
+  "existing_lanes": [
+    8,
+    384,
+    768
+  ],
+  "native_request_sha256": "f4f6b818600ded9efe1562eedb812519944624b026801fdd0c7e6e2be48ff8c2",
+  "new_dimension": 4096,
+  "new_dimension_role": "source_input_representation_width",
+  "new_family": "legal_ir",
+  "new_metadata_controls": 37,
+  "original_resource_closeout_verified": true,
+  "passed": 94,
+  "private_duckdb_controls_included": 2,
+  "publication": {
+    "anonymous_payload_readback_completed": true,
+    "checkpoint_count": 3,
+    "repository_id": "Publicus/legal-ir-autoencoder-4096d",
+    "revision": "7f1621e79eef7592d0cfdb06cbc2f11370e24dc5"
+  },
+  "schema": "ir-source4096-catalog-qualification/v1",
+  "scope": "Read-only catalog metadata compatibility. Producer declaration remains opaque; claimed checkpoint/evidence/library paths are never opened. No model execution or active service synchronization.",
+  "source_read_released": true,
+  "source_sha256": {
+    "docs/model_catalog/ir_persistent_catalog.md": "7efdfed570a929095f8ee4364347d90004fa41bf2f4c7c01e95378491a154263",
+    "ipfs_accelerate_py/__init__.py": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+    "ipfs_accelerate_py/model_catalog/__init__.py": "ecd4d6099e267ee2b65284691a298285f44d5443da4a1142e8bb260ae530ffd0",
+    "ipfs_accelerate_py/model_catalog/cache.py": "c8ae37197dad0db6e3e3a6788cb05b53bd20bc515206316138a18ada46af9534",
+    "ipfs_accelerate_py/model_catalog/catalog.py": "badb30612917fa7f71deb036b2b1f0cf710161de11af61f02e4b07189f6397a5",
+    "ipfs_accelerate_py/model_catalog/events.py": "a5839de4c2e76fcba58be4060a549dd38492396874dc2d7c28fce310af386365",
+    "ipfs_accelerate_py/model_catalog/identity.py": "fbaf013ad8dd3035cfe04e9bfbb841aa72f8581ed04eb6a543abcd3d579caf44",
+    "ipfs_accelerate_py/model_catalog/receipts.py": "3a956d2b9d2c35793a615ae0fb3e5a2f2709a489114624f974827c406facc487",
+    "ipfs_accelerate_py/model_catalog/registry.py": "2ba8aae587f5838016da8a71370b84e5b50b1985cd49c95682b02a8189e55284",
+    "ipfs_accelerate_py/model_catalog/resolver.py": "17bfcbfdfc029ccca6458a3c11ae5bc2418c3dfc7ba423a942930edc6c8407a5",
+    "ipfs_accelerate_py/model_catalog/schema.py": "e1fa8ec5f8e9f856f626b40aa896df0bde490055978bddea0e4b8a9885b89f49",
+    "ipfs_accelerate_py/model_catalog/security.py": "93a5b4dc3e6b1d119fcdc8af48d81f881ef1a89401dc21d1e2fe1253d64c9d0d",
+    "ipfs_accelerate_py/model_catalog/snapshot.py": "c17817f2c770103677e0a2880b8355d134df4c533590fd4824cf283ba4c4ef6a",
+    "ipfs_accelerate_py/model_catalog/sources/__init__.py": "b771d4d00b5cf8f167e9bb7aa3951e25a8d5a225b78b0e872c1a21eabf5672f4",
+    "ipfs_accelerate_py/model_catalog/sources/deployments.py": "31272b5b22b3c7a6a9934a338fc45d0587015deeeedc24d74959626fea665d2c",
+    "ipfs_accelerate_py/model_catalog/sources/ir_persistent.py": "61c1a73a42eeedd9f61fd0fcbbf8c651de8e94fc80d17bfea403825fd28b6c0b",
+    "ipfs_accelerate_py/model_catalog/sources/peers.py": "eebce1b7b560f7ee6e3dbaefdf00222234c7e02820dcd328570d3eec41eaa773",
+    "ipfs_accelerate_py/model_catalog/sources/persistent.py": "be262df4374f2fdcb08e8e517b7e05570bc524e94d79bcb47201bedff12edfa8",
+    "ipfs_accelerate_py/model_catalog/sources/routers.py": "6cf638e7076b078a648dcbea288279db3763e735f5e772193bf40f9340fee5da",
+    "ipfs_accelerate_py/model_catalog/sources/static.py": "4f9b658aecc00820e2d87866445f298c248e6d9a39161b1499a884f6451281cf",
+    "test/test_ir_persistent_catalog.py": "b51cb44495b8f8da0bdbdbadc0d2b30a3726fa8836b844076d8a18c633a28c3a"
+  }
+}

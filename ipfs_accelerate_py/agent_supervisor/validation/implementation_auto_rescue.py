@@ -90,8 +90,10 @@ HARD_DENY_REASON_CODES = frozenset(
 # assignment in task-owned Python test source.  The replacement proposal must
 # then traverse the ordinary proposal and validation gates from the beginning.
 SCOPED_TEST_SECRET_FINDING_CODES = frozenset({"secret_change_forbidden"})
+# Diagnostic rendering may be incomplete while the independent, proposal-bound
+# scope and semantic-inventory proof below is complete. Neither admits a proposal.
 SCOPED_TEST_SECRET_REASON_CODES = frozenset(
-    {"hard_deny_findings", "proposal_gate_failed"}
+    {"hard_deny_findings", "proposal_gate_failed", "diagnostic_path_evidence_incomplete"}
 )
 SCOPED_TEST_SEMANTIC_INVENTORY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -829,6 +831,7 @@ def plan_automatic_implementation_rescue(
     expected_outputs_present_on_disk: bool = False,
     dirty_in_scope_paths: Sequence[str] = (),
     missing_expected_outputs: Sequence[str] = (),
+    current_admitted_test_failure: bool = False,
     accepted_effect_count: int | None = None,
     merge_effect_count: int | None = None,
 ) -> AutoRescuePlan:
@@ -1062,11 +1065,22 @@ def plan_automatic_implementation_rescue(
             )
         )
     )
+    # Dirty files are normal after an admitted candidate fails an executed
+    # test.  Adding those same bytes to the Git index cannot repair that test,
+    # and repeating validation consumes the original provider-repair deadline.
+    # Preserve staging for admission/preflight gaps and unknown failures.
+    admitted_test_failure = (
+        current_admitted_test_failure is True
+        and not proposal_failed
+        and not incomplete
+        and not finding_codes
+    )
     # Prefer a cheap stage/revalidate before any provider call whenever dirty
     # declared outputs or ignored evidence may be missing from the patch.
     if (
         not stage_rescue_used
         and staging_plausible
+        and not admitted_test_failure
         and (
             proposal_failed
             or incomplete
