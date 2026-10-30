@@ -4,6 +4,11 @@ This module deliberately never opens a task database. The native owner emits
 atomic status/readiness projections and consumes immutable, idempotent control
 requests. Missing mutation bindings remain false in readiness; observing a
 healthy process cannot create repair or completion authority.
+
+WATCHDOG.md observe, dispatch and verify run over the existing native
+authorities: ``lifecycle_restart`` through ``restart_lane``, rescue
+planner/orchestrator request factories, current-tree completion proof,
+process-birth fencing and a durable incident claim.
 """
 from __future__ import annotations
 
@@ -22,6 +27,11 @@ from typing import Any, Mapping
 
 MAX_BYTES = 1_048_576
 ACTION_ID = re.compile(r"[0-9a-f]{64}")
+INCIDENT_ID = re.compile(r"[0-9A-Za-z][0-9A-Za-z:._-]{0,127}")
+COMPLETION_PROOF_FIELDS = (
+    "schema", "run_id", "accepted_tree", "required_task_ids", "verified_task_ids",
+    "runnable_count", "task_id", "effects_unknown", "hold",
+)
 
 
 class WatchdogBridgeError(ValueError):
@@ -118,8 +128,120 @@ def publish_once(path: Path, payload: Mapping[str, Any]) -> None:
         os.unlink(temporary)
 
 
+def _mapping_result(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        dumped = to_dict()
+        if isinstance(dumped, Mapping):
+            return dict(dumped)
+    raise WatchdogBridgeError("native authority returned a non-object")
+
+
+def _diagnosis_parts(diagnosis: Any) -> tuple[Any, str, list[Any], dict[str, Any], tuple[Any, ...]]:
+    if isinstance(diagnosis, Mapping):
+        kind = diagnosis.get("incident_kind", "")
+        reasons = diagnosis.get("reason_codes", ())
+        health = diagnosis.get("health", {})
+        evidence = diagnosis.get("evidence_reference_cids", ())
+        incident = diagnosis.get("incident")
+    else:
+        kind_value = getattr(diagnosis, "kind", "")
+        kind = getattr(kind_value, "value", kind_value)
+        reasons = getattr(diagnosis, "reason_codes", ())
+        health = getattr(diagnosis, "health", {})
+        incident = getattr(diagnosis, "incident", None)
+        evidence = getattr(incident, "evidence_cids", ()) if incident is not None else ()
+    if not isinstance(health, Mapping):
+        raise WatchdogBridgeError("rescue diagnosis health must be an object")
+    return incident, str(kind or ""), list(reasons or ()), dict(health), tuple(evidence or ())
+
+
+def default_rescue_request_factory(diagnosis: Any, exhaustion: Any, roots: Mapping[str, str]):
+    """Build the native planning request. This factory never calls a provider."""
+    from ..rescue.rescue_planner import RescuePlanningRequest
+
+    if not isinstance(roots, Mapping):
+        raise WatchdogBridgeError("rescue request roots must be an object")
+    for key in ("repository_root_cid", "run_cid", "policy_root"):
+        if not isinstance(roots.get(key), str) or not roots[key]:
+            raise WatchdogBridgeError("rescue request is missing " + key)
+    incident, kind, reasons, health, evidence = _diagnosis_parts(diagnosis)
+    if incident is None:
+        raise WatchdogBridgeError("rescue request is missing its incident")
+    return RescuePlanningRequest(
+        incident=incident,
+        exhaustion_receipt=exhaustion,
+        diagnostics={"incident_kind": kind, "reason_codes": reasons, "health": health},
+        evidence_redacted=True,
+        current_repository_root_cid=roots["repository_root_cid"],
+        current_run_cid=roots["run_cid"],
+        current_policy_root=roots["policy_root"],
+        evidence_reference_cids=evidence,
+        now_ms=int(time.time() * 1000),
+    )
+
+
+def default_rescue_execution_request_factory(diagnosis: Any, exhaustion: Any, plan: Any, roots: Mapping[str, Any]):
+    """Build a native execution request when its types are already bound.
+
+    Callers that have not crossed into rescue-orchestrator types receive a
+    content-addressed campaign request. Neither form executes effects.
+    """
+    from ..rescue.rescue_orchestrator import RescueExecutionRequest, RescuePlan, RescueRootBinding
+
+    incident, _, _, _, _ = _diagnosis_parts(diagnosis)
+    if not isinstance(plan, RescuePlan):
+        roots = roots.to_dict() if isinstance(roots, RescueRootBinding) else roots
+    elif isinstance(roots, RescueRootBinding) and incident is not None:
+        return RescueExecutionRequest(
+            plan=plan,
+            incident=incident,
+            exhaustion_receipt=exhaustion,
+            roots=roots,
+            lease_id=str(getattr(diagnosis, "lease_id", "") or "wwl-rescue"),
+            fencing_epoch=int(getattr(diagnosis, "fencing_epoch", 0) or 0),
+            idempotency_scope=str(getattr(incident, "incident_cid", "") or identity(roots.to_dict())),
+            caller="worldwide-legal-search-watchdog",
+        )
+    if not isinstance(roots, Mapping):
+        raise WatchdogBridgeError("rescue execution roots must be an object")
+    root_fields = (
+        "incident_cid", "exhaustion_receipt_cid", "request_root", "program_root", "repository_root_cid",
+        "tree_id", "run_cid", "intent_ir_root", "legal_ir_root", "security_ir_root", "policy_root", "catalog_root",
+    )
+    if isinstance(plan, RescuePlan) and incident is not None and all(isinstance(roots.get(key), str) and roots[key] for key in root_fields):
+        return RescueExecutionRequest(
+            plan=plan,
+            incident=incident,
+            exhaustion_receipt=exhaustion,
+            roots=RescueRootBinding(**{key: roots[key] for key in root_fields}),
+            lease_id=str(roots.get("lease_id") or "wwl-rescue"),
+            fencing_epoch=int(roots.get("fencing_epoch") or 0),
+            idempotency_scope=str(getattr(incident, "incident_cid", "") or roots["incident_cid"]),
+            caller="worldwide-legal-search-watchdog",
+        )
+    if not isinstance(plan, (str, bytes)):
+        try:
+            plan_body: Any = _mapping_result(plan)
+        except WatchdogBridgeError:
+            plan_body = {"plan_cid": str(getattr(plan, "plan_cid", "") or "")}
+    else:
+        plan_body = {"plan_cid": str(plan)}
+    body = {
+        "schema": "wwl.watchdog.rescue-execution-request@1",
+        "incident_cid": str(getattr(incident, "incident_cid", "") or ""),
+        "plan": plan_body,
+        "roots": {key: roots[key] for key in sorted(roots) if isinstance(roots[key], (str, int, bool)) or roots[key] is None},
+        "completion_authority": False,
+    }
+    body["request_identity"] = identity({key: value for key, value in body.items() if key != "request_identity"})
+    return body
+
+
 class WorldwideWatchdogBridge:
-    def __init__(self, *, repository: Path, state_root: Path, run_id: str, freshness_seconds: float = 120, clock=time.time, sleep=time.sleep, host_lifecycle=None, statvfs=None):
+    def __init__(self, *, repository: Path, state_root: Path, run_id: str, freshness_seconds: float = 120, clock=time.time, sleep=time.sleep, host_lifecycle=None, statvfs=None, lifecycle_restart=None, rescue_planner=None, rescue_request_factory=None, rescue_orchestrator=None, rescue_execution_request_factory=None, completion_verifier=None, process_identity=None):
         self.repository = repository.expanduser().resolve(strict=True)
         self.state_root = state_root.expanduser().resolve(strict=True)
         if not self.repository.is_dir() or not self.state_root.is_dir() or self.state_root.stat().st_uid != os.getuid() or not run_id:
@@ -139,6 +261,23 @@ class WorldwideWatchdogBridge:
         if self.host_lifecycle is None and config.is_file():
             from .worldwide_legal_search_host_lifecycle import RegisteredSystemdLifecycle
             self.host_lifecycle = RegisteredSystemdLifecycle(repository=self.repository, state_root=self.state_root, run_id=self.run_id)
+        if lifecycle_restart is not None and not callable(lifecycle_restart):
+            raise WatchdogBridgeError("lifecycle_restart must be callable")
+        if rescue_planner is not None and not callable(getattr(rescue_planner, "plan", None)):
+            raise WatchdogBridgeError("rescue planner must provide plan")
+        if rescue_orchestrator is not None and not callable(getattr(rescue_orchestrator, "execute", None)):
+            raise WatchdogBridgeError("rescue orchestrator must provide execute")
+        for name, factory in (("rescue_request_factory", rescue_request_factory), ("rescue_execution_request_factory", rescue_execution_request_factory), ("completion_verifier", completion_verifier), ("process_identity", process_identity)):
+            if factory is not None and not callable(factory):
+                raise WatchdogBridgeError(name + " must be callable")
+        self._lifecycle_restart_injected = lifecycle_restart is not None
+        self.lifecycle_restart = lifecycle_restart if lifecycle_restart is not None else (self._host_lifecycle_transition if self.host_lifecycle is not None else None)
+        self.rescue_planner = rescue_planner
+        self.rescue_request_factory = rescue_request_factory or default_rescue_request_factory
+        self.rescue_orchestrator = rescue_orchestrator
+        self.rescue_execution_request_factory = rescue_execution_request_factory or default_rescue_execution_request_factory
+        self.completion_verifier = completion_verifier
+        self.process_identity = process_identity
 
     def resources(self) -> dict[str, Any]:
         return resource_observation(repository=self.repository, state_root=self.state_root, framework_root=self.framework_root, config=self.host_config, statvfs=self.statvfs)
@@ -168,7 +307,7 @@ class WorldwideWatchdogBridge:
         host = self._host_probe()
         if host is not None:
             value = {**value, "bindings": {**value["bindings"], "lifecycle_restart": True}, "registered_host_lifecycle": host}
-        return value
+        return self._apply_authority_overlay(value, host is not None)
 
     def ready(self, request: Mapping[str, Any]) -> dict[str, Any]:
         value = self._readiness()
@@ -207,7 +346,7 @@ class WorldwideWatchdogBridge:
             # Disk pressure is an external admission blocker, not a software
             # defect. In particular, do not publish settlement files on a full
             # filesystem while observing it.
-            return {**snapshot, "blocked_kind": "resource_quota", "resource_pressure": resources}
+            return self._project_completion({**snapshot, "blocked_kind": "resource_quota", "resource_pressure": resources})
         from ..rescue.maintenance_hold import binding_released, review_hold
         holds = [self.state_root / name for name in ("HOLD", "STOP", "OPERATOR_STOP")]
         reviews = [review_hold(path, apply=request.get("execution_requested") is True, now=self.clock())
@@ -256,7 +395,7 @@ class WorldwideWatchdogBridge:
             if terminal is not None:
                 observations[action_id] = terminal
         snapshot["action_observations"] = list(observations.values())
-        return snapshot
+        return self._project_completion(snapshot)
 
     def _settle_superseded_host_recovery(self, action_id: str, prior: Mapping[str, Any], host: dict[str, Any]) -> dict[str, Any] | None:
         """A later native fence can settle an earlier timed-out host action.
@@ -538,6 +677,9 @@ class WorldwideWatchdogBridge:
                     or action.get("active_attempt_id") != snapshot.get("active_attempt_id")):
                 return self._refuse(action, "native_diagnosis_attempt_scope_changed")
         host = snapshot.get("registered_host_lifecycle")
+        duplicate = self._claim_or_duplicate(action)
+        if duplicate is not None:
+            return duplicate
         if action.get("reload_after_action_id") is not None:
             if host is None:
                 return self._refuse(action, "registered_host_lifecycle_required_for_repair_reload")
@@ -585,6 +727,306 @@ class WorldwideWatchdogBridge:
                 return {"schema": "wwl.watchdog.action-result@1", "action_id": action["action_id"], "status": "unknown", "receipt": identity({"submitted_request": identity(action)})}
             self.sleep(min(0.1, max(0, deadline - time.monotonic())))
 
+    def _apply_authority_overlay(self, value: dict[str, Any], host_ready: bool) -> dict[str, Any]:
+        bindings = dict(value["bindings"])
+        overlay: dict[str, bool] = {}
+        if self._lifecycle_restart_injected or host_ready:
+            overlay["lifecycle_restart"] = True
+        if self.rescue_planner is not None and callable(self.rescue_request_factory):
+            overlay["rescue_planner"] = True
+        if self.rescue_orchestrator is not None and callable(self.rescue_execution_request_factory):
+            overlay["rescue_orchestrator"] = True
+        # The ledger is implemented. Surface that only when the native projection
+        # already names the capability, so an omitted flag is not invented.
+        if "incident_deduplication" in bindings:
+            overlay["incident_deduplication"] = True
+        if not overlay:
+            return value
+        return {**value, "bindings": {**bindings, **overlay}}
+
+    def _host_lifecycle_transition(self, lane_info: Mapping[str, Any]) -> dict[str, Any]:
+        """Adapt registered host recovery to restart_lane's lifecycle callback."""
+        if self.host_lifecycle is None:
+            raise WatchdogBridgeError("registered host lifecycle is not bound")
+        action_id = lane_info.get("action_id")
+        if not isinstance(action_id, str) or ACTION_ID.fullmatch(action_id) is None or not isinstance(lane_info.get("policy_id"), str) or not lane_info["policy_id"]:
+            raise WatchdogBridgeError("fenced lifecycle restart requires an exact action and policy")
+        issued_at = lane_info.get("issued_at", self.clock())
+        if type(issued_at) not in (int, float) or isinstance(issued_at, bool) or not math.isfinite(issued_at):
+            raise WatchdogBridgeError("fenced lifecycle restart requires a finite issue time")
+        action = {"schema": "wwl.watchdog.action@1", "action_id": action_id, "run_id": self.run_id, "policy_id": lane_info["policy_id"], "kind": "recover", "issued_at": issued_at}
+        result = self.host_lifecycle.recover(action)
+        current = self.host_lifecycle.probe()
+        new_pid = current.get("main_pid")
+        restarted = bool(result.get("recovered") and result.get("old_owner_fenced") and isinstance(new_pid, int) and new_pid > 0)
+        return {"restarted": restarted, "succeeded": restarted, "new_pid": new_pid if restarted else None, "receipt_id": result.get("receipt"),
+                "old_owner_fenced": result.get("old_owner_fenced") is True, "deduplicated": result.get("deduplicated") is True,
+                "reason": "registered_host_lifecycle_fenced" if restarted else "registered_host_lifecycle_not_fenced"}
+
+    def _birth(self, lane_info: Mapping[str, Any]) -> dict[str, Any] | None:
+        pid = lane_info.get("pid", lane_info.get("main_pid"))
+        if isinstance(pid, bool) or type(pid) is not int or pid <= 0:
+            return None
+        if self.process_identity is not None:
+            probed = self.process_identity(pid)
+        else:
+            from .worldwide_legal_search_host_lifecycle import process_identity
+            probed = process_identity(pid)
+        if not isinstance(probed, Mapping):
+            raise WatchdogBridgeError("process identity probe returned a non-object")
+        ticks = probed.get("start_ticks", lane_info.get("start_ticks", 0))
+        if isinstance(ticks, bool) or type(ticks) is not int:
+            ticks = 0
+        return {"pid": pid, "alive": bool(probed.get("alive")), "start_ticks": ticks}
+
+    def fenced_lifecycle_restart(self, lane_info: Mapping[str, Any]) -> dict[str, Any]:
+        """Restart through the native lifecycle callback and fence the old birth.
+
+        A returned restart that still names the previous pid and start ticks is
+        not a fence. Successful fences are stored once and replay without
+        calling the lifecycle callback again.
+        """
+        if self.lifecycle_restart is None or not isinstance(lane_info, Mapping):
+            raise WatchdogBridgeError("fenced lifecycle restart is not bound")
+        incident = lane_info.get("incident_id") or lane_info.get("action_id")
+        if not isinstance(incident, str) or INCIDENT_ID.fullmatch(incident) is None:
+            raise WatchdogBridgeError("fenced lifecycle restart requires an incident identity")
+        before = self._birth(lane_info)
+        key_body = {"run_id": self.run_id, "incident": incident, "before": before}
+        result_path = self.state_root / "control/process-fences" / (hashlib.sha256(canonical(key_body)).hexdigest() + ".json")
+        try:
+            stored = read_owned_json(result_path)
+        except FileNotFoundError:
+            stored = None
+        if stored is not None:
+            return stored
+        calls = {"count": 0}
+
+        def transition(info: Mapping[str, Any]) -> dict[str, Any]:
+            calls["count"] += 1
+            raw = self.lifecycle_restart(dict(info))
+            if not isinstance(raw, Mapping):
+                raise WatchdogBridgeError("lifecycle_restart returned a non-object")
+            result = dict(raw)
+            restarted = bool(result.get("restarted") or result.get("succeeded") or result.get("status") == "succeeded")
+            new_pid = result.get("new_pid")
+            if restarted:
+                after = self._birth({"pid": new_pid, "start_ticks": result.get("start_ticks")})
+                if before is not None and before.get("alive") and after == before:
+                    return {"restarted": False, "succeeded": False, "reason": "previous_process_not_fenced", "old_owner_fenced": False, "new_pid": new_pid}
+                if isinstance(new_pid, bool) or type(new_pid) is not int:
+                    return {"restarted": False, "succeeded": False, "reason": "lifecycle_receipt_missing_new_process_identity", "old_owner_fenced": False}
+                result["restarted"] = True
+                result["old_owner_fenced"] = True
+            return result
+
+        from ..rescue.supervisor_watchdog import restart_lane
+        restarted = restart_lane(dict(lane_info), repo_root=self.repository, lifecycle_transition=transition)
+        restarted = dict(restarted)
+        restarted["lifecycle_calls"] = calls["count"]
+        if not restarted.get("restarted"):
+            return restarted
+        kept = {key: restarted.get(key) for key in ("restarted", "new_pid", "reason", "receipt_id", "old_owner_fenced")}
+        receipt = {"schema": "wwl.watchdog.process-fence@1", "run_id": self.run_id, "incident": incident, "before": before, "result": kept, "completion_authority": False}
+        receipt["receipt"] = identity({key: value for key, value in receipt.items() if key != "receipt"})
+        publish_once(result_path, receipt)
+        return read_owned_json(result_path)
+
+    def bind_supervisor_watchdog(self, manifest_path: Path, **kwargs: Any):
+        """Construct SupervisorWatchdog with this campaign's bound authorities."""
+        from ..rescue.supervisor_watchdog import SupervisorWatchdog
+
+        return SupervisorWatchdog(
+            manifest_path=Path(manifest_path),
+            repo_root=self.repository,
+            lifecycle_restart=self.lifecycle_restart,
+            rescue_planner=self.rescue_planner,
+            rescue_request_factory=self.rescue_request_factory,
+            rescue_orchestrator=self.rescue_orchestrator,
+            rescue_execution_request_factory=self.rescue_execution_request_factory,
+            **kwargs,
+        )
+
+    def _incident_path(self, action: Mapping[str, Any]) -> Path | None:
+        incident = action.get("incident_id")
+        if not isinstance(incident, str) or INCIDENT_ID.fullmatch(incident) is None:
+            return None
+        digest = hashlib.sha256(incident.encode("utf-8")).hexdigest()
+        return self.state_root / "control/incidents" / (digest + ".json")
+
+    def _claim_or_duplicate(self, action: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Persist the first action for an incident and refuse a second writer."""
+        path = self._incident_path(action)
+        if path is None:
+            return None
+        claim = {"schema": "wwl.watchdog.incident-claim@1", "run_id": self.run_id, "incident_id": action["incident_id"],
+                 "action_id": action["action_id"], "kind": action["kind"], "request_identity": identity(action)}
+        try:
+            current = read_owned_json(path)
+        except FileNotFoundError:
+            current = None
+        if current is None:
+            publish_once(path, claim)
+            return None
+        if current.get("schema") != claim["schema"] or current.get("run_id") != self.run_id or current.get("incident_id") != action["incident_id"]:
+            raise WatchdogBridgeError("durable incident claim scope differs")
+        if current.get("action_id") == action["action_id"] and current.get("request_identity") == identity(action):
+            return None
+        return self._refuse(action, "durable_incident_already_claimed")
+
+    def _authority_receipt(self, directory: str, incident_id: str, producer) -> dict[str, Any]:
+        if not isinstance(incident_id, str) or INCIDENT_ID.fullmatch(incident_id) is None:
+            raise WatchdogBridgeError("rescue incident identity is invalid")
+        digest = hashlib.sha256((self.run_id + ":" + incident_id).encode("utf-8")).hexdigest()
+        result_path = self.state_root / "control" / directory / (digest + ".json")
+        claim_path = self.state_root / "control" / (directory + "-claims") / (digest + ".json")
+        try:
+            return read_owned_json(result_path)
+        except FileNotFoundError:
+            pass
+        try:
+            claim = read_owned_json(claim_path)
+        except FileNotFoundError:
+            claim = None
+        if claim is not None:
+            return {"schema": "wwl.watchdog.authority-unknown@1", "run_id": self.run_id, "incident_id": incident_id, "status": "unknown",
+                    "effects_unknown": True, "completion_authority": False, "receipt": identity(claim)}
+        claim = {"schema": "wwl.watchdog.authority-claim@1", "run_id": self.run_id, "incident_id": incident_id, "directory": directory}
+        publish_once(claim_path, claim)
+        produced = _mapping_result(producer())
+        if produced.get("completion_authority") is True:
+            raise WatchdogBridgeError("native authority tried to grant completion")
+        receipt = {"schema": "wwl.watchdog.authority-receipt@1", "run_id": self.run_id, "incident_id": incident_id, "directory": directory,
+                   "result": produced, "completion_authority": False}
+        receipt["receipt"] = identity({key: value for key, value in receipt.items() if key != "receipt"})
+        publish_once(result_path, receipt)
+        return receipt
+
+    def plan_rescue(self, diagnosis: Any, exhaustion: Any, roots: Mapping[str, str], *, incident_id: str) -> dict[str, Any]:
+        if self.rescue_planner is None or not callable(self.rescue_request_factory):
+            raise WatchdogBridgeError("rescue planner is not bound")
+
+        def produce():
+            request = self.rescue_request_factory(diagnosis, exhaustion, roots)
+            return self.rescue_planner.plan(request)
+
+        return self._authority_receipt("rescue-plans", incident_id, produce)
+
+    def execute_rescue(self, diagnosis: Any, exhaustion: Any, plan: Any, roots: Mapping[str, Any], *, incident_id: str) -> dict[str, Any]:
+        if self.rescue_orchestrator is None or not callable(self.rescue_execution_request_factory):
+            raise WatchdogBridgeError("rescue orchestrator is not bound")
+
+        def produce():
+            request = self.rescue_execution_request_factory(diagnosis, exhaustion, plan, roots)
+            return self.rescue_orchestrator.execute(request)
+
+        return self._authority_receipt("rescue-executions", incident_id, produce)
+
+    def _proof_rejection(self, snapshot: Mapping[str, Any], proof: Mapping[str, Any]) -> str:
+        if proof.get("schema") != "wwl.native-current-tree-completion@1" or proof.get("run_id") != self.run_id:
+            return "current_tree_completion_scope"
+        required = proof.get("required_task_ids")
+        if not isinstance(required, list) or not required or not all(isinstance(item, str) and item for item in required) or len(set(required)) != len(required):
+            return "current_tree_required_tasks"
+        if snapshot.get("required_task_ids") != required or proof.get("verified_task_ids") != required or snapshot.get("verified_task_ids") != required:
+            return "current_tree_verified_tasks"
+        tree = proof.get("accepted_tree")
+        if not isinstance(tree, str) or not tree or tree != snapshot.get("accepted_tree"):
+            return "current_tree_mismatch"
+        # Missing frontier fields are not an empty frontier. Counts alone cannot
+        # satisfy the current-tree proof.
+        if (snapshot.get("task_id") != "" or snapshot.get("runnable_count") != 0 or snapshot.get("effects_unknown") is not False
+                or snapshot.get("hold") is not False or proof.get("task_id") != "" or proof.get("runnable_count") != 0
+                or proof.get("effects_unknown") is not False or proof.get("hold") is not False):
+            return "current_tree_work_remains"
+        body = {key: proof.get(key) for key in COMPLETION_PROOF_FIELDS}
+        receipt = proof.get("completion_receipt")
+        if not isinstance(receipt, str) or receipt != native_identity(body):
+            return "current_tree_receipt"
+        observed_receipt = snapshot.get("completion_receipt")
+        if observed_receipt not in (None, "", receipt):
+            return "current_tree_receipt"
+        return ""
+
+    def _completion_verification(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        verdict = {"schema": "wwl.watchdog.completion-verification@1", "run_id": self.run_id, "accepted_tree": snapshot.get("accepted_tree", ""),
+                   "completion_verified": False, "completion_receipt": "", "completion_authority": False, "task_retry_authority": False, "reason": ""}
+        if self.completion_verifier is not None:
+            produced = self.completion_verifier(dict(snapshot))
+            if not isinstance(produced, Mapping) or produced.get("completion_authority") is True or produced.get("task_retry_authority") is True:
+                return {**verdict, "reason": "completion_verifier_refused_authority"}
+            verified = produced.get("completion_verified") is True
+            receipt = produced.get("completion_receipt")
+            if verified and (not isinstance(receipt, str) or not receipt or produced.get("accepted_tree") != snapshot.get("accepted_tree")):
+                return {**verdict, "reason": "completion_verifier_tree_unbound"}
+            if not verified:
+                return {**verdict, "reason": str(produced.get("reason") or "current_tree_completion_rejected")}
+            return {**verdict, "completion_verified": True, "completion_receipt": receipt, "reason": "native_current_tree_completion_verified"}
+        path = self.state_root / "control/current-tree-completion.json"
+        try:
+            proof = read_owned_json(path)
+        except FileNotFoundError:
+            return {**verdict, "reason": "current_tree_completion_proof_missing"}
+        except (OSError, ValueError) as error:
+            return {**verdict, "reason": "current_tree_completion_proof_unreadable: " + str(error)}
+        reason = self._proof_rejection(snapshot, proof)
+        if reason:
+            return {**verdict, "reason": reason}
+        return {**verdict, "completion_verified": True, "completion_receipt": proof["completion_receipt"], "reason": "native_current_tree_completion_verified"}
+
+    def _project_completion(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        claimed = bool(snapshot.get("completion_verified")) or bool(snapshot.get("completion_receipt"))
+        proof_exists = (self.state_root / "control/current-tree-completion.json").is_file() or self.completion_verifier is not None
+        if not claimed and not proof_exists:
+            return snapshot
+        verdict = self._completion_verification(snapshot)
+        if verdict["completion_verified"]:
+            return {**snapshot, "completion_verified": True, "completion_receipt": verdict["completion_receipt"], "current_tree_completion": verdict}
+        if not claimed:
+            return {**snapshot, "current_tree_completion": verdict}
+        return {**snapshot, "completion_verified": False, "completion_receipt": "", "current_tree_completion": verdict}
+
+    def verify(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Verify either one settled action or current-tree completion.
+
+        The result is evidence for the watchdog loop. It does not rewrite task
+        status, rearm work, or grant completion authority.
+        """
+        if not isinstance(request, Mapping):
+            raise WatchdogBridgeError("verification request must be an object")
+        action_id = request.get("action_id")
+        if action_id is not None:
+            if not isinstance(action_id, str) or ACTION_ID.fullmatch(action_id) is None:
+                raise WatchdogBridgeError("verification action id is malformed")
+            if (self.state_root / "control/host-supersession-receipts" / (action_id + ".json")).is_file():
+                return self.verify_host_supersession(
+                    action_id,
+                    expected_task_id=request.get("expected_task_id"),
+                    expected_stage=request.get("expected_stage"),
+                    require_owner_stopped=request.get("require_owner_stopped") is True,
+                )
+            name = action_id + ".json"
+            observation = None
+            for directory in ("control/host-terminal-observations", "control/repair-terminal-observations", "control/host-observations"):
+                try:
+                    observation = read_owned_json(self.state_root / directory / name)
+                    break
+                except FileNotFoundError:
+                    continue
+            if observation is None or observation.get("action_id") != action_id:
+                raise WatchdogBridgeError("verification has no native action observation")
+            if observation.get("effects_verified") is not True or observation.get("status") not in {"succeeded", "failed", "blocked"} or not observation.get("receipt"):
+                raise WatchdogBridgeError("action effects are not terminally verified")
+            return {"schema": "wwl.watchdog.verified-action@1", "action_id": action_id, "status": observation["status"], "receipt": observation["receipt"],
+                    "effects_verified": True, "completion_authority": False, "task_retry_authority": False}
+        if request.get("run_id") != self.run_id:
+            raise WatchdogBridgeError("verification request identity differs")
+        snapshot = self.observe(request)
+        verdict = snapshot.get("current_tree_completion")
+        if not isinstance(verdict, Mapping):
+            verdict = self._completion_verification(snapshot)
+        return {**dict(verdict), "snapshot_accepted_tree": snapshot.get("accepted_tree", "")}
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -592,7 +1034,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--dispatch-timeout", type=float, default=50)
-    parser.add_argument("operation", choices=("ready", "observe", "dispatch"))
+    parser.add_argument("operation", choices=("ready", "observe", "dispatch", "verify"))
     args = parser.parse_args(argv)
     try:
         raw = sys.stdin.buffer.read(MAX_BYTES + 1)
