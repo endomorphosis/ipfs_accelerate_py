@@ -192,3 +192,27 @@ def test_live_database_is_not_opened_by_projection_operations(bridge):
     adapter.observe({"policy_id": "wwl-policy", "run_id": "wwl-test"})
     adapter.dispatch(action(), timeout_seconds=0)
     assert sentinel.read_bytes() == b"one-owner-only"
+
+
+def test_diagnosis_binding_is_truthful_and_dispatch_does_not_open_task_database(bridge):
+    adapter, ready, snapshot = bridge
+    assert adapter.observe({"policy_id": "wwl-policy", "run_id": "wwl-test"})["native_diagnostic_available"] is False
+    request = {**action("diagnose"), "task_id": "WWL-000", "active_attempt_id": "attempt:original"}
+    assert adapter.dispatch(request, timeout_seconds=0)["status"] == "blocked"
+    assert not (adapter.state_root / "control/requests").exists()
+
+
+def test_diagnosis_requires_exact_native_attempt_before_publish(bridge):
+    adapter, ready, snapshot = bridge
+    ready["bindings"]["diagnose"] = True
+    write(adapter.state_root / "campaign-readiness.json", ready)
+    snapshot.update(task_id="WWL-000", active_attempt_id="attempt:original")
+    write(adapter.state_root / "campaign-status.json", snapshot)
+    assert adapter.observe({"policy_id": "wwl-policy", "run_id": "wwl-test"})["native_diagnostic_available"] is True
+    request = {**action("diagnose"), "task_id": "WWL-000", "active_attempt_id": "attempt:other"}
+    assert adapter.dispatch(request, timeout_seconds=0)["status"] == "blocked"
+    assert not (adapter.state_root / "control/requests").exists()
+    admitted = {**request, "action_id": "b" * 64, "active_attempt_id": "attempt:original"}
+    result = adapter.dispatch(admitted, timeout_seconds=0)
+    assert result["status"] == "unknown"
+    assert read_owned_json(adapter.state_root / "control/requests" / ("b" * 64 + ".json")) == admitted

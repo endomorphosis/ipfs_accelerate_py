@@ -219,7 +219,7 @@ class WorldwideWatchdogBridge:
         released = (type(bindings) is list and bool(bindings)
                     and all(type(item) is dict and item.get("path") in {str(p) for p in holds}
                             and binding_released(item) for item in bindings))
-        snapshot = {**snapshot, "hold": any(os.path.lexists(path) for path in holds)
+        snapshot = {**snapshot, "native_diagnostic_available": ready["bindings"].get("diagnose") is True, "hold": any(os.path.lexists(path) for path in holds)
                     or (bool(snapshot.get("hold")) and not released)}
         if reviews:
             snapshot["hold_reviews"] = reviews
@@ -483,7 +483,7 @@ class WorldwideWatchdogBridge:
     def dispatch(self, action: Mapping[str, Any], *, timeout_seconds: float = 50) -> dict[str, Any]:
         if not isinstance(action, dict) or action.get("schema") != "wwl.watchdog.action@1" or not isinstance(action.get("action_id"), str) or ACTION_ID.fullmatch(action["action_id"]) is None:
             raise WatchdogBridgeError("malformed bounded native action request")
-        if action.get("run_id") != self.run_id or action.get("kind") not in {"reconcile", "recover", "repair"}:
+        if action.get("run_id") != self.run_id or action.get("kind") not in {"reconcile", "recover", "diagnose", "repair"}:
             raise WatchdogBridgeError("action run or kind differs")
         if type(action.get("issued_at")) not in (int, float) or not math.isfinite(action["issued_at"]) or action["issued_at"] > self.clock() + 30:
             raise WatchdogBridgeError("action must have a finite original issue time")
@@ -522,7 +522,7 @@ class WorldwideWatchdogBridge:
             # Preserve the request/outbox as unknown and perform no mutation.
             return {"schema": "wwl.watchdog.action-result@1", "action_id": action["action_id"], "status": "unknown",
                     "receipt": identity({"not_dispatched_for_resource_pressure": identity(action), "evidence": resources}), "resource_pressure": resources}
-        capability = {"reconcile": "reconcile", "recover": "lifecycle_restart", "repair": "repair_dispatch"}[action["kind"]]
+        capability = {"reconcile": "reconcile", "recover": "lifecycle_restart", "diagnose": "diagnose", "repair": "repair_dispatch"}[action["kind"]]
         if ready["bindings"].get(capability) is not True:
             return self._refuse(action, "native_" + capability + "_not_bound")
         snapshot = self.observe({"run_id": self.run_id, "policy_id": ready["policy_id"]})
@@ -532,6 +532,11 @@ class WorldwideWatchdogBridge:
             return self._refuse(action, "native_pause_or_hold")
         if action.get("authority_revision") != snapshot.get("authority_revision") or action.get("accepted_tree") != snapshot.get("accepted_tree"):
             return self._refuse(action, "native_observation_revision_changed")
+        if action["kind"] == "diagnose":
+            if (not action.get("task_id") or not action.get("active_attempt_id")
+                    or action.get("task_id") != snapshot.get("task_id")
+                    or action.get("active_attempt_id") != snapshot.get("active_attempt_id")):
+                return self._refuse(action, "native_diagnosis_attempt_scope_changed")
         host = snapshot.get("registered_host_lifecycle")
         if action.get("reload_after_action_id") is not None:
             if host is None:

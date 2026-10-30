@@ -240,6 +240,7 @@ def repair_pipeline_binding(config: CampaignConfig) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/dependency_preflight_retry.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/fenced_candidate_retirement.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
@@ -384,6 +385,16 @@ class CampaignRuntime:
             if previous.get("run_id") == config.run_id and isinstance(failure, dict) and failure.get("receipt_id") == identity({key: value for key, value in failure.items() if key != "receipt_id"}):
                 self._last_failure = failure
         self._last_result: dict[str, Any] = {}
+        self._native_diagnosis: dict[str, Any] = {}
+        for action_id, action in self._actions.items():
+            proof = action.get("diagnostic_evidence", {})
+            request, observation = action.get("request", {}), action.get("observation", {})
+            if (request.get("kind") == "diagnose" and proof.get("schema") == "wwl.native-diagnosis@1"
+                    and proof.get("run_id") == config.run_id and proof.get("action_id") == action_id
+                    and proof.get("receipt_id") == identity({k: v for k, v in proof.items() if k != "receipt_id"})
+                    and observation.get("status") == "succeeded" and observation.get("receipt") == proof["receipt_id"]
+                    and all(request.get(k) == proof.get(k) for k in ("incident_id", "task_id", "active_attempt_id"))):
+                self._native_diagnosis = proof
         self._worker: threading.Thread | None = None
         self._daemon: Any = None
         self._progress_at = time.time()
@@ -422,7 +433,7 @@ class CampaignRuntime:
         self._provider_callback_entered = False
         self._retained_attempt_before_pass = False
         self._pending_controls: list[str] = [key for key, value in self._actions.items()
-            if value.get("request", {}).get("kind") == "reconcile" and value.get("result", {}).get("status") == "accepted"
+            if value.get("request", {}).get("kind") in {"reconcile", "diagnose"} and value.get("result", {}).get("status") == "accepted"
             and value.get("observation", {}).get("status") in {"running", "unknown"}]
         self._repair_thread: threading.Thread | None = None
         self._canary_refresh_lock = threading.Lock()
@@ -739,6 +750,7 @@ class CampaignRuntime:
         failure = self._last_failure
         blockers = cached.get("native_blocked_tasks", [])
         native_unknown = any(item.get("effects_unknown") for item in blockers)
+        callback_unknown = (self._last_result.get("implementation_result") or {}).get("reason") == "provider_callback_outcome_unknown"
         repair_unknown = any(value.get("request", {}).get("kind") == "repair" and value.get("observation", {}).get("status") == "unknown" for value in self._actions.values())
         hold = any((self.config.state_root / name).exists() for name in ("HOLD", "STOP", "OPERATOR_STOP"))
         from ..rescue.maintenance_hold import hold_binding
@@ -764,7 +776,7 @@ class CampaignRuntime:
             "heartbeat_at": now, "owner_alive": alive, "owner_identity_verified": alive,
             "runnable_count": len(cached.get("ready_task_ids", [])), "blocked_kind": "software_defect" if failure else ("permission" if native_unknown or self._native_terminal_result.get("reason") == "implementation_protected_path_mutated" else "none"),
             "dependency_running": False, "stage_deadline_at": cached.get("stage_deadline_at", 0),
-            "effects_unknown": bool(failure.get("effects_unknown", False) or repair_unknown or native_unknown), "failure_key": failure.get("failure_key", ""),
+            "effects_unknown": bool(failure.get("effects_unknown", False) or repair_unknown or native_unknown or callback_unknown), "failure_key": failure.get("failure_key", ""),
             "reproducer_receipt": failure.get("receipt_id", ""),
             "action_observations": [value["observation"] for value in self._actions.values() if value.get("observation")],
             "owner_pid": os.getpid(), "meaningful_progress_at_ms": int(self._progress_at * 1000),
@@ -779,6 +791,10 @@ class CampaignRuntime:
             typed_goal_semantics_id=self.bootstrap_receipt.get("plan_definition_id", ""),
             last_native_pass_result=self._last_result, native_terminal_result=self._native_terminal_result)
         snapshot.update(native_blocked_tasks=blockers, provider_activity=dict(self._provider_activity), source_reload=dict(self._reload_request))
+        diagnosis = self._native_diagnosis
+        current_diagnosis = diagnosis if (diagnosis.get("task_id") == snapshot["task_id"]
+            and diagnosis.get("active_attempt_id") == snapshot["active_attempt_id"]) else {}
+        snapshot.update(native_diagnostic_available=True, native_diagnosis=dict(current_diagnosis))
         for name in ("campaign-status.json", "status.json"):
             atomic_json(self.config.state_root / name, snapshot)
         return snapshot
@@ -791,7 +807,7 @@ class CampaignRuntime:
             "native_revision": git(self.config.framework_root, "rev-parse", "HEAD"),
             "admitted_plan_revision": self.bootstrap_receipt["admitted_plan_revision"],
             "readiness_receipt": self.bootstrap_receipt["receipt_id"], "required_task_ids": list(self.tasks),
-            "bindings": {"task_source": True, "reconcile": True, "lifecycle_restart": False,
+            "bindings": {"task_source": True, "reconcile": True, "diagnose": True, "lifecycle_restart": False,
                 "route_policy": True, "independent_validation": True, "validated_promotion": True,
                 "incident_deduplication": True, "meaningful_progress": True, "repair_dispatch": enabled_repair,
                 "scoped_repair_admission": enabled_repair, "exclusive_effect_ownership": True,
@@ -895,6 +911,9 @@ class CampaignRuntime:
         for action_id in pending:
             action = self._actions[action_id]
             try:
+                if action["request"].get("kind") == "diagnose":
+                    self._diagnose_control(action_id, action)
+                    continue
                 evidence = {
                     "prepared_completions": self._daemon.reconcile_prepared_task_completions(),
                     "terminal_failures": self._daemon.reconcile_terminal_portal_failures(),
@@ -915,9 +934,71 @@ class CampaignRuntime:
                     "status": outcome, "receipt": identity(evidence), "effects_verified": not unknown}
             except Exception as error:
                 action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
-                    "status": "unknown", "receipt": identity([type(error).__name__, str(error)]), "effects_verified": False}
+                    "status": "failed" if action["request"].get("kind") == "diagnose" else "unknown",
+                    "receipt": identity([type(error).__name__, str(error)]),
+                    "effects_verified": action["request"].get("kind") == "diagnose"}
         if pending:
             atomic_json(self.config.state_root / "control/action-ledger.json", self._actions)
+
+    def _diagnose_control(self, action_id: str, action: dict[str, Any]) -> None:
+        """Bounded owner-side observation after recovery has exhausted its budget.
+
+        Completing a diagnostic never settles an unknown provider effect. Only
+        an already admitted, current pre-effect failure may grant repair scope.
+        Native terminal events are preserved as observations, not exit custody.
+        """
+        from ..todo_daemon.database_portal_bridge import _accepted_source_events
+        from ..runtime.event_log import _event_identity
+
+        request = action["request"]
+        self.capture()
+        task_id, attempt_id = self._cached.get("active_task_id"), self._cached.get("active_attempt_id")
+        if (not task_id or not attempt_id or request.get("task_id") != task_id
+                or request.get("active_attempt_id") != attempt_id):
+            raise ValueError("native diagnostic task or attempt changed")
+        attempts = [a for a in self._daemon.list_running_attempts() if a.attempt_id == attempt_id]
+        if len(attempts) != 1:
+            raise ValueError("native diagnostic requires one exact live database attempt")
+        attempt = attempts[0]
+        bridge = self._bridge._for_attempt(attempt)
+        paths = bridge._paths(attempt)
+        bridge._seal_attempt_directory(paths, attempt_id=attempt_id, create=False)
+        binding = bridge._strict_binding(paths.binding)
+        if binding.get("attempt_id") != attempt_id or binding.get("task_alias") != task_id or binding.get("task_cid") != attempt.task_cid:
+            raise ValueError("native diagnostic binding differs")
+        bridge._verify_projection(paths, binding)
+        events, digest = _accepted_source_events(paths.events)
+        previous = ""
+        for sequence, event in enumerate(events, 1):
+            if (event.get("sequence") != sequence or event.get("previous_event_id") != previous
+                    or event.get("event_id") != _event_identity(event)):
+                raise ValueError("native diagnostic event chain differs")
+            previous = event["event_id"]
+        finished = [e for e in events if e.get("type") == "implementation_finished" and e.get("task_id") == task_id]
+        result = {"schema": "wwl.native-diagnosis@1", "run_id": self.config.run_id,
+            "action_id": action_id, "incident_id": request["incident_id"], "task_id": task_id,
+            "active_attempt_id": attempt_id, "binding_id": binding["binding_id"],
+            "events_digest": digest, "latest_native_event_id": previous,
+            "status": "native_outcome_unresolved", "effects_unknown": True,
+            "completion_authority": False, "retry_authority": False, "failure_receipt": ""}
+        if finished:
+            last = finished[-1]
+            result.update(status="observed_native_terminal_outcome", terminal_event_id=last["event_id"],
+                terminal_status=last.get("status", ""), native_returncode=last.get("returncode"))
+        failure = self._last_failure
+        if (failure and failure.get("task_id") == task_id and failure.get("effects_unknown") is False
+                and failure.get("source_revision") == self._loaded_framework_revision
+                and failure.get("receipt_id") == identity({k: v for k, v in failure.items() if k != "receipt_id"})):
+            result.update(status="reproduced_software_defect", effects_unknown=False,
+                failure_receipt=failure["receipt_id"])
+        if _accepted_source_events(paths.events)[1] != digest:
+            raise ValueError("native diagnostic changed during observation")
+        result["receipt_id"] = identity(result)
+        atomic_json(self.config.state_root / "control/diagnoses" / (action_id + ".json"), result)
+        self._native_diagnosis = result
+        action["diagnostic_evidence"] = result
+        action["observation"] = {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
+            "status": "succeeded", "receipt": result["receipt_id"], "effects_verified": True}
 
     def process_requests(self) -> None:
         requests = self.config.state_root / "control/requests"
@@ -945,6 +1026,15 @@ class CampaignRuntime:
                 reason = "native pass reconciliation is retained at the next safe owner boundary"
                 receipt.update(status="accepted", deadline_at=float(request["issued_at"]) + 120)
                 self._pending_controls.append(action_id)
+            elif kind == "diagnose":
+                if (request.get("task_id") != self._cached.get("active_task_id")
+                        or not request.get("active_attempt_id")
+                        or request.get("active_attempt_id") != self._cached.get("active_attempt_id")):
+                    reason = "native diagnostic task or attempt changed"
+                else:
+                    reason = "bounded native diagnosis queued at the owner boundary"
+                    receipt.update(status="accepted", deadline_at=float(request["issued_at"]) + 120)
+                    self._pending_controls.append(action_id)
             elif kind == "recover":
                 self.cancel.set()
                 reason = "cancellation requested; native ownership/effect reconciliation required before another writer"

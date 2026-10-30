@@ -20,9 +20,45 @@ repo_root_text = str(repo_root)
 sys.path[:] = [entry for entry in sys.path if entry != repo_root_text]
 sys.path.insert(0, repo_root_text)
 
-# Pin the package while the local checkout is first.  Later imports from
-# ipfs_accelerate_py/ipfs_kit_py may add sibling roots to ``sys.path``.
-import ipfs_datasets_py as _ipfs_datasets_py  # noqa: E402,F401
+def _pin_local_datasets_package(checkout_root: Path) -> None:
+    """Pin an initialized local checkout without importing an optional global install.
+
+    Native implementation worktrees may contain an uninitialized datasets
+    gitlink. Importing its name in that case selects a different, installed
+    distribution and makes every API test depend on its optional cloud/ML
+    stack. Tests which need datasets still import it explicitly and retain
+    their ordinary dependency failures.
+    """
+    import importlib.util
+
+    candidates = (
+        checkout_root / "ipfs_datasets_py" / "ipfs_datasets_py",
+        checkout_root / "ipfs_datasets_py",
+    )
+    package = next((path for path in candidates if (path / "__init__.py").is_file()), None)
+    if package is None:
+        return
+    spec = importlib.util.spec_from_file_location(
+        "ipfs_datasets_py", package / "__init__.py",
+        submodule_search_locations=[str(package)],
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load local datasets package: {package}")
+    module = importlib.util.module_from_spec(spec)
+    previous = sys.modules.get(spec.name)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        if previous is None:
+            sys.modules.pop(spec.name, None)
+        else:
+            sys.modules[spec.name] = previous
+        raise
+
+
+# Later imports may add sibling roots to sys.path. Pin only actual local code.
+_pin_local_datasets_package(repo_root)
 
 # Hermetic validation sets PYTEST_DISABLE_PLUGIN_AUTOLOAD, so pytest11 entry
 # points do not load. conftest still does. Load the board pytest ledger from

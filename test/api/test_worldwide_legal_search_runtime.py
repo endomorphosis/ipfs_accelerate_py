@@ -42,6 +42,119 @@ FOREST = {"site": {"head": "1" * 40, "tree": "2" * 40}, "accelerate": {"head": "
 
 
 class RuntimeBoundaries(unittest.TestCase):
+    def test_diagnosis_observes_terminal_failure_without_inventing_exit_custody(self):
+        from ipfs_accelerate_py.agent_supervisor.runtime.event_log import _event_identity
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(root / 'site', root / 'framework', root / 'state', root / 'plan.json', root / 'config.json')
+            atomic_json(config.plan_path, plan_fixture())
+            runtime = CampaignRuntime(config, {'admitted_plan_revision': 'plan', 'receipt_id': 'receipt'})
+            attempt = SimpleNamespace(attempt_id='attempt:exact', task_alias='WWL-001', task_cid='task:exact')
+            runtime._cached = {'active_task_id': attempt.task_alias, 'active_attempt_id': attempt.attempt_id}
+            runtime._daemon = SimpleNamespace(list_running_attempts=lambda: [attempt])
+            event = {'sequence': 1, 'previous_event_id': '', 'type': 'implementation_finished',
+                'task_id': attempt.task_alias, 'status': 'failed', 'returncode': 4}
+            event['event_id'] = _event_identity(event)
+            paths = SimpleNamespace(binding=root / 'binding', events=root / 'events')
+            bridge = SimpleNamespace(_paths=lambda a: paths, _seal_attempt_directory=lambda *a, **kw: None,
+                _strict_binding=lambda p: {'binding_id': 'binding:exact', 'attempt_id': attempt.attempt_id,
+                    'task_alias': attempt.task_alias, 'task_cid': attempt.task_cid}, _verify_projection=lambda *a: None)
+            runtime._bridge = SimpleNamespace(_for_attempt=lambda a: bridge)
+            request = {'task_id': attempt.task_alias, 'active_attempt_id': attempt.attempt_id, 'incident_id': 'original-incident'}
+            action = {'request': request}
+            with patch.object(runtime, 'capture'), patch(
+                'ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge._accepted_source_events',
+                return_value=([event], 'native:events-digest')):
+                runtime._diagnose_control('a' * 64, action)
+            diagnosis = action['diagnostic_evidence']
+            self.assertEqual(diagnosis['status'], 'observed_native_terminal_outcome')
+            self.assertTrue(diagnosis['effects_unknown'])
+            self.assertFalse(diagnosis['retry_authority'])
+            self.assertFalse(diagnosis['completion_authority'])
+            self.assertEqual(diagnosis['failure_receipt'], '')
+            self.assertEqual(action['observation']['receipt'], diagnosis['receipt_id'])
+            self.assertEqual(diagnosis['incident_id'], 'original-incident')
+            # A broken event chain cannot acquire even diagnostic authority.
+            event['returncode'] = 0
+            with patch.object(runtime, 'capture'), patch(
+                'ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge._accepted_source_events',
+                return_value=([event], 'native:changed-events')):
+                with self.assertRaisesRegex(ValueError, 'event chain differs'):
+                    runtime._diagnose_control('b' * 64, action)
+
+    def test_diagnosis_rejects_a_replaced_attempt_before_native_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(root / 'site', root / 'framework', root / 'state', root / 'plan.json', root / 'config.json')
+            atomic_json(config.plan_path, plan_fixture())
+            runtime = CampaignRuntime(config, {'admitted_plan_revision': 'plan', 'receipt_id': 'receipt'})
+            runtime._cached = {'active_task_id': 'WWL-001', 'active_attempt_id': 'attempt:new'}
+            with patch.object(runtime, 'capture'):
+                with self.assertRaisesRegex(ValueError, 'task or attempt changed'):
+                    runtime._diagnose_control('a' * 64, {'request': {'task_id': 'WWL-001', 'active_attempt_id': 'attempt:old'}})
+
+    def test_integral_native_diagnosis_survives_restart_only_for_its_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(root / "site", root / "framework", root / "state", root / "plan.json", root / "config.json")
+            atomic_json(config.plan_path, plan_fixture())
+            action_id = "a" * 64
+            proof = {"schema": "wwl.native-diagnosis@1", "run_id": config.run_id, "action_id": action_id,
+                "incident_id": "original-incident", "task_id": "WWL-001", "active_attempt_id": "attempt:exact",
+                "status": "observed_native_terminal_outcome", "failure_receipt": "", "effects_unknown": True,
+                "completion_authority": False, "retry_authority": False}
+            proof["receipt_id"] = identity(proof)
+            action = {"request": {"kind": "diagnose", **{key: proof[key] for key in ("incident_id", "task_id", "active_attempt_id")}},
+                "result": {"status": "accepted"}, "diagnostic_evidence": proof,
+                "observation": {"schema": "wwl.watchdog.action-observation@1", "action_id": action_id,
+                    "status": "succeeded", "receipt": proof["receipt_id"], "effects_verified": True}}
+            atomic_json(config.state_root / "control/action-ledger.json", {action_id: action})
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            self.assertEqual(runtime._native_diagnosis, proof)
+            self.assertEqual(runtime._pending_controls, [])
+            runtime._cached = {"active_task_id": "WWL-001", "active_attempt_id": "attempt:exact"}
+            with patch("ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime.observed_forest", return_value=FOREST):
+                self.assertEqual(runtime.publish()["native_diagnosis"], proof)
+                runtime._cached["active_attempt_id"] = "attempt:successor"
+                self.assertEqual(runtime.publish()["native_diagnosis"], {})
+            for mutation in ("tamper", "run", "context", "observation", "receipt"):
+                with self.subTest(mutation=mutation):
+                    forged = copy.deepcopy(action)
+                    if mutation == "tamper":
+                        forged["diagnostic_evidence"]["retry_authority"] = True
+                    elif mutation == "run":
+                        forged["diagnostic_evidence"]["run_id"] = "another-run"
+                        forged["diagnostic_evidence"].pop("receipt_id")
+                        forged["diagnostic_evidence"]["receipt_id"] = identity(forged["diagnostic_evidence"])
+                    elif mutation == "context":
+                        forged["request"]["active_attempt_id"] = "attempt:foreign"
+                    elif mutation == "observation":
+                        forged["observation"]["status"] = "unknown"
+                    else:
+                        forged["observation"]["receipt"] = "native:unbound-proof"
+                    atomic_json(config.state_root / "control/action-ledger.json", {action_id: forged})
+                    restarted = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+                    self.assertEqual(restarted._native_diagnosis, {})
+
+    def test_read_only_diagnostic_failure_settles_only_its_own_action(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(root / "site", root / "framework", root / "state", root / "plan.json", root / "config.json")
+            atomic_json(config.plan_path, plan_fixture())
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt"})
+            action_id = "a" * 64
+            runtime._actions = {action_id: {"request": {"kind": "diagnose"}}}
+            runtime._pending_controls = [action_id]
+            runtime._last_failure = {"effects_unknown": True, "receipt_id": "native:retained-unknown-effect"}
+            before = copy.deepcopy(runtime._last_failure)
+            with patch.object(runtime, "_diagnose_control", side_effect=ValueError("native diagnostic task or attempt changed")):
+                runtime._reconcile_controls()
+            observation = runtime._actions[action_id]["observation"]
+            self.assertEqual(observation["status"], "failed")
+            self.assertTrue(observation["effects_verified"])
+            self.assertEqual(runtime._last_failure, before)
+            self.assertEqual(runtime._native_diagnosis, {})
+
     def test_uncertain_reconciliation_stays_nonterminal_and_does_not_crash_watchdog(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
