@@ -55178,10 +55178,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
         if not callable(has_pending):
             return False
-        if not (
-            has_pending(self._canonical_ref(task))
-            or has_pending(task.task_id)
-        ):
+        if not has_pending(self._canonical_ref(task)):
             return False
         queued_commits = {
             str(item.get("implementation_commit") or "")

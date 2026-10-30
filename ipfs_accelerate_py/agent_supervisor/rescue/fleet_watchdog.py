@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .live_board_probe import COMPLETED, native_population, read_json_object
+from .live_board_probe import COMPLETED, native_population, process_identity, read_json_object
 from .recovery_policy import (
     recovery_denial, retained_attempt_wait, validated_infrastructure_policy,
     INFRASTRUCTURE_PROFILE, INFRASTRUCTURE_STALLS, NATIVE_CATALOGUE_WAITS,
@@ -78,6 +78,11 @@ def infrastructure_classification(observation: dict[str, Any], board: dict[str, 
         return None
     sample = dict(observation, complete=False)
     reasons = set(str(x) for x in sample.get("reason_codes", []))
+    if "board_checkout_missing" in reasons:
+        # Local asset preflight did not launch a probe. A missing report cannot
+        # turn this existing wait into a malformed diagnostic or a coding job.
+        sample.update(health="unknown", completion_candidate=False, busy=False)
+        return sample, "board_checkout_missing"
     if board.get("probe_profile") == "native_catalogue":
         sample.update(completion_candidate=False, busy=False)
         binding = board.get("native_catalogue_binding")
@@ -1486,7 +1491,50 @@ def load_config(path: Path) -> dict[str, Any]:
     return config
 
 
-def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
+def _watchdog_liveness(config: dict[str, Any]) -> dict[str, Any]:
+    """Observe this process under an explicitly declared deployment profile.
+
+    The profile is operator metadata, not a running-source or imported-byte
+    attestation. A failed optional observation cannot discard board results.
+    """
+    result: dict[str, Any] = {
+        "schema": "agent-supervisor/watchdog-liveness@1", "available": False,
+        "source_binding": "declared_profile_only", "action_authority": False,
+    }
+    profile = config.get("liveness_identity")
+    if (type(profile) is not dict
+            or set(profile) != {"schema", "deployment_id", "source_sha256"}
+            or profile.get("schema") != "agent-supervisor/watchdog-liveness-profile@1"
+            or type(profile.get("deployment_id")) is not str
+            or not 1 <= len(profile["deployment_id"]) <= 128
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]*", profile["deployment_id"]) is None
+            or type(profile.get("source_sha256")) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", profile["source_sha256"]) is None):
+        result["reason_code"] = "invalid_liveness_profile"
+        return result
+    result["profile"] = {key: profile[key] for key in ("deployment_id", "source_sha256")}
+    try:
+        pid = os.getpid()
+        observed = process_identity(pid)
+        if (type(observed) is not dict or type(observed.get("pid")) is not int
+                or observed["pid"] != pid or pid <= 0
+                or type(observed.get("start_time_ticks")) is not int
+                or observed["start_time_ticks"] <= 0
+                or type(observed.get("boot_id")) is not str
+                or re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+                                observed["boot_id"]) is None):
+            raise ValueError("own process birth is unavailable")
+        result.update(available=True, process={
+            "pid": pid, "birth_ticks": observed["start_time_ticks"],
+            "boot_id": observed["boot_id"],
+        })
+    except Exception:
+        # Preserve no provider arguments, exception text or partial identity.
+        result["reason_code"] = "process_identity_unavailable"
+    return result
+
+
+def run_cycle(config: dict[str, Any], *, apply: bool, heartbeat=None) -> dict[str, Any]:
     repair_unit = None
     if "repair_worker" in config:
         from .fleet_repair import repair_job_unit
@@ -1497,6 +1545,8 @@ def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
         work = {pool.submit(tick_board, board, root, apply=apply,
                             repair_unit=repair_unit): board["id"] for board in config["boards"]}
         for future in concurrent.futures.as_completed(work):
+            if heartbeat is not None:
+                heartbeat.notify_due()
             identifier = work[future]
             try:
                 observations[identifier] = future.result()
@@ -1504,6 +1554,8 @@ def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
                 observations[identifier] = {"board_id": identifier, "health": "watchdog_error",
                                             "error": f"{type(exc).__name__}: {exc}"}
     report = {"schema": SCHEMA, "observed_at": time.time(), "apply": apply, "boards": observations}
+    if "liveness_identity" in config:
+        report["liveness"] = _watchdog_liveness(config)
     write_json(root / "status.json", report)
     write_ducklake_fleet_health(root, report)
     return report
@@ -1516,14 +1568,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
     config = load_config(args.config)
+    from .systemd_heartbeat import SystemdHeartbeat
+    heartbeat = SystemdHeartbeat.from_environment()
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     with lock(Path(config["state_dir"]) / "fleet.lock") as acquired:
         if not acquired:
             return 0
+        heartbeat.notify_due(force=True)
         while not stop.is_set():
-            report = run_cycle(config, apply=args.apply)
+            report = run_cycle(config, apply=args.apply, **({"heartbeat": heartbeat} if heartbeat.enabled else {}))
+            heartbeat.notify_due()
             print(json.dumps({"observed_at": report["observed_at"], "boards": {
                 key: value["health"] for key, value in report["boards"].items()}}), flush=True)
             if args.once:
