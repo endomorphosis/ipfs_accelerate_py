@@ -829,6 +829,7 @@ def plan_automatic_implementation_rescue(
     expected_outputs_present_on_disk: bool = False,
     dirty_in_scope_paths: Sequence[str] = (),
     missing_expected_outputs: Sequence[str] = (),
+    current_admitted_test_failure: bool = False,
     accepted_effect_count: int | None = None,
     merge_effect_count: int | None = None,
 ) -> AutoRescuePlan:
@@ -1062,11 +1063,22 @@ def plan_automatic_implementation_rescue(
             )
         )
     )
+    # Dirty files are normal after an admitted candidate fails an executed
+    # test.  Adding those same bytes to the Git index cannot repair that test,
+    # and repeating validation consumes the original provider-repair deadline.
+    # Preserve staging for admission/preflight gaps and unknown failures.
+    admitted_test_failure = (
+        current_admitted_test_failure is True
+        and not proposal_failed
+        and not incomplete
+        and not finding_codes
+    )
     # Prefer a cheap stage/revalidate before any provider call whenever dirty
     # declared outputs or ignored evidence may be missing from the patch.
     if (
         not stage_rescue_used
         and staging_plausible
+        and not admitted_test_failure
         and (
             proposal_failed
             or incomplete
