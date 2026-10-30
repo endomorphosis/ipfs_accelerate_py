@@ -521,6 +521,7 @@ class RepairAdmissionBoundaries(unittest.TestCase):
             config, _request_path, _failure, target = self.fixture(Path(directory))
             for relative in ("project_adapters/worldwide_legal_search_continuation.py", "project_adapters/worldwide_legal_search_provider.py", "project_adapters/worldwide_legal_search_goals.py",
                              "todo_daemon/implementation_daemon_runner.py", "todo_daemon/implementation_daemon.py", "todo_daemon/database_portal_bridge.py", "todo_daemon/dependency_preflight_retry.py", "rescue/repair_dispatcher.py",
+                             "todo_daemon/fenced_candidate_retirement.py", "todo_daemon/native_validation_failure_retry.py", "todo_daemon/bridge_failure_diagnostics.py",
                              "task_sources/board_control_plane.py", "task_sources/database_task_source.py", "task_sources/intent_repository.py",
                              "validation/validation_runtime.py", "validation/validation_commands.py", "validation/project_dependency_preflight.py",
                              "todo_daemon/supervisor_runtime.py", "grok_cli_runner.py", "runtime/grok_cli_runner.py", "provider_fallback_runner.py"):

@@ -3,6 +3,7 @@ from copy import deepcopy
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_validation_failure_retry import (
     _proof, bind_feedback, rearm, render_feedback,
@@ -28,8 +29,11 @@ def _chain(tmp_path):
         authority_mode='embedded_exclusive', require_real_execution=True,
         max_task_attempts=3, lease_ms=7200000).open()
     population = _population(1)
+    # Keep the actual installed governance plugins importable in this tiny
+    # authored repository; sealed Python deliberately ignores editable .pth.
+    criterion = 'PYTHONPATH=' + shlex.quote(str(Path(__file__).resolve().parents[2])) + ' python3 -m pytest -q test_result.py'
     population['tasks'][0].update(outputs=[{'path':'result.py'}],
-        validation=['python3 -m pytest -q test_result.py'], completion='auto',
+        validation=[criterion], completion='auto',
         acceptance='The actual Python result is two.')
     owner.materialize_population(population)
     portals = []
