@@ -42,6 +42,22 @@ FOREST = {"site": {"head": "1" * 40, "tree": "2" * 40}, "accelerate": {"head": "
 
 
 class RuntimeBoundaries(unittest.TestCase):
+    def test_optional_failure_feedback_cannot_suppress_live_provider_activity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(root / 'site', root / 'framework', root / 'state', root / 'plan.json', root / 'config.json')
+            atomic_json(config.plan_path, plan_fixture())
+            runtime = CampaignRuntime(config, {'admitted_plan_revision': 'plan', 'receipt_id': 'receipt'})
+            runtime._daemon = object()
+            attempt = object()
+            with patch.object(runtime, 'capture') as capture, patch.object(runtime, '_bind_provider_activity') as activity, patch(
+                'ipfs_accelerate_py.agent_supervisor.todo_daemon.native_validation_failure_retry.bind_feedback',
+                side_effect=ValueError('optional feedback custody changed')):
+                runtime._observe_provider_handoff(portal_daemon=object(), attempt=attempt, paths=object(), binding={})
+            capture.assert_called_once_with('provider', attempt)
+            activity.assert_called_once_with(attempt)
+            self.assertTrue(runtime._provider_callback_entered)
+
     def test_diagnosis_observes_terminal_failure_without_inventing_exit_custody(self):
         from ipfs_accelerate_py.agent_supervisor.runtime.event_log import _event_identity
         with tempfile.TemporaryDirectory() as directory:

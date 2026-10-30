@@ -241,6 +241,8 @@ def repair_pipeline_binding(config: CampaignConfig) -> dict[str, Any]:
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/dependency_preflight_retry.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/fenced_candidate_retirement.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_validation_failure_retry.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
@@ -566,6 +568,9 @@ class CampaignRuntime:
         self._bridge = bridge
         callbacks = _ProgressCallbacks(self, bridge)
         self._daemon.bind_execution_callbacks(provider_fn=bridge.run_provider, effect_fn=callbacks.apply_effect, validation_fn=callbacks.validate_effect)
+        # This campaign admits bounded fresh claims after verified, reaped
+        # validation failures. Unknown callbacks retain their separate fence.
+        self._daemon.native_validation_failure_retry_enabled = True
 
     def capture(self, stage: str = "", attempt: Any = None) -> None:
         """Called only by the native DB owner worker, never the watcher."""
@@ -676,6 +681,12 @@ class CampaignRuntime:
             self._bind_provider_activity(attempt)
         except Exception:
             # Optional observation cannot replace or fail the native callback.
+            pass
+        try:
+            from ..todo_daemon.native_validation_failure_retry import bind_feedback
+            bind_feedback(owner=self._daemon, portal_daemon=portal_daemon, attempt=attempt, paths=paths, binding=binding)
+        except Exception:
+            # Failure guidance must not suppress independent live telemetry.
             pass
 
     def _bind_provider_activity(self, attempt: Any) -> None:
@@ -808,6 +819,7 @@ class CampaignRuntime:
             "admitted_plan_revision": self.bootstrap_receipt["admitted_plan_revision"],
             "readiness_receipt": self.bootstrap_receipt["receipt_id"], "required_task_ids": list(self.tasks),
             "bindings": {"task_source": True, "reconcile": True, "diagnose": True, "lifecycle_restart": False,
+                "native_validation_retry": getattr(self._daemon, "native_validation_failure_retry_enabled", False) is True,
                 "route_policy": True, "independent_validation": True, "validated_promotion": True,
                 "incident_deduplication": True, "meaningful_progress": True, "repair_dispatch": enabled_repair,
                 "scoped_repair_admission": enabled_repair, "exclusive_effect_ownership": True,

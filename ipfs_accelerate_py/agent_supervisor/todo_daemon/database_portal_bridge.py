@@ -11142,6 +11142,9 @@ class DatabasePortalExecutionBridge:
         The receipt still settles only a failed attempt, without replay rights.
         """
         commit = implementation.get("implementation_commit")
+        if implementation.get("validation_result", {}).get("attempted") is True:
+            return DatabasePortalExecutionBridge._native_failed_validation_checkpoint_matches(
+                implementation, state, records)
         if commit in (None, ""):
             return state.get("last_implementation_commit") in (None, "")
         if (type(commit) is not str or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit) is None
@@ -11176,6 +11179,35 @@ class DatabasePortalExecutionBridge:
         return (len(events) == 1
                 and _canonical_json({key: events[0].get(key) for key in bound}) == _canonical_json(bound))
 
+    @staticmethod
+    def _native_failed_validation_checkpoint_matches(implementation, state, records):
+        """Join a real rejected candidate; no success or retry authority follows."""
+        commit = implementation.get("implementation_commit")
+        validation = implementation.get("validation_result", {})
+        retained = implementation.get("failed_preservation_result")
+        if (type(commit) is not str or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit) is None
+                or state.get("last_implementation_commit") != commit
+                or validation.get("attempted") is not True or validation.get("passed") is not False
+                or implementation.get("merge_result", {}).get("merged") is not False
+                or implementation.get("merge_result", {}).get("queued", False) is not False
+                or implementation.get("board_completion", {}).get("complete") is not False
+                or type(retained) is not dict or retained.get("preserved") is not True
+                or retained.get("preserved_commit") != commit
+                or retained.get("implementation_commit") != commit
+                or retained.get("commit_result", {}).get("committed") is not True
+                or retained.get("commit_result", {}).get("commit") != commit
+                or not retained.get("rescue_branch")
+                or any(retained.get(key) != implementation.get(key)
+                       for key in ("task_id", "attempt", "branch", "worktree_path"))):
+            return False
+        kept = [record for record in records
+                if record.get("type") == "failed_validation_worktree_preserved"
+                and record.get("task_id") == implementation.get("task_id")
+                and record.get("attempt") == implementation.get("attempt")
+                and record.get("branch") == implementation.get("branch")]
+        return (len(kept) == 1
+                and _canonical_json({key: kept[0].get(key) for key in retained}) == _canonical_json(retained))
+
     def _native_provider_exit_failure(self, *, attempt, paths, binding, daemon,
                                       authority, implementation, summary):
         """Join actual child custody to this sealed, durably finished projection."""
@@ -11206,7 +11238,9 @@ class DatabasePortalExecutionBridge:
             unavailable_reason = "events_unavailable"
             records, events_digest = _accepted_source_events(paths.events)
             finished = [item for item in records
-                        if item.get("type") == "implementation_finished"]
+                        if item.get("type") == "implementation_finished"
+                        and item.get("provider_dispatched") is True
+                        and item.get("attempt_consumed") is True]
             if (len(finished) != 1
                     or _canonical_json({key: finished[0].get(key) for key in observed["finished_event"]})
                     != _canonical_json(observed["finished_event"])):
@@ -11244,7 +11278,8 @@ class DatabasePortalExecutionBridge:
             # custody empty, including new sessions and changed working dirs.
             # Unrelated host processes are not evidence about this callback.
             receipt = {
-                "schema": "database-native-provider-exit@1",
+                "schema": ("database-native-provider-exit@2" if observed["provider_returncode"] == 0
+                           else "database-native-provider-exit@1"),
                 **{key: getattr(attempt, key) for key in (
                     "attempt_id", "task_cid", "task_alias", "claim_id", "lease_id",
                     "owner_session_id", "fencing_token", "fence_epoch")},
@@ -11259,6 +11294,8 @@ class DatabasePortalExecutionBridge:
                 "state_target_digest": state_target_digest,
                 "completion_authority": False, "automatic_retry_admitted": False,
             }
+            if observed["provider_returncode"] == 0:
+                receipt["provider_returncode"] = 0
             receipt["receipt_id"] = content_identity(receipt)
             self._observe_native_custody(summary, "bridge_join", "verified", daemon=daemon)
             failure = DatabasePortalBridgeError("portal_provider_failed", result=summary)

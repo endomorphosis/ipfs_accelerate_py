@@ -34744,7 +34744,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             issuance_reason = "missing_attempt_authority"
         elif type(returncode) is not int or returncode == 0:
             issuance_reason = "not_nonzero_exit"
-        elif provider_process.returncode != returncode:
+        elif (provider_process.returncode != returncode and not (
+                provider_process.returncode == 0
+                and validation_result.get("attempted") is True
+                and validation_result.get("passed") is False)):
             issuance_reason = "process_exit_mismatch"
         elif not provider_dispatched:
             issuance_reason = "provider_not_dispatched"
@@ -34756,7 +34759,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             issuance_reason = "outer_timeout"
         elif protected_path_violation:
             issuance_reason = "protected_path_violation"
-        elif validation_result.get("attempted") is not False:
+        elif (validation_result.get("attempted") is not False and not (
+                provider_process.returncode == 0
+                and validation_result.get("attempted") is True
+                and validation_result.get("passed") is False
+                and result.get("failed_preservation_result", {}).get("preserved") is True)):
             issuance_reason = "validation_attempted"
         elif result.get("lifecycle_finalize", {}).get("finalized") is not True:
             issuance_reason = "lifecycle_not_finalized"
@@ -34863,16 +34870,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return refused("attempt_authority_changed")
         if json.dumps(returned_result, sort_keys=True, allow_nan=False) != result_json:
             return refused("implementation_result_changed")
-        if (type(process.returncode) is not int or process.returncode == 0
+        validation_failed = (process.returncode == 0
+            and native_result.get("validation_result", {}).get("attempted") is True
+            and native_result.get("validation_result", {}).get("passed") is False
+            and type(native_result.get("returncode")) is int
+            and native_result["returncode"] != 0)
+        if (type(process.returncode) is not int
+                or process.returncode == 0 and not validation_failed
                 or process.poll() != process.returncode):
             return refused("process_not_reaped")
-        if implementation.get("returncode") != process.returncode:
+        if implementation.get("returncode") != process.returncode and not validation_failed:
             return refused("returncode_changed")
         try:
             os.killpg(process.pid, 0)
         except ProcessLookupError:
             self._observe_database_provider_custody("native_exit", "verified")
-            return {"pid": process.pid, "returncode": process.returncode,
+            return {"pid": process.pid, "returncode": native_result["returncode"],
+                    "provider_returncode": process.returncode,
                     "reaped": True, "process_group_absent": True,
                     "subreaper_children_absent": True, "implementation_result": native_result,
                     "finished_event": json.loads(event_json)}
@@ -68408,6 +68422,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         },
                     )
 
+        from .native_validation_failure_retry import render_feedback
+        validation_feedback = render_feedback(self, task)
+        if validation_feedback:
+            candidate = rendered.rstrip() + validation_feedback
+            byte_limit = self._task_llm_context_budget_bytes(task)
+            tokens, token_limit = self._implementation_prompt_token_usage(task, candidate)
+            if (byte_limit is None or len(candidate.encode("utf-8")) <= byte_limit) and tokens <= token_limit:
+                rendered = candidate
+
         final_tokens, final_token_limit = self._implementation_prompt_token_usage(task, rendered)
         self._decision_runtime_route(
             "implementation_context",
@@ -74490,6 +74513,11 @@ class DatabaseImplementationDaemon:
         except Exception:
             return False
 
+    def _rearm_known_native_validation_failure(self, task):
+        """Optional bounded fresh claim; UNKNOWN cannot use this recovery."""
+        from .native_validation_failure_retry import rearm
+        return rearm(self, task)
+
     def reconcile_recoverable_portal_failure_rearms(
         self, *, recovery_source_validator: Callable[[], Mapping[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
@@ -74579,6 +74607,10 @@ class DatabaseImplementationDaemon:
         for task in tasks:
             task_cid = str(task.task_cid)
             if not self._task_is_in_lane(task, task_cid=task_cid):
+                continue
+            known_validation_rearm = self._rearm_known_native_validation_failure(task)
+            if known_validation_rearm is not None:
+                rearmed.append(known_validation_rearm)
                 continue
             body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
             control_receipt = body.get("completion_receipt")
@@ -74885,8 +74917,11 @@ class DatabaseImplementationDaemon:
         for row in self._require_connection().execute(
             "SELECT task_cid, result_json FROM provider_invocations"
         ).fetchall():
-            if _database_daemon_load_json(row[1]).get("callback_state") == "started_outcome_unknown":
-                excluded.add(str(row[0]))
+            callback = _database_daemon_load_json(row[1])
+            if callback.get("callback_state") == "started_outcome_unknown":
+                from .fenced_candidate_retirement import permits_candidate_claim
+                if not permits_candidate_claim(self,str(row[0]),str(callback.get("attempt_id") or "")):
+                    excluded.add(str(row[0]))
         return excluded
 
     # -- claim / attempt ----------------------------------------------------
@@ -76224,13 +76259,16 @@ class DatabaseImplementationDaemon:
         self._record_event("source384_resource_retry_deferred", attempt_id=attempt.attempt_id,
                            task_cid=attempt.task_cid, body=receipt)
 
-    def _require_native_provider_failure(self, attempt, receipt, key):
+    def _require_native_provider_failure(self, attempt, receipt, key, *, allow_failed=False):
         """Validate owner-persisted failure evidence; it never authorizes effects."""
         identity = {**self._source384_retry_identity(attempt), "task_alias": attempt.task_alias}
         native = receipt.get("native_exit") if isinstance(receipt, dict) else None
         native_keys = {*identity, "schema", "binding_id", "portal_attempt", "returncode",
                        "reaped", "process_group_absent", "subreaper_children_absent", "lifecycle_finalized", "events_digest",
                        "state_digest", "state_target_digest", "completion_authority", "automatic_retry_admitted", "receipt_id"}
+        validation_failure = type(native) is dict and native.get("schema") == "database-native-provider-exit@2"
+        if validation_failure:
+            native_keys.add("provider_returncode")
         if (type(receipt) is not dict or set(receipt) != {*identity, "schema", "callback_state",
                 "provider_effect_state", "reason", "native_exit"}
                 or receipt.get("schema") != "database-native-provider-failure@1"
@@ -76241,7 +76279,8 @@ class DatabaseImplementationDaemon:
                 or any(type(receipt.get(k)) is not type(v) or receipt.get(k) != v for k, v in identity.items())
                 or type(native) is not dict or set(native) != native_keys
                 or any(type(native.get(k)) is not type(v) or native.get(k) != v for k, v in identity.items())
-                or native.get("schema") != "database-native-provider-exit@1"
+                or native.get("schema") not in {"database-native-provider-exit@1", "database-native-provider-exit@2"}
+                or validation_failure and (type(native.get("provider_returncode")) is not int or native["provider_returncode"] != 0)
                 or native.get("reaped") is not True or native.get("process_group_absent") is not True
                 or native.get("lifecycle_finalized") is not True
                 or native.get("subreaper_children_absent") is not True
@@ -76253,7 +76292,10 @@ class DatabaseImplementationDaemon:
                        for k in ("binding_id", "events_digest", "state_digest", "state_target_digest"))
                 or native.get("receipt_id") != content_identity({k: v for k, v in native.items() if k != "receipt_id"})):
             raise DatabaseImplementationAuthorityError("native provider failure custody differs")
-        if (attempt.committed_phase not in {ATTEMPT_PHASE_CLAIMED, ATTEMPT_PHASE_CONTEXT}
+        permitted_phases = {ATTEMPT_PHASE_CLAIMED, ATTEMPT_PHASE_CONTEXT}
+        if allow_failed and attempt.status == "failed":
+            permitted_phases.add(ATTEMPT_PHASE_FAILED)
+        if (attempt.committed_phase not in permitted_phases
                 or self.effect_claim_recorded(attempt.attempt_id, idempotency_key=f"effect:{attempt.attempt_id}") is not None):
             raise DatabaseImplementationAuthorityError("native provider failure has later effects")
 
@@ -77932,6 +77974,16 @@ class DatabaseImplementationDaemon:
         from .planning_unknown_abandonment_settlement import settle_planning_unknown_administrative_abandonment
         return settle_planning_unknown_administrative_abandonment(self, authority_context=authority_context)
 
+    def retire_fenced_native_validation_candidate(self, *, config, candidate_request_path, apply=False):
+        """Audit an exact stopped rejected candidate without closing UNKNOWN."""
+        from .fenced_candidate_retirement import retire
+        return retire(self, config=config, candidate_request_path=candidate_request_path, apply=apply)
+
+    def rearm_fenced_native_validation_candidate(self, *, config, candidate_request_path, apply=False):
+        """Rearm only the exact audited retained candidate for Native validation."""
+        from .fenced_candidate_retirement import rearm
+        return rearm(self, config=config, candidate_request_path=candidate_request_path, apply=apply)
+
     def _build_portal_failure_settlement_receipt(
         self,
         attempt: DatabaseTaskAttempt,
@@ -78001,7 +78053,8 @@ class DatabaseImplementationDaemon:
             or normalized.get("operation")
             != "database_task_claim_failure"
             or normalized.get("failure_kind") not in {
-                "terminal_portal_bridge_error", "administrative_operator_stop_outcome_unknown"}
+                "terminal_portal_bridge_error", "administrative_operator_stop_outcome_unknown",
+                "administrative_fenced_validation_outcome_unknown"}
             or not settlement_id
             or content_identity(normalized) != settlement_id
         ):
@@ -78067,6 +78120,9 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     "Portal failure settlement execution evidence changed"
                 )
+        if normalized["failure_kind"] == "administrative_fenced_validation_outcome_unknown":
+            from .fenced_candidate_retirement import validate_failure
+            validate_failure(self, attempt, normalized)
         if normalized["failure_kind"] == "administrative_operator_stop_outcome_unknown":
             from .planning_unknown_abandonment_settlement import validate_failure
             validate_failure(self, attempt, normalized)
@@ -78457,7 +78513,8 @@ class DatabaseImplementationDaemon:
             ]
             if not failure_phases:
                 continue
-            if failure_phases[-1]["body"].get("failure_kind") == "administrative_operator_stop_outcome_unknown":
+            if failure_phases[-1]["body"].get("failure_kind") in {
+                    "administrative_operator_stop_outcome_unknown", "administrative_fenced_validation_outcome_unknown"}:
                 # A separate explicit administrative API owns this closeout.
                 # Ordinary reconciliation never grants UNKNOWN recovery/rearm.
                 continue
