@@ -23,7 +23,11 @@ def test_native_fenced_retirement_preserves_unknown_and_paid_attempt(tmp_path, m
     repo = tmp_path / 'repository'
     branch = _repository(repo)
     (repo / 'test_result.py').write_text('import result\ndef test_actual_result():\n    assert result.VALUE == 2\n')
-    subprocess.run(['git','add','test_result.py'],cwd=repo,check=True)
+    frame_relative = 'ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_continuation.py'
+    frame_source = repo / frame_relative
+    frame_source.parent.mkdir(parents=True)
+    frame_source.write_text("def refuse_candidate(**kwargs):\n    raise ValueError('authored candidate preparation refusal')\n")
+    subprocess.run(['git','add','test_result.py',frame_relative],cwd=repo,check=True)
     subprocess.run(['git','commit','-qm','Declare semantic fixture'],cwd=repo,check=True)
     state = tmp_path / 'campaign'; state.mkdir()
     (state / 'native').mkdir()
@@ -42,13 +46,14 @@ def test_native_fenced_retirement_preserves_unknown_and_paid_attempt(tmp_path, m
                   'outputs':[{'path':'result.py'}],"validation":["python3 -m pytest -q test_result.py"],
                   'completion':'auto','acceptance':'Reject invalid actual Python source.'}]})
     portals = []
+    execution_pool = [state / 'worktrees']
     def factory(paths, alias):
         bind_task_state_control_plane(paths.state,str(paths.root / 'portal-state.duckdb'))
         portal = PortalImplementationDaemon(todo_path=paths.task_projection,state_path=paths.state,
             strategy_path=paths.strategy,events_path=paths.events,repo_root=repo,task_header_prefix='## WWL-',
             board_namespace=config.run_id,implement=True,use_ephemeral_worktree=True,
             implementation_command=shlex.join([sys.executable,'-c',"from pathlib import Path; Path('result.py').write_text('VALUE = 1\\n')"]),
-            implementation_timeout=60,worktree_root=state / 'worktrees',worktree_submodule_paths=[],
+            implementation_timeout=300,worktree_root=execution_pool[0],worktree_submodule_paths=[],
             implementation_log_dir=paths.implementation_logs,merge_target_branch=branch,
             max_task_attempts=3,implementation_protected_paths=(),implementation_declared_outputs_only=True)
         portals.append(portal)
@@ -125,6 +130,8 @@ def test_native_fenced_retirement_preserves_unknown_and_paid_attempt(tmp_path, m
         # A marker alone cannot bypass the unknown-provider barrier.
         assert owner.claim_next() is None
         from ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_runtime import CampaignRuntime
+        execution_pool[0] = state / 'worktrees/routed-execution'
+        execution_pool[0].mkdir()
         runtime = CampaignRuntime(config,{})
         runtime._daemon = owner
         runtime._bridge = routed
@@ -135,6 +142,65 @@ def test_native_fenced_retirement_preserves_unknown_and_paid_attempt(tmp_path, m
         assert owner.provider_invocation_recorded(attempt.attempt_id,idempotency_key='provider:' + attempt.attempt_id) == before
         assert len([event for event in events if event['type'] == 'implementation_started']) == 1
         assert not any(event['type'] == 'task_completed' for event in events)
+        # The exact no-model route may fail before creating any execution
+        # workspace. This leaves UNKNOWN intent, not permission to run a model.
+        from ipfs_accelerate_py.agent_supervisor.project_adapters import worldwide_legal_search_continuation as continuation
+        actual_reconcile = continuation.reconcile_candidate
+        import importlib.util
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location('authored_preparation_fault',frame_source)
+        authored = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(authored)
+        monkeypatch.setattr(continuation,'reconcile_candidate',authored.refuse_candidate)
+        monkeypatch.setattr(bridge,'_native_provider_exit_failure',lambda **kwargs:None)
+        runtime._cached = {'active_task_id':next_attempt.task_alias,'stage':'context'}
+        with patch.object(runtime,'capture'):
+            runtime._run_pass()
+        assert runtime._last_failure['reason'] == 'authored candidate preparation refusal'
+        actual_failure = runtime._last_failure
+        assert any(frame['path'] == frame_relative for frame in actual_failure['source_frames'])
+        current_paths = bridge._paths(next_attempt)
+        pending_callback = owner.provider_invocation_recorded(next_attempt.attempt_id,
+            idempotency_key='provider:' + next_attempt.attempt_id)
+        assert pending_callback['callback_state'] == 'started_outcome_unknown'
+        assert not current_paths.events.exists()
+        bridge.candidate_reconciliation_loader = None
+        waiting = owner.run_once()
+        assert waiting['implementation_result']['reason'] == 'provider_callback_outcome_unknown'
+        assert not current_paths.events.exists()
+        monkeypatch.setattr(continuation,'reconcile_candidate',actual_reconcile)
+        bridge.candidate_reconciliation_loader = runtime._load_candidate_admission
+        # The unchanged preparation defect cannot spend its sole retry. Only
+        # a committed repair of a real captured fault frame admits that retry.
+        unchanged = owner.run_once()
+        assert unchanged['implementation_result']['reason'] == 'provider_callback_outcome_unknown'
+        assert not current_paths.events.exists()
+        frame_source.write_text('def refuse_candidate(**kwargs):\n    return None\n')
+        subprocess.run(['git','add',frame_relative],cwd=repo,check=True)
+        subprocess.run(['git','commit','-qm','Repair authored preparation source'],cwd=repo,check=True)
+        runtime = CampaignRuntime(config,{})
+        runtime._daemon = owner
+        runtime._bridge = routed
+        runtime._last_failure = actual_failure
+        bridge.candidate_reconciliation_loader = runtime._load_candidate_admission
+        resumed = owner.run_once()
+        current_events,_ = _accepted_source_events(current_paths.events)
+        assert any(event['type'] == 'candidate_continuation_workspace_prepared' for event in current_events)
+        assert any(event['type'] == 'worktree_reconciliation_validation_finished' for event in current_events)
+        assert not any(event['type'] == 'implementation_started' for event in current_events)
+        assert owner.get_attempt(next_attempt.attempt_id).attempt_number == 2
+        assert owner.get_attempt(attempt.attempt_id).status == 'failed'
+        assert owner.phase_history(attempt.attempt_id) == phases
+        assert owner.provider_invocation_recorded(attempt.attempt_id,idempotency_key='provider:' + attempt.attempt_id) == before
+        admitted = owner._require_connection().execute(
+            "SELECT body_json FROM daemon_execution_events WHERE attempt_id=? AND event_type=?",
+            [next_attempt.attempt_id,'native_candidate_preparation_resume_admitted']).fetchall()
+        assert len(admitted) == 1
+        assert json.loads(admitted[0][0])['previous_callback'] == pending_callback
+        # A repeated UNKNOWN pass cannot re-enter preparation or validation.
+        prior_count = len(current_events)
+        owner.run_once()
+        assert len(_accepted_source_events(current_paths.events)[0]) == prior_count
     finally:
         for portal in portals:
             portal.close_event_runtime()

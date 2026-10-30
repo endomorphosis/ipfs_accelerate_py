@@ -348,3 +348,151 @@ def permits_candidate_claim(daemon, task_cid, prior_attempt_id):
             and task.revision == audit["task"]["revision"] + 2)
     except (ValueError,KeyError,TypeError,OSError):
         return False
+
+
+def _repaired_preparation_source(runtime, attempt):
+    """A committed repair to an actual failure frame may spend the retry."""
+    import subprocess
+    import re
+    failure = runtime._last_failure
+    if (not isinstance(failure, dict) or failure.get("schema") != "wwl.native-failure@1"
+            or failure.get("receipt_id") != digest({key:value for key,value in failure.items() if key != "receipt_id"})
+            or failure.get("task_id") != attempt.task_alias
+            or type(failure.get("observed_at")) not in (int,float)
+            or failure["observed_at"] * 1000 < attempt.started_at_ms
+            or not re.fullmatch(r"[0-9a-f]{40}",str(failure.get("source_revision") or ""))):
+        return None
+    root = runtime.config.framework_root
+    def git(*args):
+        return subprocess.run(["git","--no-replace-objects",*args],cwd=root,capture_output=True,check=True,timeout=30).stdout
+    current = git("rev-parse","HEAD").decode().strip()
+    if current == failure["source_revision"] or current != runtime._loaded_framework_revision:
+        return None
+    relevant = {"ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_continuation.py",
+        "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"}
+    for frame in failure.get("source_frames",[]):
+        relative = frame.get("path")
+        if relative not in relevant:
+            continue
+        target = root / relative
+        if target.resolve(strict=True) != target or not target.is_file():
+            continue
+        old = hashlib.sha256(git("show",failure["source_revision"] + ":" + relative)).hexdigest()
+        new = hashlib.sha256(git("show",current + ":" + relative)).hexdigest()
+        if old == frame.get("source_sha256") and old != new and hashlib.sha256(target.read_bytes()).hexdigest() == new:
+            return {"native_failure_receipt":failure["receipt_id"],"baseline_revision":failure["source_revision"],
+                    "repaired_revision":current,"repaired_frame":relative,"before_sha256":old,"after_sha256":new}
+    return None
+
+
+def admit_preparation_resume(*, bridge, attempt, paths, binding, portal_daemon, admission):
+    """Admit one untouched no-model preparation retry under the same claim.
+
+    An ordinary UNKNOWN callback never reaches this branch. The candidate
+    route must have been published before the claim, and no Native workspace
+    or execution boundary may have been entered. The callback stays UNKNOWN
+    until the usual Native validation and merge acceptance settles it.
+    """
+    from .database_portal_bridge import DatabasePortalExecutionBridge, _accepted_source_events
+    from .implementation_daemon import DatabaseImplementationDaemon, PortalImplementationDaemon, PortalTaskState
+    from ..project_adapters.worldwide_legal_search_runtime import CampaignRuntime
+    from ..project_adapters.worldwide_legal_search_continuation import CandidateContinuationAdmission
+    from ..project_adapters.worldwide_legal_search_watchdog import read_owned_json
+    try:
+        if (type(bridge) is not DatabasePortalExecutionBridge or type(portal_daemon) is not PortalImplementationDaemon
+                or type(admission) is not CandidateContinuationAdmission):
+            return False
+        loader = bridge.candidate_reconciliation_loader
+        runtime = getattr(loader,'__self__',None)
+        authority = admission.prior_attempt_authority
+        owner = getattr(authority,'__self__',None)
+        if (type(runtime) is not CampaignRuntime or getattr(loader,'__func__',None) is not CampaignRuntime._load_candidate_admission
+                or type(owner) is not DatabaseImplementationDaemon or runtime._daemon is not owner
+                or getattr(authority,'__func__',None) is not DatabaseImplementationDaemon.authorize_superseded_portal_attempt_binding):
+            return False
+        current = owner._owned_running_attempt(attempt)
+        source_repair = _repaired_preparation_source(runtime,current)
+        if source_repair is None:
+            return False
+        owner._protect_attempt_write(current)
+        owner._require_provider_admission(current)
+        if current.committed_phase not in {'claimed','context'}:
+            return False
+        request = runtime._read_candidate_request()
+        if dict(admission.request) != request or request['next_attempt_number'] != current.attempt_number:
+            return False
+        pending = runtime.config.state_root / 'control/pending-candidate-continuation.json'
+        pointer = read_owned_json(pending)
+        expected_pointer = {'schema':'wwl.pending-candidate-continuation@1','run_id':runtime.config.run_id,
+            'request_path':str(runtime._candidate_request_path),
+            'request_sha256':hashlib.sha256(runtime._candidate_request_path.read_bytes()).hexdigest()}
+        witness = pending.stat()
+        if (pointer != expected_pointer or max(witness.st_mtime_ns,witness.st_ctime_ns) > current.started_at_ms * 1_000_000
+                or runtime.config.run_id != current.owner_session_id
+                or owner.database_path != runtime.config.database):
+            return False
+        previous = owner.get_attempt(request['predecessor_attempt_id'])
+        if previous is None or previous.status != 'failed' or previous.task_cid != current.task_cid:
+            return False
+        audit = _audit(owner,previous)
+        if audit['candidate_request'] != request:
+            return False
+        failure = owner._portal_failure_phase_receipt(previous)
+        validate_failure(owner,previous,failure)
+        prior_claim = owner.coordinator.get_task_claim(previous.claim_id)
+        if owner.coordinator.observe_rearmed_failed_task_claim(prior_claim,failure_receipt=failure) is None:
+            return False
+        authority(current,dict(binding),dict(admission.predecessor_binding))
+        callback = owner.provider_invocation_recorded(current.attempt_id,idempotency_key='provider:' + current.attempt_id)
+        expected = {'schema':'database-portal-callback-intent@1','callback_state':'started_outcome_unknown',
+            'provider_effect_state':'unknown_may_have_started', **{key:getattr(current,key) for key in
+            ('attempt_id','task_cid','claim_id','lease_id','fencing_token','fence_epoch')}}
+        if (callback != expected or owner._attempt_execution_evidence_counts(current.attempt_id)['effect_claim_count'] != 0
+                or any(phase['phase'] not in {'claimed','context'} for phase in owner.phase_history(current.attempt_id))):
+            return False
+        event_type = 'native_candidate_preparation_resume_admitted'
+        if owner._require_connection().execute(
+                'SELECT event_id FROM daemon_execution_events WHERE attempt_id=? AND event_type=? LIMIT 1',
+                [current.attempt_id,event_type]).fetchall():
+            return False
+        events = _accepted_source_events(paths.events)[0] if paths.events.exists() else []
+        if events or portal_daemon._find_live_inflight_implementation() is not None:
+            return False
+        state = PortalTaskState.load(portal_daemon.state_path)
+        if state.implementation_in_progress or state.active_provider_runner or state.active_attempt:
+            return False
+        timeout = portal_daemon.implementation_timeout
+        if type(timeout) not in (int,float) or not 0 < timeout or owner._now_ms() >= current.started_at_ms + timeout * 1000:
+            return False
+        bound = portal_daemon.bind_database_attempt_authority(task_id=current.task_alias,
+            database_task_cid=current.task_cid,database_attempt_id=current.attempt_id,database_claim_id=current.claim_id,
+            database_attempt_number=current.attempt_number,database_binding_id=binding['binding_id'])
+        tasks = portal_daemon._load_tasks()
+        if len(tasks) != 1 or tasks[0].task_id != current.task_alias:
+            return False
+        fresh_id = hashlib.sha256((current.attempt_id + request['receipt_id']).encode()).hexdigest()[:24]
+        fresh = portal_daemon.worktree_root.resolve(strict=True) / ('workspace_continuation_' + fresh_id)
+        retry_id = hashlib.sha256((fresh_id + ':checkout-retry-1').encode()).hexdigest()[:24]
+        retry = portal_daemon.worktree_root.resolve(strict=True) / ('workspace_continuation_' + retry_id)
+        for workspace in (fresh,retry):
+            if workspace.exists() or workspace.is_symlink() or portal_daemon.worktree_lifecycle.load_workspace(workspace) is not None:
+                return False
+        if portal_daemon.worktree_lifecycle.load_task_attempt(canonical_task_cid=bound['canonical_task_cid'],
+                task_id=current.task_alias,attempt=portal_daemon._worktree_lifecycle_attempt(tasks[0],1)) is not None:
+            return False
+        # Protect the same owner/claim again before publishing the bounded
+        # admission. Neither a restart nor changed heartbeat resets its limit.
+        owner._protect_attempt_write(current)
+        if read_owned_json(pending) != pointer or pending.stat().st_mtime_ns != witness.st_mtime_ns:
+            return False
+        owner._record_event(event_type,attempt_id=current.attempt_id,task_cid=current.task_cid,body={
+            'schema':'database-native-candidate-preparation-resume@1','attempt_id':current.attempt_id,
+            'candidate_request_id':request['receipt_id'],'binding_id':binding['binding_id'],'source_repair':source_repair,
+            'previous_callback':callback,'pending_pointer':pointer,'preclaim_pointer_mtime_ns':witness.st_mtime_ns,
+            'original_deadline_ms':current.started_at_ms + int(timeout * 1000),'resume_ordinal':1,
+            'provider_redispatched':False,'paid_attempt_budget_reset':False,'completion_authority':False})
+        return True
+    except (ValueError,KeyError,TypeError,OSError,AttributeError):
+        return False

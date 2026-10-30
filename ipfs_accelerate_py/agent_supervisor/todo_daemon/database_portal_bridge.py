@@ -11790,6 +11790,10 @@ class DatabasePortalExecutionBridge:
             # an exact Native no-provider validation refusal. Unchanged bytes,
             # ordinary providers and any accepted merge remain fenced.
             recover_checkout = recover_checkout or repaired_candidate
+            if not recover_checkout and previous is None and not entered_validation:
+                from .fenced_candidate_retirement import admit_preparation_resume
+                recover_checkout = admit_preparation_resume(bridge=self,attempt=attempt,paths=paths,binding=binding,
+                    portal_daemon=daemon,admission=admission)
         finally:
             daemon.close_event_runtime()
         if recover_checkout:
