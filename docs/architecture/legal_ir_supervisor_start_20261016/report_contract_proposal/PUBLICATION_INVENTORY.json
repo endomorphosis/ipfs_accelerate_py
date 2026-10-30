@@ -1,0 +1,183 @@
+{
+  "base_head": "064fa68164a399876fa3a2e9413a7ed0a6c67126",
+  "configuration_sha256": "dae3dbf7e39505f045a2353499f47f0740ecc565454ff653e65b4efe322b985b",
+  "files": [
+    {
+      "bytes": 1986,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05-tests/README.md",
+      "sha256": "abf0f52a02a1ddda6c8a139c1c2b6d6f36a68511dff6ff4fdb35aa5361ce1ed5"
+    },
+    {
+      "bytes": 1207,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05-tests/SOURCE_MANIFEST.json",
+      "sha256": "d22b69c666ba89c97956c02794aaed9db4849cc6129bec7392c15428c970c1a4"
+    },
+    {
+      "bytes": 10590,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05-tests/test_docker_container_contract.py",
+      "sha256": "db44ba485a2ee8978326c0125db1732b7889845a02ea9ec6c7993d7e95d3eb04"
+    },
+    {
+      "bytes": 2660,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05-tests/test_gate_contract.py",
+      "sha256": "82edc7fc80961566f37a4411178184dca70de1c9434f4563187e1b244cbe13ed"
+    },
+    {
+      "bytes": 6098,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/README.md",
+      "sha256": "9b5d7c9d85bef6f3409f593c9be574d1248fd216d4bf8518bd239ed3bab01d86"
+    },
+    {
+      "bytes": 7256,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/RESOURCE_PLAN.json",
+      "sha256": "376a156bef5a5f564699080b1e9e44a10d83cf91d9e5b29f03630cc540349677"
+    },
+    {
+      "bytes": 1667,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/REVISION_PROVENANCE.json",
+      "sha256": "1c2fee6ac5ef5468ca66c7e4770080dff82a7f65289110738d569cdff91277c6"
+    },
+    {
+      "bytes": 1885,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/SOURCE_MANIFEST.json",
+      "sha256": "d5049a12a0622c7f4b9462db7657c3920130ed4c59a17919a0f2e440bb372313"
+    },
+    {
+      "bytes": 34367,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/docker_fixture_roundtrip.py",
+      "sha256": "3014e52e8a94a1d4d3f9214f5dcf1e443f3a1eb471aaf2efba42ec93e97f750d"
+    },
+    {
+      "bytes": 15628,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/entry.py",
+      "sha256": "9186ae87f353690ed0f51eb1f8b013035983296894440f18bed64b8d5fee948d"
+    },
+    {
+      "bytes": 3003,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/inner_checker.py",
+      "sha256": "52e02e6a57152abaffc2d891350922f2202cd76a195745353635d10615ee9002"
+    },
+    {
+      "bytes": 2510,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/outer_start_barrier.py",
+      "sha256": "94217528f7658c4e6b5913ccc903b638bf18d2d3f8e01fbf7d6ce760aa7e61d1"
+    },
+    {
+      "bytes": 4234,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/factual_acceptance/native-regression/v05/prepare_entry_request.py",
+      "sha256": "26896505992f696006aa73d6f4ff5a6f189e073a3ce90f195decb3b13ef3dde5"
+    },
+    {
+      "bytes": 2637,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/PR292_BODY.md",
+      "sha256": "2db26982881f216a7a92f965163efc9b30bed9fcbacefb33c817e74de6baaef3"
+    },
+    {
+      "bytes": 1553,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/QUALIFICATION.json",
+      "sha256": "c628410c36b2e0250f74595892ee36892ba7fcb5ef88caa31f7a09831a49a197"
+    },
+    {
+      "bytes": 3053,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/README.md",
+      "sha256": "01f758eddc3923ae6e7d9aae1ef27fd0de540ba9c05e96b6ab54bc07ceaa93e5"
+    },
+    {
+      "bytes": 758,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/additional-controls-native-regression-v05-tests.json",
+      "sha256": "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604"
+    },
+    {
+      "bytes": 758,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/additional-controls-native-regression-v05.json",
+      "sha256": "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604"
+    },
+    {
+      "bytes": 758,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/additional-controls-real-candidate-binding-v01.json",
+      "sha256": "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604"
+    },
+    {
+      "bytes": 1897,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/publication-config.json",
+      "sha256": "dae3dbf7e39505f045a2353499f47f0740ecc565454ff653e65b4efe322b985b"
+    },
+    {
+      "bytes": 6517,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/real-candidate-binding-v01/README.md",
+      "sha256": "4afa30e2a86de5ffc7f7f36b71d653a9f761895390172e82a1ec87405722588f"
+    },
+    {
+      "bytes": 3265,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/real-candidate-binding-v01/SOURCE_MANIFEST.json",
+      "sha256": "8ef2a9764206819e2980114e662cc24c194aac7651420c085d28fd6c709008d7"
+    },
+    {
+      "bytes": 18030,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/real-candidate-binding-v01/real_candidate_binding.py",
+      "sha256": "a9b8de8e0b496360e3e828e0bae84aa2b60b6b9643c165b9878462388095a896"
+    },
+    {
+      "bytes": 10735,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/real-candidate-binding-v01/test_binding_memory.py",
+      "sha256": "ce8b8370f240aedf92aed366eba051c2ea161411809dd16ee80105b0ced15224"
+    },
+    {
+      "bytes": 7118,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/README.md",
+      "sha256": "dc0a55b2a61dd07f9064d0725034f6feccfff5c047147baae315c3393d920bb6"
+    },
+    {
+      "bytes": 9224,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/SOURCE_MANIFEST.json",
+      "sha256": "2aba6d22488ebc08a58661a4c90b56a0c497b0f843663da16e905845b8eb6cc3"
+    },
+    {
+      "bytes": 1256,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/control-evidence/packet-controls-root-observation-v01.json",
+      "sha256": "656c5f23430881effad6062cd502c02584d1475895534d7437b3a15be4b182d1"
+    },
+    {
+      "bytes": 9836,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/control-evidence/packet-stdout-controls-request-v01.json",
+      "sha256": "98fd9e68a7c5a71d46865bea0423b9b5428b883b999c09366720754386f331d2"
+    },
+    {
+      "bytes": 2467,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/control-evidence/qualify_packet_stdout_v01.py",
+      "sha256": "e72c564f511fe095124d02358df3356efc1ad7ec5d91398aff690933afd1409e"
+    },
+    {
+      "bytes": 758,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/handoff-control-evidence/handoff-controls-publication-observation-v01.json",
+      "sha256": "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604"
+    },
+    {
+      "bytes": 1850,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/handoff-control-evidence/handoff-controls-root-observation-v01.json",
+      "sha256": "3ceac138eae3dac332335516474eebe529afa70b111b2064c2c4f71cf36b70b3"
+    },
+    {
+      "bytes": 16428,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/handoff-control-evidence/handoff-stdout-controls-request-v01.json",
+      "sha256": "0d0fd5aac55357e8d7f2a997451bed0ad54a648bf3555102a073792a47696556"
+    },
+    {
+      "bytes": 4360,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/handoff-control-evidence/qualify_handoff_controls_stdout_v01.py",
+      "sha256": "9f10e95085eeb924b678f802f1a6d4f900cd31cdf00e30746d186e4a81af3632"
+    },
+    {
+      "bytes": 30113,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/packet_generator.py",
+      "sha256": "179303cee51fd14c63f34418c8ad93d002db7f7a80180e659d3b43db8604c911"
+    },
+    {
+      "bytes": 15924,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/source-v01/test_packet_contract_memory.py",
+      "sha256": "1df15451018f1526ae9a3462251818b104063c4a025646359b4889c53679471c"
+    }
+  ],
+  "schema": "legal-ir-report-contract-proposal-publication-inventory@1",
+  "source_only_non_dispatchable": true
+}

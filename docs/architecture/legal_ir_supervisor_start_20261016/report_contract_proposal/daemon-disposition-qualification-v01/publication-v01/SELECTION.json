@@ -1,0 +1,53 @@
+{
+  "directories": [
+    "attempt-disposition-v01",
+    "attempt-disposition-controls-v02",
+    "attempt-disposition-controls-v03",
+    "daemon-integration-v04",
+    "entry-gate-v01",
+    "native-host-v04",
+    "native-host-v05",
+    "entry-source-controls-v01",
+    "native-admin-audit-v01",
+    "disposition-entry-fixture-v01",
+    "failed-fixture-recovery-v01",
+    "disposition-entry-fixture-v02",
+    "qualification-evidence-v01",
+    "qualification-evidence-v02",
+    "qualification-evidence-v03"
+  ],
+  "files": [
+    "READINESS.md",
+    "TASKS.json",
+    "sticky-host-root-observation-r01.json",
+    "entry-source-root-observation-r01.json",
+    "attempt-controls-failed-finalization-root-observation-r02.json",
+    "attempt-controls-root-observation-r03.json",
+    "disposition-entry-capsule-root-observation-r01.json",
+    "disposition-entry-failed-root-observation-r01.json",
+    "publication-v01/CONTRACT.json",
+    "publication-v01/EXISTING_REPORT_INVENTORY.json",
+    "publication-v01/README.txt",
+    "publication-v01/SELECTION.json",
+    "publication-v01/SOURCE_MANIFEST.json",
+    "publication-v01/build_manifest.py",
+    "publication-v01/build_packet.py",
+    "publication-v01/build_request.py",
+    "publication-v01/parent_attachment_gate.py",
+    "publication-v01/publish_docs.py",
+    "failed-fixture-recovery-root-observation-r01.json",
+    "disposition-entry-root-observation-r02.json",
+    "ROOT_REVIEW.json"
+  ],
+  "instructions": "Root reviewed exact source bundles, 74 native-finalized engineering cases, public recovery, 26 actual evidence copies, remaining29-task acyclic dependency graph and unchanged runtime/board. Failed and unexecuted generations remain inert documentation. Historical request JSON is never recursively executed or expanded. Frozen source proposals are uninstalled; no model/semantic/native-positive/acceptance qualification. Publisher source/packet/request follow sequentially; actual publication result and native closeout are observed separately afterward.",
+  "root_observations": [
+    "sticky-host-root-observation-r01.json",
+    "entry-source-root-observation-r01.json",
+    "attempt-controls-root-observation-r03.json",
+    "disposition-entry-capsule-root-observation-r01.json",
+    "failed-fixture-recovery-root-observation-r01.json",
+    "disposition-entry-root-observation-r02.json"
+  ],
+  "schema": "legal-ir-disposition-publication-selection@1",
+  "status": "root_finalized"
+}

@@ -1,0 +1,101 @@
+{
+  "acceptance_authority": false,
+  "alternates": false,
+  "branch": "fixture-main",
+  "directory_mode": "0500",
+  "file_mode": "0444",
+  "files": [
+    {
+      "bytes": 37,
+      "path": ".git/COMMIT_EDITMSG",
+      "sha256": "8e5efe636b619b792f0d99b7aa9abe6ab5a5b119ae19fbc1bcdb45a6aa16f81f"
+    },
+    {
+      "bytes": 29,
+      "path": ".git/HEAD",
+      "sha256": "a977b14f60e6072e2fd8841008d2567a837f745ad6ed02c5ddb6a19988e117b8"
+    },
+    {
+      "bytes": 92,
+      "path": ".git/config",
+      "sha256": "cfe7ba1238c9a78be7535d7c63bcaf5a4d5011d46b07c9b45d3bbf7d6c312dfe"
+    },
+    {
+      "bytes": 145,
+      "path": ".git/index",
+      "sha256": "80b1e0f972bbeda5625c67e99535f58048993610e244cf19fde10307257578d2"
+    },
+    {
+      "bytes": 209,
+      "path": ".git/logs/HEAD",
+      "sha256": "25acfc158a179aef8b4b1b94e55d4f4175cb9c289763fe4ebed4a7d9a30c16ff"
+    },
+    {
+      "bytes": 209,
+      "path": ".git/logs/refs/heads/fixture-main",
+      "sha256": "25acfc158a179aef8b4b1b94e55d4f4175cb9c289763fe4ebed4a7d9a30c16ff"
+    },
+    {
+      "bytes": 90,
+      "path": ".git/objects/12/eb4fcf234d88e8e24a847d7a0ea8edb8e33d1f",
+      "sha256": "0e2c04809f9f3a77e9b1463b2265a1194c2144484d48446e394632453a6f481d"
+    },
+    {
+      "bytes": 58,
+      "path": ".git/objects/13/7eb46dc7b333499af8770cb7dd3dcb2ff57d6b",
+      "sha256": "6e8b50238d1719e3e09945e3502f729315be30f21410c2b8d01c7148998fd746"
+    },
+    {
+      "bytes": 164,
+      "path": ".git/objects/e0/aa7a6357847d8199471456dd31b09989785963",
+      "sha256": "1e547dfa7aa0329527c553d4c01d8e4a32fdcad31a80cedaa97c94152566666a"
+    },
+    {
+      "bytes": 41,
+      "path": ".git/refs/heads/fixture-main",
+      "sha256": "8611d0319e84f0c1d6cbbf8a4c7ed8c5e7b2abd9e0d610734f4cd5a054b1f56f"
+    },
+    {
+      "bytes": 84,
+      "path": "tasks.todo.md",
+      "sha256": "3628e5ecece33906b002d6b1ef9352e13b9e0ba537e3f94c64062192a3b44a9e"
+    }
+  ],
+  "hardlinks": false,
+  "head": "e0aa7a6357847d8199471456dd31b09989785963",
+  "payload_bytes": 1158,
+  "payload_file_count": 11,
+  "schema": "legal-ir-native-bootstrap-private-Git-seed@1",
+  "seed_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/git-seed",
+  "setup_commands": [
+    [
+      "init",
+      "-b",
+      "fixture-main"
+    ],
+    [
+      "add",
+      "--",
+      "tasks.todo.md"
+    ],
+    [
+      "commit",
+      "--no-gpg-sign",
+      "-m",
+      "Private full-host qualification seed"
+    ],
+    [
+      "rev-parse",
+      "--verify",
+      "HEAD"
+    ],
+    [
+      "status",
+      "--porcelain=v1",
+      "-z"
+    ]
+  ],
+  "source_only_inert_input": true,
+  "submodules": false,
+  "symlinks": false
+}

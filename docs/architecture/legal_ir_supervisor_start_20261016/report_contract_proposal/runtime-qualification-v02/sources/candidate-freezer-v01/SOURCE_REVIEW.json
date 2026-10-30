@@ -1,0 +1,99 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "existing_sources_modified": false,
+  "provider_calls_performed": false,
+  "reviewed_source": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+  "reviewed_source_bytes": 3300743,
+  "reviewed_source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+  "reviewed_symbols": [
+    {
+      "body_sha256": "d2fd24f615518b7d347d2516fed873d915b2f87419364ada6dee89d624f472ff",
+      "end_line": 34049,
+      "line": 34008,
+      "symbol": "PortalImplementationDaemon._take_database_provider_exit",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "edc9b82f1129371b23ae5aea19a59a6bd09fbed1e11041d5dd3d1cfadea8f5a2",
+      "end_line": 34886,
+      "line": 34471,
+      "symbol": "PortalImplementationDaemon._provider_runner_started_callback",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "930898e9e42563f2d62471247ba194b3fff0e0be990c6379b97efc250167b223",
+      "end_line": 34925,
+      "line": 34888,
+      "symbol": "PortalImplementationDaemon._mark_provider_launch_boundary",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "2af762366a5d19b811cb0b0d97e6d00194f7c88b4f52b1a1842a3b9c012e3eb6",
+      "end_line": 38431,
+      "line": 38409,
+      "symbol": "PortalImplementationDaemon._commit_worktree_changes",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "201700e618e91874f7b16a9c139d420816f8ba42e67b82debc7db996cd8e649f",
+      "end_line": 38560,
+      "line": 38434,
+      "symbol": "PortalImplementationDaemon._commit_worktree_changes_unchecked",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "f01d561de21ab18fcf468bd72abe76aca4353db3ea936b0df19719ddeb017327",
+      "end_line": 39924,
+      "line": 39717,
+      "symbol": "PortalImplementationDaemon._stage_declared_ignored_outputs",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "f95b92d2a9870a07f97f443ae9de579fab7fcc01c71d654c36b07b1cb54326ed",
+      "end_line": 43654,
+      "line": 43472,
+      "symbol": "PortalImplementationDaemon._validated_candidate_handoff_guard",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "b25677d2908456b817ad42f416d3cc7c1389e144729a75dd7f0ca81bdb59212c",
+      "end_line": 45463,
+      "line": 45334,
+      "symbol": "PortalImplementationDaemon._run_validation_with_candidate_binding",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "caabd698f1abf29d1c6bfce27926b795a262cf1ebb3102631222b530b5cc631a",
+      "end_line": 46184,
+      "line": 46173,
+      "symbol": "PortalImplementationDaemon.run_production_model_assisted_route",
+      "visibility": "public"
+    },
+    {
+      "body_sha256": "431547cb72b4f0df1d6d381bd95f830ac04f39a49b3c22c0dab86dd260f7a23c",
+      "end_line": 46243,
+      "line": 46196,
+      "symbol": "PortalImplementationDaemon._finalize_production_model_assisted_route",
+      "visibility": "private"
+    },
+    {
+      "body_sha256": "366b55912f4fa8e9e8f84e873203e51e8289d06117db00d60f6045f33a15e8e2",
+      "end_line": 46968,
+      "line": 46846,
+      "symbol": "PortalImplementationDaemon._stage_declared_candidate_outputs",
+      "visibility": "private"
+    }
+  ],
+  "schema": "legal-ir-report-only-freezer-source-review@1",
+  "source_mode_fix_delegated_to_additive_observer_v02": true,
+  "source_mode_observation": {
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py": "0o664",
+    "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/real-candidate-binding-v02/real_candidate_binding.py": "0o664",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "0o664"
+  },
+  "standalone_effectful_adapter_authored": false,
+  "status": "source_review_no_runtime_or_test_execution",
+  "supported_public_success_fenced_candidate_producer_found": false
+}

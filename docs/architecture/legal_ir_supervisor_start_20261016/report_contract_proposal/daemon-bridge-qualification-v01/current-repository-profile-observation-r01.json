@@ -1,0 +1,17 @@
+{
+  "alternates_bytes": 133,
+  "alternates_file": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/.git/objects/info/alternates",
+  "alternates_present": true,
+  "alternates_sha256": "a7dd34a6535094861f24de22eef122a14bd6575062b971d2d794d2335b10ac1b",
+  "canonical_tasks_accepted": 0,
+  "current_V04_profile_supported": false,
+  "expected_refusal": "unsupported_git_storage_indirection_or_lock",
+  "github_qualification_skipped": true,
+  "observation": "bounded readonly original Gitmetadata, no Gitcommand/repositorymutation",
+  "original_attempt_cap": 2,
+  "original_repository": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller",
+  "required_next_task": "Materialize a separate charged selfcontained owned checkout without object alternates, then qualify public preflight; preserve original repository and shared object store.",
+  "runtime_enabled": false,
+  "schema": "legal-ir-current-repository-profile-observation@1",
+  "source_guard_weakened": false
+}

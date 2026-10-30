@@ -1,0 +1,235 @@
+{
+  "Docker_and_handoff_sites": [
+    {
+      "AST_sha256": "522727bd50e4de7eae63f9ecd1af9ea7f79888ee28184ba55e67cbd179a08489",
+      "definition": "_docker_isolation_binary",
+      "end_line": 2018,
+      "line": 1973,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "e353d605def8246a9ce35560597086938cbc27940136d553b0871e066ac936e4",
+      "definition": "_docker_ordinary_task_toolchain_image_id",
+      "end_line": 2161,
+      "line": 2117,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "34762b8b80ff18b50d10cff36cbf535d4a5724a7f49d8da2cb9ce0e06383f334",
+      "definition": "_require_startable_docker_container",
+      "end_line": 3240,
+      "line": 3192,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "d22596264c36c699575664089bd895f84b7a228a04f1c4b724e9e97f38f492ab",
+      "definition": "_create_grok_container_and_build_start_command",
+      "end_line": 3293,
+      "line": 3243,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "ddcac39f1e030c8e2b6e66346c3f2a75d2dd34178eb4a7aedc43eff015313615",
+      "definition": "_bounded_docker_query",
+      "end_line": 3878,
+      "line": 3856,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "632004529f5ce7039d33f09d1b9c5b66be8f90a42d9277d3b9454222842fbd1a",
+      "definition": "_legacy_remove_exact_docker_container",
+      "end_line": 8364,
+      "line": 8291,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "333f45e40b9883848d83af1fc25a4402dd231e7d0a7bb5ed3c8949cbb37cac98",
+      "definition": "_attest_exact_docker_execution",
+      "end_line": 11175,
+      "line": 11017,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "23b0e8c4aec66520c4ed1ba7cc629fe4616f74f7eda6a16a0f022d40799c4634",
+      "definition": "_LegacyDockerContainerLease.create",
+      "end_line": 7883,
+      "line": 7771,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "bfc0f920a6a002637b25252b116a00aeed018ba68ce29f9af2ee9757365ece73",
+      "definition": "_LegacyDockerContainerLease.close",
+      "end_line": 8028,
+      "line": 7943,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    },
+    {
+      "AST_sha256": "c4ee6027b51e7579e81617f1cb189c1c4b8c3d29b9613beab20a550fb971cdfe",
+      "definition": "_Lifecycle.query",
+      "end_line": 368,
+      "line": 363,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-controls-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
+    },
+    {
+      "AST_sha256": "87383614bfc7bdb786101191444094ff9b75fdbff474e0121028d205a8929866",
+      "definition": "_ordinary_admin_capacity",
+      "end_line": 1108,
+      "line": 1092,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-controls-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
+    },
+    {
+      "AST_sha256": "29801030ed5f03ce3882a1f4dfb8c31b64d73e8dad382ee9e5d2a0491e1ab358",
+      "definition": "authenticate_ordinary_callback_for_freezer",
+      "end_line": 1134,
+      "line": 1122,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-controls-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
+    },
+    {
+      "AST_sha256": "41771fbce41f842c4f53278b8f5340a29543583462afcd0aa3b67887cf17198c",
+      "definition": "authenticated_ordinary_freezer_scope",
+      "end_line": 1176,
+      "line": 1148,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-controls-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
+    },
+    {
+      "AST_sha256": "30bbc761f82b432246bf177a3a04fb939a94ee357a2e85437555252deeee740b",
+      "definition": "_acknowledge_independently_stopped_custody",
+      "end_line": 1029,
+      "line": 995,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-controls-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
+    },
+    {
+      "AST_sha256": "62bb09afb52c2676ec8c24fa48f34a10bdc755dc730ab54d68707426fd87e42f",
+      "definition": "ReportOnlyNativeHost._freeze",
+      "end_line": 349,
+      "line": 324,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/native-host-v03/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py"
+    }
+  ],
+  "bootstrap_Git_hooks": [
+    {
+      "AST_sha256": "a908aa2b9806e9499a1eb7fe1887fefa17b142f7ea715c4a61be08a63030e277",
+      "definition": "_agent_git_output",
+      "end_line": 7617,
+      "line": 7570,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py",
+      "planned_hook": "Original callsite uses a source-pinned explicitly bound native admin executor when present; unchanged original subprocess.run branch when unbound.",
+      "scope": "Observed import phase6 children all can flow through this helper; no current executor parameter.",
+      "subprocess_line": 7594
+    },
+    {
+      "AST_sha256": "560c08c136daf46fc986534ba0118667401c7b2688de9539b1dc93540b0d939b",
+      "definition": "git_common_dir",
+      "end_line": 552,
+      "line": 535,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+      "planned_hook": "Same explicit native admin branch; retain original Git-less fallback semantics for known nonzero/launch failures only.",
+      "scope": "Constructor source-derived6 common-directory calls; shared original lock/repository/lifecycle/GC helpers.",
+      "subprocess_line": 539
+    },
+    {
+      "AST_sha256": "3d3d035accc2f417346acb9b3a99f96486221c516df6d99ee59bfee96bc85f9c",
+      "definition": "control_plane_git_common_dir",
+      "end_line": 383,
+      "line": 365,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+      "planned_hook": "Same explicit native admin branch; do not substitute a caller-supplied repository identity.",
+      "scope": "Constructor source-derived2 orchestration namespace common-directory calls.",
+      "subprocess_line": 370
+    },
+    {
+      "AST_sha256": "ed16eea639bcebcd641a0c4d233b0e2109e8560409dda34011f0d74fc7d952f8",
+      "definition": "PortalImplementationDaemon._git_ref_exists",
+      "end_line": 57790,
+      "line": 57777,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "planned_hook": "Same explicit native admin branch; preserve genuine nonzero returncode as false, not success or swallowed custody failure.",
+      "scope": "Constructor source-derived1 merge-target existence query via _main_branch_name.",
+      "subprocess_line": 57781
+    }
+  ],
+  "constructor_breakdown_is_source_inference_not_recorded_stack_trace": {
+    "PortalImplementationDaemon._git_ref_exists": 1,
+    "board_control_plane.control_plane_git_common_dir": 2,
+    "checkout_lock.git_common_dir": 6
+  },
+  "host_Docker_commands_not_all_readonly": [
+    "inert docker create atG3:3254",
+    "host fallback docker rm atG3:8303"
+  ],
+  "observed_prior_process_phases": {
+    "complete_original_constructor": 9,
+    "complete_original_module_import": 6,
+    "private_git_setup": 3
+  },
+  "observed_prior_trace_limitation": "The genuine previous profiler recorded only phase/PID/PGID, not argv or Python caller stacks. Six-plus-two-plus-one constructor breakdown is a source-based inference requiring a future finite qualified callsite trace.",
+  "original_source_call_edges": [
+    {
+      "AST_sha256": "dfa1fae0a551c7930d1c004e0dfdde77718d5a4234f7fcb4c8026d17906890d1",
+      "definition": "_capture_imported_control_plane_generation",
+      "end_line": 79263,
+      "line": 79232,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    },
+    {
+      "AST_sha256": "5716ff924766c22e257b87c7e2e8db8e4541067341d87e529c0ae00cc817f307",
+      "definition": "agent_implementation_control_plane_source_generation",
+      "end_line": 7921,
+      "line": 7901,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py"
+    },
+    {
+      "AST_sha256": "809ea58963616cf4c23f67937781dc8a972cf1cade4ce65c6d24d41f9bab90c0",
+      "definition": "_agent_control_plane_git_state",
+      "end_line": 7661,
+      "line": 7620,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_implementation_route.py"
+    },
+    {
+      "AST_sha256": "1d3067306907a4523e642f2ebdf062b6f997a72e29cb8f33b4e8a8293f8f74a7",
+      "definition": "PortalImplementationDaemon.__init__",
+      "end_line": 5775,
+      "line": 5052,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    },
+    {
+      "AST_sha256": "4e7ac6d5002dc20eb6660dff4991de32ee8cd9843a010cee717bf1ec25775f88",
+      "definition": "PortalImplementationDaemon._main_branch_name",
+      "end_line": 49112,
+      "line": 49101,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    },
+    {
+      "AST_sha256": "2238b0bc272c5088daf50115fa3d4b8a7c2c70f8c9b3236e41881c27eed581a0",
+      "definition": "checkout_repository_id",
+      "end_line": 670,
+      "line": 657,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py"
+    },
+    {
+      "AST_sha256": "8243ed05794eae9c06292772a41151115d56b128372fae4b7f3fa1cd1f5d35e3",
+      "definition": "merge_target_queue_dir",
+      "end_line": 810,
+      "line": 760,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py"
+    },
+    {
+      "AST_sha256": "cec17bcdb905e7ff49b5a12674d49d97d3ab7047b6a782c349242ee814a0107b",
+      "definition": "orchestration_scope_dir",
+      "end_line": 527,
+      "line": 515,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py"
+    },
+    {
+      "AST_sha256": "6a6d25240e3816a91c4705c92ad34d9e70d4ccac745ac53b1635a6dcf90c3223",
+      "definition": "PortalImplementationDaemon._run_git",
+      "end_line": 62154,
+      "line": 62150,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    }
+  ],
+  "protected_scope": "Do not patch protected _DockerContainerLease, protected74 image or subprocess globals. Ordinary/callable-only source successors require explicit review and new hashes.",
+  "readonly_H4_successor_contract": "READONLY_DOCKER_OBSERVER.json; scope at _Lifecycle.query/typed H4 methods, never blanket replace shared G3 _bounded_docker_query.",
+  "schema": "legal-ir-native-admin-original-source-call-sites@1",
+  "watchdog_Docker_children": "Original watchdog is already isolated/attached by H4; its ordinary subprocess descendants inherit that watchdog group. Keep that source path separate from parent-host administrative queries."
+}

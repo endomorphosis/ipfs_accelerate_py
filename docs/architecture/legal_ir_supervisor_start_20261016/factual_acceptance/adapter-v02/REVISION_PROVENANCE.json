@@ -1,0 +1,37 @@
+{
+  "schema": "legal-ir-acceptance-adapter-revision-provenance@2",
+  "original_manifest_sha256": "0e482bc9dbdfcd6c9cf497270e82a31cc71edc30fcbb3c049be48ed37d4165c1",
+  "reason": "Finite handle900s covers genuine admitted controller lifecycle while preserving same-process one-use/provenance authority",
+  "unchanged_original_files": 28,
+  "changed_files": [
+    {
+      "path": "README.md",
+      "original_bytes": 5672,
+      "original_sha256": "2c15bdc6ac2abd5ae95c544655698bef08eadef21ef19bb9ff916bc6b3699f6e",
+      "candidate_bytes": 6060,
+      "candidate_sha256": "5d217d46ea880b7a9a8a38c8aec4116f364af3f07df67a057987daf44a727228"
+    },
+    {
+      "path": "SOURCE_CONTRACT.json",
+      "original_bytes": 3042,
+      "original_sha256": "fa158cdbbc69af91d86a27c3edbeeabf2b1a457b9703e3a3d07fe6a5847ea1a8",
+      "candidate_bytes": 3306,
+      "candidate_sha256": "8a93cf8077baf128a50b975100ee581ca878274bf6184f68b8f2221eaa2d52fa"
+    },
+    {
+      "path": "native_acceptance.py",
+      "original_bytes": 17412,
+      "original_sha256": "5025d214a4152597f20a582353bfdf3e500e9e20b7b3296a128b306645c935dc",
+      "candidate_bytes": 17412,
+      "candidate_sha256": "af7a14e1f8b32e852d0268036a4b9346fe827868386e8143c4ecf1e6accfc2d7"
+    },
+    {
+      "path": "tests/test_native_acceptance.py",
+      "original_bytes": 5204,
+      "original_sha256": "d3e469b07cb6dd93411fe4796ae6ed4f0ac0f7b4fa9ed9471800bda5ddd96ade",
+      "candidate_bytes": 6394,
+      "candidate_sha256": "199c72d4200825ebfafb04e16fa6e0488f153056a42072af048044a0da045c5d"
+    }
+  ],
+  "controlled_tests": 36
+}

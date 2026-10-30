@@ -1,0 +1,14 @@
+{
+  "schema": "legal-ir-explicit-callable-runner-baseline@2",
+  "source_only": true,
+  "baseline_manifest": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/SOURCE_MANIFEST.json",
+    "sha256": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e"
+  },
+  "baseline_runner": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "bytes": 654771,
+    "sha256": "6bc26dc792b7994ea73e12e92d20949caf62b85940badf6a2d594cb3388a7706"
+  },
+  "runtime_or_tests_executed": false
+}

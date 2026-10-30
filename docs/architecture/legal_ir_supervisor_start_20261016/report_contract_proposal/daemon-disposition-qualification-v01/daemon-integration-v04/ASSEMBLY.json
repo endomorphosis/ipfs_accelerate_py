@@ -1,0 +1,9 @@
+{
+  "base_sha256": "4984370456bd304dd9d89550c05e2d364fd9f0ca4849db560cb10caddfe3f407",
+  "original_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+  "proposed_bytes": 3309743,
+  "proposed_sha256": "67f4959c391776a1361a98f2a5f8d137e86ea5651e9ced0ab96fca3eb91f15a0",
+  "qualification": "source assembly only",
+  "runtime_enabled": false,
+  "schema": "legal-ir-disposition-entry-source-assembly@1"
+}

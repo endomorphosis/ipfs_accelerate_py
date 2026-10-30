@@ -1,0 +1,27 @@
+--- frozen-handoff-v02/test_handoff_memory.py
++++ memory-controls-v02/test_handoff_memory.py
+@@ -16,7 +16,7 @@
+ from unittest.mock import patch
+ 
+ sys.dont_write_bytecode = True
+-SOURCE = Path(__file__).parent / "proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
++SOURCE = Path(__file__).parent.parent / "handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py"
+ spec = importlib.util.spec_from_file_location("ordinary_success_handoff_control", SOURCE)
+ hook = importlib.util.module_from_spec(spec)
+ sys.modules[spec.name] = hook
+@@ -87,9 +87,14 @@
+ 
+     def test_fake_owner_never_invokes_callback_or_imports_product(self):
+         callbacks = []
++        def actual_source_pinned_callback(outcome):
++            callbacks.append(outcome)
++        path = Path(__file__).absolute()
++        pins = {str(path): hashlib.sha256(path.read_bytes()).hexdigest()}
+         with patch.object(hook.importlib, "import_module", side_effect=AssertionError("fake owner must fail before product imports")):
+             self.refusal("genuine_parented_owner_required", hook.run_ordinary_with_success_handoff,
+-                         SimpleNamespace(), 1, owner=object(), source_sha256={}, on_success=callbacks.append)
++                         SimpleNamespace(), 1, owner=object(), source_sha256=pins,
++                         on_success=actual_source_pinned_callback)
+         self.assertEqual(callbacks, [])
+ 
+     def test_noncallable_callback_never_imports_product(self):

@@ -1,0 +1,188 @@
+{
+  "canonical_attempt_cap": 2,
+  "canonical_attempts_consumed": 2,
+  "canonical_board_mutated": false,
+  "canonical_tasks_accepted": 0,
+  "generation": "legal-ir-daemon-settlement-20261017-01",
+  "github_qualification_required": false,
+  "latest_evidence": {
+    "capsule_failed_predecessor": "capsule-storage-refusal-root-observation-r01.json",
+    "capsule_prepared": "capsule-root-observation-r02.json",
+    "full_daemon_negative": "full-daemon-root-observation-r01.json",
+    "next_disposition_design": "NEXT_DISPOSITION_DESIGN.json",
+    "repository": "repository-root-observation-r01.json",
+    "source_control_failed_predecessor": "source-controls-root-observation-r01.json",
+    "source_controls_passed": "source-controls-root-observation-r03.json"
+  },
+  "runtime_enabled": false,
+  "schema": "legal-ir-supervisor-integration-goals@1",
+  "tasks": [
+    {
+      "artifacts": [
+        "daemon-integration-v03",
+        "native-host-v03",
+        "settlement-audit-v01"
+      ],
+      "dependencies": [],
+      "done_when": [
+        "New source controls pass in a finite native owner",
+        "Both original finalizer bodies match original AST",
+        "Actual positive retained-finalizer integration has independent stopped evidence"
+      ],
+      "goal": "Retain the actual original finally closures after a native-custody failure",
+      "id": "LIR-INT-SETTLEMENT-SOURCE",
+      "source_control_cases_passed": 38,
+      "source_control_evidence": "source-controls-root-observation-r03.json",
+      "status": "source_controls_passed_positive_finalizer_fixture_pending",
+      "subgoals": [
+        "Preserve original claim/resource/lock release and dispatch-intent reconciliation statements",
+        "Authenticate actual code, frames, globals and all closure cells",
+        "Retain original connection and host on registration, drain or borrow-exit failure"
+      ]
+    },
+    {
+      "dependencies": [],
+      "done_when": [
+        "Exact selected committed blobs and original source/metadata preservation checked",
+        "Clean standalone objects/index and strict fsck passed",
+        "Original native owner finalized and released"
+      ],
+      "evidence": "repository-root-observation-r01.json",
+      "goal": "Create a bounded self-contained private engineering repository",
+      "id": "LIR-INT-REPOSITORY-FIXTURE",
+      "limits": [
+        "Five selected inputs only",
+        "Full original committed tree and public freezer preflight remain unqualified"
+      ],
+      "status": "completed_selected_source_only"
+    },
+    {
+      "actual_Git_processes": 18,
+      "artifacts": [
+        "full-host-fixture-v03",
+        "full-host-fixture-v04"
+      ],
+      "capsule_evidence": "capsule-root-observation-r02.json",
+      "dependencies": [],
+      "done_when": [
+        "Complete source capsule prepared and pinned",
+        "Actual import and constructor dependencies work without source substitution",
+        "Report-only run_once refuses missing native host before original pass state writes",
+        "Private DuckDB remains usable; native owner finalized"
+      ],
+      "evidence": "full-daemon-root-observation-r01.json",
+      "goal": "Import the full composed original daemon and run its actual constructor in an admitted private fixture",
+      "id": "LIR-INT-CONSTRUCTOR-REFUSAL",
+      "limits": [
+        "Missing-host negative fixture does not qualify a real positive host or cap-two host refusal"
+      ],
+      "status": "completed_missing_host_negative_only"
+    },
+    {
+      "dependencies": [
+        "LIR-INT-SETTLEMENT-SOURCE"
+      ],
+      "design": "NEXT_DISPOSITION_DESIGN.json",
+      "done_when": [
+        "Actual candidate or failed attempt has source-defined durable owner/disposition",
+        "Original retained host/connection can close only after exact disposition CAS",
+        "Crash, cancellation, claim replacement and idempotent recovery cases pass"
+      ],
+      "goal": "Give every consumed ordinal and candidate an explicit durable disposition",
+      "id": "LIR-INT-ATTEMPT-DISPOSITION",
+      "limits": [
+        "No acceptance or semantic fidelity inferred from syntactic cleanup",
+        "Current disposition_pending intentionally remains set"
+      ],
+      "status": "blocked_on_design",
+      "subgoals": [
+        "Use original source-owned lifecycle and claim APIs with exact fencing",
+        "Choose original durable quarantine/parking or candidate validation ownership transfer",
+        "Prove task does not become eligible again merely because stopped cleanup drained",
+        "Keep counter and canonical board semantics unchanged",
+        "Refuse repeated public run_once while a retained host remains bound; separate same-pass profile checks from one-pass admission"
+      ]
+    },
+    {
+      "dependencies": [
+        "LIR-INT-CONSTRUCTOR-REFUSAL",
+        "LIR-INT-REPOSITORY-FIXTURE",
+        "LIR-INT-ATTEMPT-DISPOSITION"
+      ],
+      "done_when": [
+        "Genuine original host profile, source pins, board and cap checked before original selection",
+        "Cap-two refusal verified with genuine host without changing canonical cap",
+        "Future approved cap-three positive preflight tested on exact actual source repository",
+        "All resources drain or remain in explicit original custody"
+      ],
+      "goal": "Exercise actual host with its original same-PID 3-CPU/16-slot native phase and caller DuckDB connection",
+      "id": "LIR-INT-FULL-HOST-PREFLIGHT",
+      "limits": [
+        "No nesting larger host behind 1-CPU generic envelope",
+        "No native authority reconstructed from JSON or private keys"
+      ],
+      "status": "pending"
+    },
+    {
+      "dependencies": [],
+      "done_when": [
+        "All G3/H4 direct administration subprocess paths reviewed",
+        "Original public native attachment fits maximum history and simultaneous process limits",
+        "Cancellation and partial attachment failures retain actual children until independently stopped"
+      ],
+      "goal": "Attach and account for every actual Docker administration child within original native custody",
+      "id": "LIR-INT-DOCKER-ADMIN-CUSTODY",
+      "limits": [
+        "Current spare-slot observations are cooperative and are not native child attachment"
+      ],
+      "status": "pending"
+    },
+    {
+      "canonical_board": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/tasks.todo.md",
+      "dependencies": [
+        "LIR-INT-FULL-HOST-PREFLIGHT",
+        "LIR-INT-DOCKER-ADMIN-CUSTODY"
+      ],
+      "done_when": [
+        "Canonical board acceptance is produced by its original validation contract",
+        "Training and semantic metrics are independently recorded",
+        "Unified Lean modules compile in a pinned toolchain"
+      ],
+      "goal": "Resume canonical Legal IR model and Lean tasks after supervisor integration qualifies",
+      "id": "LIR-ML-RESUME-QUALIFIED-BOARD",
+      "limits": [
+        "Current canonical attempts are 2 consumed out of cap2",
+        "Current canonical acceptance remains0/64",
+        "Integration fixtures do not measure model accuracy"
+      ],
+      "status": "pending_integration",
+      "subgoals": [
+        "Evaluate US Code fidelity and logic-family coverage on held-out provenance-grouped spans",
+        "Compare 8D/384D/768D encoders and both decoder architectures using identical splits",
+        "Validate typed outputs and end-to-end lake build legal with no proof holes",
+        "Aggregate provenance-preserving entities, definitions and cross-reference graphs into a Lean4 corpus",
+        "Publish genuinely evaluated weights and reproducible results to the already authorized Hugging Face destination"
+      ]
+    },
+    {
+      "dependencies": [],
+      "done_when": [
+        "Genuine failed storage admission produces durable terminal refused metadata",
+        "Original root and phase independently drain",
+        "No worker or reservation is invented from a projection",
+        "Source/file/permission exceptions remain distinguishable from capacity refusal"
+      ],
+      "evidence": "capsule-storage-refusal-root-observation-r01.json",
+      "goal": "Persist a terminal pre-worker storage-refusal receipt from the original orchestration owner",
+      "id": "LIR-INT-ADMISSION-REFUSAL-RECEIPT",
+      "implementation_constraints": [
+        "Author additive successor to frozen V05; do not mutate V05 or old requests",
+        "Catch only at the original native owner around disk admission, preserve original exception and context unwinding",
+        "Do not mark a disk reservation finalized when none was created",
+        "Keep worker absent, actual native drain observation and non-acceptance explicit",
+        "Update exact gate source/parent invocation pins if selecting a new owner"
+      ],
+      "status": "required_source_gap"
+    }
+  ]
+}

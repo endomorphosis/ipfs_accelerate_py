@@ -1,0 +1,7 @@
+# Preserve-attempts controls V02
+
+Test-only correction; the product patch and all V01 files remain unchanged. The parent reports that the genuine stdout-only native V01 qualification completed with 50 passed and one failed in 4.14 seconds, and its actual root and phase were released. The failing positive default-mode dependency-preflight case omitted `board_namespace` from its in-memory identity, and the extracted function namespace omitted `logging`, masking the fixture AttributeError. This generation supplies the realistic identity field and logging module without changing expected behavior or weakening assertions.
+
+There are 51 parameterized cases. Source AST parsing passed; the author did not execute these corrected tests or import product code. Fixtures do not write files. The default source root explicitly selects the unchanged sibling `preserve-attempts-patch-v01/proposed` tree. `PRESERVE_ATTEMPTS_SOURCE_ROOT` can instead select the publisher-applied source tree for a genuinely admitted qualification.
+
+The previous failed qualification is preserved and bound by the parent-provided exact request SHA256 `462a15581dc6dba50c6d28b67238dabcdc11f44bed15bc6a2bc832f3b918dce0` and terminal execution session 23817. The V01 source manifest and original control file remain separately pinned in this generation's manifest. This test-source correction is not evidence of native dispatch, provider execution, legal acceptance, or a passing rerun.

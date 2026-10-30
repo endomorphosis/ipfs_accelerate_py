@@ -1,0 +1,36 @@
+--- before/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py
++++ proposed/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py
+@@ -366,16 +366,29 @@
+     """Return the Git common directory without importing ``merge``."""
+ 
+     root = Path(repo_root)
+-    try:
+-        result = subprocess.run(
++    from ipfs_accelerate_py.agent_supervisor.runtime.native_admin_execution import (
++        native_admin_execution_is_bound,
++        run_bound_native_admin_if_present,
++    )
++    if native_admin_execution_is_bound():
++        result = run_bound_native_admin_if_present(
+             ["git", "rev-parse", "--git-common-dir"],
+             cwd=root,
+             text=True,
+             capture_output=True,
+             check=False,
+         )
+-    except OSError:
+-        return root / ".git"
++    else:
++        try:
++            result = subprocess.run(
++                ["git", "rev-parse", "--git-common-dir"],
++                cwd=root,
++                text=True,
++                capture_output=True,
++                check=False,
++            )
++        except OSError:
++            return root / ".git"
+     stdout = result.stdout or ""
+     if result.returncode != 0 or not stdout.strip():
+         return root / ".git"

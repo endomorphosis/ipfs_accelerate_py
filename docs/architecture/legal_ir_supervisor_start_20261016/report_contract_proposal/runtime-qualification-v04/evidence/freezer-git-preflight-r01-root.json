@@ -1,0 +1,18 @@
+{
+  "schema": "legal-ir-callable-preflight-root-observation@1",
+  "actual_exec_exit_code": 1,
+  "source_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-request-v01.json",
+  "source_request_sha256": "c29714ef25bc59a095945a4f1dc56e7785da8f45daf585c8b2e158f2665ee7e3",
+  "actual_tool_result": {
+    "chunk_id": "269eaa",
+    "wall_time_seconds": 0.000013824,
+    "exit_code": 1,
+    "original_token_count": 283,
+    "output": "Traceback (most recent call last):\n  File \"/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-v01/qualify_freezer_git.py\", line 364, in <module>\n    if __name__=='__main__':raise SystemExit(main())\n                                             ^^^^^^\n  File \"/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-v01/qualify_freezer_git.py\", line 316, in main\n    guard(request);request['_actual_request_sha256']=sys.argv[2]\n    ^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-v01/qualify_freezer_git.py\", line 116, in guard\n    need(required<=set(request['source_sha256']),'mandatory_native_toolchain_component_source_closure_required')\n  File \"/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-v01/qualify_freezer_git.py\", line 44, in need\n    if not value:raise ValueError(reason)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^\nValueError: mandatory_native_toolchain_component_source_closure_required\n"
+  },
+  "source_guard_failed_before_native_import": true,
+  "native_admission_reached": false,
+  "provider_calls": 0,
+  "canonical_tasks_accepted": 0,
+  "acceptance_authority": false
+}

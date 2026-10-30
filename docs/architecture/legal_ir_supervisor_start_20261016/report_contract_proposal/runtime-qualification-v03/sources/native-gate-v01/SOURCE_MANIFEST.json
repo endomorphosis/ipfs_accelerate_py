@@ -1,0 +1,208 @@
+{
+  "acceptance_authority": false,
+  "actual_capsule_manifest_sha256": "b2a78de35845425f533f7a361b3998f41628d472fafbbccb3aa346d7b50e0925",
+  "actual_provider_execution_qualified": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "controlled_engineering_cases": 3,
+  "custody_manifest_sha256": "36742d137ef138fd720ffc9db0521e0107bb7616ef9c95494f785b21ef238ceb",
+  "engineering_cases": [
+    "positive",
+    "wrong_marker",
+    "partial_eof"
+  ],
+  "files": [
+    {
+      "bytes": 6720,
+      "path": "README.txt",
+      "sha256": "308d6ed4bb9c8c4d668fc5c0040269bb772637ba77c850432b286d31218f33ec"
+    },
+    {
+      "bytes": 1440,
+      "path": "RESOURCE_PLAN.json",
+      "sha256": "73255d47d7908af3b3295b8a048e3098efa892801a418f6cfbd5dcc15c53ac08"
+    },
+    {
+      "bytes": 901,
+      "path": "fixture_payload.py",
+      "sha256": "b27e66139c4b941a06c158e6dd514e4f2a6609ad2e70f01154c4d3cd0a446f0d"
+    },
+    {
+      "bytes": 48016,
+      "path": "qualify_native_gate.py",
+      "sha256": "a7d289267d5bb70845fb0e8213e9f332525fc14691857a4d2f1c227d537ece1c"
+    }
+  ],
+  "hook_manifest_sha256": "59761cd0b0ea3395efb82ef27c6bb9e3fdbe33ce7a118afb8827bea76e2fa5b9",
+  "input_pins": [
+    {
+      "bytes": 40999,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+    },
+    {
+      "bytes": 17545,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d"
+    },
+    {
+      "bytes": 15440,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "bytes": 121503,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+    },
+    {
+      "bytes": 1526,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/capsule-preparation-root-observation-r01.json",
+      "role": "historical_root_preparation_finalization_readiness_not_admission",
+      "sha256": "dd339e1628331908dde3534a9b1789386fc7e4ac36bbd6d28500785d0ed60c3f"
+    },
+    {
+      "bytes": 1169,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/custody-controls-root-observation-r01.json",
+      "role": "historical_root_35control_finalization_readiness_not_admission",
+      "sha256": "5c848d15f78c2fd208d22c5fdc9d34ef91f6a1b208c767c307fd69405a2bb70e"
+    },
+    {
+      "bytes": 2775,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/SOURCE_MANIFEST.json",
+      "role": "frozen_custody_binder_source_manifest",
+      "sha256": "36742d137ef138fd720ffc9db0521e0107bb7616ef9c95494f785b21ef238ceb"
+    },
+    {
+      "bytes": 15131,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/ordinary_custody_hold.py",
+      "role": "frozen_same_process_consumer_binder",
+      "sha256": "e84b97fb4bfb0e9cc2cd880681e1a907e1234bff8c54f8d7b43faa1d3ec42331"
+    },
+    {
+      "bytes": 14734,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/native-docker-v05-request-r04.json",
+      "role": "previous_source_pinned_expected_daemon_identity_rechecked_live",
+      "sha256": "4130d2adba4c5202353109b7c3be810f0b788ceae1b97b73d18cd10a6a9d55f0"
+    },
+    {
+      "bytes": 11227,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/SOURCE_MANIFEST.json",
+      "role": "frozen_hook_source_manifest",
+      "sha256": "59761cd0b0ea3395efb82ef27c6bb9e3fdbe33ce7a118afb8827bea76e2fa5b9"
+    },
+    {
+      "bytes": 564424,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/SOURCE_MANIFEST.json",
+      "role": "actual_root_prepared_readonly_capsule_manifest",
+      "sha256": "b2a78de35845425f533f7a361b3998f41628d472fafbbccb3aa346d7b50e0925"
+    },
+    {
+      "bytes": 342403,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_implementation_route.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2"
+    },
+    {
+      "bytes": 78798,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "ba775d1ece31e6af9635128bec1fd771469ac8277cc5e10ad105e7fbf9d41767"
+    },
+    {
+      "bytes": 147774,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "b58aafdbfaae5d1acc1551db3aa9fe911cf92779856973cf18b8d0d3c6bb7c27"
+    },
+    {
+      "bytes": 126044,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "b7f8508b4b4b50d5bc259c186b55c4c6f87e938d99689a913383a8a35130249f"
+    },
+    {
+      "bytes": 636526,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "d23b34181bc376f418e024c10d7b741c9fe2657572c27035f146063482c5c898"
+    },
+    {
+      "bytes": 1026,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/hash_pressure.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "63c6831518647017eb49c88693fe6bbf54ba8c586b9b9826356be4b099df817d"
+    },
+    {
+      "bytes": 40401,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "3ff140dc04154f79dd4593a0998d5be928a9e0e6a9895f944103d70ece288d0c"
+    },
+    {
+      "bytes": 70975,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "5bf693ae0eb41bac1d30fcaf8c168bec5fd17b29accbdf7d527afa84e38d42e3"
+    },
+    {
+      "bytes": 17434,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/provider_command_binding.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "5df9895bbe8c030b6ba447de3efdf808a880a90720f253273496fa5590f1efaa"
+    },
+    {
+      "bytes": 17009,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/provider_command_environment.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "63350e9eface1a90b2c5bebc0513c6836cd8641406681983435d4ef83821856f"
+    },
+    {
+      "bytes": 12307,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/provider_failure_policy.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "9b71ae6942bc60a574052e58aa4666563ae02fdaeaa7ae72b5c1958d714adddc"
+    },
+    {
+      "bytes": 141908,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "a5c0bd01ba08f8abd6bf257cc8cdc77a04ef8c2a2e4c11886032df28bb90cb01"
+    },
+    {
+      "bytes": 573274,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/ipfs_accelerate_py/llm_router.py",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "fa9edb968434eb46f8c46af70166cde55c7219d5625fb4b9c9cff78b5b9b726b"
+    },
+    {
+      "bytes": 41896302,
+      "path": "/usr/bin/docker",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "c6a8317bfcc35c90c36b1807897b1c0447bba769cca83d652dfbc1683c2a192d"
+    },
+    {
+      "bytes": 7845032,
+      "path": "/usr/bin/python3.12",
+      "role": "actual_capsule_or_native_runtime_source",
+      "sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+    }
+  ],
+  "models_called": 0,
+  "production_or_frozen_hook_mutated": false,
+  "public_wrapper_or_finish_or_success_callback_exercised": false,
+  "qualification_limits": [
+    "Mechanical fixture only, even if actual positive and gate component cases pass.",
+    "No real Grok/auth/route/callback/Codex backup/candidate/native acceptance/semantic or Lean qualification.",
+    "Unknown create/cleanup retains original objects/contexts/consumer capacity; host-death durable cleanup is not established.",
+    "Actual root preparation/control observations establish pinned input readiness only, never current native admission."
+  ],
+  "schema": "legal-ir-native-handoff-mechanical-source@1",
+  "source_author_AST_review_only": true,
+  "status": "frozen_source_only_pending_root_actual_execution",
+  "tests_or_native_Docker_provider_jobs_performed_by_source_author": false
+}

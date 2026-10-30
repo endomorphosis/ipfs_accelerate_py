@@ -1,0 +1,12 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "encoding": "utf-8",
+  "raw_source_bytes": 1807,
+  "raw_source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-r01-actual-stdout.txt",
+  "raw_source_sha256": "689d58ef70d5a1187e27ce6861af1aae5c9a6838738089dec08027ac20a5e435",
+  "raw_text": "{\"schema\": \"legal-ir-native-gate-progress@1\", \"fixture_case\": \"within_cap\", \"stage\": \"case_begin\", \"observation_only\": true, \"models_called\": 0, \"canonical_tasks_accepted\": 0}\nTraceback (most recent call last):\n  File \"/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-native-v02/qualify_dual_pipe.py\", line 828, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-native-v02/qualify_dual_pipe.py\", line 806, in main\n    results = [run_case(G, H, C, phase, ParentedPhaseResourceReservation, request, case) for case in CASES]\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-native-v02/qualify_dual_pipe.py\", line 604, in run_case\n    H._verify_sources(primary, request[\"hook_source_sha256\"], Path(G.__file__).absolute())\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r02/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py\", line 305, in _verify_sources\n    need(paths <= set(pins) and len(pins) <= 128, \"exact_handoff_source_pins_required\")\n  File \"/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-handoff-20261017-r02/preparation/capsule/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py\", line 83, in need\n    raise OrdinaryHandoffRefusal(reason)\nipfs_accelerate_py.agent_supervisor.runtime.ordinary_success_handoff.OrdinaryHandoffRefusal: exact_handoff_source_pins_required\n",
+  "roundtrip_raw_bytes_preserved": true,
+  "schema": "legal-ir-bounded-actual-text-observation@1",
+  "scope": "Actual failed pretransport stdout/trace captured by root; JSON container SHA differs from raw text SHA. No native terminal, cleanup or finalization is invented."
+}

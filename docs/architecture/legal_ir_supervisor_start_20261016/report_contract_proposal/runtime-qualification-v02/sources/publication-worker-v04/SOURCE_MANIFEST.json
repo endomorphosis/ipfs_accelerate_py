@@ -1,0 +1,37 @@
+{
+  "acceptance_authority": false,
+  "actual_git_successor_request_sha256": "456c10d2f9f06ce9a25b9628261aaaf9a3dc833b277b1a80458038e22c83f513",
+  "author_canonical_tasks_accepted": 0,
+  "author_provider_calls_performed": false,
+  "author_repository_mutations": false,
+  "author_runtime_execution": false,
+  "author_tests_executed": false,
+  "completion_authority": false,
+  "current_expected_source_controlled_testcases": 60,
+  "current_observer_manifest_sha256": "829d35224fc21fa40bd63e50b8d9073e3e66e58dd332710fc85d29caa214be97",
+  "current_qualifier_manifest_sha256": "52a680a0de9fdc1ff71c4a5f1e1f0a7c6e866262d0a1bc0813cda1a37bcaa30a",
+  "expected_owned_accelerator_head": "871ad14eeb757500ad7b087a5acaa048901d09d4",
+  "files": [
+    {
+      "bytes": 7859,
+      "path": "README.md",
+      "sha256": "0014ce32900569569707a4967ceb86518b0aaa0da98c8fc8220d3b94080c2708"
+    },
+    {
+      "bytes": 44016,
+      "path": "publish_handoff.py",
+      "sha256": "d8055607f2fa9cad33eecfd50ed54bf99710886f6d8e5d8500807ab4c43a8a81"
+    }
+  ],
+  "historical_v02_isolated_reader_controls_are_not_public_git_qualification": true,
+  "historical_v02_public_git_failure_preservation_required": true,
+  "previous_manifest_sha256": "3f2abe151d40cd02a4f8d5c790ddd1b76b2952a9ff79def4b23e63a3900f05c4",
+  "previous_source_generation_modified": false,
+  "production_hook_deployment_supported": false,
+  "publication_destination": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v02",
+  "reader_result_digest_and_attempt_joins_required": true,
+  "schema": "legal-ir-real-handoff-publication-worker-source-manifest@4",
+  "source_ast_valid": true,
+  "source_pipeline_dispatchable": false,
+  "status": "source_only_not_executed"
+}

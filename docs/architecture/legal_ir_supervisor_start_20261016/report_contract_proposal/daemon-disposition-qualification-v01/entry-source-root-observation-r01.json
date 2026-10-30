@@ -1,0 +1,23 @@
+{
+  "acceptance_authority": false,
+  "actual_parent_finalized": true,
+  "actual_root_phase_owner_rows_drained": true,
+  "canonical_tasks_accepted": 0,
+  "disk_status": "released",
+  "failures": 0,
+  "full_original_host_qualified": false,
+  "github_qualification": "skipped_by_user",
+  "junit_sha256": "76321a5131428da6867b715f36f755bc61a5189f774636d298de77af77167d9d",
+  "native_finalized": true,
+  "original_owner_exited": true,
+  "passed": true,
+  "passed_testcases": 6,
+  "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-source-controls-20261017-r01/receipt.json",
+  "receipt_sha256": "f5d85edffa646ed4d33867b287067b682f49f2c0fbc190be3bf2ed9216e0f23e",
+  "request_sha256": "e08231fa100d70891c0872a383317ca84d225894a9e44284627e5d5b4ca9faad",
+  "runtime_enabled": false,
+  "schema": "legal-ir-entry-source-root-observation@1",
+  "source_preservation_cases": 6,
+  "worker_result": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-source-controls-20261017-r01/disposition-entry-source-controls.json",
+  "worker_result_sha256": "ef9e8fe9c1e11741b8bfad0ee1894a7716f34dece5371d3a384f29e2f5690ab9"
+}

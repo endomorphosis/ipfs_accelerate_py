@@ -1,0 +1,17 @@
+{
+  "schema": "legal-ir-pending-wrapper-cancellation-resource-plan@1",
+  "root_and_phase": {"cpu_slots": 1, "memory_mb": 4096, "child_process_slots": 8},
+  "parented_private_owner": {"cpu_slots": 1, "memory_mb": 4096, "child_process_slots": 8, "storage_bytes": 536870912},
+  "duration_seconds": 600,
+  "target_count": 1,
+  "target_root_child_process_slots": 16,
+  "unchanged_global_child_process_slots": 16,
+  "external_charges": [],
+  "single_signal": "SIGINT via captured PIDFD",
+  "post_signal_observation_seconds": 60,
+  "provider_calls_performed": false,
+  "Docker_operations_performed": false,
+  "canonical_tasks_accepted": 0,
+  "acceptance_authority": false,
+  "scope": "Owned waiting nonmodel engineering cancellation; genuine parent remains native authority."
+}

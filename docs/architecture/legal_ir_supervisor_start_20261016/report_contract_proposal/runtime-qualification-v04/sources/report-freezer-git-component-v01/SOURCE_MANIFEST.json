@@ -1,0 +1,24 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "controlled_component_cases": 11,
+  "expected_actual_git_children": 29,
+  "files": [
+    {
+      "bytes": 2631,
+      "path": "README.md",
+      "sha256": "fad5f9f095776582760ed3bd3952d272ca71fb66366a17a9f7789270c2ef83e3"
+    },
+    {
+      "bytes": 24754,
+      "path": "qualify_freezer_git.py",
+      "sha256": "8c3b9fcf0401cc546573130931ab9990ed6dbfe0507793603c6c14766d423b9f"
+    }
+  ],
+  "native_jobs_started": false,
+  "provider_calls_performed": false,
+  "public_provider_freezer_exercised": false,
+  "schema": "legal-ir-report-freezer-git-component-source@1",
+  "source_only": true
+}

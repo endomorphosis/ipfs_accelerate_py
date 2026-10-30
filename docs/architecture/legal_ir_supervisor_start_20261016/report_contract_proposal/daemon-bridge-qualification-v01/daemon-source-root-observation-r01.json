@@ -1,0 +1,18 @@
+{
+  "acceptance_authority": false,
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 85279,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 14,
+  "github_qualification_skipped": true,
+  "host_runtime_qualified": false,
+  "native_finalized": true,
+  "passed": true,
+  "provider_execution_qualified": false,
+  "receipt_sha256": "c35a4e82663b231ec5976e25c829eeae8643ea91e1de807af49d45d43c21e3e8",
+  "schema": "legal-ir-daemon-source-root-observation@1",
+  "scope": "source only; original actual daemon composed and inspected, no fake positive host",
+  "source_controls_log_sha256": "f25ace5f444314fd63965617742a28b9f8484e1b1f423d28e14985cc84b921cc",
+  "source_controls_sha256": "b4c71e69823e6b3cc55cf14f2970410f703b9f25b60de7c2a30a779d83b4bd99",
+  "source_manifest_sha256": "8f254b149e4541e005e71aaec861cf9b8b3621a612b5325a71996d1a9a4a0cc7"
+}

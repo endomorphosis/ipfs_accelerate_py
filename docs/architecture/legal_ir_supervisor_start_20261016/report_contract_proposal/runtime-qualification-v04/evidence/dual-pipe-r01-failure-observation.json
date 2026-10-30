@@ -1,0 +1,22 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 1,
+  "actual_exec_session_id": 56180,
+  "actual_failure_location": "H._verify_sources before dual-pipe transport start",
+  "actual_failure_reason": "exact_handoff_source_pins_required",
+  "actual_failure_type": "OrdinaryHandoffRefusal",
+  "actual_final_terminal_present": false,
+  "actual_owner_process_absent": true,
+  "actual_stdout_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-r01-actual-stdout.txt",
+  "actual_stdout_sha256": "689d58ef70d5a1187e27ce6861af1aae5c9a6838738089dec08027ac20a5e435",
+  "canonical_tasks_accepted": 0,
+  "former_owner_pid": 1820936,
+  "native_finalization_observed": false,
+  "provider_calls_performed": false,
+  "qualification_passed": false,
+  "redacted_active_native_rows_for_owner": [],
+  "schema": "legal-ir-callable-dual-pretransport-failure-observation@1",
+  "source_manifest_sha256": "7f03085082f6b5526e94f4e66a2ea1fd1f47a9f5a58febb876aa594133318661",
+  "source_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/dual-pipe-native-request-r01.json",
+  "source_request_sha256": "bd08d02c991282a3fa767cfc3c2e2fb79fcbaf073a070a9074b38fc05a67511a"
+}

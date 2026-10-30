@@ -1,0 +1,34 @@
+{
+  "actual_full_native_docker_qualified": false,
+  "actual_packet_exec_session": 71822,
+  "actual_packet_root_observation_sha256": "656c5f23430881effad6062cd502c02584d1475895534d7437b3a15be4b182d1",
+  "actual_real_candidate_metadata_qualified": false,
+  "actual_real_provider_to_acceptance_handoff_qualified": false,
+  "additional_source_control_observations": {
+    "c9e937b30cee74e1da2a724e98b5490090da9cf37ed2f47ff089bff4257ac604": {
+      "actual_exec_chunk_id": "7555c4",
+      "actual_exec_session": null,
+      "controlled_testcases": 65,
+      "roles": [
+        "real-candidate-binding-v01",
+        "native-regression-v05",
+        "native-regression-v05-tests"
+      ]
+    }
+  },
+  "board_enabled": false,
+  "canonical_tasks_accepted": 0,
+  "compatible_v04_schema_is_not_v05_qualification": true,
+  "controlled_packet_testcases": 21,
+  "packet_materialized": false,
+  "preserved_current_native_qualification_sha256": "54213688c78a997cfc02ded78c3f10619026ae2e9467396828e2634124001797",
+  "prior_failures_preserved": true,
+  "provider_calls_performed": false,
+  "required_actual_native_fixture_generation": "v05",
+  "schema": "legal-ir-report-contract-proposal-qualification@1",
+  "scope": "source/contract-controls-only",
+  "source_manifest_sha256": "2aba6d22488ebc08a58661a4c90b56a0c497b0f843663da16e905845b8eb6cc3",
+  "source_request_sha256": "98fd9e68a7c5a71d46865bea0423b9b5428b883b999c09366720754386f331d2",
+  "source_runner_sha256": "e72c564f511fe095124d02358df3356efc1ad7ec5d91398aff690933afd1409e",
+  "task_attempts_changed": false
+}

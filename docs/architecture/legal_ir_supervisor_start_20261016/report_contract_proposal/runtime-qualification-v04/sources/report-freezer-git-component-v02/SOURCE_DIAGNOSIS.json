@@ -1,0 +1,32 @@
+{
+  "acceptance_authority": false,
+  "actual_failed_root_observation_sha256": "13b98b8c3459bb6d750caadc75c16e96db10bace4af4d26d12efd15ba266a0c6",
+  "actual_failed_terminal_sha256": "ae14af3b4c2aefc2e7fbf1768091fa3754af40b8753262271a43a4ed2d340b61",
+  "canonical_tasks_accepted": 0,
+  "change": "Replace fixture-only check-ignore with the actual producer ls-files ignored-path observation; add bounded caught-frame diagnostics.",
+  "historical_exact_failed_command_proven": false,
+  "historical_failed_argv_or_stderr_available": false,
+  "observed_failed_run": {
+    "actual_exec_exit_code": 1,
+    "actual_exec_session_id": 7303,
+    "failure_reason": "actual_git_command_failed",
+    "owner_root_phase_released": true
+  },
+  "offline_metadata": {
+    "actual_head": "1236d4d26f85b3ee7ddffff3715234493fd757e4",
+    "commit_header_has_parent": false,
+    "index_contains_original_board_path": true,
+    "index_contains_report_path": false,
+    "index_entries": 1,
+    "index_signature": "DIRC",
+    "index_version": 2,
+    "original_checkout_guard_exists": true,
+    "report_file_exists": true
+  },
+  "old_artifacts_mutated": false,
+  "producer_helper_or_runtime_patch_changed": false,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-freezer-git-offline-source-diagnosis@1",
+  "scope": "offline source and completed private fixture metadata; no Git/native execution",
+  "unsupported_check_ignore_pathspec_is_suspected_not_proven": true
+}

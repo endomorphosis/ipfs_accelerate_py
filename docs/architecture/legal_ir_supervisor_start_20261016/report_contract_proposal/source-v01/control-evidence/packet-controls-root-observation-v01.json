@@ -1,0 +1,25 @@
+{
+  "schema": "legal-ir-packet-controls-root-observation@1",
+  "actual_exec_session": 71822,
+  "actual_exec_exit_code": 0,
+  "controlled_testcases": 21,
+  "actual_console_summary": "Ran 21 tests in 0.132s; OK",
+  "source_request_sha256": "98fd9e68a7c5a71d46865bea0423b9b5428b883b999c09366720754386f331d2",
+  "source_manifest_sha256": "2aba6d22488ebc08a58661a4c90b56a0c497b0f843663da16e905845b8eb6cc3",
+  "actual_native_terminal": {
+    "schema": "legal-ir-packet-controls-native-stdout-terminal@1",
+    "passed": true,
+    "controlled_testcases": 21,
+    "failures": 0,
+    "errors": 0,
+    "source_request_sha256": "98fd9e68a7c5a71d46865bea0423b9b5428b883b999c09366720754386f331d2",
+    "actual_root_released": true,
+    "actual_phase_released": true,
+    "filesystem_test_outputs_requested": false,
+    "native_disk_grant_claimed": false,
+    "packet_materialized": false,
+    "provider_calls_performed": false,
+    "canonical_tasks_accepted": 0
+  },
+  "qualification_scope": "Effect-free in-memory packet transformation and refusal controls against pinned real source documents and public identity helper; genuine native CPU root and phase released. This is not full Docker/native fixture qualification, materialization, dispatch or task acceptance."
+}

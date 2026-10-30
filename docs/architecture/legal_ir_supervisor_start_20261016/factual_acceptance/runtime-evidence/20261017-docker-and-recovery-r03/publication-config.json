@@ -1,0 +1,133 @@
+{
+  "schema": "legal-ir-factual-docker-publication-config@5",
+  "expected_accelerator_head": "430cf2d7e915eedf0c0f684ab22ef2e3e497ace5",
+  "expected_branch": "agent/legal-ir-ordinary-worker-20261016",
+  "evidence_revision": "20261017-docker-and-recovery-r03",
+  "evidence": [
+    {
+      "name": "docker-contract-v03.xml",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-docker-contract-20261017-qualification02/docker-contract-tests.xml",
+      "bytes": 2946,
+      "sha256": "d43fd2c95e00f85ba789132eec14879681c68ce4c2aedbc6e48a34892a75bfe6",
+      "kind": "junit"
+    },
+    {
+      "name": "docker-contract-v03-owner.json",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-docker-contract-20261017-qualification02/receipt.json",
+      "bytes": 639,
+      "sha256": "87a8c51390ac8225cb5e9f00b039731c6fc6e25dc1686f4b9656b9f9cba3f3d8",
+      "kind": "native_owner"
+    },
+    {
+      "name": "docker-contract-v02-failed.xml",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-docker-contract-20261017-qualification01/docker-contract-tests.xml",
+      "bytes": 49668,
+      "sha256": "66ae13062aa28400e8867e78421e716bb2551d28600ae24331378e8565fe930b",
+      "kind": "prior_failed_controls_junit"
+    },
+    {
+      "name": "native-r01-observation.json",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/native-fixture-r01-observation.json",
+      "bytes": 946,
+      "sha256": "a12ac113ddc18c662128aefcf1150d27058eff798d4d2dcd60dd7ab7b05010c6",
+      "kind": "native_owner"
+    },
+    {
+      "name": "native-r02-request.json",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/native-acceptance-docker-request-v04.json",
+      "bytes": 14734,
+      "sha256": "361801e74ed038742291a8b6c8026b9ee568b1c59b12ae153a6ce00a762a06a9",
+      "kind": "frozen_request"
+    },
+    {
+      "name": "native-r02-observation.json",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/native-fixture-r02-observation.json",
+      "bytes": 781,
+      "sha256": "22a0902c796fe1044ec47c242370e324e22e88849be187cdf5465eca7380f388",
+      "kind": "native_owner"
+    },
+    {
+      "name": "native-r02-terminal.jsonl",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/native-fixture-r02-terminal-stdout.jsonl",
+      "bytes": 184,
+      "sha256": "c94d40f7acbd6eaff7ef1535fc86da429e58e1e40a054d94a8d194b8c44b7ddd",
+      "kind": "entry_terminal"
+    },
+    {
+      "name": "native-r02-cleanup.json",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-acceptance-fixture-20261017-r02/preparation/docker-factual-control/actual-docker-cleanup.json",
+      "bytes": 469,
+      "sha256": "425943b8936d23e49d1fa682b0349dcd256d1fa331d9e8fd2a994f872d57db19",
+      "kind": "docker_cleanup"
+    },
+    {
+      "name": "native-r03-request.json",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/native-acceptance-docker-request-v05.json",
+      "bytes": 14734,
+      "sha256": "28a3266cbb1d6adc65ec871f8bc5bf3e278ba5be796d4bacf59474e20c18f47d",
+      "kind": "frozen_request"
+    },
+    {
+      "name": "native-r03-observation.json",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/native-fixture-r03-observation.json",
+      "bytes": 1192,
+      "sha256": "8b64b9d63c6eda7b9f349d1485b748e5eb59b18624aa5ab91810b6fc2815fdff",
+      "kind": "native_owner"
+    },
+    {
+      "name": "native-r03-terminal.jsonl",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/native-fixture-r03-terminal-stdout.jsonl",
+      "bytes": 182,
+      "sha256": "bed4a5fb1b96d8c9c28df167c360d169c5e17dcafeef8e3b782218554ff6b171",
+      "kind": "entry_terminal"
+    },
+    {
+      "name": "native-r03-cleanup.json",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-acceptance-fixture-20261017-r03/preparation/docker-factual-control/actual-docker-cleanup.json",
+      "bytes": 469,
+      "sha256": "43718cfc2e4183d5d7c4ed4f98e8f4fc74ad75e08d164fb7fecb8d577e5e4609",
+      "kind": "docker_cleanup"
+    },
+    {
+      "name": "actual-ledger-archival-observation.json",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/ledger-archival-r02-root-observation.json",
+      "bytes": 1990,
+      "sha256": "b384ea9cc4860a4dffe5a3556a30289f3c0e06b62e86b15dc2a3bf4c69c3f726",
+      "kind": "native_owner"
+    },
+    {
+      "name": "sdk-archival-publication.json",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ledger-archival-20261017-publication01/sdk-archival-publication.json",
+      "bytes": 357,
+      "sha256": "8da89394d7bdfd44421f1ffa39946a40129c2515b251b1ae54fe9273d33cc2a4",
+      "kind": "native_owner"
+    },
+    {
+      "name": "retry-policy-deployed.xml",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-preservation-20261017-publication02/deployed-policy-tests.xml",
+      "bytes": 8496,
+      "sha256": "fe184dc7dec5387274d0c7a1ad94045c77d3980fc813acd1b21e84dc65e85f05",
+      "kind": "junit"
+    },
+    {
+      "name": "retry-policy-publication.json",
+      "absolute_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-attempt-preservation-20261017-recovery-publication01/publication.json",
+      "bytes": 2553,
+      "sha256": "fa59ca3515ba9cd77f8635f554d49ba2ea1a8ff94987fa7ef434a3f1afee8185",
+      "kind": "native_owner"
+    },
+    {
+      "name": "repair-controls-root-observation.json",
+      "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/repair-controls-root-observation.json",
+      "bytes": 1497,
+      "sha256": "2055a05e77167dc3934f505d9fa4a8774ae0ad01bbedbe5e01074fcc0b968c41",
+      "kind": "native_owner"
+    }
+  ],
+  "controls_junit_name": "docker-contract-v03.xml",
+  "integration_terminal_name": "native-r03-terminal.jsonl",
+  "integration_observation": "Actual Docker fixture r02 was refused by full8MiB ledger metadata; bounded lossless archival subsequently passed, reducing8,387,751 to3,450,663 bytes. Actual fresh r03 was refused by native proof_cpu_stall at51.1percent against unchanged50percent threshold, before checker execution. Both exact containers/watchdogs were independently absent after cleanup; no native leases remained for r03. Full native acceptance remains unqualified; no provider call or canonical task acceptance. Actual deployed retry51 and SDK65 controls passed; both sources published. Earlier failures preserved.",
+  "previous_readme_sha256": "6a37559bdf30ba293778859829d676ceea5a9dd8b2e5c7460355d1b9f929ac8b",
+  "previous_qualification_sha256": "29a472388b4d642612d685d0bcf42cfc09fbcbb313a674c6f2d9712c76e82310",
+  "push": true
+}

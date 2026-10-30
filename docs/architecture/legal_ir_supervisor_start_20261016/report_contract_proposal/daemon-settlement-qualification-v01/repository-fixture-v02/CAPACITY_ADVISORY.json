@@ -1,0 +1,23 @@
+{
+  "current_ledger_limit_bytes": 160000000000,
+  "current_outstanding_reservations_bytes": 37102536512,
+  "latest_stored_accounting": {
+    "additional_requested_bytes": 536870912,
+    "charged_bytes": 159151690217,
+    "limit_bytes": 160000000000,
+    "minimum_filesystem_free_bytes": 350122115072,
+    "observed_apparent_bytes": 122049153705,
+    "outstanding_full_reservations_bytes": 36565665600
+  },
+  "latest_stored_accounting_epoch": 1792254245.2077515,
+  "latest_stored_accounting_headroom_bytes": 848309783,
+  "ledger_sha256": "5aee230a29c8e5d03e94b3078d084b491677bfadbe0735cc2e740e92ded8ce0e",
+  "not_a_fresh_census_or_admission": true,
+  "policy": "Do not raise caps, release others, remove original artifacts or treat this advisory as admission. Original owner performs authoritative fresh locked census and refuses insufficient capacity.",
+  "read_at_epoch": 1792254267.5006526,
+  "requirements": {
+    "full-clone_bytes": 3221225472,
+    "selected-source_bytes": 268435456
+  },
+  "schema": "legal-ir-repository-capacity-advisory@1"
+}

@@ -1,0 +1,121 @@
+{
+  "schema": "legal-ir-supervisor-current-source-bindings/v1",
+  "status": "observed_metadata",
+  "observation": {
+    "origin": "actual finite native bootstrap preparation owner; bounded Git/file metadata observed before source-metadata commit",
+    "observed_at_utc": "2026-10-16T23:32:23.292431+00:00",
+    "evidence_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-worker-bootstrap-20261016-preflight04/preflight.json"
+  },
+  "repositories": [
+    {
+      "repository": "ipfs_accelerate_py",
+      "status": "observed_metadata",
+      "checkout_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller",
+      "head": "5beccbb836d5e3c6511c0a6a4ea3ee7dde7c10ec",
+      "tree": "8e7c07be532ee3911019f80ecaa81e672a3cb55f",
+      "branch": "agent/legal-ir-ordinary-worker-20261016",
+      "source_files": [
+        {
+          "path": "ipfs_accelerate_py/llm_router.py",
+          "bytes": 573274,
+          "sha256": "fa9edb968434eb46f8c46af70166cde55c7219d5625fb4b9c9cff78b5b9b726b"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_implementation_route.py",
+          "bytes": 342403,
+          "sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+          "bytes": 266206,
+          "sha256": "9a3db2b03f792f977ddd84e76a6d5fb522ac9b94678c6d13122c264461c31580"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+          "bytes": 631136,
+          "sha256": "b9b0ddd0a3bc4391ed3e0f27a30b3a164526bad4c2c5b1adaa276fa95efbdbd1"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+          "bytes": 600552,
+          "sha256": "bb1c4fa73cae66c79d8a5e57d5a94ddad705d342ce5cacbc7ed67432b83241f8"
+        },
+        {
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "bytes": 3297689,
+          "sha256": "d8bff8e58c3168082ed2b175710dc077333d99b41312b40425a38b41cc064d54"
+        },
+        {
+          "path": "scripts/ops/agent_supervisor/configured_board_scheduler.py",
+          "bytes": 2408,
+          "sha256": "e526c145f751e88b5bfbc207cafdd4344fb1d8bde016d6e96b7e40dcdd386214"
+        },
+        {
+          "path": "containers/external-agent/ordinary-task-toolchain/ordinary-task-toolchain.Containerfile",
+          "bytes": 1084,
+          "sha256": "b256241b381c9611c1a2fd42677641bed45d18135f693a9d82effb167f5c5794"
+        },
+        {
+          "path": "containers/external-agent/ordinary-task-toolchain/image-profile.json",
+          "bytes": 2234,
+          "sha256": "af9b05224ce4ad7137c13ac9bad12167422b5e90a7e80b751633775d17997ad3"
+        },
+        {
+          "path": "containers/external-agent/ordinary-task-toolchain/wheels.lock.json",
+          "bytes": 5936,
+          "sha256": "eed4f3a61cdba4930473acd3c4f28debe24966218cb74506fcd38fd6ec5f82d8"
+        },
+        {
+          "path": "docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json",
+          "bytes": 6970,
+          "sha256": "d8f9de44cfcf522009f3c1180d9dfc0938642c0822224751a0490299f4b5b902"
+        },
+        {
+          "path": "docs/architecture/legal_ir_supervisor_start_20261016/validate_bootstrap.py",
+          "bytes": 23159,
+          "sha256": "810db48a65969067ab64ae4471731c5f8247299e930c48435e0b7a31df145048"
+        }
+      ]
+    },
+    {
+      "repository": "ipfs_datasets_py",
+      "status": "observed_metadata",
+      "checkout_path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets",
+      "head": "9291a46aeb248c217abbd685c1c9ec0c52d368c9",
+      "tree": "0a6447bb89b970c92c74cce4a16c56846336d31f",
+      "branch": "codex/legal-ir-supervisor-startup-status-20261016",
+      "source_files": [
+        {
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/tasks.json",
+          "bytes": 212195,
+          "sha256": "147a33589b41df0cda3c0248f6803c36b073d8a36a928ab268f63656426ee90a"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_supervisor_plan/goals.objectives.md",
+          "bytes": 17303,
+          "sha256": "d2dd64a7565754fbd60513dd2c19adb0baca8f5c864b2eed3a0d782dbbd070a3"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_uscode_corpus_improvement_plan_20261015.md",
+          "bytes": 109620,
+          "sha256": "ffa9dee2e874bff6ea073ae6bf0ca6ca9025398d615c32f4d05fe19267d31569"
+        },
+        {
+          "path": "docs/autoencoders/legal_ir_span_graph_lean_execution_plan_20261016.md",
+          "bytes": 61649,
+          "sha256": "f4b974b31cefb868856ba441c60e73617c64292a22f9d5248f93d84cdce8b2c6"
+        }
+      ]
+    }
+  ],
+  "execution_authority": false,
+  "independent_acceptance_required": true,
+  "limitations": [
+    "Accelerator metadata describes the committed proposal before this metadata-only commit, without a self-referential final-commit claim.",
+    "Datasets metadata is a read-only engineering observation of the explicitly selected existing checkout; it grants no task, reviewer, database or resource custody.",
+    "Selected source hashes are not a claim that a whole checkout is clean, equivalent to the canonical checkout, legally accurate or admitted for training.",
+    "The original frozen source copies and failed historical attempts remain separately attributable.",
+    "No Quack runtime, database UUID, lease capability or credential is inherited; the reviewed bootstrap retains its explicit legacy Markdown route.",
+    "No source metadata, provider readiness probe or preflight result supplies independent report acceptance."
+  ]
+}

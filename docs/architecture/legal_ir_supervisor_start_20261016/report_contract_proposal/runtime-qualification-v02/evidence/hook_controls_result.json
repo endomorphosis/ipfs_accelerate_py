@@ -1,0 +1,22 @@
+{
+  "acceptance_authority": false,
+  "actual_provider_execution_qualified": false,
+  "additional_passed_call_reports": 0,
+  "canonical_tasks_accepted": 0,
+  "case_count_policy": "Unique pytest node IDs; successful subtest reports do not duplicate their parent case.",
+  "completion_authority": false,
+  "controlled_testcases": 104,
+  "errors": 0,
+  "expected_controlled_testcases": 104,
+  "external_test_root": "/tmp/pytest-of-barberb/legal-ir-ordinary-hook-controls-20261017-r01",
+  "failures": 0,
+  "passed": true,
+  "passed_testcases": 104,
+  "production_hook_deployed": false,
+  "provider_calls_performed": false,
+  "returncode": 0,
+  "schema": "legal-ir-ordinary-success-hook-controls@1",
+  "skipped": 0,
+  "source_manifest_sha256": "59761cd0b0ea3395efb82ef27c6bb9e3fdbe33ce7a118afb8827bea76e2fa5b9",
+  "test_aliases_outside_native_attempt": true
+}

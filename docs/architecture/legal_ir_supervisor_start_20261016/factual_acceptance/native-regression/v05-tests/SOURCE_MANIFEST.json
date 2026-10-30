@@ -1,0 +1,34 @@
+{
+  "author_tests_or_native_Docker_execution": false,
+  "authored_pytest_case_count": 34,
+  "backend_manifest_sha256": "d5049a12a0622c7f4b9462db7657c3920130ed4c59a17919a0f2e440bb372313",
+  "case_counts": {
+    "test_docker_container_contract.py": 20,
+    "test_gate_contract.py": 14
+  },
+  "files": [
+    {
+      "bytes": 1986,
+      "path": "README.md",
+      "sha256": "abf0f52a02a1ddda6c8a139c1c2b6d6f36a68511dff6ff4fdb35aa5361ce1ed5"
+    },
+    {
+      "bytes": 10590,
+      "path": "test_docker_container_contract.py",
+      "sha256": "db44ba485a2ee8978326c0125db1732b7889845a02ea9ec6c7993d7e95d3eb04"
+    },
+    {
+      "bytes": 2660,
+      "path": "test_gate_contract.py",
+      "sha256": "82edc7fc80961566f37a4411178184dca70de1c9434f4563187e1b244cbe13ed"
+    }
+  ],
+  "gate_source_functions": [
+    "inner_checker.py:release_gate_observation",
+    "outer_start_barrier.py:release_gate_observation"
+  ],
+  "independent_negative_Docker_metadata_mutations": 26,
+  "preserved_original_controls_V03_manifest_sha256": "c3fbbf7b1104f2b744eef6ca8b1290faac02f7a5b82037586bd6dd9ed6ccba74",
+  "schema": "legal-ir-docker-gate-contract-test-sources@5",
+  "status": "source_authored_root_reviewed_not_executed"
+}

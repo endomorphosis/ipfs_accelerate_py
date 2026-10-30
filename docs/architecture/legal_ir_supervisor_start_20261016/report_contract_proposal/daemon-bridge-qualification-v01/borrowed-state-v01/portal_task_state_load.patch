@@ -1,0 +1,18 @@
+--- a/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ b/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -4475,12 +4475,15 @@
+         from .portal_task_state_control_plane import (
+             load_portal_task_state,
+             save_portal_task_state,
++            task_state_connection_is_borrowed,
+         )
+ 
+         routed = load_portal_task_state(path.stem, state_path=path)
+         if routed:
+             payload = routed
+         elif routed == {}:
++            if task_state_connection_is_borrowed(path):
++                raise RuntimeError("borrowed task state requires its original authoritative row")
+             if not path.exists():
+                 return cls()
+             try:

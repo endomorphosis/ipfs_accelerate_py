@@ -1,0 +1,23 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 1,
+  "actual_exec_session_id": 36781,
+  "actual_final_terminal": {
+    "child_returncode": 1,
+    "failure_type": null,
+    "native_finalized": true,
+    "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-report-freezer-controls-20261017-r01/receipt.json",
+    "status": "failed"
+  },
+  "canonical_tasks_accepted": 0,
+  "native_finalized_observed": true,
+  "observed_passed": false,
+  "provider_calls": 0,
+  "receipt_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-report-freezer-controls-20261017-r01/receipt.json",
+  "receipt_sha256": "72cd3ec085ac4ceae2a17405a2493b58224770cad928bdc726ad08da048605f6",
+  "request_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-controls-request-v01.json",
+  "request_sha256": "e4e11f03092897d8568f131784b42d3a1806841bb81bde85235490cdf099776d",
+  "result_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-report-freezer-controls-20261017-r01/report-freezer-controls.json",
+  "result_sha256": "f38af1890b6218df4c0bd5b787966df382477689733c1d094d3b2e2ba73b2ee5",
+  "schema": "legal-ir-callable-generic-root-observation@1"
+}

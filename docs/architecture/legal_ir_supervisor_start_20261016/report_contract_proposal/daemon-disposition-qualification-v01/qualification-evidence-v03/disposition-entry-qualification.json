@@ -1,0 +1,376 @@
+{
+  "Git_descendants_in_original_attached_worker_group_observed": true,
+  "acceptance_authority": false,
+  "actual_consumed_ordinal_qualified": false,
+  "actual_native_host_constructed": false,
+  "actual_private_original_DuckDB_wrappers": 5,
+  "canonical_attempt_counter_writes": false,
+  "canonical_tasks_accepted": 0,
+  "capsule_manifest_sha256": "01f38d5aa9ea18dc84b45909cdc2265fbd4ffcc8f35f4cda5e49d54ca5cfd1db",
+  "cases": [
+    {
+      "actual_consumed_ordinal_qualified": false,
+      "actual_gate_calls": 1,
+      "actual_host_accessor_calls": 1,
+      "actual_scope_calls": 1,
+      "case": "missing_journal",
+      "failure_type": "NativeHostRefusal",
+      "original_cap_two_unchanged": true,
+      "original_current_owner_quarantine_created": false,
+      "original_positive_publish_failure_qualified": false,
+      "passed": true,
+      "private_counter_row_unchanged": true
+    },
+    {
+      "actual_consumed_ordinal_qualified": false,
+      "actual_gate_calls": 1,
+      "actual_host_accessor_calls": 0,
+      "actual_scope_calls": 1,
+      "case": "valid_lowlevel_denial",
+      "failure_type": "AttemptDispositionDenied",
+      "original_cap_two_unchanged": true,
+      "original_current_owner_quarantine_created": false,
+      "original_positive_publish_failure_qualified": false,
+      "passed": true,
+      "private_counter_row_unchanged": true
+    },
+    {
+      "actual_consumed_ordinal_qualified": false,
+      "actual_gate_calls": 1,
+      "actual_host_accessor_calls": 0,
+      "actual_scope_calls": 1,
+      "case": "corrupt_journal",
+      "failure_type": "AttemptDispositionRefusal",
+      "original_cap_two_unchanged": true,
+      "original_current_owner_quarantine_created": false,
+      "original_positive_publish_failure_qualified": false,
+      "passed": true,
+      "private_counter_row_unchanged": true
+    },
+    {
+      "actual_consumed_ordinal_qualified": false,
+      "actual_gate_calls": 1,
+      "actual_host_accessor_calls": 0,
+      "actual_scope_calls": 1,
+      "case": "incomplete_journal",
+      "failure_type": "AttemptDispositionRefusal",
+      "original_cap_two_unchanged": true,
+      "original_current_owner_quarantine_created": false,
+      "original_positive_publish_failure_qualified": false,
+      "passed": true,
+      "private_counter_row_unchanged": true
+    },
+    {
+      "actual_consumed_ordinal_qualified": false,
+      "actual_gate_calls": 1,
+      "actual_host_accessor_calls": 0,
+      "actual_scope_calls": 1,
+      "case": "quarantine_without_journal",
+      "failure_type": "AttemptDispositionDenied",
+      "original_cap_two_unchanged": true,
+      "original_current_owner_quarantine_created": true,
+      "original_positive_publish_failure_qualified": false,
+      "passed": true,
+      "private_counter_row_unchanged": true
+    }
+  ],
+  "completion_authority": false,
+  "controlled_testcases": 5,
+  "full_host_qualified": false,
+  "full_original_daemon_constructor_calls": 5,
+  "full_original_module_imported": true,
+  "native_parent_finalization_claimed": false,
+  "original_Git_process_count": 56,
+  "original_Git_processes": [
+    {
+      "pgid": 911178,
+      "phase": "private_git_setup",
+      "pid": 911182
+    },
+    {
+      "pgid": 911178,
+      "phase": "private_git_setup",
+      "pid": 911183
+    },
+    {
+      "pgid": 911178,
+      "phase": "private_git_setup",
+      "pid": 911184
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_module_import",
+      "pid": 911251
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_module_import",
+      "pid": 911252
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_module_import",
+      "pid": 911253
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_module_import",
+      "pid": 911254
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_module_import",
+      "pid": 911255
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_module_import",
+      "pid": 911256
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911411
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911412
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911413
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911414
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911415
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911416
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911417
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911464
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:missing_journal",
+      "pid": 911465
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911466
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911467
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911468
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911469
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911470
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911471
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911472
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911473
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:valid_lowlevel_denial",
+      "pid": 911474
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911475
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911476
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911477
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911478
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911479
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911480
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911481
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911482
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:corrupt_journal",
+      "pid": 911483
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911484
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911485
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911486
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911487
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911488
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911489
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911490
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911491
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:incomplete_journal",
+      "pid": 911492
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911493
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911494
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911495
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911496
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911497
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911498
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911499
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911500
+    },
+    {
+      "pgid": 911178,
+      "phase": "complete_original_constructor:quarantine_without_journal",
+      "pid": 911501
+    },
+    {
+      "pgid": 911178,
+      "phase": "actual_original_current_owner_quarantine",
+      "pid": 911502
+    },
+    {
+      "pgid": 911178,
+      "phase": "actual_original_current_owner_quarantine",
+      "pid": 911503
+    }
+  ],
+  "original_positive_publish_failure_qualified": false,
+  "passed": true,
+  "production_hook_deployed": false,
+  "provider_calls_performed": false,
+  "request_sha256": "ac15604cd84f6c9f17f52aeb2cc8f1215ba14dadc61058eb0a82223e3d56d078",
+  "reviewed_composed_daemon_sha256": "67f4959c391776a1361a98f2a5f8d137e86ea5651e9ced0ab96fca3eb91f15a0",
+  "same_borrow_connection_identity_qualified": false,
+  "schema": "legal-ir-disposition-entry-qualification-result@1",
+  "source_manifest_sha256": "8f2a0e406dec81b504f097caa8b3213ab416e3208c102a8e13bb871610e034b5",
+  "task_selection_performed": false
+}

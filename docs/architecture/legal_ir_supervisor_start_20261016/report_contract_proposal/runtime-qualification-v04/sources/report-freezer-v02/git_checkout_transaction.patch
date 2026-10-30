@@ -1,0 +1,31 @@
+--- a/ipfs_accelerate_py/agent_supervisor/merge/git_checkout_transaction.py
++++ b/ipfs_accelerate_py/agent_supervisor/merge/git_checkout_transaction.py
+@@ -83,6 +83,28 @@
+     if not math.isfinite(timeout) or timeout < 0:
+         raise ValueError("checkout Git timeout must be finite and nonnegative")
+     directory = git_checkout_directory(Path(repo))
++    with checkout_git_directory_mutation(directory, timeout_seconds=timeout):
++        yield directory
++
++
++@contextmanager
++def checkout_git_directory_mutation(
++    directory: Path, *, timeout_seconds: float = 30.0,
++) -> Iterator[Path]:
++    """Hold the original checkout lock for an already observed Git directory.
++
++    The caller must obtain this exact directory from the actual repository.
++    This advisory lock supplies no repository/task/lease mutation authority.
++    The native report freezer resolves it with an attached finite Git child.
++    """
++    timeout = float(timeout_seconds)
++    if not math.isfinite(timeout) or timeout < 0:
++        raise ValueError("checkout Git timeout must be finite and nonnegative")
++    directory = Path(directory)
++    if (not directory.is_absolute() or str(directory) != os.path.abspath(directory)
++            or any(path.is_symlink() for path in (directory, *directory.parents))
++            or not directory.is_dir()):
++        raise CheckoutGitMutationBlocked("checkout_git_directory_unaliased_required")
+     key = str(directory)
+     depths = getattr(_held, "depths", None)
+     if depths is None:

@@ -1,0 +1,19 @@
+{
+  "acceptance_authority": false,
+  "actual_tool_completion_chunk": "09b335",
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 58509,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 47,
+  "github_qualification_skipped": true,
+  "native_finalized": true,
+  "passed": true,
+  "private_junit_sha256": "1a2163460d412a7a5f812e8c267b16741f5e5d5d10eeec6d6b19c3979a51e7a6",
+  "provider_execution_qualified": false,
+  "public_preflight_qualified": false,
+  "receipt_sha256": "0ad91e1eb85f5e13a94bdbda68bdb9a2669b34bcdd7fe787646d3220c7a11877",
+  "schema": "legal-ir-freezer-board-root-observation@1",
+  "scope": "cold necessary conditions and actual source correspondence; no fake positive daemon",
+  "source_controls_sha256": "840f5159d9993fe0577c740b0e308578bc725dcfc078ffcefb28bc66d1a52e52",
+  "source_manifest_sha256": "a36463f140a3e9ee35cf29ecdaa51e37ac50348f8f99c9eda5b3e23485630297"
+}

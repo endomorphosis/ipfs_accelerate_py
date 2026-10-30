@@ -1,0 +1,7 @@
+# Corrected source controls, generation 2
+
+The actual first run returned exit 1 with 67 of 68 passing controls and genuine native finalization. Its sole failed test selected the final breadth-first AST commit call: the nested generic submodule `--allow-empty` branch. Source inspection proves the original top-level commit argument AST equals the extracted shared tail exactly. That source audit is not a passing runtime test.
+
+This additive generation preserves the frozen freezer, original test, first harness and failed result. It runs the unchanged 56 pure controls plus 12 source controls from this overlay. The one corrected selector takes the sole original top-level commit statement, compares the actual original argument AST to the shared tail and independently verifies the original nested rescue branch remains unchanged. No producer patch, helper, expected commit argument list or control count changes.
+
+Root alone runs the reviewed fixed r02 request under genuine generic admission. All complete original source rows remain pinned even though the defective original source-control file is preserved as history. The overlay manifest, corrected test and harness are independently pinned. Private charged pytest/JUnit/result outputs, unique-node counting and no Git/provider/backend/public-freezer qualification semantics remain unchanged. No runtime test was executed by this source author.

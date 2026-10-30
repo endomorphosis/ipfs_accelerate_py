@@ -1,0 +1,45 @@
+{
+  "authored_source_controls": 15,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 480,
+      "path": "ASSEMBLY.json",
+      "sha256": "068ebf54614e3dd5089aebf023cd694a2d4fdc3bb9878f95ab0512351e2c911e"
+    },
+    {
+      "bytes": 1596,
+      "path": "README.md",
+      "sha256": "331fbb08fc49a88e875fe3b8eda4b24f04204e7fe596f0658c406f1c53c2858b"
+    },
+    {
+      "bytes": 14519,
+      "path": "build_patch.py",
+      "sha256": "38e1fa5c63800a6e10c9ba54788010c75710daad867d41704cc7084677d46870"
+    },
+    {
+      "bytes": 15272,
+      "path": "implementation_daemon.patch",
+      "sha256": "fc20c0ecc5f8d2ef28c92e680d15efcd55fb707709bbe83abf970017396b4139"
+    },
+    {
+      "bytes": 3648,
+      "path": "qualify_source.py",
+      "sha256": "469c640d4dc8bcd97dbdf30f03b73fc026ed968030cee876345821d1717db8aa"
+    },
+    {
+      "bytes": 7999,
+      "path": "test_integration_contract.py",
+      "sha256": "08f460d421f6fd1cd39de9bd53d5049f6d4625f9a4fade8a339e5eaccf4fc2c9"
+    }
+  ],
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/build_patch.py": "6b87e6f63b42b970265daa3131042c9651b5fa9319f97314b3490ab478e2b7e4",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v01/SOURCE_MANIFEST.json": "8f254b149e4541e005e71aaec861cf9b8b3621a612b5325a71996d1a9a4a0cc7",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+  },
+  "predecessor_manifest_sha256": "8f254b149e4541e005e71aaec861cf9b8b3621a612b5325a71996d1a9a4a0cc7",
+  "qualification": "not yet executed",
+  "runtime_enabled": false,
+  "schema": "legal-ir-daemon-integration-source@2"
+}

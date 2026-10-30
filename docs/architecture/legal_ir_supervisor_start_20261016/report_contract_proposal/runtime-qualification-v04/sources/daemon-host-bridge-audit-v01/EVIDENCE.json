@@ -1,0 +1,631 @@
+{
+  "author_product_imports_or_tests_or_jobs": false,
+  "authority": false,
+  "complete_runtime_source_closure_claimed": false,
+  "evidence": [
+    {
+      "claim": "Generic launcher owns root/phase/parented reservation in its interpreter with1CPU/8slots.",
+      "classification": "source_observation",
+      "id": "E01",
+      "line_end": 98,
+      "line_start": 83,
+      "source_id": "generic",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+      "source_sha256": "ab244fa456eb1809be12235c9911353adb8b33400e7968218c40a41790a21696"
+    },
+    {
+      "claim": "Child receives environment through Popen; actual native objects are not passed.",
+      "classification": "source_observation",
+      "id": "E02",
+      "line_end": 133,
+      "line_start": 109,
+      "source_id": "generic",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+      "source_sha256": "ab244fa456eb1809be12235c9911353adb8b33400e7968218c40a41790a21696"
+    },
+    {
+      "claim": "Portal constructor has no native phase, owner or retained connection parameter.",
+      "classification": "source_observation",
+      "id": "E03",
+      "line_end": 5140,
+      "line_start": 5052,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Repo dispatch calls launch boundary then external process runner under decision boundary.",
+      "classification": "source_observation",
+      "id": "E04",
+      "line_end": 21916,
+      "line_start": 21853,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Ephemeral provider seam retains original local task/state/baseline but starts external command.",
+      "classification": "source_observation",
+      "id": "E05",
+      "line_end": 31740,
+      "line_start": 31655,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Configured loop invokes run_once without actual phase/connection objects.",
+      "classification": "source_observation",
+      "id": "E06",
+      "line_end": 1175,
+      "line_start": 1153,
+      "source_id": "cli",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/implementation_daemon_runner.py",
+      "source_sha256": "f1ff22dd102714f044bf281cf1742f8c24c66a2c38b5b0a12404193abb9a9f4e"
+    },
+    {
+      "claim": "Public parented owner requires exact ResourceLease beneath a root and same current PID/scheduler.",
+      "classification": "source_observation",
+      "id": "E07",
+      "line_end": 62,
+      "line_start": 44,
+      "source_id": "native_parented",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "source_sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "claim": "Bridge budget/demand types require CPU slots to cover process slots.",
+      "classification": "source_observation",
+      "id": "E08",
+      "line_end": 112,
+      "line_start": 70,
+      "source_id": "bridge",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "source_sha256": "5d6d8840a5be7779448456a9b993a1238a4c18a59a2403ebfb4577669ac0f72f"
+    },
+    {
+      "claim": "Existing RepositoryPhaseLease.native_options returns its actual parent_lease object.",
+      "classification": "source_observation",
+      "id": "E09",
+      "line_end": 145,
+      "line_start": 134,
+      "source_id": "bridge",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "source_sha256": "5d6d8840a5be7779448456a9b993a1238a4c18a59a2403ebfb4577669ac0f72f"
+    },
+    {
+      "claim": "Bridge reserve acquires an independent top-level ORCHESTRATION root at330.",
+      "classification": "source_observation",
+      "id": "E10",
+      "line_end": 341,
+      "line_start": 273,
+      "source_id": "bridge",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "source_sha256": "5d6d8840a5be7779448456a9b993a1238a4c18a59a2403ebfb4577669ac0f72f"
+    },
+    {
+      "claim": "Existing PipelinePhase.native_options returns actual daemon native lease, but no Portal plumbing.",
+      "classification": "source_observation",
+      "id": "E11",
+      "line_end": 181,
+      "line_start": 155,
+      "source_id": "pipeline",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "source_sha256": "6c9a42ed9ae9efa7ac22582a8d5aeb4ef752be138534d71fbf2af95e72dc7bd2"
+    },
+    {
+      "claim": "Portal state save/load delegate to module producers; load permits JSON migration fallback.",
+      "classification": "source_observation",
+      "id": "E12",
+      "line_end": 4508,
+      "line_start": 4458,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Default _connect opens a new wrapper and executes DDL.",
+      "classification": "source_observation",
+      "id": "E13",
+      "line_end": 266,
+      "line_start": 228,
+      "source_id": "state_io",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "source_sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0"
+    },
+    {
+      "claim": "All four board/lane save/load helpers close opened connection in finally.",
+      "classification": "source_observation",
+      "id": "E14",
+      "line_end": 616,
+      "line_start": 457,
+      "source_id": "state_io",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "source_sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0"
+    },
+    {
+      "claim": "File lock opens distinct handle and nonblocking flock; RLock does not reuse flock handle.",
+      "classification": "source_observation",
+      "id": "E15",
+      "line_end": 385,
+      "line_start": 347,
+      "source_id": "duckdb",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "source_sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+    },
+    {
+      "claim": "Local wrapper holds original exclusive file lock for its connection lifetime.",
+      "classification": "source_observation",
+      "id": "E16",
+      "line_end": 519,
+      "line_start": 455,
+      "source_id": "duckdb",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "source_sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+    },
+    {
+      "claim": "Every local connection opener constructs a new wrapper; no file pool.",
+      "classification": "source_observation",
+      "id": "E17",
+      "line_end": 1446,
+      "line_start": 1430,
+      "source_id": "duckdb",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "source_sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+    },
+    {
+      "claim": "Provider progress observer reloads and saves portal state during provider execution.",
+      "classification": "source_observation",
+      "id": "E18",
+      "line_end": 64745,
+      "line_start": 64712,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Database daemon normally uses separate execution-sidecar path.",
+      "classification": "source_observation",
+      "id": "E19",
+      "line_end": 71608,
+      "line_start": 71560,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Database daemon retains private execution connection, not same-target public Portal accessor.",
+      "classification": "source_observation",
+      "id": "E20",
+      "line_end": 71815,
+      "line_start": 71794,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Original object/counter capture; identical invocation, full baseline, board-in-workspace and actual lifecycle required.",
+      "classification": "source_observation",
+      "id": "E21",
+      "line_end": 288,
+      "line_start": 241,
+      "source_id": "freezer",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "source_sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "claim": "Freezer uses SELECT-only actual existing local nontransactional usable wrapper under execution condition.",
+      "classification": "source_observation",
+      "id": "E22",
+      "line_end": 365,
+      "line_start": 337,
+      "source_id": "freezer",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "source_sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "claim": "Original configured todo_path retained by constructor.",
+      "classification": "source_observation",
+      "id": "E23",
+      "line_end": 5156,
+      "line_start": 5150,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Original task-source path is alternate todo_path assignment; no workspace rebase.",
+      "classification": "source_observation",
+      "id": "E24",
+      "line_end": 5287,
+      "line_start": 5278,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Ephemeral workspace is chosen later from task/attempt/time with active lifecycle.",
+      "classification": "source_observation",
+      "id": "E25",
+      "line_end": 31291,
+      "line_start": 31225,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Generic exception settles state; unconditional finally releases implementation lock/resource/task claims.",
+      "classification": "source_observation",
+      "id": "E26",
+      "line_end": 22876,
+      "line_start": 22763,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Ephemeral generic exception may clean failed setup worktree, then terminal handling continues.",
+      "classification": "source_observation",
+      "id": "E27",
+      "line_end": 33335,
+      "line_start": 33140,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Ephemeral terminal tail marks finished, saves state and may finalize lifecycle.",
+      "classification": "source_observation",
+      "id": "E28",
+      "line_end": 33910,
+      "line_start": 33680,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "H3 exact actual source/invocation/owner/C guards and callback-scoped success; finally acknowledges provider custody.",
+      "classification": "source_observation",
+      "id": "E29",
+      "line_end": 815,
+      "line_start": 717,
+      "source_id": "handoff",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "source_sha256": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a"
+    },
+    {
+      "claim": "Active success is callback-only; unknown stopped proof retains actual objects in OrdinaryCustodyPending.",
+      "classification": "source_observation",
+      "id": "E30",
+      "line_end": 1008,
+      "line_start": 944,
+      "source_id": "handoff",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "source_sha256": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a"
+    },
+    {
+      "claim": "C binds genuine same-process owner/consumer objects and retains native authority correspondence.",
+      "classification": "source_observation",
+      "id": "E31",
+      "line_end": 213,
+      "line_start": 157,
+      "source_id": "custody",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "source_sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb"
+    },
+    {
+      "claim": "C retains original references; consumer release requires independent stopped proof and forget requires row drain.",
+      "classification": "source_observation",
+      "id": "E32",
+      "line_end": 296,
+      "line_start": 221,
+      "source_id": "custody",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "source_sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb"
+    },
+    {
+      "claim": "Fresh freezer must be distinct ORCH sibling with1CPU/4slots and>=512MiB.",
+      "classification": "source_observation",
+      "id": "E33",
+      "line_end": 439,
+      "line_start": 420,
+      "source_id": "freezer",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "source_sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "claim": "Exact128\u2013256MiB/root,<=384MiB total, bounded inventory and16MiB growth; aliases/worldwrite/hardlinks refuse.",
+      "classification": "source_observation",
+      "id": "E34",
+      "line_end": 508,
+      "line_start": 479,
+      "source_id": "freezer",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "source_sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "claim": "Real local Git Popen cleanup may fail wait/group proof with ordinary refusal; original refs need host custody.",
+      "classification": "source_observation",
+      "id": "E35",
+      "line_end": 577,
+      "line_start": 511,
+      "source_id": "freezer",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "source_sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "claim": "Freezer authenticates active H outcome and identical original invocation/capture; no caller task/baseline override.",
+      "classification": "source_observation",
+      "id": "E36",
+      "line_end": 635,
+      "line_start": 597,
+      "source_id": "freezer",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "source_sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "claim": "Strict original baseline/index/report/board constraints; submodule/symlink/unmerged/hidden flags refuse.",
+      "classification": "source_observation",
+      "id": "E37",
+      "line_end": 714,
+      "line_start": 641,
+      "source_id": "freezer",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "source_sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "claim": "Original start consumes ordinal through original producer; clear resets active state.",
+      "classification": "source_observation",
+      "id": "E38",
+      "line_end": 34443,
+      "line_start": 34376,
+      "source_id": "daemon",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "source_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+    },
+    {
+      "claim": "Public finalize/release require stopped groups and no consumers; with-exit retains while consumers exist.",
+      "classification": "source_observation",
+      "id": "E39",
+      "line_end": 282,
+      "line_start": 241,
+      "source_id": "native_parented",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "source_sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9"
+    },
+    {
+      "claim": "Separate held local connection plus legacy reopen can conflict with lifetime flock (source inference E13\u2013E17, not runtime deadlock test).",
+      "classification": "inference_from_pinned_sources",
+      "id": "E40",
+      "line_end": 994,
+      "line_start": 934,
+      "source_id": "duckdb",
+      "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "source_sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983"
+    }
+  ],
+  "runtime_qualification_claimed": false,
+  "schema": "legal-ir-daemon-host-bridge-evidence@1",
+  "source_pins": [
+    {
+      "bytes": 3300743,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "source_id": "daemon"
+    },
+    {
+      "bytes": 24587,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/portal_task_state_control_plane.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "17d47e25756a9e8769a993f7d039a1fb7c87fa191b895041567babea17b5eec0",
+      "source_id": "state_io"
+    },
+    {
+      "bytes": 90990,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "9d4dc972740c995b81e7656b2bd6708c7000c9139784a445e3c2c0ecd4b8b983",
+      "source_id": "duckdb"
+    },
+    {
+      "bytes": 46271,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/implementation_daemon_runner.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "f1ff22dd102714f044bf281cf1742f8c24c66a2c38b5b0a12404193abb9a9f4e",
+      "source_id": "cli"
+    },
+    {
+      "bytes": 90512,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "71c3099e6981d605ce3a6e98ff25298731cc2a295b86a89e9aa55698913894d5",
+      "source_id": "process"
+    },
+    {
+      "bytes": 17994,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "5d6d8840a5be7779448456a9b993a1238a4c18a59a2403ebfb4577669ac0f72f",
+      "source_id": "bridge"
+    },
+    {
+      "bytes": 32756,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "6c9a42ed9ae9efa7ac22582a8d5aeb4ef752be138534d71fbf2af95e72dc7bd2",
+      "source_id": "pipeline"
+    },
+    {
+      "bytes": 17150,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_handoff.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "1de0d302ca96eb4dfe876de5faeaa9a7b7acaa6fba91e670cbdde1be3911d430",
+      "source_id": "delegation"
+    },
+    {
+      "bytes": 6879,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "ac592f12821a88747ed0c90265b590136a1195acff50347a8455d0b839157ff5",
+      "source_id": "bootstrap"
+    },
+    {
+      "bytes": 18900,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "ab244fa456eb1809be12235c9911353adb8b33400e7968218c40a41790a21696",
+      "source_id": "generic"
+    },
+    {
+      "bytes": 15440,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9",
+      "source_id": "native_parented"
+    },
+    {
+      "bytes": 40999,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed",
+      "source_id": "native_host"
+    },
+    {
+      "bytes": 121503,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986",
+      "source_id": "native_scheduler"
+    },
+    {
+      "bytes": 17545,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d",
+      "source_id": "native_existing"
+    },
+    {
+      "bytes": 54117,
+      "links": 1,
+      "mode_octal": "0o644",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a",
+      "source_id": "handoff"
+    },
+    {
+      "bytes": 16803,
+      "links": 1,
+      "mode_octal": "0o644",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb",
+      "source_id": "custody"
+    },
+    {
+      "bytes": 655286,
+      "links": 1,
+      "mode_octal": "0o444",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24",
+      "source_id": "runner"
+    },
+    {
+      "bytes": 41510,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1",
+      "source_id": "freezer"
+    },
+    {
+      "bytes": 5637,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/implementation_daemon.patch",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "00d64b4c534690f440be390aa3a0e49955e387af6e036749aae13c2e62a86ed8",
+      "source_id": "freezer_patch"
+    },
+    {
+      "bytes": 7276,
+      "links": 1,
+      "mode_octal": "0o444",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/SOURCE_MANIFEST.json",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "1a2d28a952f0bac6a7af951b4754085dcb1110f86fb46ebf319014f2e66062e2",
+      "source_id": "G_manifest"
+    },
+    {
+      "bytes": 2668,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/SOURCE_MANIFEST.json",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "6ca1a9ca25f1bb477841a006e2b77ba34c0c647d5930b3eaabf7537e6dbf6879",
+      "source_id": "H_manifest"
+    },
+    {
+      "bytes": 6152,
+      "links": 1,
+      "mode_octal": "0o664",
+      "owner_uid": 1000,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-v02/SOURCE_MANIFEST.json",
+      "role": "source_evidence_only_not_runtime_admission",
+      "sha256": "2e88a05782c96aed0f64583f414209a3535502c034b7a8f610f8577d60ae345e",
+      "source_id": "F_manifest"
+    }
+  ]
+}

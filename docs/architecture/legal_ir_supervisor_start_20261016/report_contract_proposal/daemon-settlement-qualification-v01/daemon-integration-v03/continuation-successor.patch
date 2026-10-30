@@ -1,0 +1,144 @@
+--- daemon-integration-v02/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ daemon-integration-v03/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -18614,25 +18614,28 @@
+                 else:
+                     implementation_result = self._run_implementation(selected, state)
+         finally:
++            def _settle_report_only_dispatch_intents():
++                retain_selected_intent = bool(
++                    selected is not None
++                    and implementation_result is not None
++                    and implementation_result.get("dispatch_intent_retained")
++                    is True
++                )
++                self._reconcile_unselected_implementation_dispatch_intents(
++                    reusable_dispatch_intents,
++                    selected=selected if retain_selected_intent else None,
++                    reason="retained_intent_not_preserved_after_dispatch",
++                )
+             if self.report_only_candidate_freezing:
+-                self._require_report_only_native_host().before_original_finalizer(
+-                    self, stage="pass_dispatch_intent_reconciliation", original_frame={
+-                        "selected": selected, "state": state,
+-                        "implementation_result": implementation_result,
+-                        "reusable_dispatch_intents": reusable_dispatch_intents,
+-                    },
+-                )
+-            retain_selected_intent = bool(
+-                selected is not None
+-                and implementation_result is not None
+-                and implementation_result.get("dispatch_intent_retained")
+-                is True
+-            )
+-            self._reconcile_unselected_implementation_dispatch_intents(
+-                reusable_dispatch_intents,
+-                selected=selected if retain_selected_intent else None,
+-                reason="retained_intent_not_preserved_after_dispatch",
+-            )
++                from .report_only_native_host import run_original_finalizer
++
++                run_original_finalizer(
++                    self, stage='pass_dispatch_intent_reconciliation',
++                    original_frame={'selected': selected, 'state': state, 'implementation_result': implementation_result, 'reusable_dispatch_intents': reusable_dispatch_intents},
++                    continuation=_settle_report_only_dispatch_intents,
++                )
++            else:
++                _settle_report_only_dispatch_intents()
+         provider_backoff_result = bool(
+             implementation_result
+             and implementation_result.get("reason") == "provider_capacity_backoff"
+@@ -22909,51 +22912,50 @@
+             self._record_event("implementation_finished", result)
+             return result
+         finally:
++            def _settle_report_only_implementation_claims():
++                nonlocal acquired_resource_claims
++                try:
++                    if acquired_lock and not self._release_implementation_lock(
++                        lock_path,
++                        lock_metadata,
++                    ):
++                        logger.warning(
++                            "Refusing to remove implementation lock no longer "
++                            "owned by this attempt: %s",
++                            lock_path,
++                        )
++                except (OSError, RuntimeError):
++                    logger.warning(
++                        "Failed to coordinate removal of implementation lock %s",
++                        lock_path,
++                        exc_info=True,
++                    )
++                self._release_implementation_resource_claims(
++                    acquired_resource_claims
++                )
++                acquired_resource_claims = []
++                try:
++                    if acquired_task_claim and not self._release_implementation_task_claim(
++                        task_claim_path,
++                        task_claim_metadata,
++                    ):
++                        logger.warning(
++                            "Refusing to remove implementation task claim no "
++                            "longer owned by this attempt: %s",
++                            task_claim_path,
++                        )
++                except OSError:
++                    logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
+             if self.report_only_candidate_freezing:
+-                self._require_report_only_native_host().before_original_finalizer(
+-                    self, stage="implementation_claim_release", original_frame={
+-                        "task": task, "state": state, "attempt": attempt,
+-                        "task_claim_path": task_claim_path,
+-                        "task_claim_metadata": task_claim_metadata,
+-                        "acquired_task_claim": acquired_task_claim,
+-                        "resource_claims": acquired_resource_claims,
+-                        "lock_path": lock_path, "lock_metadata": lock_metadata,
+-                        "acquired_lock": acquired_lock,
+-                        "lifecycle": self._active_worktree_lifecycle,
+-                    },
+-                )
+-            try:
+-                if acquired_lock and not self._release_implementation_lock(
+-                    lock_path,
+-                    lock_metadata,
+-                ):
+-                    logger.warning(
+-                        "Refusing to remove implementation lock no longer "
+-                        "owned by this attempt: %s",
+-                        lock_path,
+-                    )
+-            except (OSError, RuntimeError):
+-                logger.warning(
+-                    "Failed to coordinate removal of implementation lock %s",
+-                    lock_path,
+-                    exc_info=True,
+-                )
+-            self._release_implementation_resource_claims(
+-                acquired_resource_claims
+-            )
+-            acquired_resource_claims = []
+-            try:
+-                if acquired_task_claim and not self._release_implementation_task_claim(
+-                    task_claim_path,
+-                    task_claim_metadata,
+-                ):
+-                    logger.warning(
+-                        "Refusing to remove implementation task claim no "
+-                        "longer owned by this attempt: %s",
+-                        task_claim_path,
+-                    )
+-            except OSError:
+-                logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
++                from .report_only_native_host import run_original_finalizer
++
++                run_original_finalizer(
++                    self, stage='implementation_claim_release',
++                    original_frame={'task': task, 'state': state, 'attempt': attempt, 'task_claim_path': task_claim_path, 'task_claim_metadata': task_claim_metadata, 'acquired_task_claim': acquired_task_claim, 'resource_claims': acquired_resource_claims, 'lock_path': lock_path, 'lock_metadata': lock_metadata, 'acquired_lock': acquired_lock, 'lifecycle': self._active_worktree_lifecycle},
++                    continuation=_settle_report_only_implementation_claims,
++                )
++            else:
++                _settle_report_only_implementation_claims()
+ 
+     @staticmethod
+     def _manual_completion_authority_checkout_snapshot(

@@ -1,0 +1,232 @@
+# This fragment is inserted after the original control-plane exception class.
+# Its projections and registry are process-local correspondence, never grants.
+_BORROWED_REGISTRY_LOCK = threading.RLock()
+_BORROWED_REGISTRY_PID = os.getpid()
+_BORROWED_BY_STATE: dict[Path, Any] = {}
+_BORROWED_BY_TARGET: dict[Path, Any] = {}
+
+
+def _borrow_need(condition: bool, reason: str) -> None:
+    if not condition:
+        raise PortalTaskStateControlPlaneError(reason)
+
+
+def _borrow_path(value: Path | str, *, existing: bool = False) -> Path:
+    _borrow_need(isinstance(value, (Path, str)), "borrowed_state_path_required")
+    path = Path(value).expanduser()
+    _borrow_need(path.is_absolute() and str(path) == os.path.abspath(path)
+                 and not any(part.is_symlink() for part in (path, *path.parents)),
+                 "borrowed_state_unaliased_absolute_path_required")
+    resolved = path.resolve(strict=existing)
+    _borrow_need(resolved == path, "borrowed_state_canonical_path_required")
+    return path
+
+
+def _borrow_file_identity(path: Path) -> tuple[int, int]:
+    metadata = path.stat()
+    _borrow_need(stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+                 and metadata.st_uid in {0, os.getuid()} and not metadata.st_mode & 0o002,
+                 "borrowed_state_original_local_regular_database_required")
+    return metadata.st_dev, metadata.st_ino
+
+
+def _borrow_thread_pid(pid: int, thread_id: int, thread: Any) -> None:
+    """Necessary identity check only; this function cannot validate a handle."""
+    _borrow_need(pid == os.getpid() and thread_id == threading.get_ident()
+                 and thread is threading.current_thread(),
+                 "borrowed_state_original_process_and_thread_required")
+
+
+class _BorrowedStateBinding:
+    def __init__(self, state_path: Path, target: Path, source: str, connection: Any):
+        self.state_path, self.target, self.source = state_path, target, source
+        self.connection = connection
+        self.pid, self.thread_id = os.getpid(), threading.get_ident()
+        self.thread = threading.current_thread()
+        self.condition, self.execution_lock = connection._execution_condition, connection._execution_lock
+        self.raw, self.lock_context = connection._connection, connection._lock_context
+        self.epoch = connection._reconnect_epoch
+        self.file_identity = _borrow_file_identity(target)
+
+    def __reduce_ex__(self, _protocol):
+        raise TypeError("borrowed state bindings cannot be serialized")
+
+
+def _borrowed_binding(state_path: Path | str | None, target: str | None):
+    if not _BORROWED_BY_STATE:
+        return None
+    # Refuse a fork before touching an inherited lock or native connection.
+    _borrow_need(os.getpid() == _BORROWED_REGISTRY_PID, "borrowed_state_fork_refused")
+    key = _borrow_path(state_path) if state_path is not None else None
+    with _BORROWED_REGISTRY_LOCK:
+        binding = _BORROWED_BY_STATE.get(key)
+        if binding is not None:
+            _borrow_thread_pid(binding.pid, binding.thread_id, binding.thread)
+            _borrow_need(type(target) is str and target == str(binding.target),
+                         "borrowed_state_original_explicit_target_changed")
+            _borrow_need(_BORROWED_BY_TARGET.get(binding.target) is binding,
+                         "borrowed_state_original_registry_identity_required")
+            return binding
+        if target is not None and not str(target).startswith("quack:"):
+            candidate = Path(target).expanduser().resolve()
+            _borrow_need(candidate not in _BORROWED_BY_TARGET,
+                         "borrowed_state_exact_original_state_path_required")
+        return None
+
+
+def _check_borrowed_locked(binding: _BorrowedStateBinding) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import DuckDBConnection
+    import duckdb
+
+    connection = binding.connection
+    _borrow_thread_pid(binding.pid, binding.thread_id, binding.thread)
+    _borrow_need(type(connection) is DuckDBConnection
+                 and type(connection._connection) is duckdb.DuckDBPyConnection
+                 and connection._connection is binding.raw
+                 and connection._execution_condition is binding.condition
+                 and connection._execution_lock is binding.execution_lock
+                 and binding.condition._lock is binding.execution_lock
+                 and connection._lock_context is binding.lock_context and binding.lock_context is not None
+                 and type(binding.epoch) is int and connection._reconnect_epoch == binding.epoch
+                 and _borrow_path(connection.path, existing=True) == binding.target
+                 and _borrow_file_identity(binding.target) == binding.file_identity,
+                 "borrowed_state_original_native_handle_and_target_required")
+    _borrow_need(connection._closed is False and connection._poisoned is False
+                 and connection._owner_binding_retired is False and connection._transaction_active is False
+                 and connection._context_finalizing is False and connection._closing_owner == 0
+                 and connection._transaction_lock_owner == 0
+                 and (connection._context_depth == 0 or connection._context_owner == binding.thread_id)
+                 and connection._default_catalog is None and not connection._quack_uri
+                 and not connection._quack_pending_mutations and connection._pooled is False,
+                 "borrowed_state_usable_nontransactional_local_owner_required")
+    # execute() may reconnect poison; the original condition and the checks
+    # above fence that branch. These are SELECT-only actual catalog witnesses.
+    databases = connection.execute(
+        "SELECT database_name, path FROM duckdb_databases() WHERE internal = FALSE"
+    ).fetchall()
+    current = connection.execute("SELECT current_database(), current_schema()").fetchone()
+    _borrow_need(len(databases) == 1 and len(databases[0]) == 2
+                 and type(databases[0][1]) is str
+                 and _borrow_path(databases[0][1], existing=True) == binding.target
+                 and current is not None and len(current) == 2
+                 and current[0] == databases[0][0] and current[1] == "main"
+                 and connection._connection is binding.raw and connection._reconnect_epoch == binding.epoch
+                 and _borrow_file_identity(binding.target) == binding.file_identity,
+                 "borrowed_state_original_current_database_and_schema_required")
+
+
+@contextmanager
+def borrow_task_state_connection(
+    state_path: Path | str, *, connection: Any, target: Path | str,
+):
+    """Borrow the caller's existing local handle; never acquire or close it.
+
+    The trusted host owns opening/provenance/schema and final close. It must
+    keep this scope entered throughout its original attempt and any unresolved
+    custody. Current state routing must already have an explicit bound/env
+    target; migration-capable implicit routing is unsupported in this mode.
+    """
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import DuckDBConnection
+
+    _borrow_need(os.getpid() == _BORROWED_REGISTRY_PID, "borrowed_state_fork_refused")
+    _borrow_need(type(connection) is DuckDBConnection, "borrowed_state_actual_existing_connection_required")
+    state_key, target_path = _borrow_path(state_path), _borrow_path(target, existing=True)
+    selected = control_plane_target(state_key)
+    _borrow_need(type(selected) is str and selected == str(target_path),
+                 "borrowed_state_original_explicit_target_required")
+    source = "bound" if _BOUND_STATE_TARGETS.get(str(state_key)) == selected else "env"
+    # Only entry/registration takes registry then condition. Operations copy the
+    # binding before acquiring its condition; no condition->registry lock edge.
+    with _BORROWED_REGISTRY_LOCK:
+        _borrow_need(state_key not in _BORROWED_BY_STATE and target_path not in _BORROWED_BY_TARGET,
+                     "borrowed_state_nested_or_shared_scope_refused")
+        with connection._execution_condition:
+            binding = _BorrowedStateBinding(state_key, target_path, source, connection)
+            _check_borrowed_locked(binding)
+            _BORROWED_BY_STATE[state_key] = binding
+            _BORROWED_BY_TARGET[target_path] = binding
+    try:
+        yield connection
+    finally:
+        _borrow_thread_pid(binding.pid, binding.thread_id, binding.thread)
+        with _BORROWED_REGISTRY_LOCK:
+            _borrow_need(_BORROWED_BY_STATE.get(state_key) is binding
+                         and _BORROWED_BY_TARGET.get(target_path) is binding,
+                         "borrowed_state_scope_identity_changed")
+            del _BORROWED_BY_STATE[state_key]
+            del _BORROWED_BY_TARGET[target_path]
+        # No execute/commit/rollback/reconnect/close and no ownership transfer.
+
+
+def require_borrowed_task_state_connection(
+    state_path: Path | str, *, connection: Any = None,
+):
+    """Return the identical active original handle; metadata is not authority."""
+    selected = control_plane_target(state_path)
+    binding = _borrowed_binding(state_path, selected)
+    _borrow_need(binding is not None, "borrowed_state_active_original_scope_required")
+    _borrow_need(connection is None or connection is binding.connection,
+                 "borrowed_state_identical_original_connection_required")
+    with binding.condition:
+        _check_borrowed_locked(binding)
+    return binding.connection
+
+
+def task_state_connection_is_borrowed(state_path: Path | str) -> bool:
+    binding = _borrowed_binding(state_path, control_plane_target(state_path))
+    if binding is None:
+        return False
+    require_borrowed_task_state_connection(state_path, connection=binding.connection)
+    return True
+
+
+def require_borrowed_task_state_source_profile(
+    state_path: Path | str, *, task_source: Any, plan_revision_store: Any,
+    require_active_plan_revision: bool, configured_parallel_execution_plan: Any,
+    active_plan_binding: Any,
+) -> None:
+    """Only the original legacy Markdown/no-plan profile is supported in V01."""
+    require_borrowed_task_state_connection(state_path)
+    _borrow_need(task_source is None and plan_revision_store is None
+                 and require_active_plan_revision is False
+                 and configured_parallel_execution_plan is None and active_plan_binding is None,
+                 "borrowed_state_task_source_or_plan_reopen_not_supported")
+
+
+@contextmanager
+def _state_connection(target: str, *, state_path: Path | str | None):
+    binding = _borrowed_binding(state_path, target)
+    if binding is not None:
+        with binding.condition:
+            _check_borrowed_locked(binding)
+            yield binding.connection
+        return
+    connection = _connect(target)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def _refuse_borrowed_target_open(target: str) -> None:
+    if not _BORROWED_BY_STATE:
+        return
+    _borrow_need(os.getpid() == _BORROWED_REGISTRY_PID, "borrowed_state_fork_refused")
+    if str(target).startswith("quack:"):
+        return
+    candidate = Path(target).expanduser().resolve()
+    with _BORROWED_REGISTRY_LOCK:
+        _borrow_need(candidate not in _BORROWED_BY_TARGET,
+                     "borrowed_state_same_target_reopen_refused")
+
+
+def _state_ducklake_projection(
+    state_path: Path | str | None, target: str, record_key: str,
+    body_json: str, revision: int, updated_at: str,
+):
+    binding = _borrowed_binding(state_path, target)
+    if binding is not None:
+        require_borrowed_task_state_connection(state_path, connection=binding.connection)
+        return {"status": "skipped_borrowed_state_connection", "authoritative": False,
+                "completion_authority": False}
+    return _project_ducklake(record_key, body_json, revision, updated_at, target=target)

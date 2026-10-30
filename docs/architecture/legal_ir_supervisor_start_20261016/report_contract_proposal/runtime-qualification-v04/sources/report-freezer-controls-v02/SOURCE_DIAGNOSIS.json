@@ -1,0 +1,21 @@
+{
+  "actual_first_run_failed_control_cases": 1,
+  "actual_first_run_log_sha256": "fd7f6acf43f5c430c4f2ee02860f568a5908a8b1c4e538f59c009f4004fb5868",
+  "actual_first_run_passed_control_cases": 67,
+  "actual_first_run_root_reported_exit_code": 1,
+  "actual_first_run_root_reported_session": 36781,
+  "canonical_tasks_accepted": 0,
+  "expected_commit_arguments_changed": false,
+  "failed_test": "test_original_generic_commit_uses_extracted_original_tail",
+  "future_corrected_control_result": null,
+  "original_freezer_manifest_sha256": "2e88a05782c96aed0f64583f414209a3535502c034b7a8f610f8577d60ae345e",
+  "producer_source_changed": false,
+  "schema": "legal-ir-report-freezer-source-selector-diagnosis@1",
+  "scope": "source AST diagnosis; no qualification/acceptance authority",
+  "source_observation": {
+    "argument_AST_equal": true,
+    "breadth_first_last_call_is_nested_submodule_allow_empty_branch": true,
+    "original_top_level_commit_count": 1,
+    "shared_tail_commit_count": 1
+  }
+}

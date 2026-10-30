@@ -1,0 +1,67 @@
+{
+  "schema": "legal-ir-ordinary-success-handoff-qualification-plan@1",
+  "proposal_status": "source_draft_pending_code_peer_review_freeze_and_actual_controls",
+  "public_api": "run_ordinary_with_success_handoff(args,receipt_fd,*,owner=None,watchdog_owner=None,source_sha256=None,declared_external_storage=None,on_success=None)->int",
+  "supported_live_scope": "primary_grok_4_7_no_preflight_no_fallback_no_recovery",
+  "codex_backup_live_support_qualified": false,
+  "production_hook_deployed": false,
+  "actual_provider_execution_qualified": false,
+  "required_native_owners": {
+    "type": "actual_same_process_ParentedPhaseResourceReservation",
+    "lane": "orchestration",
+    "same_actual_parent_phase_required": true,
+    "distinct_reservation_and_native_lease_ids_required": true,
+    "fresh_child_histories_required": true,
+    "primary_minimum": {"cpu_slots": 1, "memory_mb": 512, "child_process_slots": 8},
+    "watchdog_minimum": {"cpu_slots": 1, "memory_mb": 256, "child_process_slots": 4},
+    "watchdog_attach_boundary": "Actual allocated watchdog attaches before fallible storage, daemon/runtime and provider checks.",
+    "transport_attach_boundary": "Actual Docker transport attaches before any marker/model input.",
+    "monitor_policy": "Main-thread select/os.read and timed wait check both owners every at most 0.5 seconds between I/O waits; no monitoring thread or concurrent lease close."
+  },
+  "required_source_and_storage": {
+    "exact_source_pins": "Hook, proposed runner, process_security, four actually imported native SDK files, actual Python/Docker, resolved trusted Grok binary and ten direct dispatch helpers.",
+    "source_reader": "Stable owned single-link non-world-writable exact SHA256, streamed 1 MiB chunks, 256 MiB file bound; existing 0664 trusted implementations permitted only with all pins/metadata checks.",
+    "external_storage": "Actual SDK charge ancestry and hashed label join, full candidate workspace plus separate provider temporary root; private owner attempts and callback outputs separately charged.",
+    "no_native_grant_from_projection_or_exception": true
+  },
+  "qualification_stages": [
+    {
+      "id": "SOURCE-01",
+      "status": "pending_root_execution_after_manifest_freeze",
+      "scope": ["test_handoff_memory.py", "test_gate_memory.py", "test_builder_callsites.py"],
+      "requires": "Exact frozen bundle and harness copy; genuine finite native CPU/storage/child admission; unique external test aliases; no provider, model/auth, Docker or native acceptance calls. Actual proposed builders assemble only inert argv/fixtures with process execution prohibited.",
+      "count_policy": "Manifest controlled_testcases declares unique collected cases; successful subtest call reports counted separately. Source/AST inventory is not an actual test-pass claim.",
+      "harness": "qualify_ordinary_success_hook_v01.py EXPECTED_MANIFEST_SHA256",
+      "external_test_root": "/tmp/pytest-of-barberb/legal-ir-ordinary-hook-controls-20261017-r01",
+      "private_outputs": ["ordinary-hook-controls.xml", "ordinary-hook-controls.json"]
+    },
+    {
+      "id": "NATIVE-02",
+      "status": "not_implemented_no_run_claimed",
+      "scope": "Fresh finite non-model Docker/native gated lifecycle control",
+      "requires": "Both genuine actual owners with combined phase envelope, exact source/binary/helper pins and real storage promises. Observe actual watchdog attachment before fallible follow-up, transport attachment before marker release, monitored main-thread I/O, PID roles/kernel scope, exact argv, wrong/partial marker/EOF, source drift, callback raise/non-None and failed closeout custody. Both original groups and provider home/prompt must be absent before callback/return. No model/auth call."
+    },
+    {
+      "id": "INTEGRATE-03",
+      "status": "pending",
+      "scope": "Original real report-only candidate/native validation/controller callback",
+      "requires": "Actual original task/board revision and consumed attempt observation; supported opt-in report-only daemon checkpoint; independent actual frozen candidate observation; real source context and separately genuine VALIDATION; private one-use handle and separate ORCHESTRATION controller CAS. Preserve two consumed attempts, total cap 3 and all 63 future blocked tasks."
+    },
+    {
+      "id": "BACKUP-04",
+      "status": "not_implemented_no_live_support_claimed",
+      "scope": "Exact pre-effect quota-only Codex GPT 6.1 Sol backup",
+      "requires": "A separate reviewed generation genuinely accounts/gates every productive preflight and fallback child, independently observes fresh quota-only decision and closes each actual scope. V01 refuses these options before invocation; post-task-dispatch fallback prohibition remains unchanged."
+    }
+  ],
+  "failure_policy": "No callback/returned success on failed provider, changed birth/source/route/owner, unfinished native group or unknown Docker/kernel cleanup. Failure-finally independently rechecks original daemon/CID/name and captured kernel scope after marker release. Provider-home/prompt remnants refuse. OrdinaryCustodyPending exposes actual in-memory cleanup references only; caller must retain both original native contexts until independent cleanup proves quiescence. No exception-as-grant, copied CAS authority, blind kill, retry reset or policy bypass.",
+  "remaining_factual_context_fields": "Hook does not invent original task CID/revision, native attempt ID, consumed ordinal or host receipt hashes. Trusted integration must independently observe those joins and seal the actual report before native validation.",
+  "source_author_execution": {
+    "source_AST_review_only": true,
+    "tests_executed": false,
+    "native_or_Docker_or_model_jobs": false,
+    "production_source_mutated": false,
+    "task_counters_changed": false,
+    "canonical_tasks_accepted": 0
+  }
+}

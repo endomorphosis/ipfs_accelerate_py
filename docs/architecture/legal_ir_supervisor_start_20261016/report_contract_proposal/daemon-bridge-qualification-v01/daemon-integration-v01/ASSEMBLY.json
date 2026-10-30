@@ -1,0 +1,9 @@
+{
+  "schema": "legal-ir-daemon-bridge-assembly@1",
+  "original_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+  "freezer_base_sha256": "60aa2303b5221c5f685dd1b724cf80e10de758e30c5c31aa0996cf4c97abb60b",
+  "proposed_sha256": "d98c06b65d34be49dbd40627ccc06babcd5932abbdc68fdeb3da9403e8661de3",
+  "patch_sha256": "a210a971084300107be32eba5b60026ed14bafcfa5d4768f331d7735af3fd6cc",
+  "runtime_enabled": false,
+  "qualification": "source assembly only"
+}

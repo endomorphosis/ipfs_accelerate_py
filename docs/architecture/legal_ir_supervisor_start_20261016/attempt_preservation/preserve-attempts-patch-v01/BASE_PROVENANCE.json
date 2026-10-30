@@ -1,0 +1,35 @@
+{
+  "schema": "legal-ir-source-patch-proposal@1",
+  "base_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller",
+  "scope": "source-only-not-executed",
+  "files": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "original_sha256": "d8bff8e58c3168082ed2b175710dc077333d99b41312b40425a38b41cc064d54",
+      "proposed_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "original_bytes": 3297689,
+      "proposed_bytes": 3300743
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "original_sha256": "bce7c7c3c4d206f286e5538861c410b4e8ff381b60f63f7d5c738609f444eef9",
+      "proposed_sha256": "abe2eb8f98340ec375d9d555f1b493a224eb629cf85ef788095fb1a026e9f0be",
+      "original_bytes": 1010299,
+      "proposed_bytes": 1011891
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+      "original_sha256": "045907b45ae3ec96f5de3a1d5ab09440fc72d5f25eb38024d9887dd1022c0ee9",
+      "proposed_sha256": "db7a449089ed4bfdfb21336e14e01508019aa7342eb4f56212124888b859ddd2",
+      "original_bytes": 71945,
+      "proposed_bytes": 72301
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "original_sha256": "9a3db2b03f792f977ddd84e76a6d5fb522ac9b94678c6d13122c264461c31580",
+      "proposed_sha256": "cd193ad040f2e16ef2deb3d4443f1df058678bd27715a525150dc81bbd9e0257",
+      "original_bytes": 266206,
+      "proposed_bytes": 266342
+    }
+  ]
+}

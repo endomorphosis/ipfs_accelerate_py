@@ -1,0 +1,18 @@
+{
+  "acceptance_authority": false,
+  "all_files_fsynced_readonly": true,
+  "canonical_tasks_accepted": 0,
+  "capsule_manifest_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule/SOURCE_MANIFEST.json",
+  "capsule_manifest_sha256": "b2a78de35845425f533f7a361b3998f41628d472fafbbccb3aa346d7b50e0925",
+  "capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-ordinary-handoff-native-20261017-r01/preparation/capsule",
+  "completion_authority": false,
+  "original_native_preparation_closeout_pending": true,
+  "passed": true,
+  "payload_bytes": 106710527,
+  "payload_file_count": 2806,
+  "production_hook_deployed": false,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-native-handoff-capsule-preparation@1",
+  "source_inventory_sha256": "920eee1617fdf1832d74219b0a778c044fe675e493f2128ba9c516575602e8fc",
+  "two_owner_native_gate_qualified": false
+}

@@ -1,0 +1,76 @@
+{
+  "acceptance_authority": false,
+  "canonical_task_attempts": 0,
+  "controlled_testcases": 130,
+  "deployed": false,
+  "files": [
+    {
+      "bytes": 2544,
+      "path": "README.txt",
+      "sha256": "fc8648d0736427dc560d798b5cac328c7874ef69a6425b488884951b11bdbe88"
+    },
+    {
+      "bytes": 2094,
+      "path": "ordinary_custody_hold.py.patch",
+      "sha256": "3013bfe37598f9a6081eb6c4dd366a29f336cfa74bdeec426a9ef47bb807fe90"
+    },
+    {
+      "bytes": 20236,
+      "path": "ordinary_success_handoff.py.patch",
+      "sha256": "f3a38f2c56d4d228209b546d2aec78223fe9eb073f9dae5f62f895cfd73add9c"
+    },
+    {
+      "bytes": 16803,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb"
+    },
+    {
+      "bytes": 52429,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "sha256": "9666d65d6503934bc1b865fefa52a02c514ea468c1c2af96c9842fe31cc93eae"
+    },
+    {
+      "bytes": 4614,
+      "path": "test_callable_handoff_refusals.py",
+      "sha256": "65097bb9bf40448890335a8f123e6d1a5725e75664c7d67a1ee1a3928eb5b145"
+    },
+    {
+      "bytes": 10639,
+      "path": "test_custody_hold_memory.py",
+      "sha256": "12e8c6afc9b67bfc72f264c563ca128a6be7571661e37e6d51311c50a1708c9b"
+    },
+    {
+      "bytes": 17380,
+      "path": "test_handoff_memory.py",
+      "sha256": "7a665945fa60024ab5ab24c4427c73d2d8d01893062ec563fbcd6b6bbddb01e2"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 40401,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "role": "frozen_H_V01_baseline",
+      "sha256": "3ff140dc04154f79dd4593a0998d5be928a9e0e6a9895f944103d70ece288d0c"
+    },
+    {
+      "bytes": 15131,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/ordinary-custody-hold-v01/ordinary_custody_hold.py",
+      "role": "frozen_C_V01_baseline",
+      "sha256": "e84b97fb4bfb0e9cc2cd880681e1a907e1234bff8c54f8d7b43faa1d3ec42331"
+    },
+    {
+      "bytes": 9124,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/SOURCE_MANIFEST.json",
+      "role": "separately_frozen_callable_G_source",
+      "sha256": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e"
+    }
+  ],
+  "provider_calls": 0,
+  "pure_control_breakdown": {
+    "new_boundary": 15,
+    "preserved_C": 35,
+    "preserved_H": 80
+  },
+  "qualification_status": "source_reviewed_not_runtime_qualified",
+  "schema": "legal-ir-callable-handoff-source@2"
+}

@@ -1,0 +1,52 @@
+{
+  "PR_merge": false,
+  "base_head": "a1b1f32826e58913837308330d8ec6cc8589222a",
+  "branch": "agent/legal-ir-ordinary-worker-20261016",
+  "canonical_state_cap_counter_mutation": false,
+  "child_process_slots": 8,
+  "command": [
+    "/usr/bin/python3.12",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/publication-v01/publish_docs.py",
+    "<PACKET_SHA256>",
+    "<EXACT_ORIGINAL_GENERIC_REQUEST_PATH>"
+  ],
+  "cpu_slots": 1,
+  "duration_seconds": 1800,
+  "executed_toolchain_note": "Includes the44,919,080byte gh executable using a64MiB bounded streaming input hash; documentation payload reader retains its separate16MiB bound.",
+  "existing_report_bytes": 16547750,
+  "existing_report_files": 593,
+  "external_charges": [
+    {
+      "bytes": 16777216,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/daemon-disposition-qualification-v01"
+    },
+    {
+      "bytes": 67108864,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/.git"
+    }
+  ],
+  "final_request": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/publication-request-r01.json",
+  "github_qualification": "skipped_by_user",
+  "memory_mb": 4096,
+  "original_parent_gate_required_before_git_or_network": true,
+  "owned_draft_PR": 292,
+  "packet_freezer_has_no_git_network_product_import_or_native_authority": true,
+  "packet_maximum_bytes": 8388608,
+  "packet_maximum_files": 256,
+  "packet_or_request_frozen_by_author": false,
+  "prefix": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/daemon-disposition-qualification-v01",
+  "purpose": "controller_preparation",
+  "remote": "https://github.com/endomorphosis/ipfs_accelerate_py.git",
+  "request_builder": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/publication-v01/build_request.py",
+  "request_builder_effects": "Bounded immutable source reads and one fresh outer request write only; no Git/network/jobs/admission, no recursive historical request-closure expansion.",
+  "runtime_boundary": "Documentation of disabled source proposals and finite private engineering evidence only; no constructor-before-gate claim, no legacy flag-false/all-writer deny guarantee, no full host/provider/candidate/borrow-settlement acceptance.",
+  "runtime_installation": false,
+  "schema": "legal-ir-disposition-publication-source-contract@1",
+  "single_git_or_gh_timeout_seconds": 180,
+  "source_guard_warning": "Do not import mutable .git/index/refs pins from inert historical payload requests into the outer publication request. Its exact executed source closure must pin immutable packet/payload source files, publisher implementation, original runtime/board, tools, native SDK and original generic owner. Publication intentionally changes owned local index/ref/object metadata.",
+  "source_manifest_builder": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/publication-v01/build_manifest.py",
+  "status": "root_reviewed_ready_for_finite_publication",
+  "storage_bytes": 268435456,
+  "worker_timeout_seconds": 1200
+}

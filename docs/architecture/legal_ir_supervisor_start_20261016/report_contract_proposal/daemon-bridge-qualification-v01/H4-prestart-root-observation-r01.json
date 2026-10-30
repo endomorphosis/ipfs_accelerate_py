@@ -1,0 +1,163 @@
+{
+  "Docker_operations_performed": false,
+  "OS_process_children_created": false,
+  "acceptance_authority": false,
+  "actual_completion_chunk": "6d8614",
+  "actual_exec_exit_code": 0,
+  "actual_exec_session_id": 21479,
+  "actual_public_stopped_owner_statuses": {
+    "primary": "released",
+    "watchdog": "released"
+  },
+  "actual_root_and_phase_rows_drained": true,
+  "canonical_tasks_accepted": 0,
+  "cases": [
+    {
+      "acceptance_authority": false,
+      "actual_H_consumers_drained_before_fixture_cleanup": true,
+      "actual_ambient_globals_preserved": true,
+      "actual_binary_binding_checks": {
+        "actual_resolver_result_joined_to_original_context": true,
+        "different_source_refused": "actual_original_callable_binary_required",
+        "original_alias_resolved_to_pinned_binary": true,
+        "same_pinned_source_mount_join_allowed": true,
+        "scope": "actual_preeffect_hooks_only_no_Docker_mount_or_provider_dispatch"
+      },
+      "actual_borrowed_FDs_empty": true,
+      "actual_consumer_lease_ids": [
+        "148e81e7c56e4d6080f5eb321294aef1",
+        "8c6b8443d0ff4493868c3667f8c2949b"
+      ],
+      "actual_consumers_observed_inside_before_run": [
+        "148e81e7c56e4d6080f5eb321294aef1",
+        "8c6b8443d0ff4493868c3667f8c2949b"
+      ],
+      "actual_known_unstarted_before_caller_cleanup": {
+        "actual_external_directories_empty": true,
+        "actual_original_owner_records": [
+          {
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-host-h4-fixture-20261017-r01/public-wrapper-prestart/primary",
+            "child": null,
+            "prior_children": [],
+            "private_empty_sinks": [
+              "known_unstarted_abort.stderr",
+              "known_unstarted_abort.stdout"
+            ],
+            "reservation_id": "383f89f360e24c51a74a7d36781e666f"
+          },
+          {
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-host-h4-fixture-20261017-r01/public-wrapper-prestart/watchdog",
+            "child": null,
+            "prior_children": [],
+            "private_empty_sinks": [],
+            "reservation_id": "34b96688add2441286a70f3e0dc1946d"
+          }
+        ],
+        "native_task_attempt_started": false,
+        "provider_or_Docker_process_started": false,
+        "scope": "source_pinned_before_run_abort_or_earlier_refusal_with_original_empty_attempts"
+      },
+      "actual_live_callable_transport_qualified": false,
+      "actual_original_consumer_rows_drained": true,
+      "actual_provider_execution_qualified": false,
+      "actual_public_wrapper_called": true,
+      "before_run_calls": 1,
+      "canonical_tasks_accepted": 0,
+      "completion_authority": false,
+      "dispatch_authority": false,
+      "fixture_case": "known_unstarted_abort",
+      "passed": true,
+      "production_hook_deployed": false,
+      "provider_calls_performed": false,
+      "same_before_run_exception_rethrown": true,
+      "success_callback_calls": 0
+    },
+    {
+      "acceptance_authority": false,
+      "actual_ambient_globals_preserved": true,
+      "actual_binary_binding_checks": {
+        "actual_resolver_result_joined_to_original_context": true,
+        "different_source_refused": "actual_original_callable_binary_required",
+        "original_alias_resolved_to_pinned_binary": true,
+        "same_pinned_source_mount_join_allowed": true,
+        "scope": "actual_preeffect_hooks_only_no_Docker_mount_or_provider_dispatch"
+      },
+      "actual_borrowed_FDs_empty": true,
+      "actual_consumer_lease_ids": [
+        "0c430c117d1e42a19394d62bcd121b4b",
+        "ec83f87990694d2aaba6907bbae8f45a"
+      ],
+      "actual_consumers_observed_inside_before_run": [
+        "0c430c117d1e42a19394d62bcd121b4b",
+        "ec83f87990694d2aaba6907bbae8f45a"
+      ],
+      "actual_known_unstarted_before_caller_cleanup": {
+        "actual_external_directories_empty": true,
+        "actual_original_owner_records": [
+          {
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-host-h4-fixture-20261017-r01/public-wrapper-prestart/primary",
+            "child": null,
+            "prior_children": [],
+            "private_empty_sinks": [
+              "cancelled_unstarted.stderr",
+              "cancelled_unstarted.stdout",
+              "known_unstarted_abort.stderr",
+              "known_unstarted_abort.stdout"
+            ],
+            "reservation_id": "383f89f360e24c51a74a7d36781e666f"
+          },
+          {
+            "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-host-h4-fixture-20261017-r01/public-wrapper-prestart/watchdog",
+            "child": null,
+            "prior_children": [],
+            "private_empty_sinks": [],
+            "reservation_id": "34b96688add2441286a70f3e0dc1946d"
+          }
+        ],
+        "native_task_attempt_started": false,
+        "provider_or_Docker_process_started": false,
+        "scope": "source_pinned_before_run_abort_or_earlier_refusal_with_original_empty_attempts"
+      },
+      "actual_live_callable_transport_qualified": false,
+      "actual_original_consumer_rows_drained": true,
+      "actual_pending_retained_before_ack": true,
+      "actual_provider_execution_qualified": false,
+      "actual_public_primary_cancel_performed": true,
+      "actual_public_wrapper_called": true,
+      "actual_stopped_ack_after_cancellation": true,
+      "before_run_calls": 1,
+      "canonical_tasks_accepted": 0,
+      "completion_authority": false,
+      "dispatch_authority": false,
+      "fixture_case": "cancelled_unstarted",
+      "passed": true,
+      "production_hook_deployed": false,
+      "provider_calls_performed": false,
+      "success_callback_calls": 0
+    }
+  ],
+  "controlled_cases": 2,
+  "final_tool_terminal_observed_after_original_owner_and_phase_release": true,
+  "full_original_host_qualified": false,
+  "github_qualification_skipped": true,
+  "independent_scheduler_rows_observed_absent": [
+    "0c430c117d1e42a19394d62bcd121b4b",
+    "148e81e7c56e4d6080f5eb321294aef1",
+    "66f7c96e97d34856b3a17f6c15d93d9c",
+    "8c6b8443d0ff4493868c3667f8c2949b",
+    "c1bca0478a3944bb98c793c834aee731",
+    "e02cc2d675ca44eb94bce49e7fbcbd03",
+    "e8c223aa5c484f4989f2b88ded4b78a2",
+    "ec83f87990694d2aaba6907bbae8f45a"
+  ],
+  "original_before_owner_finalization_result_sha256": "f744c5ddb8b089082fc6a34c8493fe04cd4c2d724f997da01ae113462fbd0fd7",
+  "original_native_finalized": true,
+  "original_result_written_before_finalization": true,
+  "passed": true,
+  "provider_calls_performed": false,
+  "runtime_enabled": false,
+  "schema": "legal-ir-H4-prestart-root-observation@1",
+  "scope": "genuine_H4_public_before_run_abort_and_public_cancel_stopped_ack_only",
+  "source_manifest_sha256": "2c657f9233d85930caac7370319e843d85a10532f48ed7afa69c392f2a931042",
+  "source_request_sha256": "9ab580c78ff0d05d08f36fce29a427e411975bbb21e0fe1ad650cdff1984f8c0"
+}

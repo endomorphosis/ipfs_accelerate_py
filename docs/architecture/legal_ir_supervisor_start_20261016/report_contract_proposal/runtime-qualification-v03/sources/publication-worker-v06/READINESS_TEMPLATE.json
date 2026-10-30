@@ -1,0 +1,45 @@
+{
+  "acceptance_authority": false,
+  "completion_authority": false,
+  "inert_tasks_not_dispatched": [
+    {
+      "goal": "Complete trusted original-provider handoff",
+      "id": "LIR-HOST-001",
+      "tasks": [
+        "Integrate and qualify the opt-in original primary-provider success callback under two genuine owners.",
+        "Retain actual native capacity and actual object references through uncertain stopped cleanup.",
+        "Implement and independently qualify the requested Codex backup route; V01 supports the primary route only."
+      ]
+    },
+    {
+      "goal": "Bind a real report-only candidate to its original successful provider attempt",
+      "id": "LIR-CANDIDATE-001",
+      "tasks": [
+        "Reuse daemon candidate commit serialization and declared bounded JSON staging.",
+        "Preserve the two historical consumed attempts and require the separately reviewed total cap 3.",
+        "Join actual provider execution, original attempt, exact candidate Git blobs and frozen original task population."
+      ]
+    },
+    {
+      "goal": "Complete real-context validation and original-board acceptance",
+      "id": "LIR-ACCEPT-001",
+      "tasks": [
+        "Run the strict Docker/native real-context checker on the actual frozen candidate.",
+        "Use the separate trusted host one-use acceptance API and original controller CAS.",
+        "Keep all 63 later tasks blocked until the first original task is genuinely accepted."
+      ]
+    },
+    {
+      "goal": "Measure legal autoformalization quality",
+      "id": "LIR-EVAL-001",
+      "tasks": [
+        "Evaluate held-out real US Code source fidelity and span/entity/definition graph consistency.",
+        "Evaluate the actual 8D, 384D and 768D decoder checkpoints by logic family and semantic validity.",
+        "Build the unified Lean 4 corpus with lake build legal and separate syntax success from legal fidelity."
+      ]
+    }
+  ],
+  "schema": "legal-ir-handoff-readiness-template@3",
+  "source_pipeline_dispatchable": false,
+  "template_only_not_observed_result": true
+}

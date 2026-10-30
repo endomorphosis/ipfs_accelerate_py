@@ -1,0 +1,11 @@
+# Callable runtime capsule preparation
+
+This source-only worker copies the actual original R01 readonly Python capsule into the fresh callable campaign under root's separately admitted preparation owner. It replaces the exact G/H sources and adds C from their frozen V02 bundles: 2,807 Python files, with no Git directory, credentials, auth files or copied source execution. The old capsule and all frozen source generations remain unchanged.
+
+The worker checks the complete SHA-bound source inventory, original capsule metadata and both new source manifests before copying, verifies every original source and copied destination, fsyncs every file and directory, and makes the result readonly. Three original empty Python files remain valid. It imports only standard-library modules and starts no process, provider, Docker, native admission or task. The genuine generic owner performs admission, external source precharge and final disk/native closeout; the preparation result explicitly leaves that closeout pending. Root must observe finalization before running either callable fixture.
+
+The fixed attempt is `owned-supervisor-runs/legal-ir-callable-handoff-20261017-r01/preparation`; its capsule is the `capsule` subdirectory. The generic preparation request reserves 512 MiB total disk and charges 128 MiB for the original readonly input capsule. Its native and helper closure is explicit. No future actual preparation outcome or manifest digest is used as evidence by the source author.
+
+Source inventory schema: `legal-ir-callable-capsule-source-inventory@1`. Actual produced capsule manifest schema: `legal-ir-callable-handoff-capsule@1`; it records exact base, runner and handoff source manifest hashes and complete copied `{path, bytes, sha256}` rows. Actual preparation result schema: `legal-ir-callable-capsule-preparation@1`. Root's separate actual observation must join the result and capsule digest to the genuine finalized owner; none of these metadata files supplies authority.
+
+Status: authored and AST-reviewed only; no tests, native/Docker/provider jobs or copied source imports executed by author. Preparation and public-wrapper qualification remain pending actual root execution.

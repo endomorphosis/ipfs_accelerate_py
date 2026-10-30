@@ -1,0 +1,50 @@
+{
+  "schema": "legal-ir-original-finalizer-continuation-source@1",
+  "runtime_enabled": false,
+  "full_original_host_qualified": false,
+  "source_authored_only": true,
+  "author_tests_executed": 0,
+  "authored_refusal_or_source_controls": 17,
+  "authored_original_body_preservation_comparisons": 2,
+  "genuine_original_method_callback_positive_cases": 0,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "github_qualification": "skipped_by_user",
+  "files": [
+    {
+      "path": "AUDIT.json",
+      "bytes": 11775,
+      "sha256": "0670832265181a7897b3f18035e77bf36beec947ef9f19bb8ac71c45ffc091a6"
+    },
+    {
+      "path": "check_finalizer_body_preservation.py",
+      "bytes": 4567,
+      "sha256": "efa11cde8c6833d76d4ee7f162494065423afd48bc6c786ee0f64c2f058b4c99"
+    },
+    {
+      "path": "test_continuation_refusals.py",
+      "bytes": 7663,
+      "sha256": "48007e4dd61824a5aa148e653c39202c66d60eb5ff1e65b269c1f9962f8e2f04"
+    },
+    {
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/original_finalizer_continuations.py",
+      "bytes": 11456,
+      "sha256": "e871a383d6ae60161ac081a0379f0f4146ed7fc0b1166e01303f70290d9a8a6b"
+    }
+  ],
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v02/SOURCE_MANIFEST.json": "16e7f7dd18a40dc7678906161083fbcdc04b98365120188882a62e69e56f333d",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v02/SOURCE_MANIFEST.json": "2690f6df93740dcfcd7457c33a1f57dcc0a78c86a09cc710baa8484adb97a3fa",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/workspace_quarantine.py": "5a470ee8265f8d7b18daa44d2f0075569aaca287ff194a046823d6f576860b03",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py": "b7f8508b4b4b50d5bc259c186b55c4c6f87e938d99689a913383a8a35130249f"
+  },
+  "wrapper_contract": "The actual original daemon finally calls the source-pinned module wrapper, which directly calls registry.register with its immediate original caller frame before any host _identity or borrowed database check. No intervening helper may call register.",
+  "known_limits": [
+    "The constructor caches actual source path/digest and runtime code identity; the root host must supply its complete reviewed exact source pins before loading or instantiating this module.",
+    "drain is invoked only by the actual retained host after its independent stopped proof. This helper itself issues no native stopped proof or release grant.",
+    "Successful drain means original source finally bodies ran. Claim release methods may deliberately retain safety fences or report partial refusal.",
+    "Consumed ordinal, active lifecycle, protected fence, failed attempt or candidate disposition remains separately pending. No automatic retry, original connection close, board completion or acceptance follows.",
+    "Host process death survival, actual original-daemon full path and actual provider-success callback remain unqualified."
+  ]
+}

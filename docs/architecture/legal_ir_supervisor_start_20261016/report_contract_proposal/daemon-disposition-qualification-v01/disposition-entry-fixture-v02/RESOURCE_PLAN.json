@@ -1,0 +1,17 @@
+{
+  "additional_outputs": "Five bounded stage/type/fixed-reason diagnostic files, at most4KiB each; other original64MiB budget unchanged.",
+  "capsule_reused": "Finalized original2812-source capsule01f38d5a...; read-only, no external write charge.",
+  "controlled_cases": 5,
+  "duration_seconds": 1800,
+  "external_charges": [],
+  "new_capsule_bytes": 0,
+  "original_caps_or_counters_modified": false,
+  "original_product_sources_modified": false,
+  "positive_consumed_attempt_binding_constructed": false,
+  "positive_native_host_constructed": false,
+  "private_permission_condition": "Fresh already-attached child umask077 before original Git/import/constructors; original lifecycle store0700.",
+  "runtime_enabled": false,
+  "schema": "legal-ir-disposition-entry-qualification-resource-correction@1",
+  "source_only": true,
+  "storage_bytes": 67108864
+}

@@ -1,0 +1,11 @@
+{
+  "acceptance_authority": false,
+  "activation_blocker": true,
+  "canonical_tasks_accepted": 0,
+  "finding": "execute_daemon_once may unregister the borrowed scope after observe_pending succeeds even if original claim/fence finalizers previously unwound. Physical stopped proof alone does not settle original claim/lifecycle/state frames.",
+  "required_fix": "An incoming retained NativeHostCustodyPending must preserve host binding, borrow and original phase until an explicit same-object original-finalizer settlement path proves completion; add a genuine full-host stopped-pending fixture.",
+  "runtime_deployed": false,
+  "schema": "legal-ir-retained-host-settlement-gap@1",
+  "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+  "source_sha256": "1929b160e62503dcc8ee2e48286298dd2de1949a04e9eaf6693d241ef41e756a"
+}

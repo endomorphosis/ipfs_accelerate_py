@@ -1,0 +1,17 @@
+{
+  "acceptance_authority": false,
+  "attempt_history_reset": false,
+  "canonical_tasks_accepted": 0,
+  "later_cap_adopted_by_this_campaign": false,
+  "max_task_attempts": 2,
+  "original_consumed_attempts_retained": 2,
+  "preserve_task_attempts_field_present": false,
+  "proposed_later_total_cap": 3,
+  "provider_calls": 0,
+  "schema": "legal-ir-original-attempt-policy-source-observation@1",
+  "scope": "Read-only unchanged original configuration source observation; no fresh daemon runtime/admission or state read. Proposed report-packet copy totalcap3 is separate and not enabled by this evidence.",
+  "source_bytes": 6970,
+  "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/docs/architecture/legal_ir_supervisor_start_20261016/scheduler_config.json",
+  "source_sha256": "d8f9de44cfcf522009f3c1180d9dfc0938642c0822224751a0490299f4b5b902",
+  "source_status": "prepared_source_only_bootstrap_template"
+}

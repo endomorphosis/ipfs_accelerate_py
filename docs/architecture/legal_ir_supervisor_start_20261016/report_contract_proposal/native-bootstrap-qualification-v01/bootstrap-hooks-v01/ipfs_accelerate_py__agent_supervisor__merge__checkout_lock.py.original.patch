@@ -1,0 +1,36 @@
+--- before/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py
++++ proposed/ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py
+@@ -535,16 +535,29 @@
+ def git_common_dir(repo_root: Path) -> Path:
+     """Return the repository common git directory for a checkout."""
+ 
+-    try:
+-        result = subprocess.run(
++    from ipfs_accelerate_py.agent_supervisor.runtime.native_admin_execution import (
++        native_admin_execution_is_bound,
++        run_bound_native_admin_if_present,
++    )
++    if native_admin_execution_is_bound():
++        result = run_bound_native_admin_if_present(
+             ["git", "rev-parse", "--git-common-dir"],
+             cwd=repo_root,
+             text=True,
+             capture_output=True,
+             check=False,
+         )
+-    except OSError:
+-        return repo_root / ".git"
++    else:
++        try:
++            result = subprocess.run(
++                ["git", "rev-parse", "--git-common-dir"],
++                cwd=repo_root,
++                text=True,
++                capture_output=True,
++                check=False,
++            )
++        except OSError:
++            return repo_root / ".git"
+     stdout = result.stdout or ""
+     if result.returncode != 0 or not stdout.strip():
+         return repo_root / ".git"

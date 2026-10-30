@@ -1,0 +1,29 @@
+{
+  "controlled_testcases": 174,
+  "files": [
+    {
+      "bytes": 380,
+      "path": "README.txt",
+      "sha256": "9535c506377c1964be9b581293ea619ae7322dc12595f7c66b27d65e0f4ef9de"
+    },
+    {
+      "bytes": 5732,
+      "path": "qualify_controls.py",
+      "sha256": "67828eab29c3aacec1dd962589bd8399891662544869c5d54b745829279b0506"
+    }
+  ],
+  "input_pins": [
+    {
+      "bytes": 2668,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/SOURCE_MANIFEST.json",
+      "sha256": "6ca1a9ca25f1bb477841a006e2b77ba34c0c647d5930b3eaabf7537e6dbf6879"
+    },
+    {
+      "bytes": 7276,
+      "path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v03/SOURCE_MANIFEST.json",
+      "sha256": "1a2d28a952f0bac6a7af951b4754085dcb1110f86fb46ebf319014f2e66062e2"
+    }
+  ],
+  "schema": "legal-ir-callable-memory-controls-source@3",
+  "source_review_only": true
+}

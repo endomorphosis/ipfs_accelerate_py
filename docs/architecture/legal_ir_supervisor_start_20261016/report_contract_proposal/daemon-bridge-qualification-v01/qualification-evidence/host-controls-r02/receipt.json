@@ -1,0 +1,18 @@
+{
+  "child_pgid": 3906448,
+  "child_pid": 3906448,
+  "child_returncode": 0,
+  "completion_authority": false,
+  "disk_reservation_id": "baf0e3e9e757485a87ea52db48ca537d",
+  "ended_at_epoch": 1792252727.9733794,
+  "failure_type": null,
+  "hard_enforcement": false,
+  "owned_group_quiescent": true,
+  "owner_pid": 3901359,
+  "phase_lease_id": "5ce981e47c32468fabb08ba28cf16e95",
+  "purpose": "controller_preparation",
+  "request_sha256": "884782a8e4ee5b663155990c9b5d8ebf83c902bcd65152a3895eea6b7137b106",
+  "root_lease_id": "7e3a5afe1a834562a6053172b23e1590",
+  "schema": "legal-ir-native-orchestration-receipt@1",
+  "status": "completed"
+}

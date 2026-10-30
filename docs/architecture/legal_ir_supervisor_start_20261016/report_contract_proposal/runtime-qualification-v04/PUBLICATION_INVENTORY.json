@@ -1,0 +1,1041 @@
+{
+  "acceptance_authority": false,
+  "base_head": "003a25b3814611edc2136c020d1ea689dee033fd",
+  "canonical_tasks_accepted": 0,
+  "configuration_sha256": "860f495040a26ba6e24d8e97c9b93742e6cff9189fb2318c871fcdaf944b1bf0",
+  "files": [
+    {
+      "bytes": 1375,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/PR292_BODY.md",
+      "sha256": "8e3c646c27a05b3b8772b97d369157f0c46cd7195eef577aa8f4e24ef1451e39"
+    },
+    {
+      "bytes": 14065,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/QUALIFICATION.json",
+      "sha256": "77aa9d66fe1580624391961413241961c7260f09eaacea942c15b11843b3bbd5"
+    },
+    {
+      "bytes": 17394,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/READINESS_TASKS.json",
+      "sha256": "90159f8079854629717267b9b1f5dd470d9af5b1250398a391c5936ab9eff27b"
+    },
+    {
+      "bytes": 9643,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/README.md",
+      "sha256": "4933463a04d46818cb71b7730f5dc872a383ed14e9fde687d9f84d6981f0c6bf"
+    },
+    {
+      "bytes": 636,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/cancellation-r01-receipt.json",
+      "sha256": "0dbcf419181a03b70a3d18e512d91454db35105f3cb866c83326d811b94607a9"
+    },
+    {
+      "bytes": 958,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/cancellation-r01-result.json",
+      "sha256": "e361b224376e8d38a5c8649f5c0a7a723307f5fb831bec5e9d40d72c86333869"
+    },
+    {
+      "bytes": 1533,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/cancellation-r01-root.json",
+      "sha256": "141e1b5f96cfc6f4aee5192ec712c3b83dcde4c1e0d6e72c0e920a512cd4edde"
+    },
+    {
+      "bytes": 16843,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/cancellation-v01-unexecuted-request.json",
+      "sha256": "56d1452778c41d3488f4d78589db4256b9bca8d7fd6f9cfa297c836ea82439b9"
+    },
+    {
+      "bytes": 17245,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/cancellation-v02-request.json",
+      "sha256": "86af0761347493b07212e762b57090bb9859ff0eb3d62cdcbc79abdaf63f64be"
+    },
+    {
+      "bytes": 639,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r01-receipt.json",
+      "sha256": "04e24b3f1bdc73c19a79261afe78eca5785daf94dcd7e513525cbab8cb73a4ca"
+    },
+    {
+      "bytes": 11796,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r01-request.json",
+      "sha256": "be904b65fb2d8dc81fc57e89e46ee9f1130652e329abd8be3e5712692d36261b"
+    },
+    {
+      "bytes": 764,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r01-result.json",
+      "sha256": "d0a526e68d188f71551fa7a0501384a10f933d0460f72038ecf8e7e74bebd0cc"
+    },
+    {
+      "bytes": 1006,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r01-root.json",
+      "sha256": "21eec9db81efe4a11b7e90558b9c69e27fe461d8bf0fb4e15ece388ba3c877b8"
+    },
+    {
+      "bytes": 639,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r02-receipt.json",
+      "sha256": "e7d58f7db08e664628fc606a141be3616684b252692561c2e677a63ae5dee6f2"
+    },
+    {
+      "bytes": 12633,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r02-request.json",
+      "sha256": "64f5e53aadbe05d6d3a045a3c849668011e00043090dea0e421b4f178fdf4da5"
+    },
+    {
+      "bytes": 764,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r02-result.json",
+      "sha256": "0b31b9e10195cf7625621535bc1fefe5a94c021b595a5dcfbfffe8d71f0090d9"
+    },
+    {
+      "bytes": 1006,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-preparation-r02-root.json",
+      "sha256": "9242449558c3b9594960c9dc0a4bb4c67238dfcc6b97438c28a6e6b3d9d84295"
+    },
+    {
+      "bytes": 564521,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-r01-manifest.json",
+      "sha256": "75992b24f5389b30be5d19ce3fcf68e7eeadabc0508e593af9af6c30b1e38e68"
+    },
+    {
+      "bytes": 564521,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/capsule-r02-manifest.json",
+      "sha256": "71053aea3f7e5917cd218bcfbf6458fe351fb7fb36de64ed723789b0a44cee2d"
+    },
+    {
+      "bytes": 12363,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-admin-source-audit-v01.json",
+      "sha256": "ab24b59c2dffba4560d4298c91eafc96cbbcf34b466078614f229b5d1f47faea"
+    },
+    {
+      "bytes": 2487,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-r01-actual-trace.json",
+      "sha256": "01e5c8b36eac4e626d26138a6703c363db2400cbdedc74d6ba2af5e4e26ebeeb"
+    },
+    {
+      "bytes": 1230,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-r01-failure-observation.json",
+      "sha256": "410b7e1edf6728764c8592f32c68320120c98876e23b99e305c0b3871faec320"
+    },
+    {
+      "bytes": 18905,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-r01-request.json",
+      "sha256": "bd08d02c991282a3fa767cfc3c2e2fb79fcbaf073a070a9074b38fc05a67511a"
+    },
+    {
+      "bytes": 24553,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-r02-request.json",
+      "sha256": "ce785ebbbbffc7c8910732ac85903c9a90d46bdc575200459b473683d024a30d"
+    },
+    {
+      "bytes": 15142,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-r02-root.json",
+      "sha256": "139123932f9c2da82fc5335b22fb5757ad506b341eed5d271c0f8a361e24d8cc"
+    },
+    {
+      "bytes": 13487,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-r02-stdout.jsonl",
+      "sha256": "757944b37c0049aa92a8a7b510104d57f561ab030b2cd24574df659133db5996"
+    },
+    {
+      "bytes": 11147,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual-pipe-r02-terminal.json",
+      "sha256": "20186cdfbaa484cf7e0d8ce8a05d70f457ff8daa0d549d635dd1e2b1eb02dd12"
+    },
+    {
+      "bytes": 22154,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual12-r02-rejected-request.json",
+      "sha256": "5ab8907ebd3100bc141a4ce79b7b1c1c62932eb9d5e6be543221d0d29ca410e3"
+    },
+    {
+      "bytes": 24237,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/dual13-r02-source-request.json",
+      "sha256": "69b5d72b2cedcd411ab81d4d55363d05939408233fa9d40498df7a2c86d9751c"
+    },
+    {
+      "bytes": 636,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r01-receipt.json",
+      "sha256": "72cd3ec085ac4ceae2a17405a2493b58224770cad928bdc726ad08da048605f6"
+    },
+    {
+      "bytes": 10920,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r01-request.json",
+      "sha256": "e4e11f03092897d8568f131784b42d3a1806841bb81bde85235490cdf099776d"
+    },
+    {
+      "bytes": 1046,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r01-result.json",
+      "sha256": "f38af1890b6218df4c0bd5b787966df382477689733c1d094d3b2e2ba73b2ee5"
+    },
+    {
+      "bytes": 1412,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r01-root.json",
+      "sha256": "9613346cd18cdbee77ed28b2c6f54baa2c5a0b87200dfc63575fb15ecbafa945"
+    },
+    {
+      "bytes": 639,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r02-receipt.json",
+      "sha256": "051de3e6fc1a8af915e1d9238b35ddec1e79d510a73402807522e6b27288a787"
+    },
+    {
+      "bytes": 11270,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r02-request.json",
+      "sha256": "8a5e2e40545cc17317bb3b84cbdf679610d3feb1dc70052347312219ae6a3576"
+    },
+    {
+      "bytes": 1211,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r02-result.json",
+      "sha256": "0c8a7020191031eb3c399bf65bad7ecce76b0598f64f29fa7e06e0e8a9e8c895"
+    },
+    {
+      "bytes": 1414,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-controls-r02-root.json",
+      "sha256": "baec07963fbeb7c6544f7f6a38b879846aa504e6d7d73ab3dc9e80cec42b1778"
+    },
+    {
+      "bytes": 11041,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-preflight-r01-request.json",
+      "sha256": "c29714ef25bc59a095945a4f1dc56e7785da8f45daf585c8b2e158f2665ee7e3"
+    },
+    {
+      "bytes": 1832,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-preflight-r01-root.json",
+      "sha256": "a7b3bf6666904c25ce90512b6e2cda9f53785a75ca9da4eb3f6d9a556e803cc1"
+    },
+    {
+      "bytes": 11129,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r01-request.json",
+      "sha256": "d598f30ac4a28d2bdb04c4e99f1c6dbd3fbcc185bd319864caf91da820995232"
+    },
+    {
+      "bytes": 2212,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r01-root.json",
+      "sha256": "13b98b8c3459bb6d750caadc75c16e96db10bace4af4d26d12efd15ba266a0c6"
+    },
+    {
+      "bytes": 1190,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r01-stdout.jsonl",
+      "sha256": "ae14af3b4c2aefc2e7fbf1768091fa3754af40b8753262271a43a4ed2d340b61"
+    },
+    {
+      "bytes": 1190,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r01-terminal.json",
+      "sha256": "ae14af3b4c2aefc2e7fbf1768091fa3754af40b8753262271a43a4ed2d340b61"
+    },
+    {
+      "bytes": 12326,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r02-request.json",
+      "sha256": "3a77594b8dd42ef44949a8a208e28e693bdbaca2c359d9a3352ceac3bdc4ff49"
+    },
+    {
+      "bytes": 4284,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r02-root.json",
+      "sha256": "0e4cadb88ee455a1ff525c8fb98d437d3de9a322c64b828404c5f7985c982d73"
+    },
+    {
+      "bytes": 2728,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r02-terminal.json",
+      "sha256": "80fc18c6bdc0b10dcffff4991e91da457b9da7d3ac11455e5ba28e6795b21afc"
+    },
+    {
+      "bytes": 16802,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r03-request.json",
+      "sha256": "0ad3c17f0caa1dbdcfe70c4dab8805dfb417ac0f32d7aa8de84e3fe11706f37b"
+    },
+    {
+      "bytes": 8835,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r03-root.json",
+      "sha256": "795ee9d41e7fb31d74e1a728908cec7f92c64b6975e0f3994c2fa8c31d2cc0e1"
+    },
+    {
+      "bytes": 6791,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/freezer-git-r03-terminal.json",
+      "sha256": "674cd0f99b04ecf5469df102429fab4a2845504fd13c4529a812d1322f184c30"
+    },
+    {
+      "bytes": 635,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r01-receipt.json",
+      "sha256": "e037a4fab15cecd80a038e9fac17211db624edb3989e8022294747e016dbbbba"
+    },
+    {
+      "bytes": 10476,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r01-request.json",
+      "sha256": "643f337158e3ea39c22f4026769518459dfa2d418718f72c05f39d17344e781e"
+    },
+    {
+      "bytes": 702,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r01-result.json",
+      "sha256": "a23ec08fff25e24bcb4e55176c9deff97991fb1108ad5458ce81c962b03f8ab6"
+    },
+    {
+      "bytes": 1408,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r01-root.json",
+      "sha256": "dfd73bf9d3a47acca83013b1c5ff1edd1821d18f59fc50bd868c02d7d173bc6d"
+    },
+    {
+      "bytes": 639,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r02-receipt.json",
+      "sha256": "58db8128f41aad154178c92f9aeb25261f2d98f02de658a1b0b992797384bc8d"
+    },
+    {
+      "bytes": 11670,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r02-request.json",
+      "sha256": "0e4d4d90e707d3ddcbcc75b95993fc61929b3556acb66ea39b95d2a0a7669577"
+    },
+    {
+      "bytes": 588,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r02-result.json",
+      "sha256": "c68be47c9426b4d12c3e5a370fba4820cdec5a631ddea01dab0a641ef5141775"
+    },
+    {
+      "bytes": 1410,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r02-root.json",
+      "sha256": "111c481c3fbe4b05558b6dcaf4ab6c08d19a9f1083a3d0294841b06e43f1565f"
+    },
+    {
+      "bytes": 638,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r03-receipt.json",
+      "sha256": "647f10798c77644aa2a736a1652265ef5008d470814c91debba22d970202c14c"
+    },
+    {
+      "bytes": 15066,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r03-request.json",
+      "sha256": "a2260ebc322e0a4f86b810b2a77974930231c95c4740c99a1ead254d5ac7f8c1"
+    },
+    {
+      "bytes": 588,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r03-result.json",
+      "sha256": "cab0369e92aeb9fb516a12f8a2a149bf631e77a6c9352f0c0c3c6cfe8dde93d6"
+    },
+    {
+      "bytes": 1410,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/memory-controls-r03-root.json",
+      "sha256": "a9e1e63af02e4208ab5723bc115e1943f2c01ec62cf2c5d4480a82f35b6695f9"
+    },
+    {
+      "bytes": 991,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/original-policy-source-observation-v01.json",
+      "sha256": "63df8c3917e2f2e2c6d936dd0f2483e5ea42ff11ca1a8261b7573f10684dcca4"
+    },
+    {
+      "bytes": 24197,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/public-wrapper-prestart-r02-request.json",
+      "sha256": "fb54a1a1fd537b3b3bf5d09970a2f9eb52c2cb72a2b4275351819c1578c0e6b5"
+    },
+    {
+      "bytes": 28899,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/public-wrapper-prestart-r02-root.json",
+      "sha256": "97cd62fb71b1d2f1475009b2ff22483ee6c2f7289743b35938bb13d0602d7b35"
+    },
+    {
+      "bytes": 21259,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/public-wrapper-prestart-r02-stdout.jsonl",
+      "sha256": "852496c65f35e23e0d3b83193c5450b9a4df84680993762fbadff26e30f32977"
+    },
+    {
+      "bytes": 21259,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/public-wrapper-prestart-r02-terminal.json",
+      "sha256": "852496c65f35e23e0d3b83193c5450b9a4df84680993762fbadff26e30f32977"
+    },
+    {
+      "bytes": 3887,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/publication-r01-precheck-failure.json",
+      "sha256": "2af73efbee16bdfdf4c19d2344660af54bfd8f0eb8b98dd9d6cbc1f4afbdd24d"
+    },
+    {
+      "bytes": 25378,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/evidence/wrapper12-r03-unexecuted-request.json",
+      "sha256": "83b0c5e645cb31962bc3f57509f56914fc4edaa516099fc26df66df1a91650a3"
+    },
+    {
+      "bytes": 76316,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/publication-config.json",
+      "sha256": "860f495040a26ba6e24d8e97c9b93742e6cff9189fb2318c871fcdaf944b1bf0"
+    },
+    {
+      "bytes": 2201,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v01/README.md",
+      "sha256": "b12b48329b7d5349376390eab8a33ccf75c7a4a9569f887bd64a82c86e00e258"
+    },
+    {
+      "bytes": 1445996,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v01/SOURCE_INVENTORY.json",
+      "sha256": "c3404a30986c25dbf87ec22f3d9bcec342daa7da5b6fc955a066a3901b24deb3"
+    },
+    {
+      "bytes": 9730,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v01/SOURCE_MANIFEST.json",
+      "sha256": "21f158ab582d70a123d3ee32d69e12b763ad40842fded37cd6a7265b18d08686"
+    },
+    {
+      "bytes": 12001,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v01/prepare_capsule.py",
+      "sha256": "0e5b54163da36f4177db5c40871be8957d7780558a94564e344a69545d768455"
+    },
+    {
+      "bytes": 2523,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v02/README.md",
+      "sha256": "570f004e6b06296fd1c17eedee0408382f4d022b842938ae6fea260b387a7336"
+    },
+    {
+      "bytes": 1445996,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v02/SOURCE_INVENTORY.json",
+      "sha256": "b2e0abdc227d90d4019b5f14d3afae0dcee6ba8be963fcdc5c40bea5b4affd93"
+    },
+    {
+      "bytes": 7462,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v02/SOURCE_MANIFEST.json",
+      "sha256": "df9caa66dbb9484614bc4c1829da0a21d53260b909c72786ae55da58995c0c56"
+    },
+    {
+      "bytes": 12001,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/capsule-preparation-v02/prepare_capsule.py",
+      "sha256": "a46e7081f1ff2ca1bd7136a9e59b76802c043218c04a40f19606ed09b3810817"
+    },
+    {
+      "bytes": 33010,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/daemon-host-bridge-audit-v01/EVIDENCE.json",
+      "sha256": "76a268a78008facf605d7f6e59265f2c42aa9b7319100af5ad9b9c967cd0280a"
+    },
+    {
+      "bytes": 12184,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/daemon-host-bridge-audit-v01/PI_P04_PLAN.md",
+      "sha256": "0096ac90149f7b2fc9e1ba5173123eed1d7138b906ad0753cdb8c2375ae92816"
+    },
+    {
+      "bytes": 11278,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/daemon-host-bridge-audit-v01/SOURCE_MANIFEST.json",
+      "sha256": "c3ad2e96ac606feb92ddcab046328596911e7104bb9344f634458e624e581252"
+    },
+    {
+      "bytes": 20598,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/daemon-host-bridge-audit-v01/TASKS.json",
+      "sha256": "a63c47992f3d59367e88aea0071322a24eb326d19a5e09a6254ff69e7aea255e"
+    },
+    {
+      "bytes": 5134,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v02/README.txt",
+      "sha256": "3bbe4e1d9bc272781ff4e22f0d64a9f630387aafe87f2e225f808a5270d9cf8f"
+    },
+    {
+      "bytes": 1654,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v02/RESOURCE_PLAN.json",
+      "sha256": "5247be3041ce4b4d7575fb9fc965671bdabb72584a29d27e8fe3507c786511ca"
+    },
+    {
+      "bytes": 10155,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v02/SOURCE_MANIFEST.json",
+      "sha256": "7f03085082f6b5526e94f4e66a2ea1fd1f47a9f5a58febb876aa594133318661"
+    },
+    {
+      "bytes": 1952,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v02/fixture_payload.py",
+      "sha256": "55a349498a57405bd102b049fed7852bac3eb8010f071257da44d1812ba888dc"
+    },
+    {
+      "bytes": 55822,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v02/qualify_dual_pipe.py",
+      "sha256": "a313c57370aa6790c0eaadeed79a62c2472e5b2343c8a8decc8149258cbb08f4"
+    },
+    {
+      "bytes": 5985,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v03/README.txt",
+      "sha256": "809cde07bfc26810bd55b9d223dcf352d78b03a911afb837a26ffe5c56290078"
+    },
+    {
+      "bytes": 2119,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v03/RESOURCE_PLAN.json",
+      "sha256": "6308ac937ac56d57d4b06de56d7c89ae625ae844a92449bb26172f3e035cde32"
+    },
+    {
+      "bytes": 11979,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v03/SOURCE_MANIFEST.json",
+      "sha256": "d6ff60ccedfc247ad41cbfe41aceb446f48670a96a71247bb778f1d3088c00fc"
+    },
+    {
+      "bytes": 1952,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v03/fixture_payload.py",
+      "sha256": "55a349498a57405bd102b049fed7852bac3eb8010f071257da44d1812ba888dc"
+    },
+    {
+      "bytes": 3157,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v03/qualifier-v03.patch",
+      "sha256": "995874711f0de636db28e5f06de5bdaadc2f75ad625e3ec9014b875986ce86c1"
+    },
+    {
+      "bytes": 55822,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v03/qualify_dual_pipe.py",
+      "sha256": "17aeb9637a33c03b48955e443764c00e9b19cb8cb30191b0221f88b728daab3a"
+    },
+    {
+      "bytes": 4257,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v04/README.txt",
+      "sha256": "aec0cc11fbc0f66b0eda88128cd6493f62f9f43dad97276e455b81388f3ae542"
+    },
+    {
+      "bytes": 2386,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v04/RESOURCE_PLAN.json",
+      "sha256": "3152361f42748f4f761bad8f9f360d403f5b08be11fa5b28e17fcb4448d9376e"
+    },
+    {
+      "bytes": 14372,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v04/SOURCE_MANIFEST.json",
+      "sha256": "fe6a7392aeeabacfda834a1544abb5826e4caaf1ade95189c2d3ad39d92ed117"
+    },
+    {
+      "bytes": 1952,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v04/fixture_payload.py",
+      "sha256": "55a349498a57405bd102b049fed7852bac3eb8010f071257da44d1812ba888dc"
+    },
+    {
+      "bytes": 5583,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v04/qualifier-v04.patch",
+      "sha256": "ae492b9c815644b50821eef3a3186f02137bc68c27f49160a2dcb48504a9b684"
+    },
+    {
+      "bytes": 57531,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/dual-pipe-native-v04/qualify_dual_pipe.py",
+      "sha256": "efe1751a411c6207f741c5c4421410659d7303cd40c722fdbd7c77f72506c98d"
+    },
+    {
+      "bytes": 2544,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/README.txt",
+      "sha256": "fc8648d0736427dc560d798b5cac328c7874ef69a6425b488884951b11bdbe88"
+    },
+    {
+      "bytes": 2741,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/SOURCE_MANIFEST.json",
+      "sha256": "f7d06829c5c49b45171baf8a5d80c9f28b91fb49950a4b42f6ca11f117693b18"
+    },
+    {
+      "bytes": 2094,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/ordinary_custody_hold.py.patch",
+      "sha256": "3013bfe37598f9a6081eb6c4dd366a29f336cfa74bdeec426a9ef47bb807fe90"
+    },
+    {
+      "bytes": 20236,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/ordinary_success_handoff.py.patch",
+      "sha256": "f3a38f2c56d4d228209b546d2aec78223fe9eb073f9dae5f62f895cfd73add9c"
+    },
+    {
+      "bytes": 16803,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb"
+    },
+    {
+      "bytes": 52429,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "sha256": "9666d65d6503934bc1b865fefa52a02c514ea468c1c2af96c9842fe31cc93eae"
+    },
+    {
+      "bytes": 4614,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/test_callable_handoff_refusals.py",
+      "sha256": "65097bb9bf40448890335a8f123e6d1a5725e75664c7d67a1ee1a3928eb5b145"
+    },
+    {
+      "bytes": 10639,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/test_custody_hold_memory.py",
+      "sha256": "12e8c6afc9b67bfc72f264c563ca128a6be7571661e37e6d51311c50a1708c9b"
+    },
+    {
+      "bytes": 17380,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v02/test_handoff_memory.py",
+      "sha256": "7a665945fa60024ab5ab24c4427c73d2d8d01893062ec563fbcd6b6bbddb01e2"
+    },
+    {
+      "bytes": 2196,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/README.txt",
+      "sha256": "2504a88c1d14487c0918a4d73d656f525bc515be93360f993c991e289f59d395"
+    },
+    {
+      "bytes": 2668,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/SOURCE_MANIFEST.json",
+      "sha256": "6ca1a9ca25f1bb477841a006e2b77ba34c0c647d5930b3eaabf7537e6dbf6879"
+    },
+    {
+      "bytes": 3262,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/ordinary_success_handoff.py.patch",
+      "sha256": "a7f78e7eca105bd0312914cc64f77cfe9fbc0125309ee648381b4d19a022acb8"
+    },
+    {
+      "bytes": 16803,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py",
+      "sha256": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb"
+    },
+    {
+      "bytes": 54117,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "sha256": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a"
+    },
+    {
+      "bytes": 5019,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/test_callable_handoff_refusals.py",
+      "sha256": "4cfc8cba5faf8b49b183941b0701a427e07c9d5eb06d1c43781c578b414eb9c2"
+    },
+    {
+      "bytes": 10639,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/test_custody_hold_memory.py",
+      "sha256": "12e8c6afc9b67bfc72f264c563ca128a6be7571661e37e6d51311c50a1708c9b"
+    },
+    {
+      "bytes": 17625,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/handoff-v03/test_handoff_memory.py",
+      "sha256": "7cd74495d3221461fc39ec656e30c3b518de27b3de7f4de61757e8bef947a24a"
+    },
+    {
+      "bytes": 365,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v01/README.txt",
+      "sha256": "f71305242ae7fd4f6407bed2c5e4e8517853c4962cf325c0b23310a0cde62041"
+    },
+    {
+      "bytes": 437,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v01/SOURCE_MANIFEST.json",
+      "sha256": "2228232eebf78b5680b230b81f1a897c01f04d57a40b2c2864a053e64850ecb0"
+    },
+    {
+      "bytes": 5732,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v01/qualify_controls.py",
+      "sha256": "cd60439aac1ff78ec9584adb3c66aca2344aedb11c1e90945b56d0a1cc460d70"
+    },
+    {
+      "bytes": 656,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v02/README.txt",
+      "sha256": "6774d0ade3ecc7a73b9a54c249f59f8ab2de87ccb205ad9dca11e89194dc9ccc"
+    },
+    {
+      "bytes": 1270,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v02/SOURCE_MANIFEST.json",
+      "sha256": "e4c2ea61c543c43ae68ca42e84cea3c480e0f506121fe34a3f02cfeec9e5e80b"
+    },
+    {
+      "bytes": 5847,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v02/qualify_controls.py",
+      "sha256": "6db2bca7ad844f439b849b0b8fc2b5d03329ca53de947fcda84dceb3ed3b1603"
+    },
+    {
+      "bytes": 1534,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v02/test-migration.patch",
+      "sha256": "67af2624e61271388a7742e1b75f0e3e0ea08379fe39c9392602beab5ca379d7"
+    },
+    {
+      "bytes": 17644,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v02/test_handoff_memory.py",
+      "sha256": "2e7b3a93e28f55746f56679580eb5bf18ff350a5f394e930709e4427db4e08cd"
+    },
+    {
+      "bytes": 380,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v03/README.txt",
+      "sha256": "9535c506377c1964be9b581293ea619ae7322dc12595f7c66b27d65e0f4ef9de"
+    },
+    {
+      "bytes": 940,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v03/SOURCE_MANIFEST.json",
+      "sha256": "193ffef751866b3f2af8016ac790fa66a1e46f11dc1375004683fb184a53991c"
+    },
+    {
+      "bytes": 5732,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/memory-controls-v03/qualify_controls.py",
+      "sha256": "67828eab29c3aacec1dd962589bd8399891662544869c5d54b745829279b0506"
+    },
+    {
+      "bytes": 1884,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v01/README.md",
+      "sha256": "acfc921d097efa90f5e27db59de17df0598113cbcac4a9dafd3e9500cfa53702"
+    },
+    {
+      "bytes": 771,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v01/RESOURCE_PLAN.json",
+      "sha256": "8d578e4a29691bb7c539d868a34eb3a856963cf347514284d96bb46d0156bd39"
+    },
+    {
+      "bytes": 24703,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v01/SOURCE_MANIFEST.json",
+      "sha256": "211a1a9bec6edadd11842fb9ae649b123814c7885d3179ce8ab4a816b678c09d"
+    },
+    {
+      "bytes": 14517,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v01/cancel_pending_wrapper.py",
+      "sha256": "e19b94363a69edbead21127e28df95d91f0cced9ac3608ab5943b8b07f5137e4"
+    },
+    {
+      "bytes": 2117,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v02/README.md",
+      "sha256": "7a46fedb97f367c048724172a9e9e2b95d3b1d4692356be2f992198954eab653"
+    },
+    {
+      "bytes": 771,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v02/RESOURCE_PLAN.json",
+      "sha256": "8d578e4a29691bb7c539d868a34eb3a856963cf347514284d96bb46d0156bd39"
+    },
+    {
+      "bytes": 25558,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v02/SOURCE_MANIFEST.json",
+      "sha256": "5b70559b3aa86c7ea83e9952a197d976cb92b3b69c520fc730c4ed0fa1eab725"
+    },
+    {
+      "bytes": 14713,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/pending-fixture-cancellation-v02/cancel_pending_wrapper.py",
+      "sha256": "b9b7c93708a2f993fcc407742c065a1f054e046e5c926d3c45d7e3fad7cc8947"
+    },
+    {
+      "bytes": 3612,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/public-wrapper-prestart-v01/README.md",
+      "sha256": "1656f8649ca92a8e5eba1707ed2045198e61fb19c9a4230de5c1a8de19e2463c"
+    },
+    {
+      "bytes": 14212,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/public-wrapper-prestart-v01/SOURCE_MANIFEST.json",
+      "sha256": "a4bf099370d34f75df7ad8030308b03da5a06771dacc3bcfba11e67a6a4da8ff"
+    },
+    {
+      "bytes": 32285,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/public-wrapper-prestart-v01/qualify_public_wrapper.py",
+      "sha256": "0a62d279d072af57c607bc5f7468960c6159b290ecf6972e2f433733c41e65ec"
+    },
+    {
+      "bytes": 4219,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/public-wrapper-prestart-v02/README.md",
+      "sha256": "5c5ada86dcf59b02558f87373e43e6fc4129296f835088eb20b2e58b6535872a"
+    },
+    {
+      "bytes": 16147,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/public-wrapper-prestart-v02/SOURCE_MANIFEST.json",
+      "sha256": "d7c8b67d02aa50e145861b824a0f52778a22a93af23d8f9363f7b233ad60ec77"
+    },
+    {
+      "bytes": 5554,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/public-wrapper-prestart-v02/prestart-v02.patch",
+      "sha256": "d8e62363374b76e68b17ceb7c5c68008c62634ff057ed6676fa82c2ef77cc6cb"
+    },
+    {
+      "bytes": 32831,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/public-wrapper-prestart-v02/qualify_public_wrapper.py",
+      "sha256": "46c2715ca47c35ba12574072df72562582577a028d1ac8634ef64727f1f6ba18"
+    },
+    {
+      "bytes": 1712,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v01/README.txt",
+      "sha256": "543501f25f163a78efab156639ae031c302fed69f6f9f33149a5b7bb4287e8b4"
+    },
+    {
+      "bytes": 1027,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v01/SOURCE_MANIFEST.json",
+      "sha256": "31d50912481b8c2a574086869e76cbfc492fc2145c8a0d6df15f2e91029aadaf"
+    },
+    {
+      "bytes": 6689,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v01/publication_helpers.py",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 32955,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v01/publish_callable.py",
+      "sha256": "574550c605e3b67e222a43988b3e42d866b30e30cac0330a39c380152e1a6d11"
+    },
+    {
+      "bytes": 2336,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v02/README.txt",
+      "sha256": "37585dab4642c302c56d4069f819845de2e5d0474b6a5f175b44b408b24168fa"
+    },
+    {
+      "bytes": 2934,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v02/SOURCE_MANIFEST.json",
+      "sha256": "c8b43b7965f3ac39e5f6ff0c3859ae0d70918d517b06c9707d509c57bb9c4b08"
+    },
+    {
+      "bytes": 6689,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v02/publication_helpers.py",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 32955,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v02/publish_callable.py",
+      "sha256": "a634a34ee49766a3eb23b17696aaed4d6bc224536314ad942bf99540f4018b3d"
+    },
+    {
+      "bytes": 2498,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v03/README.txt",
+      "sha256": "4549770382ad2eb9a81e5da96aab682d41ece9478e753382581583446bf3da3d"
+    },
+    {
+      "bytes": 4201,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v03/SOURCE_MANIFEST.json",
+      "sha256": "62ae9eaff4a95081f48a522e13d7d7fa17ec629caebcf8ffb62ddfa1e07dcb31"
+    },
+    {
+      "bytes": 6689,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v03/publication_helpers.py",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 32955,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v03/publish_callable.py",
+      "sha256": "8ae434e217e3356c429f8713e20bee298861a0d193b1806ceae2ff98f0f08941"
+    },
+    {
+      "bytes": 1791,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v04/README.txt",
+      "sha256": "5f516c822724e771097ea643dc806db932b5a200f747e2873c57c82caa21e473"
+    },
+    {
+      "bytes": 4550,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v04/SOURCE_MANIFEST.json",
+      "sha256": "38cab38a88fec3aeb5608d7d8cc434df36493742828347894526bafc0797388c"
+    },
+    {
+      "bytes": 6689,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v04/publication_helpers.py",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 38266,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v04/publish_callable.py",
+      "sha256": "e9a9ccddfeedf37ae99792a1c67fe437b9797157830c5b0356a63f871101e8c9"
+    },
+    {
+      "bytes": 7444,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/publication-v04/publisher-v04.patch",
+      "sha256": "20172deb295e3c83180d7d5b630a6e6f580ce32f049d17725358caa78798e270"
+    },
+    {
+      "bytes": 591,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v01/README.md",
+      "sha256": "5da85024663a0280ad4f070bab5b8966db42a6120c4f2aeebd4757366b7ab740"
+    },
+    {
+      "bytes": 486,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v01/SOURCE_MANIFEST.json",
+      "sha256": "b5a447d52195e68d31125e7753be8155a9196511d19e27d4f8094629df5730d2"
+    },
+    {
+      "bytes": 7149,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v01/qualify_freezer_controls.py",
+      "sha256": "c486dba181d8b1a88341a0c4d758049b26f6d1c0925499325fd71643f0c91b3f"
+    },
+    {
+      "bytes": 1403,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v02/README.md",
+      "sha256": "022e5114afce6bb464b3993cf1ce2ea0aa64c18a0c1eaa24a633a505b4240653"
+    },
+    {
+      "bytes": 995,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v02/SOURCE_DIAGNOSIS.json",
+      "sha256": "784c7ee6c6b58e614e6d1f333d9cb92f6306c6d3ce1ae0cedb60d4bf26de9748"
+    },
+    {
+      "bytes": 1112,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v02/SOURCE_MANIFEST.json",
+      "sha256": "579765409bb85908ea9345876c1edc22765116175119120fab75e77a24d6a3ef"
+    },
+    {
+      "bytes": 8265,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v02/qualify_freezer_controls.py",
+      "sha256": "5646f6d693801c93c41d32b87528ed4cf0a599b6517cd795076b2efea2ec685b"
+    },
+    {
+      "bytes": 11353,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-controls-v02/test_source_contract.py",
+      "sha256": "e00c55996ec7bbae158ff5ee795fe5f71a18b0af428ab58371931b727fb51d7a"
+    },
+    {
+      "bytes": 2631,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v01/README.md",
+      "sha256": "fad5f9f095776582760ed3bd3952d272ca71fb66366a17a9f7789270c2ef83e3"
+    },
+    {
+      "bytes": 695,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v01/SOURCE_MANIFEST.json",
+      "sha256": "06e5a8b7d96254ad81765f2eb8c3f260ca4e5732d131b3034669a310589f92d6"
+    },
+    {
+      "bytes": 24754,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v01/qualify_freezer_git.py",
+      "sha256": "8c3b9fcf0401cc546573130931ab9990ed6dbfe0507793603c6c14766d423b9f"
+    },
+    {
+      "bytes": 2629,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v02/README.md",
+      "sha256": "e2f9dc2def98c296a570a620e4bb9b18097f4e60b9a4989b777db84170587052"
+    },
+    {
+      "bytes": 1448,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v02/SOURCE_DIAGNOSIS.json",
+      "sha256": "a8329c4784fc0219a4520d659abffadbb937b4ef7e1698e1418cf6962dfba2d2"
+    },
+    {
+      "bytes": 2562,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v02/SOURCE_MANIFEST.json",
+      "sha256": "85d63d51b53920d10c4c81ee8dafbffbc4060fefcb842a43ce6c6499e6c8c945"
+    },
+    {
+      "bytes": 28528,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v02/qualify_freezer_git.py",
+      "sha256": "22fbdd8fff0a1ab004dbae2f9d340fe6e5a6d4155c3aff5137e144273c515639"
+    },
+    {
+      "bytes": 3867,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v03/README.md",
+      "sha256": "aa980aeedeab1dcf2fe0af266ce5551290f3c2af76f071696e1fc628de8a82f7"
+    },
+    {
+      "bytes": 1614,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v03/RESOURCE_PLAN.json",
+      "sha256": "5eaef1e77e43d519743f5b1d1f9147eeffa7c0a33000e3003362b52081c20d37"
+    },
+    {
+      "bytes": 2963,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v03/SOURCE_DIAGNOSIS.json",
+      "sha256": "4a8bb622ef822ad98170d9c51ffe8d59c1e9c7e1330951c7b87a41e8e87c3147"
+    },
+    {
+      "bytes": 16134,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v03/SOURCE_MANIFEST.json",
+      "sha256": "b9311e1f566b3319de8c39fc0072d4a71131d66d823e14ed6ae54487201aec02"
+    },
+    {
+      "bytes": 43247,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-git-component-v03/qualify_freezer_git.py",
+      "sha256": "a5d1d1f7d46eab97b869e6e925e19ea5c9df4eab5ecf61f6977f014f8a8e4d4e"
+    },
+    {
+      "bytes": 1236,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/BASELINE.json",
+      "sha256": "15b905b4f55d31a3023d73ee673f735dcd9187cd982bc0d6357098cfc6fead36"
+    },
+    {
+      "bytes": 3215,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/QUALIFICATION_PLAN.json",
+      "sha256": "74ef9d5e184343a91648c473fecca164d8c58df7d2d37cf977eae5960610d73e"
+    },
+    {
+      "bytes": 6991,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/README.md",
+      "sha256": "c7212e5ffb8e47bb56c1eb0bbdfc93810c9572f4dcf4d27f65dbbd4a0e28c0b8"
+    },
+    {
+      "bytes": 6152,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/SOURCE_MANIFEST.json",
+      "sha256": "2e88a05782c96aed0f64583f414209a3535502c034b7a8f610f8577d60ae345e"
+    },
+    {
+      "bytes": 9576,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/build_patch.py",
+      "sha256": "6b87e6f63b42b970265daa3131042c9651b5fa9319f97314b3490ab478e2b7e4"
+    },
+    {
+      "bytes": 1513,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/git_checkout_transaction.patch",
+      "sha256": "74f76fc4cb27d55006116abbf403317648c8e4a1d748eab5ea467830189ba9ea"
+    },
+    {
+      "bytes": 5637,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/implementation_daemon.patch",
+      "sha256": "00d64b4c534690f440be390aa3a0e49955e387af6e036749aae13c2e62a86ed8"
+    },
+    {
+      "bytes": 41510,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "bytes": 5872,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/test_freezer_memory.py",
+      "sha256": "55f20c6c590e6507498e76ab5b63ce47f94446354dab8592d8273f299b469661"
+    },
+    {
+      "bytes": 10294,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v02/test_source_contract.py",
+      "sha256": "924ba339fdbd1eaa7cb7b293ac9db01747d431747a3573b6db3cb4722e5b699c"
+    },
+    {
+      "bytes": 3732,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v03/README.md",
+      "sha256": "23f634b02128ab69a61022e59156e235d674827c939941b10e68f34b9e0277fb"
+    },
+    {
+      "bytes": 1613,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v03/RESOURCE_PROOF.json",
+      "sha256": "31083a6a102fb7e9cc4dfb9259a9bef13996e88e172c5ccccbc3a13bc70f415e"
+    },
+    {
+      "bytes": 10441,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v03/SOURCE_MANIFEST.json",
+      "sha256": "7e54b071ec805cc38d8a7265d11eebf221f5d51e3ec44adc0b9886b36922a7a7"
+    },
+    {
+      "bytes": 53258,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v03/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "sha256": "930fb5b0bdfcaefd1d9af93f64d9fbab3a26db847c4aab7a6e9e3f2da5883fe0"
+    },
+    {
+      "bytes": 22485,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v03/report_only_candidate_freezer.patch",
+      "sha256": "5632a5d1eb38ad560bf9e30fc211da1a4e767b84d5d9d91a09d88c4766e48209"
+    },
+    {
+      "bytes": 4233,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/report-freezer-v03/test_anchor_controls.py",
+      "sha256": "8d6e3cae1efd4b397bcb40bfc983f98eb377a8957af2b048b5974775203308c5"
+    },
+    {
+      "bytes": 726,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v02/BASELINE.json",
+      "sha256": "04b867424871e6ccea9f1fa86227cf1fd68c0470bb6105a06c78a105ef677539"
+    },
+    {
+      "bytes": 9535,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v02/README.txt",
+      "sha256": "10b38f517a8f44e18820bc865dceab4f878f82836abfb1bba7a504340ca20670"
+    },
+    {
+      "bytes": 9124,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v02/SOURCE_MANIFEST.json",
+      "sha256": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e"
+    },
+    {
+      "bytes": 654771,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "6bc26dc792b7994ea73e12e92d20949caf62b85940badf6a2d594cb3388a7706"
+    },
+    {
+      "bytes": 52513,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v02/runner-v02.patch",
+      "sha256": "3e65c0bb90ab0490a991765839f901960683921b0ac660590e8cd8983586d37f"
+    },
+    {
+      "bytes": 14298,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v02/test_callable_contract.py",
+      "sha256": "62074232f0c444754dbc7c636f3c2e24ca5107c01873b60d3f657e4e495eb43f"
+    },
+    {
+      "bytes": 658,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v03/BASELINE.json",
+      "sha256": "5e86c39dd4c8604e3b508db2101cc8f3b4ba1101553ab08c2dc42258b93011d1"
+    },
+    {
+      "bytes": 4282,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v03/README.txt",
+      "sha256": "34d1f6d3b2d0a02ad62f9910916ec0f280f8d5123fa0d7d052bd8bc0a9be3a76"
+    },
+    {
+      "bytes": 7276,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v03/SOURCE_MANIFEST.json",
+      "sha256": "1a2d28a952f0bac6a7af951b4754085dcb1110f86fb46ebf319014f2e66062e2"
+    },
+    {
+      "bytes": 655286,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "e4ee0253c39bd98448c3e4a1cb70d5deaa02327443a3231b5d29eb9e036f8f24"
+    },
+    {
+      "bytes": 2107,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v03/runner-v03.patch",
+      "sha256": "adbd038cf9a4013f3b5979069c930bea5cf5f812f8966640da34e46d2e46d0f3"
+    },
+    {
+      "bytes": 16581,
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/runtime-qualification-v04/sources/runner-v03/test_callable_contract.py",
+      "sha256": "4af31403311114dc43996be1fd5de6f575fd37cdb0552d6eba12d01afe65e48c"
+    }
+  ],
+  "previous_inventory_sha256": "d88d1ba6a2a58fcb0f38e1e867ca306e94ddd31eb840b020fcbe78ee210be9e2",
+  "production_hook_deployed": false,
+  "schema": "legal-ir-callable-publication-inventory@1"
+}

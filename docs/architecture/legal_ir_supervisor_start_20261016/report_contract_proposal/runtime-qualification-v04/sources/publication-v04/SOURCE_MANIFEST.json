@@ -1,0 +1,66 @@
+{
+  "acceptance_authority": false,
+  "author_runtime_jobs_performed": false,
+  "canonical_tasks_accepted": 0,
+  "files": [
+    {
+      "bytes": 1791,
+      "path": "README.txt",
+      "sha256": "5f516c822724e771097ea643dc806db932b5a200f747e2873c57c82caa21e473"
+    },
+    {
+      "bytes": 6689,
+      "path": "publication_helpers.py",
+      "sha256": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf"
+    },
+    {
+      "bytes": 38266,
+      "path": "publish_callable.py",
+      "sha256": "e9a9ccddfeedf37ae99792a1c67fe437b9797157830c5b0356a63f871101e8c9"
+    },
+    {
+      "bytes": 7444,
+      "path": "publisher-v04.patch",
+      "sha256": "20172deb295e3c83180d7d5b630a6e6f580ce32f049d17725358caa78798e270"
+    }
+  ],
+  "functional_changes": [
+    "Explicit Git component source @1/@2 controlled_component_cases versus @3 controlled_cases dispatch.",
+    "Require complete actual passed @3 cold counts, anchored process/group/consumer counts and separate inert custody probe.",
+    "Archived publisher self-role publication-v03 to publication-v04."
+  ],
+  "global_resource_policy_changed": false,
+  "helpers_byte_identical_to_V03": true,
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-config-v01.json": "59ce53deaef1c46a712ead61bce2f0c2f3d69303551f9b05f05d90e4e2be7d01",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-owner-request-v01.json": "55085fad181c275f17507df95d2b7ddf445de467c57237b0cc9705555f9bb688",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/README.txt": "543501f25f163a78efab156639ae031c302fed69f6f9f33149a5b7bb4287e8b4",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/SOURCE_MANIFEST.json": "31d50912481b8c2a574086869e76cbfc492fc2145c8a0d6df15f2e91029aadaf",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/publication_helpers.py": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v01/publish_callable.py": "574550c605e3b67e222a43988b3e42d866b30e30cac0330a39c380152e1a6d11",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/README.txt": "37585dab4642c302c56d4069f819845de2e5d0474b6a5f175b44b408b24168fa",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/SOURCE_MANIFEST.json": "c8b43b7965f3ac39e5f6ff0c3859ae0d70918d517b06c9707d509c57bb9c4b08",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/publication_helpers.py": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v02/publish_callable.py": "a634a34ee49766a3eb23b17696aaed4d6bc224536314ad942bf99540f4018b3d",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v03/SOURCE_MANIFEST.json": "62ae9eaff4a95081f48a522e13d7d7fa17ec629caebcf8ffb62ddfa1e07dcb31",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v03/publication_helpers.py": "1cdac09fdf37f9c91a87115f033f33bd5a0448dde1ceff64a5c9103ce8fa49cf",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/publication-v03/publish_callable.py": "8ae434e217e3356c429f8713e20bee298861a0d193b1806ceae2ff98f0f08941",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/report-freezer-git-component-v03/SOURCE_MANIFEST.json": "b9311e1f566b3319de8c39fc0072d4a71131d66d823e14ed6ae54487201aec02",
+    "/home/barberb/lift_coding/artifacts/legal-ir-handoff-native-20261017-01/handoff-publication-v06/publish_handoff.py": "61167cba86fb6f155b73c809d4dc49d766b9dceaa013252667124f688c276ada"
+  },
+  "legacy_failed_component_observations_preserved": true,
+  "production_hook_deployed": false,
+  "provider_calls": 0,
+  "schema": "legal-ir-callable-publication-source@4",
+  "status": "source_authored_pending_independent_review_not_executed",
+  "successor_of_manifest_sha256": "62ae9eaff4a95081f48a522e13d7d7fa17ec629caebcf8ffb62ddfa1e07dcb31",
+  "unchanged_bounds": {
+    "evidence_files": 64,
+    "historical_preflight_failures": 8,
+    "output_bytes": 67108864,
+    "output_paths": 256,
+    "protected_source_pins": 256,
+    "qualification_checks": 16,
+    "source_bundles": 28
+  }
+}

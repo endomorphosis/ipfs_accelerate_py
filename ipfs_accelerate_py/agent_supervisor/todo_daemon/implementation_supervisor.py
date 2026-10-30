@@ -957,6 +957,10 @@ def load_supervisor_scheduler_config(
         )
 
     normalized = dict(payload)
+    preserve_task_attempts = payload.get("preserve_task_attempts", False)
+    if not isinstance(preserve_task_attempts, bool):
+        raise SupervisorSchedulerConfigError("preserve_task_attempts must be boolean")
+    normalized["preserve_task_attempts"] = preserve_task_attempts
     normalized["taskboard_path"] = _scheduler_config_relative_path(
         payload.get("taskboard_path"),
         field_name="taskboard_path",
@@ -1480,6 +1484,8 @@ def supervisor_scheduler_config_cli_defaults(
         options.extend(
             ("--manual-completion-authority-epoch-id", authority_epoch_id)
         )
+    if profile.get("preserve_task_attempts") is True:
+        options.append("--preserve-task-attempts")
     return options
 
 
@@ -6751,6 +6757,7 @@ class PortalSupervisorConfig:
     )
     manual_completion_authority_epoch_id: str = ""
     manual_completion_authority_revalidation_only: bool = False
+    preserve_task_attempts: bool = False
     scheduler_config_path: Path | None = None
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
@@ -6882,6 +6889,8 @@ class PortalSupervisorConfig:
     supervisor_script_path: Path | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.preserve_task_attempts, bool):
+            raise ValueError("preserve_task_attempts must be boolean")
         _validated_validation_max_workers(self.validation_max_workers)
         if not self.production_provider_policy:
             if any(
@@ -22188,6 +22197,8 @@ class PortalImplementationSupervisor:
                         self.config.manual_completion_authority_epoch_id,
                     ]
                 )
+            if self.config.preserve_task_attempts:
+                command.append("--preserve-task-attempts")
             if self.config.manual_completion_authority_revalidation_only:
                 command.append(
                     "--manual-completion-authority-revalidation-only"
@@ -22615,6 +22626,16 @@ class PortalImplementationSupervisor:
             "--manual-completion-authority-revalidation-only" in tokens
         ) != self.config.manual_completion_authority_revalidation_only:
             return False
+        preserve_options = [
+            token for token in tokens
+            if token.startswith("--")
+            and "--preserve-task-attempts".startswith(token.partition("=")[0])
+        ]
+        expected_preserve_options = (
+            ["--preserve-task-attempts"] if self.config.preserve_task_attempts else []
+        )
+        if preserve_options != expected_preserve_options:
+            return False
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
         ):
@@ -22844,6 +22865,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Content-addressed identity of the verified manual-completion "
             "seal and policy set used for descendant revalidation."
+        ),
+    )
+    parser.add_argument(
+        "--preserve-task-attempts",
+        action="store_true",
+        help=(
+            "Preserve consumed task attempts: disable automatic exhaustion "
+            "rearming, completed-repair resets, retry cooldown repairs, and "
+            "unknown vanished-worker rollback. Only confirmed zero-provider "
+            "prelaunch deferrals retain their non-consuming behavior."
         ),
     )
     parser.add_argument(
@@ -23724,6 +23755,7 @@ def supervisor_config_from_args(
                 False,
             )
         ),
+        preserve_task_attempts=bool(getattr(args, "preserve_task_attempts", False)),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,

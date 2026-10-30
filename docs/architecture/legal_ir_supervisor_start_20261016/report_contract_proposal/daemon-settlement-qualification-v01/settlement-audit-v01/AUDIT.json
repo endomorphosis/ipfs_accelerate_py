@@ -1,0 +1,132 @@
+{
+  "schema": "legal-ir-original-finalizer-settlement-audit@1",
+  "scope": "Read-only source audit and authored AST comparison source. No tests, native admission, Git, providers, original database writes, deployment or canonical attempts performed by this author.",
+  "runtime_enabled": false,
+  "full_original_host_qualified": false,
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "github_qualification": "skipped_by_user",
+  "original_daemon": {
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+  },
+  "findings": [
+    {
+      "id": "SET-F01",
+      "finding": "V02 retains object references but cannot resume original unwound finally bodies.",
+      "references": [
+        "native-host-v02/report_only_native_host.py:154 execute_daemon_once",
+        "native-host-v02/report_only_native_host.py:176 _finish_borrow",
+        "native-host-v02/report_only_native_host.py:410 before_original_finalizer",
+        "original implementation_daemon.py:22844 implementation claim finally",
+        "original implementation_daemon.py:18574 pass dispatch intent finally"
+      ],
+      "consequence": "Once a BaseException pending escapes both finally sites, later observe_pending True proves physical cleanup only. It does not execute the claim-release or dispatch-intent producers. Borrowed scope must remain registered."
+    },
+    {
+      "id": "SET-F02",
+      "finding": "The candidate-only early return also bypasses original state and lifecycle disposition.",
+      "references": [
+        "daemon-integration-v02/implementation_daemon.patch:189 early require_candidate_result return",
+        "original implementation_daemon.py:33693 _mark_implementation_finished followed by state.save",
+        "original implementation_daemon.py:33865 lifecycle finalization in common tail"
+      ],
+      "consequence": "A known-stopped native host and drained original finally bodies do not authorize dropping active state, lifecycle ownership or the candidate checkout. Candidate validation/transfer is a separate contract."
+    },
+    {
+      "id": "SET-F03",
+      "finding": "Original release return values do not prove absence of every claim.",
+      "references": [
+        "original implementation_daemon.py:61174 _release_implementation_resource_claim",
+        "original implementation_daemon.py:61196 _release_implementation_resource_claims",
+        "original implementation_daemon.py:61223 _release_implementation_task_claim",
+        "original implementation_daemon.py:61249 _release_implementation_lock"
+      ],
+      "consequence": "Resource batch release catches per-claim errors and returns False, which the original finally ignores. Task release returns True when a real protected fence deliberately preserves its claim. Missing and changed claims both return False. Preserve these semantics and never equate closure return with complete disposition."
+    },
+    {
+      "id": "SET-F04",
+      "finding": "Protected-path crash snapshots are not a general report-only no-retry latch.",
+      "references": [
+        "original implementation_daemon.py:1157 implementation_task_claim_protected_fence_paths",
+        "original implementation_daemon.py:7046 _persist_implementation_protected_snapshot",
+        "original implementation_daemon.py:7099 _latch_implementation_protected_incident",
+        "original implementation_daemon.py:9203 crash fence reconciliation",
+        "original implementation_daemon.py:58260 original same-process reusable intent checks"
+      ],
+      "consequence": "A genuine snapshot initially preserves the task claim, but unchanged crash snapshots may be reconciled away. A same-owner claim may be reusable. Do not fabricate a protected mutation incident or protected provider latch to park a report-only failure."
+    }
+  ],
+  "minimal_continuation_contract": {
+    "api": "run_or_defer_original_finalizer(daemon, *, stage, original_frame, continuation)",
+    "allowed_stages_in_order": [
+      "implementation_claim_release",
+      "pass_dispatch_intent_reconciliation"
+    ],
+    "registration": [
+      "Factor each unchanged original finally body into a zero-argument plain nested function at that exact original finally site. Keep default non-opt-in execution unchanged.",
+      "Cache the nested function's actual code object from the exact source-pinned original method code constants. For decorated _run_implementation use the original actual method.__wrapped__.__code__, not the mutation-boundary wrapper.",
+      "Require immediate caller frame.f_code to be the actual cached original enclosing method code. Require exact module globals identity and exact continuation code object. Check every freevar cell is the identical object in original caller frame.f_locals, including actual daemon/task/state/claim collections where captured.",
+      "Require no decorators, defaults, kwdefaults, supplied arguments, serialization, code reconstruction or portable grant. Carrier dictionaries remain diagnostic references only.",
+      "Retain the accepted original continuation once before any later fallible productive phase, borrowed connection or source observation can unwind the site. Reject duplicate, foreign, changed, missing or out-of-order registrations."
+    ],
+    "drain": [
+      "Use only the same actual retained host, original PID/thread and existing borrowed connection. Physical observation must independently prove stopped original Git/provider/watchdog custody and public native release first.",
+      "Drain registered original claim continuation before original outer dispatch-intent continuation. Invoke each registered continuation at most once. Never recreate it from original_frame dictionaries, paths, task IDs or lease IDs.",
+      "If a continuation raises or its original disposition is ambiguous, retain it as failed/unknown, preserve the original cause and prevent automatic productive retries. Do not rerun a partially executed closure unless a later separately reviewed idempotent recovery contract permits it.",
+      "Drained original code is evidence only that the original finally body ran. It grants no native capacity, candidate acceptance, task completion, model retry, ordinal refund, lifecycle transfer or caller connection ownership."
+    ],
+    "separate_disposition_latch": [
+      "Latch disposition_pending from actual original attempt capture/state, consumed ordinal, active original lifecycle, real protected fence or actual inert candidate. Do not clear it after physical stopped proof or finalizer drain.",
+      "While disposition_pending remains, retain host/borrowed scope and actual original state/lifecycle references. Refuse scope exit and productive dispatch. Expose a bounded observational result naming pending disposition without claiming settlement.",
+      "Only no-selection or strictly preordinal/no-lifecycle/no-fence/no-candidate cases can finish without a further parking or validation transfer contract. No attempt counter restoration is part of this contract."
+    ]
+  },
+  "original_lifecycle_apis": [
+    {
+      "reference": "original implementation_daemon.py:53751 _mark_worktree_lifecycle_settling(worktree_path)",
+      "semantics": "Checks active captured workspace and loaded record equality, then exact expected_record/fence/lease transition. Advances original active capture. Does not transfer candidate custody."
+    },
+    {
+      "reference": "original implementation_daemon.py:54165 _finalize_exact_worktree_lifecycle(record, *, reason)",
+      "semantics": "Exact captured terminal transition plus compare-and-delete under record/task-index locks, clears active capture only after success. It drops original lifecycle ownership and therefore cannot stand in for pending candidate handoff."
+    },
+    {
+      "reference": "original merge/worktree_lifecycle.py:2601 mark_terminal(workspace, *, lease_id, expected_fence, reason, expected_record=None)",
+      "semantics": "Can retain a terminal ownership record by not deleting it, but terminal ownership is not an indefinite no-retry grant. Exact expected_record must be supplied when used for this strict path."
+    },
+    {
+      "reference": "original implementation_daemon.py:39063 _retain_verification_deferred_worktree(...)",
+      "semantics": "Preserves physical checkout while terminalizing only lifecycle under verification deferral; clears active capture and anticipates a restored attempt. It is not directly suitable for no-refund report-only settlement."
+    },
+    {
+      "reference": "original implementation_daemon.py:38936 _preserve_failed_validation_worktree(...)",
+      "semantics": "Calls generic interrupted-worktree path, which commits, creates rescue ref and cleans checkout. These are productive Git effects requiring separate native admission and report-only preservation review. Do not invoke as an observational stopped helper."
+    }
+  ],
+  "existing_durable_parking_option_for_separate_review": {
+    "module": "ipfs_accelerate_py.agent_supervisor.merge.workspace_quarantine",
+    "actual_apis": [
+      "plan(repo_root, worktree_root), line 451: exact bounded original census plus deterministic fresh root description",
+      "freeze(repo_root, worktree_root, *, expected), line 465: compare exact census and install durable whole-root quarantine under exclusive guard",
+      "verify(repo_root, worktree_root), line 536: compare retained census to current exact state",
+      "claim_retained(repo_root, metadata), line 106: source-owned quarantined claim remains occupied even after original process death",
+      "claim_update(lock_path), line 87: deny CAS updates for frozen claim paths",
+      "mutation_boundary(..., pool=True), line 552: deny mutations of retained root or its ancestors"
+    ],
+    "limits": [
+      "This freezes the entire configured worktree root, not one inferred workspace. Use only a private owned root if selected later.",
+      "Census is bounded to 8192 files and 16MiB, record bound 256; captures pool/lifecycle/claim metadata bytes, hash, device and inode. Any change requires fail-closed handling.",
+      "The exclusive quarantine install cannot run inside the original @mutation_boundary shared-guard frames without a lock-order deadlock/bounded refusal. Perform only after those original frames unwind, under separately retained authority.",
+      "Once installed it intentionally blocks original claim-release CAS and lifecycle mutation. Original continuation drain cannot be described as releasing those frozen claims.",
+      "It is a possible original durable preservation primitive, not implemented or qualified by this audit. No new fresh-root work or retry follows automatically."
+    ]
+  },
+  "bounded_next_tasks": [
+    "Author additive integration V03 exact nested continuations with unchanged body AST and opt-in-only host dispatch.",
+    "Author additive host V03 strict code/caller/globals/cell authentication, one-time registration, stopped-only inner-to-outer drain and separate disposition_pending latch.",
+    "Run source-body comparison and refusal controls only under a reviewed finite genuine native fixture. These checks do not require real providers or original canonical state.",
+    "Qualify actual original method registration and retained native cancellation component with source-pinned real objects; explicitly retain any nonzero-ordinal or lifecycle disposition.",
+    "Design and qualify controlled failure parking or actual candidate validation handoff separately before permitting borrowed scope exit for a real attempted task."
+  ]
+}

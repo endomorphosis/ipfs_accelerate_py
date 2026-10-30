@@ -1,0 +1,21 @@
+{
+  "acceptance_authority": false,
+  "actual_tool_completion_chunk": "83fc62",
+  "actual_tool_exit_code": 0,
+  "actual_tool_session": 54456,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 15,
+  "github_qualification_skipped": true,
+  "host_runtime_qualified": false,
+  "latest_source_case_count": 15,
+  "native_finalized": true,
+  "passed": true,
+  "predecessor_controls_preserved": 14,
+  "provider_execution_qualified": false,
+  "receipt_sha256": "c76a927ce99844f47c947c0b0eeac2b54696121dfef83a100290cfc3e1281272",
+  "schema": "legal-ir-daemon-source-root-observation@2",
+  "scope": "source only; original actual daemon composed and inspected, no fake positive host",
+  "source_controls_log_sha256": "33ab0c4a66dec5a4e90a7768015c35255093cd30810813c070875d7484e23db9",
+  "source_controls_sha256": "ea86a33aaa7239fb35be8cc55741a44f90dbca271d709425cd6c19c34b3eebf1",
+  "source_manifest_sha256": "2690f6df93740dcfcd7457c33a1f57dcc0a78c86a09cc710baa8484adb97a3fa"
+}

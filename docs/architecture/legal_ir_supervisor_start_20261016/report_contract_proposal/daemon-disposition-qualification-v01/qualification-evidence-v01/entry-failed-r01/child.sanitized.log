@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/disposition-entry-fixture-v01/qualify_entry_gate.py", line 341, in <module>
+    main()
+  File "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/disposition-entry-fixture-v01/qualify_entry_gate.py", line 296, in main
+    need(type(observed) is disposition.AttemptDispositionDenied and not host_calls,
+  File "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/disposition-entry-fixture-v01/fixture_io.py", line 11, in need
+    raise RuntimeError(reason)
+RuntimeError: actual_denial_must_precede_host_accessor

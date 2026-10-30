@@ -1,0 +1,23 @@
+{
+  "acceptance_authority": false,
+  "actual_exec_exit_code": 0,
+  "actual_exec_session_id": 32993,
+  "actual_final_terminal": {
+    "child_returncode": 0,
+    "failure_type": null,
+    "native_finalized": true,
+    "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-memory-controls-20261017-r03/receipt.json",
+    "status": "completed"
+  },
+  "canonical_tasks_accepted": 0,
+  "native_finalized_observed": true,
+  "observed_passed": true,
+  "provider_calls": 0,
+  "receipt_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-memory-controls-20261017-r03/receipt.json",
+  "receipt_sha256": "647f10798c77644aa2a736a1652265ef5008d470814c91debba22d970202c14c",
+  "request_path": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/memory-controls-request-v03.json",
+  "request_sha256": "a2260ebc322e0a4f86b810b2a77974930231c95c4740c99a1ead254d5ac7f8c1",
+  "result_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-callable-memory-controls-20261017-r03/callable-memory-controls.json",
+  "result_sha256": "cab0369e92aeb9fb516a12f8a2a149bf631e77a6c9352f0c0c3c6cfe8dde93d6",
+  "schema": "legal-ir-callable-generic-root-observation@1"
+}

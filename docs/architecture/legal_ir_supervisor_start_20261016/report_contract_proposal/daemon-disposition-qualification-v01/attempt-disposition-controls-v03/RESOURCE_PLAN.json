@@ -1,0 +1,47 @@
+{
+  "acceptance_authority": false,
+  "canonical_tasks_accepted": 0,
+  "excluded_effects": [
+    "Target daemon or lifecycle module import/instantiation",
+    "Actual source-object join positive qualification",
+    "Quarantine publication, lifecycle transition or borrow exit",
+    "Provider/model/authentication, Git or Docker command",
+    "Database connection, canonical board/counter/cap mutation",
+    "GitHub qualification or runtime activation"
+  ],
+  "expected_testcases": 33,
+  "fixture_custody": "Module-local tmp_path(request) creates only regular0700 paths under actual TMPDIR/cases; it never requests builtin tmp_path_factory. Exact manually created link cleanup from V02 remains. Worker bounded post-test scan refuses any remaining directory symlink/file multilink before reporting pass.",
+  "full_original_host_qualified": false,
+  "native_finalization_note": "Worker success and local alias scan do not prove actual original native finalization. Root must inspect genuine original owner closeout separately.",
+  "outputs": {
+    "bytecode_outputs": "Disabled before any helper/test import",
+    "expected_fixture_apparent_bytes_upper_bound": 4194304,
+    "expected_logs_bytes_upper_bound": 4194304,
+    "private_JUnit_max_bytes": 16777216,
+    "private_result_JSON_max_bytes": 262144,
+    "private_test_fixtures": "Module-local fixture creates only regular0700 directories under the original TMPDIR/cases; no builtin tmp_path_factory is requested. Ordinary private evidence remains after tests."
+  },
+  "pre_helper_import_gate": {
+    "meaning": "Read-only join of actual original generic parent request/process/receipt/native ancestry/storage/attached worker ordering; portable observation grants no authority",
+    "sha256": "dba5662443619358e2225d0cf7ccaa2e2b6c5bf51b0a60d2d1809004d1667fb3",
+    "source": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-settlement-20261017-01/repository-fixture-v02/parent_attachment_gate.py",
+    "timeout_seconds": 60
+  },
+  "profile": {
+    "additional_worker_native_admissions": 0,
+    "child_process_slots": 8,
+    "cpu_slots": 1,
+    "duration_seconds": 900,
+    "external_charges": [],
+    "memory_mb": 4096,
+    "storage_bytes": 67108864
+  },
+  "purpose": "controller_preparation",
+  "qualification_executed": false,
+  "runtime_enabled": false,
+  "schema": "legal-ir-attempt-disposition-resource-plan@1",
+  "scope": "Actual private filesystem denial semantics and source controls only. Synthetic journal metadata is deny-only and is never accepted as an actual daemon, lifecycle, connection or native owner.",
+  "selected_original_owner": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/run_image_owner_v05.py",
+  "source_helper": "../attempt-disposition-v01/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/attempt_disposition.py",
+  "source_helper_sha256": "980597e97d337aaa90c0a93527229be37974db1f6351b0eb33a98c95cc8fe43b"
+}

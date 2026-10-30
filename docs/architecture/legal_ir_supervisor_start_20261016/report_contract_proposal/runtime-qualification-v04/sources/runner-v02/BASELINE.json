@@ -1,0 +1,12 @@
+{
+  "schema": "legal-ir-explicit-callable-runner-baseline@1",
+  "source_only": true,
+  "baseline": {
+    "path": "/home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "bytes": 636526,
+    "sha256": "d23b34181bc376f418e024c10d7b741c9fe2657572c27035f146063482c5c898"
+  },
+  "proposed_runner": "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+  "scope": "Primary-only explicit callable inputs; native/accepted outcome authority belongs to actual H caller.",
+  "runtime_or_tests_executed": false
+}

@@ -1,0 +1,19 @@
+{
+  "actual_exec_chunk_id": "7555c4",
+  "actual_exec_exit_code": 0,
+  "actual_exec_session": null,
+  "actual_phase_released": true,
+  "actual_root_released": true,
+  "canonical_tasks_accepted": 0,
+  "controlled_testcases": 65,
+  "errors": 0,
+  "failures": 0,
+  "native_end_to_end_acceptance_qualified": false,
+  "provider_calls_performed": false,
+  "qualified_source_manifests": {
+    "native-regression-v05": "d5049a12a0622c7f4b9462db7657c3920130ed4c59a17919a0f2e440bb372313",
+    "native-regression-v05-tests": "d22b69c666ba89c97956c02794aaed9db4849cc6129bec7392c15428c970c1a4",
+    "real-candidate-binding-v01": "8ef2a9764206819e2980114e662cc24c194aac7651420c085d28fd6c709008d7"
+  },
+  "schema": "legal-ir-additional-source-controls-root-observation@1"
+}

@@ -1,0 +1,22 @@
+{
+  "acceptance_authority": false,
+  "actual_completion_chunk": "8c697f",
+  "actual_exec_exit_code": 0,
+  "actual_native_terminal": {
+    "child_returncode": 0,
+    "failure_type": null,
+    "native_finalized": true,
+    "status": "completed"
+  },
+  "actual_tool_session": 45039,
+  "canonical_tasks_accepted": 0,
+  "capsule_manifest_sha256": "96ad22743580b53b07a5bc8d53ae9fc5fcf7dc7eff692e80c14a9f0a7a566e55",
+  "capsule_payload_bytes": 106772927,
+  "capsule_payload_files": 2807,
+  "original_native_preparation_finalized": true,
+  "preparation_result_sha256": "3cb47278c67833f53440ca01e61ef9df274d3b398577fe7a997f9b07b063e35c",
+  "receipt_sha256": "686ea270f3269f44abfe37c8d74162d1ceecaca753d0839f0830127f58c49485",
+  "schema": "legal-ir-callable-capsule-root-observation@1",
+  "source_manifest_sha256": "bddccbde3f4b76131cec93ce71fd88e6f79264475bbb99ae9aade14dc170a0c7",
+  "source_request_sha256": "3eb3c2eea54afb431851f8a84dc920984fdde523cc9cb020b7c455daadabe1b7"
+}

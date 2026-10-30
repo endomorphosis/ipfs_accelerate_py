@@ -1,0 +1,31 @@
+{
+  "schema": "legal-ir-borrowed-state-qualification-plan@1",
+  "status": "source_authored_actual_qualification_pending",
+  "cold_source_cases": 8,
+  "real_private_database_cases": 18,
+  "additional_backend_profile_subcases": 5,
+  "qualification_entry": "qualify_borrowed_state.py",
+  "manifest_sha256_is_runtime_cli_argument": true,
+  "actual_connection_producer": "original open_duckdb_connection(prefer_quack=False)",
+  "actual_original_PortalTaskState_class_selected_verbatim": true,
+  "full_daemon_module_imported": false,
+  "fixture_does_not_qualify_root_defensive_class_patch": true,
+  "native_admission": {
+    "producer": "original run_image_owner_v05.py",
+    "purpose": "controller_preparation",
+    "cpus": 1,
+    "memory_mb": 4096,
+    "child_process_slots": 8,
+    "storage_bytes": 536870912,
+    "duration_seconds": 1800,
+    "external_output_charges": [],
+    "global_policy_changes": false
+  },
+  "scope": "Selected real private DuckDB/state components and cold source contracts only",
+  "provider_calls_performed": false,
+  "canonical_tasks_accepted": 0,
+  "acceptance_authority": false,
+  "production_hook_deployed": false,
+  "author_runtime_jobs_performed": false,
+  "github_qualification_skipped": true
+}

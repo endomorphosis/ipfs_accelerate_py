@@ -1,0 +1,12 @@
+{
+  "schema": "legal-ir-attempt-preservation-publication-config@1",
+  "expected_accelerator_head": "24af767c2587d82be03623c0d8a1ce19e1d902aa",
+  "expected_branch": "agent/legal-ir-ordinary-worker-20261016",
+  "push": true,
+  "worker_manifest_sha256": "fe107abb04e1dc01b56c90327cf389a38d2225235f8b38469a1da3e19bc4fb81",
+  "prior_memory_observation": {
+    "absolute_path": "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/repair-controls-root-observation.json",
+    "bytes": 1497,
+    "sha256": "2055a05e77167dc3934f505d9fa4a8774ae0ad01bbedbe5e01074fcc0b968c41"
+  }
+}

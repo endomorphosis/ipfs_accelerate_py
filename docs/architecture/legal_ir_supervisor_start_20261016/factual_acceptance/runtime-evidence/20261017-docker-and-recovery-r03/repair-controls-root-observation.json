@@ -1,0 +1,34 @@
+{
+  "schema": "legal-ir-repair-controls-root-observation@1",
+  "actual_exec_session": 81356,
+  "actual_exec_exit_code": 0,
+  "controlled_testcases": 82,
+  "retry_policy_testcases": 51,
+  "archival_protocol_testcases": 31,
+  "actual_console_summary": "82 passed in 2.93s",
+  "source_request_sha256": "0d456bd04fe1b53c97751405e34ca51af66ec4ccfc587bd173ec1c01b4cc8b6b",
+  "actual_native_terminal": {
+    "schema": "legal-ir-stdout-native-policy-controls-terminal@1",
+    "controlled_testcases": 82,
+    "returncode": 0,
+    "passed": true,
+    "source_request_sha256": "0d456bd04fe1b53c97751405e34ca51af66ec4ccfc587bd173ec1c01b4cc8b6b",
+    "actual_root_released": true,
+    "actual_phase_released": true,
+    "filesystem_test_outputs_requested": false,
+    "native_disk_grant_claimed": false,
+    "provider_calls_performed": false,
+    "root_lease_id": "e3d1b3b8195b4220a625c4eb923d04a9",
+    "phase_lease_id": "85aa34fa5fa140e5934814ec9c4cc325"
+  },
+  "prior_retry_controls_run": {
+    "actual_exec_session": 23817,
+    "actual_exec_exit_code": 1,
+    "passed_cases": 50,
+    "failed_cases": 1,
+    "source_request_sha256": "462a15581dc6dba50c6d28b67238dabcdc11f44bed15bc6a2bc832f3b918dce0",
+    "reason": "test identity missing board_namespace and missing logging namespace; product patch unchanged in corrected controls"
+  },
+  "archival_qualification_scope": "pure planning/restoration/capacity controls; actual filesystem/native archival separately required",
+  "canonical_tasks_accepted": 0
+}

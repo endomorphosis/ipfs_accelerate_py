@@ -1,0 +1,362 @@
+--- /home/barberb/lift_coding/artifacts/legal-ir-real-handoff-20261017-01/ordinary-success-hook-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py
+@@ -19,7 +19,7 @@
+ import subprocess
+ import sys
+ import tempfile
+-from types import MappingProxyType
++from types import MappingProxyType, FunctionType
+ import uuid
+ 
+ _ACTIVE = ContextVar("ordinary_success_handoff", default=None)
+@@ -62,7 +62,7 @@
+     The caller must not unwind native parents until independent cleanup proves
+     quiescence. Legacy watchdog group is distinct from attached transport.
+     """
+-    def __init__(self, owner, watchdog_owner, leases, processes, fence, daemon_id, runtime):
++    def __init__(self, owner, watchdog_owner, leases, processes, fence, daemon_id, runtime, *, custody_hold=None, private_allocations=()):
+         super().__init__("actual_ordinary_allocations_require_retained_native_custody")
+         self.actual_owner = owner
+         self.actual_watchdog_owner = watchdog_owner
+@@ -71,6 +71,8 @@
+         self.actual_container_fence = _readonly(fence) if fence is not None else None
+         self.actual_daemon_id = daemon_id
+         self.actual_runtime = _readonly(runtime) if runtime is not None else None
++        self.actual_custody_hold = custody_hold
++        self.actual_private_allocations = tuple(private_allocations)
+ 
+     def __reduce__(self):
+         raise OrdinaryHandoffRefusal("actual_custody_references_not_serializable")
+@@ -144,6 +146,7 @@
+     container_name: str
+     actual_returncode: int
+     watchdog_owner: object
++    callable_invocation: object = None
+     observation_only: bool = True
+     native_validation_qualified: bool = False
+     acceptance_authority: bool = False
+@@ -293,6 +296,7 @@
+     need(type(pins) is dict and all(type(path) is str and type(value) is str and _SHA.fullmatch(value) for path, value in pins.items()),
+          "exact_handoff_source_pins_required")
+     paths = {str(Path(__file__).absolute()), str(runner_path),
++             str(Path(__file__).with_name("ordinary_custody_hold.py").absolute()),
+              str(runner_path.with_name("process_security.py")), "/usr/bin/docker", str(Path(sys.executable).resolve())}
+     for name in ("parented_phase_resources", "autoencoder_daemon_resources", "existing_resource_scheduler", "resource_scheduler"):
+         module = sys.modules.get(_NATIVE + name)
+@@ -331,6 +335,14 @@
+         self.gated_create = None
+         self.external_storage = tuple(dict(row) for row in external_storage)
+         self.allocated_leases = []
++        self.invocation = None
++        self.custody_hold = None
++        self.custody_module = None
++        self.callback_outcome = None
++        self.runner_entered = False
++        self.creation_intents = set()
++        self.known_created = {}
++        self.private_allocations = []
+ 
+     def guard_live(self):
+         # Main-thread bounded I/O calls this between <=0.5s select/wait slices.
+@@ -478,14 +490,24 @@
+             self.provider_id, self.model, self.effort, self.trigger,
+             getattr(invocation, "invocation_id", "") if invocation is not None else "", process,
+             self.fence["init_pid"], scope["start_time_ticks"], _readonly(self.fence), self.daemon_id, cid, name, actual_returncode,
+-            self.watchdog_owner)
++            self.watchdog_owner, callable_invocation=self.invocation)
+ 
+     def reap_observed_transport_after_failure(self):
+         # Existing _run owns Docker cleanup. Never signal a reused PID or
+         # blindly call close again. Capture actual references on unknown state.
+-        pending = False
++        pending = bool(self.creation_intents - set(self.known_created))
++        unresolved_scope = self.processes and not (type(self.fence) is dict
++                and type(self.fence.get("init_pid")) is int and self.fence["init_pid"] > 1
++                and bool(self.fence.get("kernel_scope")))
++        if unresolved_scope:
++            pending = True
+         for process in self.processes:
+             if type(process) is subprocess.Popen:
++                if unresolved_scope:
++                    # Preserve the original gate input while its real init is
++                    # still available for trusted stopped-cleanup observation.
++                    # EOF here would erase that observation opportunity.
++                    continue
+                 try:
+                     process.wait(timeout=5)
+                 except subprocess.TimeoutExpired:
+@@ -539,7 +561,8 @@
+                     pending = True
+         if pending:
+             raise OrdinaryCustodyPending(self.owner, self.watchdog_owner, self.allocated_leases,
+-                                         self.processes, self.fence, self.daemon_id, self.runtime)
++                                         self.processes, self.fence, self.daemon_id, self.runtime,
++                                         custody_hold=self.custody_hold, private_allocations=self.private_allocations)
+ 
+ 
+ def _release_primary_start_and_close_stdin(stream):
+@@ -692,7 +715,9 @@
+ 
+ 
+ def run_ordinary_with_success_handoff(args, receipt_fd, *, owner=None, watchdog_owner=None,
+-                                      source_sha256=None, declared_external_storage=None, on_success=None):
++                                      source_sha256=None, declared_external_storage=None, on_success=None,
++                                      invocation=None, custody_hold=None, custody_source_sha256=None,
++                                      before_run=None):
+     """Run one primary-only actual ordinary invocation and hand off after fence.
+ 
+     The caller already holds genuine finite owner admission including storage,
+@@ -702,23 +727,33 @@
+     Required callback exceptions propagate; they cannot return successful exit.
+     """
+     if on_success is None:
++        need(invocation is None and custody_hold is None and custody_source_sha256 is None
++             and before_run is None, "explicit_callable_handoff_requires_success_callback")
+         runner = importlib.import_module("ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner")
+         return runner._run(args, receipt_fd)
+     need(callable(on_success), "explicit_required_success_callback")
+     need(_current() is None, "nested_ordinary_handoff_forbidden")
+     need(sys.dont_write_bytecode is True, "native_host_no_bytecode_required")
++    need(type(source_sha256) is dict and 1 <= len(source_sha256) <= 128,
++         "finite_exact_callable_source_closure_required")
++    for spelling, digest in source_sha256.items():
++        _read_pinned(spelling, digest)
++    _verify_callback_source(on_success, source_sha256)
++    if before_run is not None:
++        _verify_callback_source(before_run, source_sha256)
+     _guard_owner(owner)
+     _guard_owner(watchdog_owner, watchdog=True)
+     need(owner is not watchdog_owner, "distinct_sibling_native_owners_required")
+     check_owner_pair_projection(owner.to_dict(), watchdog_owner.to_dict())
+-    check_primary_only_options(args, receipt_fd)
++    need(invocation is not None, "explicit_ordinary_callable_invocation_required")
++    check_primary_only_options(args, receipt_fd, environment=invocation.environment)
+     declarations = check_external_storage_declarations(owner.to_dict(), declared_external_storage)
+     for spelling, _size in declarations:
+         declared_path = Path(spelling)
+         need(declared_path.is_dir() and declared_path.resolve(strict=True) == declared_path
+              and not any(path.is_symlink() for path in (declared_path, *declared_path.parents)),
+              "actual_unaliased_external_storage_required")
+-    for path in (Path(args.workspace).resolve(strict=True), Path(tempfile.gettempdir()).resolve(strict=True)):
++    for path in (Path(args.workspace).resolve(strict=True), Path(invocation.temporary_root).resolve(strict=True)):
+         need(path != owner.directory and owner.directory not in path.parents
+              and any(Path(root) == path or Path(root) in path.parents for root, _bytes in declarations),
+              "actual_workspace_and_provider_temp_precharge_required")
+@@ -727,9 +762,21 @@
+     runner = importlib.import_module("ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner")
+     need(Path(runner.__file__).absolute() == runner_path, "actual_source_pinned_runner_required")
+     _verify_sources(owner, source_sha256, runner_path)
++    need(type(invocation) is runner.OrdinaryCallableInvocation,
++         "actual_explicit_ordinary_invocation_type_required")
++    need(Path(args.workspace).absolute() == invocation.cwd,
++         "actual_explicit_workspace_identity_required")
++    _check_output_storage(owner, invocation, declarations)
++    custody_path = Path(__file__).with_name("ordinary_custody_hold.py").absolute()
++    need(type(custody_source_sha256) is dict and all(source_sha256.get(path) == digest
++         for path, digest in custody_source_sha256.items()), "exact_custody_source_closure_join_required")
++    custody = importlib.import_module("ipfs_accelerate_py.agent_supervisor.runtime.ordinary_custody_hold")
++    need(Path(custody.__file__).absolute() == custody_path, "actual_source_pinned_custody_module_required")
++    custody.verify_source_pins(custody_source_sha256)
++    custody.require_bound_ordinary_custody_hold(custody_hold, primary_owner=owner, watchdog_owner=watchdog_owner)
+     workspace = Path(args.workspace).resolve(strict=True)
+-    router = importlib.import_module("ipfs_accelerate_py.llm_router")
+-    selected_binary = str(getattr(args, "grok_bin", "") or "").strip() or router.find_grok_cli() or ""
++    selected_binary = str(getattr(args, "grok_bin", "") or "").strip()
++    need(selected_binary, "explicit_trusted_grok_binary_required")
+     trusted_binary = runner._resolve_trusted_grok_bin(configured=selected_binary, workspace=workspace)
+     need(trusted_binary and trusted_binary in source_sha256, "actual_trusted_grok_binary_pin_required")
+     _read_pinned(Path(trusted_binary), source_sha256[trusted_binary])
+@@ -738,16 +785,189 @@
+     bound_args = argparse.Namespace(**vars(args))
+     bound_args.workspace, bound_args.grok_bin, bound_args.model = workspace, trusted_binary, "grok-4.7"
+     lifecycle = _Lifecycle(owner, watchdog_owner, dict(source_sha256), runner, uuid.uuid4().hex, declared_external_storage)
++    lifecycle.invocation, lifecycle.custody_hold, lifecycle.custody_module = invocation, custody_hold, custody
++    custody.retain_ordinary_custody_references(custody_hold, (lifecycle, invocation))
+     token = _ACTIVE.set(lifecycle)
+     try:
+-        result = runner._run(bound_args, receipt_fd)
++        runner.validate_ordinary_callable_invocation(bound_args, receipt_fd, invocation)
++        if before_run is not None:
++            need(before_run() is None, "before_run_must_return_none_or_raise")
++        lifecycle.runner_entered = True
++        result = runner._run(bound_args, receipt_fd, callable_invocation=invocation)
+         if type(result) is not int or result != 0:
+             return result
+         outcome = lifecycle.finish(result)
+-        callback_result = on_success(outcome)
++        lifecycle.callback_outcome = outcome
++        try:
++            callback_result = on_success(outcome)
++        finally:
++            lifecycle.callback_outcome = None
+         need(callback_result is None, "required_success_callback_must_return_none")
+         _verify_sources(owner, source_sha256, runner_path)
+         return result
+     finally:
+-        _ACTIVE.reset(token)
+-        lifecycle.reap_observed_transport_after_failure()
++        lifecycle.callback_outcome = None
++        try:
++            _acknowledge_independently_stopped_custody(lifecycle)
++        finally:
++            _ACTIVE.reset(token)
++
++
++def _verify_callback_source(callback, pins):
++    need(type(callback) is FunctionType, "source_pinned_plain_host_callback_required")
++    module = sys.modules.get(callback.__module__)
++    path = Path(callback.__code__.co_filename).absolute()
++    need(module is not None and getattr(module, "__file__", None)
++         and Path(module.__file__).absolute() == path and str(path) in pins,
++         "actual_host_callback_source_pin_required")
++    _read_pinned(path, pins[str(path)])
++
++
++def _check_output_storage(owner, invocation, declarations):
++    for path in (invocation.stdout_path, invocation.stderr_path):
++        need(path.is_absolute() and path.resolve(strict=True) == path
++             and not any(part.is_symlink() for part in (path, *path.parents)),
++             "actual_unaliased_callable_output_required")
++        need(owner.directory in path.parents or any(Path(root) in path.parents
++             for root, _bytes in declarations), "actual_callable_output_precharge_required")
++
++
++def ordinary_callable_context_required(invocation):
++    """Guard actual same-process callable admission before allocation/start."""
++    current = _current()
++    need(current is not None and current.invocation is invocation and invocation is not None
++         and current.custody_module is not None and current.custody_hold is not None,
++         "actual_admitted_callable_context_required")
++    current.custody_module.require_bound_ordinary_custody_hold(current.custody_hold,
++        primary_owner=current.owner, watchdog_owner=current.watchdog_owner)
++    for owner in (current.owner, current.watchdog_owner):
++        need(owner.heartbeat(), "actual_callable_owner_heartbeat_failed")
++        owner.check_usage(owner.directory)
++
++
++def ordinary_provider_guard():
++    current = _current()
++    need(current is not None and current.invocation is not None,
++         "actual_callable_provider_guard_required")
++    current.guard_live()
++
++
++def ordinary_private_allocations_created(isolated_home, prompt_path):
++    current = _current()
++    if current is None or not current.task_active:
++        return
++    # Retain the ORIGINAL TemporaryDirectory before any fallible check. Its
++    # finalizer must not erase custody paths when caller frames unwind.
++    current.private_allocations.append((isolated_home, Path(prompt_path)))
++    need(type(isolated_home) is tempfile.TemporaryDirectory,
++         "actual_original_private_home_owner_required")
++    root = current.invocation.temporary_root
++    for path in (Path(isolated_home.name), Path(prompt_path)):
++        need(root == path.parent and path.resolve(strict=True) == path
++             and not any(item.is_symlink() for item in (path, *path.parents)),
++             "actual_precharged_private_allocation_required")
++
++
++def ordinary_container_creation_started(lease, command):
++    current = _current()
++    if current is None:
++        return
++    need(current.task_active and lease is current.selected_lease
++         and id(lease) in current.leases and current.gated_create == tuple(command)
++         and id(lease) not in current.creation_intents,
++         "actual_single_bound_creation_intent_required")
++    current.creation_intents.add(id(lease))
++
++
++def ordinary_container_created(lease, container_id):
++    current = _current()
++    if current is None:
++        return
++    need(lease is current.selected_lease and id(lease) in current.creation_intents
++         and id(lease) not in current.known_created and type(container_id) is str
++         and re.fullmatch("[0-9a-f]{64}", container_id)
++         and lease.cidfile.read_text(encoding="ascii").strip() == container_id,
++         "actual_created_container_correspondence_required")
++    current.known_created[id(lease)] = container_id
++
++
++def ordinary_allocation_close_permitted(lease):
++    current = _current()
++    if current is None:
++        return True
++    if lease is not current.selected_lease or id(lease) not in current.leases:
++        return False
++    if id(lease) in current.creation_intents and id(lease) not in current.known_created:
++        return False
++    if current.processes and not (type(current.fence) is dict
++            and type(current.fence.get("init_pid")) is int and current.fence["init_pid"] > 1
++            and current.fence.get("kernel_scope")):
++        return False
++    return True
++
++
++def require_active_ordinary_success(outcome):
++    """Authenticate this actual callback scope; never task/acceptance authority.
++
++    Constructing or copying a dataclass cannot satisfy object identity with the
++    original source-pinned lifecycle's currently executing callback argument.
++    The daemon separately joins original task/attempt/board/commit identities.
++    """
++    current = _current()
++    need(current is not None and current.callback_outcome is outcome
++         and type(outcome) is OrdinaryProviderSuccess and current.invocation is not None
++         and outcome.callable_invocation is current.invocation
++         and outcome.owner is current.owner and outcome.watchdog_owner is current.watchdog_owner
++         and outcome.execution_id == current.execution_id and outcome.route is current.route,
++         "actual_active_original_success_callback_required")
++    check_success_order(current.events)
++    need(current.closed and current.returncode == 0 and len(current.processes) == 1
++         and outcome.transport_process is current.processes[0]
++         and outcome.transport_process.poll() == 0,
++         "actual_original_success_transport_required")
++    current.custody_module.require_bound_ordinary_custody_hold(current.custody_hold,
++        primary_owner=current.owner, watchdog_owner=current.watchdog_owner)
++    _verify_sources(current.owner, current.source_sha256, Path(current.runner.__file__).absolute())
++    current.reap_observed_transport_after_failure()
++
++
++def _pending_custody(current):
++    return OrdinaryCustodyPending(current.owner, current.watchdog_owner, current.allocated_leases,
++        current.processes, current.fence, current.daemon_id, current.runtime,
++        custody_hold=current.custody_hold, private_allocations=current.private_allocations)
++
++
++def _acknowledge_independently_stopped_custody(current):
++    try:
++        current.reap_observed_transport_after_failure()
++        if not current.runner_entered:
++            need(not current.processes and not current.allocated_leases and current.gated_create is None
++                 and not current.private_allocations and not current.creation_intents,
++                 "actual_known_unstarted_scope_required")
++            for owner in (current.owner, current.watchdog_owner):
++                public = owner.to_dict()
++                need(public["record"].get("child") is None
++                     and public["record"].get("prior_children", []) == [],
++                     "actual_known_unstarted_native_history_required")
++                need(owner.check_usage(owner.directory, full=True)["group_rss"]["live_processes"] == 0,
++                     "actual_known_unstarted_group_not_quiescent")
++        else:
++            # A runner-entry flag or missing lease is not zero-effect proof.
++            # Every productive path needs retained allocation correspondence.
++            need(bool(current.allocated_leases), "entered_runner_without_stopped_allocation_proof")
++            for home, prompt in current.private_allocations:
++                need(not os.path.lexists(home.name) and not os.path.lexists(prompt),
++                     "actual_original_private_allocation_remains")
++        _verify_sources(current.owner, current.source_sha256, Path(current.runner.__file__).absolute())
++        current.custody_module.require_bound_ordinary_custody_hold(current.custody_hold,
++            primary_owner=current.owner, watchdog_owner=current.watchdog_owner)
++        consumers = current.custody_module.held_native_consumers(current.custody_hold)
++        for consumer in consumers:
++            consumer.release()
++        current.custody_module.forget_acknowledged_custody_hold(current.custody_hold)
++    except OrdinaryCustodyPending:
++        raise
++    except BaseException as error:
++        # Original objects remain strongly held by the binder's registry.
++        # No second close, portable receipt, release permission or retry reset.
++        raise _pending_custody(current) from error

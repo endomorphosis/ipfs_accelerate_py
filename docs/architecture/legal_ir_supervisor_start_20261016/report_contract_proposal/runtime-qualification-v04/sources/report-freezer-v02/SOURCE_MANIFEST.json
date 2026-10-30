@@ -1,0 +1,94 @@
+{
+  "acceptance_authority": false,
+  "authored_control_cases": 68,
+  "authored_control_cases_by_file": {
+    "test_freezer_memory.py": 56,
+    "test_source_contract.py": 12
+  },
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "files": [
+    {
+      "bytes": 1236,
+      "path": "BASELINE.json",
+      "sha256": "15b905b4f55d31a3023d73ee673f735dcd9187cd982bc0d6357098cfc6fead36"
+    },
+    {
+      "bytes": 3215,
+      "path": "QUALIFICATION_PLAN.json",
+      "sha256": "74ef9d5e184343a91648c473fecca164d8c58df7d2d37cf977eae5960610d73e"
+    },
+    {
+      "bytes": 6991,
+      "path": "README.md",
+      "sha256": "c7212e5ffb8e47bb56c1eb0bbdfc93810c9572f4dcf4d27f65dbbd4a0e28c0b8"
+    },
+    {
+      "bytes": 9576,
+      "path": "build_patch.py",
+      "sha256": "6b87e6f63b42b970265daa3131042c9651b5fa9319f97314b3490ab478e2b7e4"
+    },
+    {
+      "bytes": 1513,
+      "path": "git_checkout_transaction.patch",
+      "sha256": "74f76fc4cb27d55006116abbf403317648c8e4a1d748eab5ea467830189ba9ea"
+    },
+    {
+      "bytes": 5637,
+      "path": "implementation_daemon.patch",
+      "sha256": "00d64b4c534690f440be390aa3a0e49955e387af6e036749aae13c2e62a86ed8"
+    },
+    {
+      "bytes": 41510,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_candidate_freezer.py",
+      "sha256": "3d1e6fba44aa9a4332f24c37749360e8bd56bbdbf57afac03f6769640fd461f1"
+    },
+    {
+      "bytes": 5872,
+      "path": "test_freezer_memory.py",
+      "sha256": "55f20c6c590e6507498e76ab5b63ce47f94446354dab8592d8273f299b469661"
+    },
+    {
+      "bytes": 10294,
+      "path": "test_source_contract.py",
+      "sha256": "924ba339fdbd1eaa7cb7b293ac9db01747d431747a3573b6db3cb4722e5b699c"
+    }
+  ],
+  "full_public_provider_callback_qualified": false,
+  "future_same_api_successors_require_actual_host_source_pins": true,
+  "git_calls_performed": false,
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/README.txt": "fc8648d0736427dc560d798b5cac328c7874ef69a6425b488884951b11bdbe88",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/SOURCE_MANIFEST.json": "f7d06829c5c49b45171baf8a5d80c9f28b91fb49950a4b42f6ca11f117693b18",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/ordinary_custody_hold.py.patch": "3013bfe37598f9a6081eb6c4dd366a29f336cfa74bdeec426a9ef47bb807fe90",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/ordinary_success_handoff.py.patch": "f3a38f2c56d4d228209b546d2aec78223fe9eb073f9dae5f62f895cfd73add9c",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_custody_hold.py": "a71db32d71712de3812a6f220d1238c2ffe0767ea267f7feb76125ba92e4a5fb",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py": "9666d65d6503934bc1b865fefa52a02c514ea468c1c2af96c9842fe31cc93eae",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/test_callable_handoff_refusals.py": "65097bb9bf40448890335a8f123e6d1a5725e75664c7d67a1ee1a3928eb5b145",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/test_custody_hold_memory.py": "12e8c6afc9b67bfc72f264c563ca128a6be7571661e37e6d51311c50a1708c9b",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v02/test_handoff_memory.py": "7a665945fa60024ab5ab24c4427c73d2d8d01893062ec563fbcd6b6bbddb01e2",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/BASELINE.json": "04b867424871e6ccea9f1fa86227cf1fd68c0470bb6105a06c78a105ef677539",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/README.txt": "10b38f517a8f44e18820bc865dceab4f878f82836abfb1bba7a504340ca20670",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/SOURCE_MANIFEST.json": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/proposed/ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": "6bc26dc792b7994ea73e12e92d20949caf62b85940badf6a2d594cb3388a7706",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/runner-v02.patch": "3e65c0bb90ab0490a991765839f901960683921b0ac660590e8cd8983586d37f",
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/runner-v02/test_callable_contract.py": "62074232f0c444754dbc7c636f3c2e24ca5107c01873b60d3f657e4e495eb43f",
+    "/home/barberb/lift_coding/artifacts/legal-ir-completion-recovery-20261017-01/acceptance-adapter/adapter-v02/tests/fixtures/bootstrap/tasks.todo.md": "5244288f69562663f44b00d27add1ee6ef338f977fed1c0e1c8855725ff372c7",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/merge/git_checkout_transaction.py": "bdf01fc5f0a9ebb5f3ce5fac0a2319d44aac25b99f804af98cddb6830ac2076a",
+    "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues/legal-ir-ordinary-worker-20261016-01/controller/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed"
+  },
+  "native_jobs_started": false,
+  "passed_control_cases": null,
+  "patches_applied": false,
+  "product_sources_mutated": false,
+  "provider_calls_performed": false,
+  "schema": "legal-ir-report-freezer-source@2",
+  "source_ast_checked": true,
+  "source_patch_assembly_performed": true,
+  "status": "frozen_source_proposal_unexecuted",
+  "tests_executed": false,
+  "upstream_api_review_source_manifests": {
+    "handoff-v02": "f7d06829c5c49b45171baf8a5d80c9f28b91fb49950a4b42f6ca11f117693b18",
+    "runner-v02": "b56ff4909d5b8adb6ffe9521fbfc96e60376d6d41b19dde1b0bddb7775757c6e"
+  }
+}

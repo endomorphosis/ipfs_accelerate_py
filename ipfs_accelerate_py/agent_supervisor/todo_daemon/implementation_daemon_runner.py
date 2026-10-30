@@ -1317,6 +1317,7 @@ def bind_database_portal_execution_from_args(
             manual_completion_authority_revalidation_only=bool(
                 getattr(parsed, "manual_completion_authority_revalidation_only", False)
             ),
+            preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
             objective_path=parsed.objective_path or default_objective_path,
             objective_bundle_dir=(
                 parsed.objective_bundle_dir or default_objective_bundle_dir
@@ -1461,6 +1462,7 @@ def build_portal_implementation_daemon_from_args(
             queue_path=None,
             require_real_execution=bool(getattr(parsed, "implement", False)),
             max_task_attempts=int(getattr(parsed, "max_task_attempts", 0)),
+            preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
             execution_slice_task_cids=tuple(getattr(parsed, "execution_slice_task_cid", ()) or ()),
             execution_slice_task_ids=tuple(getattr(parsed, "execution_slice_task_id", ()) or ()),
             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
@@ -1568,6 +1570,7 @@ def build_portal_implementation_daemon_from_args(
         manual_completion_authority_revalidation_only=(
             authority_revalidation_only
         ),
+        preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
         execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
@@ -1626,6 +1629,7 @@ def build_database_implementation_daemon_from_args(
         authority_mode=authority_mode,
         task_source_kind=task_source_kind,
         quack_uri=str(getattr(parsed, "quack_endpoint", "") or ""),
+        preserve_task_attempts=bool(getattr(parsed, "preserve_task_attempts", False)),
         provider_fn=provider_fn,
         effect_fn=effect_fn,
         validation_fn=validation_fn,

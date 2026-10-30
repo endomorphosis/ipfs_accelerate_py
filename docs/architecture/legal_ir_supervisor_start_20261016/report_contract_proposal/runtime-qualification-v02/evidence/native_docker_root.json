@@ -1,0 +1,50 @@
+{
+  "actual_exec_exit_code": 0,
+  "actual_exec_session": 16091,
+  "actual_full_native_v05_fixture_passed": true,
+  "actual_native_terminal": {
+    "actual_preparation_finalized": true,
+    "outcome": {
+      "actual_container_exit_and_cleanup_verified": true,
+      "actual_handle_consumed_once": true,
+      "actual_kernel_backend": "source-bound-ordinary-A91-Docker",
+      "actual_native_validation_finalized": true,
+      "actual_separate_orchestration_finalized": true,
+      "fixture_board_published": true,
+      "fixture_publication": {
+        "completed_board_sha256": "96a7619583da9ff96a05d3ae51fcdb732337312fc98a7978ed4c5d82770743a2",
+        "event_id": "sha256:f0023fad36e2e61d56d6773d46627f42e60c73cce5708f4a607aacca9fe35ac8",
+        "native_controller": {
+          "disk_native_lease_id": "bce9dd81457843e6ac62bc30343f9745",
+          "disk_reservation_id": "6578dd5bcd7a4a54b621b29a9eb98d13",
+          "owner_pid": 231059,
+          "phase_lease_id": "bc428df7028e4a8ba16ea6c54ceebe53",
+          "root_lease_id": "a35bd3f0b9474174ad191b34a14f4ce8"
+        },
+        "next_phase_activated": false,
+        "scope": "Exact frozen engineering-source factual acceptance only",
+        "task_attempt_counters_modified": false,
+        "task_id": "LIR-9001",
+        "updated": true
+      },
+      "provider_calls_performed": false,
+      "real_LIR_task_accepted": false,
+      "scope": "synthetic-native-acceptance-regression-only"
+    },
+    "provider_calls_performed": false,
+    "real_LIR_task_accepted": false,
+    "request_sha256": "4130d2adba4c5202353109b7c3be810f0b788ceae1b97b73d18cd10a6a9d55f0",
+    "schema": "legal-ir-native-docker-fixture-entry-terminal@4",
+    "scope": "synthetic-native-acceptance-regression-only"
+  },
+  "canonical_tasks_accepted": 0,
+  "old_failures_rewritten": false,
+  "policy_changed": false,
+  "provider_calls_performed": false,
+  "regression_manifest_sha256": "d5049a12a0622c7f4b9462db7657c3920130ed4c59a17919a0f2e440bb372313",
+  "schema": "legal-ir-native-v05-fixture-root-observation@1",
+  "source_request_sha256": "4130d2adba4c5202353109b7c3be810f0b788ceae1b97b73d18cd10a6a9d55f0",
+  "synthetic_fixture_only": true,
+  "terminal_provenance": "Root-observed successful exec16091 terminal; exact outcome also verified against genuine producer pre-closeout artifact. Actual preparation finalization is established by terminal/exit0, not pre-closeout pending metadata.",
+  "terminal_sha256": "65e58ab7c88d99be436d584890a0e203ddeef065901a749e0c04d6dd57e19a01"
+}

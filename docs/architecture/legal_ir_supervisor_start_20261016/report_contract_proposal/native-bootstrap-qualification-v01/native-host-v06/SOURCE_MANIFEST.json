@@ -1,0 +1,21 @@
+{
+  "acceptance_authority": false,
+  "files": [
+    {
+      "bytes": 940,
+      "path": "PIN_CHANGE.json",
+      "sha256": "a6d6ab7e61d7c9601e297e97a95ed80211aea2dfcf9308cd15bca7d7fe1f4b13"
+    },
+    {
+      "bytes": 33273,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "sha256": "1fb433c29462fc65c15a2ea6be74cfc4c0f816c04d9a4ff95f3fc88a3e47ac0c"
+    }
+  ],
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/native-host-v05/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py": "2b38d5a93c8e71ed02a5d52c1624a5b0a3a2a0dc759bace2b571aec6c0e956b6"
+  },
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-bootstrap-pin-source@1",
+  "tests_executed": false
+}

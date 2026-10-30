@@ -1,0 +1,221 @@
+# Source appended by build_sources.py to the exact frozen H3 baseline.
+class AuthenticatedOrdinaryCallback:
+    """Opaque actual same-callback identity; never admission or portable proof."""
+    __slots__ = ()
+    def __new__(cls, *args, **kwargs):
+        raise OrdinaryHandoffRefusal('internal_authenticated_callback_constructor_only')
+    def __reduce__(self):
+        raise OrdinaryHandoffRefusal('authenticated_callback_not_serializable')
+    def __copy__(self):
+        raise OrdinaryHandoffRefusal('authenticated_callback_not_copyable')
+    def __deepcopy__(self, memo):
+        raise OrdinaryHandoffRefusal('authenticated_callback_not_copyable')
+
+
+_AUTHENTICATED_CALLBACKS = {}
+_ORDINARY_PENDING = {}
+_UNSTARTED_ACKNOWLEDGMENTS = {}
+
+
+def _actual_process_row(pid):
+    try:
+        raw = (Path('/proc') / str(pid) / 'stat').read_text()
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+    fields = raw.rsplit(')', 1)[1].split()
+    need(len(fields) >= 22, 'actual_original_process_row_required')
+    return dict(pid=pid, state=fields[0], parent=int(fields[1]), group=int(fields[2]), birth=fields[19])
+
+
+def _capture_native_group(current, owner, process):
+    need(type(process) is subprocess.Popen and process.poll() is None, 'actual_live_original_Popen_required')
+    row = _actual_process_row(process.pid)
+    need(row is not None and row['parent'] == os.getpid() and row['group'] == process.pid,
+         'actual_owned_isolated_original_group_required')
+    current.original_groups[id(owner)] = (owner, process, row['birth'])
+
+
+def _original_native_groups_stopped(current):
+    for owner in (current.owner, current.watchdog_owner):
+        retained = current.original_groups.get(id(owner))
+        record = owner.to_dict()['record']
+        if retained is None:
+            expected = current.processes if owner is current.owner else current.allocated_leases
+            need(not expected and record.get('child') is None and record.get('prior_children', []) == [],
+                 'original_unstarted_native_group_required')
+            continue
+        actual_owner, process, birth = retained
+        need(actual_owner is owner and type(process) is subprocess.Popen and type(process.poll()) is int,
+             'original_actual_process_not_reaped')
+        leader = _actual_process_row(process.pid)
+        need(leader is None or leader['birth'] == birth, 'original_process_PID_reused')
+        entries = list(Path('/proc').iterdir())
+        need(len(entries) <= 100000, 'bounded_original_group_census_required')
+        for entry in entries:
+            if entry.name.isdecimal():
+                row = _actual_process_row(int(entry.name))
+                need(row is None or row['group'] != process.pid or row['state'] == 'Z',
+                     'original_native_group_still_alive')
+
+
+def _ordinary_admin_capacity(current):
+    """Retained phase capacity only; no admin attachment/hard-quota claim."""
+    need(current.primary_native.owner_pid == os.getpid() and current.owner_thread == threading.get_ident(),
+         'original_same_PID_thread_cleanup_required')
+    if current.freezer_scope is not None:
+        need(current.freezer_scope['lease'].released, 'Docker_queries_forbidden_while_freezer_owner_held')
+    record = current.owner.to_dict()['record']
+    existing = importlib.import_module(_NATIVE + 'existing_resource_scheduler')
+    scheduler = existing.open_existing_scheduler(Path(record['scheduler_state_path']), record['scheduler_policy_sha256'])
+    rows = scheduler.active_leases()
+    phase_id = current.primary_native.parent_lease_id
+    phase = next((row for row in rows if row['lease_id'] == phase_id), None)
+    children = [row for row in rows if row.get('parent_lease_id') == phase_id]
+    need(phase is not None and phase.get('owner_pid') == os.getpid()
+         and sum(row.get('child_process_slots', 0) for row in children) + 1 <= phase['child_process_slots']
+         and sum(row.get('cpu_slots', 0) for row in children) + 1 <= phase['cpu_slots'],
+         'one_cooperative_phase_admin_slot_required_before_Docker_query')
+
+
+def _retain_ordinary_pending(current):
+    if current.stopped_pending is None:
+        pending = OrdinaryCustodyPending(current.owner, current.watchdog_owner, current.allocated_leases,
+            current.processes, current.fence, current.daemon_id, current.runtime,
+            custody_hold=current.custody_hold, private_allocations=current.private_allocations)
+        pending.actual_lifecycle = current
+        current.stopped_pending = pending
+        _ORDINARY_PENDING[pending] = current
+    return current.stopped_pending
+
+
+def authenticate_ordinary_callback_for_freezer(outcome):
+    """Do every original Docker/source/kernel check BEFORE admitting freezer4."""
+    current = _current()
+    need(current is not None and current.freezer_scope is None and current.callback_capture is None,
+         'fresh_original_callback_authentication_required')
+    _ordinary_admin_capacity(current)
+    require_active_ordinary_success(outcome)
+    need(len(_AUTHENTICATED_CALLBACKS) < 128, 'bounded_actual_callback_registry_required')
+    capture = object.__new__(AuthenticatedOrdinaryCallback)
+    _AUTHENTICATED_CALLBACKS[capture] = dict(current=current, outcome=outcome, pid=os.getpid(),
+                                            thread=threading.get_ident(), used=False)
+    current.callback_capture = capture
+    return capture
+
+
+def discard_unused_authenticated_callback(capture):
+    entry = _AUTHENTICATED_CALLBACKS.get(capture)
+    current = _current()
+    need(entry is not None and entry['current'] is current and current.callback_capture is capture
+         and not entry['used'] and current.freezer_scope is None
+         and current.callback_outcome is entry['outcome'], 'actual_unused_same_callback_capture_required')
+    current.callback_capture = None
+    del _AUTHENTICATED_CALLBACKS[capture]
+
+
+@contextmanager
+def authenticated_ordinary_freezer_scope(capture, *, freezer_owner):
+    """Consume actual callback capture; no Docker queries while freezer held."""
+    need(type(capture) is AuthenticatedOrdinaryCallback and capture in _AUTHENTICATED_CALLBACKS,
+         'actual_authenticated_callback_capture_required')
+    entry = _AUTHENTICATED_CALLBACKS[capture]
+    current = _current()
+    need(current is entry['current'] and entry['pid'] == os.getpid() and entry['thread'] == threading.get_ident()
+         and current.callback_capture is capture and current.callback_outcome is entry['outcome']
+         and not entry['used'] and current.freezer_scope is None, 'actual_same_callback_capture_scope_required')
+    native = importlib.import_module(_NATIVE + 'parented_phase_resources')
+    need(type(freezer_owner) is native.ParentedPhaseResourceReservation
+         and freezer_owner not in (current.owner, current.watchdog_owner), 'genuine_distinct_freezer_owner_required')
+    lease = freezer_owner.native_lease
+    public = freezer_owner.to_dict()
+    need(lease.owner_pid == os.getpid() and lease.parent_lease_id == current.primary_native.parent_lease_id
+         and lease.cpu_slots == 1 and lease.memory_mb >= 512 and lease.child_process_slots == 4
+         and public['record'].get('child') is None and public['record'].get('prior_children', []) == [],
+         'fresh_same_phase_one_CPU_four_slot_freezer_required')
+    entry['used'] = True
+    current.freezer_scope = dict(capture=capture, owner=freezer_owner, lease=lease)
+    try:
+        require_active_ordinary_success(entry['outcome'])
+        yield entry['outcome']
+    finally:
+        need(lease.released and freezer_owner.to_dict()['status'] == 'released',
+             'freezer_public_stopped_release_required_before_callback_exit')
+        current.freezer_scope = None
+        current.callback_capture = None
+        del _AUTHENTICATED_CALLBACKS[capture]
+
+
+def acknowledge_stopped_ordinary_custody(pending):
+    """Original same-process observations only; never close/kill/retry provider."""
+    need(type(pending) is OrdinaryCustodyPending and pending in _ORDINARY_PENDING,
+         'actual_retained_ordinary_pending_required')
+    current = _ORDINARY_PENDING[pending]
+    need(current.primary_native.owner_pid == os.getpid() and current.owner_thread == threading.get_ident(),
+         'actual_original_pending_PID_thread_required')
+    need(getattr(pending, 'actual_lifecycle', None) is current and pending.actual_owner is current.owner
+         and pending.actual_watchdog_owner is current.watchdog_owner, 'actual_original_pending_identity_required')
+    try:
+        if current.freezer_scope is not None:
+            scope = current.freezer_scope
+            if not (scope['lease'].released and scope['owner'].to_dict()['status'] == 'released'):
+                return False  # No Docker query with live freezer4.
+            current.freezer_scope = None
+            capture = current.callback_capture
+            current.callback_capture = None
+            _AUTHENTICATED_CALLBACKS.pop(capture, None)
+        current.reap_observed_transport_after_failure(stopped=True)
+        _original_native_groups_stopped(current)
+        if not current.runner_entered:
+            need(not current.processes and not current.allocated_leases and current.gated_create is None
+                 and not current.private_allocations and not current.creation_intents, 'actual_known_unstarted_scope_required')
+        else:
+            need(bool(current.allocated_leases), 'entered_runner_without_original_allocation_proof')
+        for home, prompt in current.private_allocations:
+            need(not os.path.lexists(home.name) and not os.path.lexists(prompt), 'original_private_allocation_remains')
+        _verify_sources(current.owner, current.source_sha256, Path(current.runner.__file__).absolute())
+        # held_native_consumers authenticates the original registered handle.
+        # A prior release may have succeeded for only one original consumer;
+        # require_bound would incorrectly demand both still unreleased here.
+        for consumer in current.custody_module.held_native_consumers(current.custody_hold):
+            if not consumer.released:
+                consumer.release()
+        current.custody_module.forget_acknowledged_custody_hold(current.custody_hold)
+    except Exception:
+        return False
+    del _ORDINARY_PENDING[pending]
+    _forget_unused_callback(current)
+    return True
+
+
+def _forget_unused_callback(current):
+    capture = current.callback_capture
+    entry = _AUTHENTICATED_CALLBACKS.get(capture)
+    if entry is not None and entry['current'] is current and not entry['used'] and current.freezer_scope is None:
+        del _AUTHENTICATED_CALLBACKS[capture]
+        current.callback_capture = None
+
+
+def acknowledge_unstarted_custody_hold(hold, *, primary_owner, watchdog_owner):
+    """Only genuine prelude failure: no registered actual allocation/history."""
+    need(threading.current_thread() is threading.main_thread() and _current() is None
+         and not any(row.custody_hold is hold for row in _ORDINARY_PENDING.values()),
+         'actual_allocated_or_active_custody_cannot_be_classified_unstarted')
+    custody = importlib.import_module('ipfs_accelerate_py.agent_supervisor.runtime.ordinary_custody_hold')
+    entry = _UNSTARTED_ACKNOWLEDGMENTS.get(hold)
+    if entry is None:
+        need(len(_UNSTARTED_ACKNOWLEDGMENTS) < 128, 'bounded_original_unstarted_acknowledgments_required')
+        custody.require_bound_ordinary_custody_hold(hold, primary_owner=primary_owner, watchdog_owner=watchdog_owner)
+        entry = (primary_owner,watchdog_owner,custody.held_native_consumers(hold))
+        _UNSTARTED_ACKNOWLEDGMENTS[hold] = entry
+    need(entry[0] is primary_owner and entry[1] is watchdog_owner
+         and all(left is right for left,right in zip(entry[2],custody.held_native_consumers(hold))),
+         'original_unstarted_hold_owners_and_consumers_required')
+    for owner in (primary_owner, watchdog_owner):
+        row = owner.to_dict()['record']
+        need(row.get('child') is None and row.get('prior_children', []) == [], 'actual_zero_native_child_history_required')
+    for consumer in entry[2]:
+        if not consumer.released:
+            consumer.release()
+    custody.forget_acknowledged_custody_hold(hold)
+    del _UNSTARTED_ACKNOWLEDGMENTS[hold]
+    return True

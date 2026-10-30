@@ -1,0 +1,71 @@
+{
+  "acceptance_authority": false,
+  "authored_control_cases": 19,
+  "authored_control_cases_by_file": {
+    "test_source_controls.py": 19
+  },
+  "canonical_tasks_accepted": 0,
+  "correction_scope": "retain original host/borrow on pending even after physical stopped acknowledgment; finalizer settlement still required",
+  "files": [
+    {
+      "bytes": 5529,
+      "path": "README.md",
+      "sha256": "2c2eeb4d158b5a802d77785b91136b84b34a53560d13062d3335087c268b470a"
+    },
+    {
+      "bytes": 4684,
+      "path": "build_sources.py",
+      "sha256": "beeff6928929bc1846bffc17a436208786c4e35dca4f9ba94ee0f3be36fa8418"
+    },
+    {
+      "bytes": 12312,
+      "path": "handoff_v04_additions.py.txt",
+      "sha256": "1174217d07a2f5d2c5991ea0b1087d9d642702a1e5882fcefb63544603b841f2"
+    },
+    {
+      "bytes": 18605,
+      "path": "ordinary_success_handoff-v04.patch",
+      "sha256": "812479bf9fb0844ca4678d5344924aeabb16f06d8c541a8b218e36a7a8ef77da"
+    },
+    {
+      "bytes": 67238,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py",
+      "sha256": "238d21021f2701475c9152c86952396df7050ffce6c56736622ab005625b3b8d"
+    },
+    {
+      "bytes": 26401,
+      "path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "sha256": "5869b6e2bbc9132b7d3d74b236dc3565053310c3532b27fb08f480d7961648e9"
+    },
+    {
+      "bytes": 7949,
+      "path": "qualify_controls.py",
+      "sha256": "8672b32fff4f06c0fffa397d1178b59f191980dd1e34c1114ab5aae3c9e86fe5"
+    },
+    {
+      "bytes": 7417,
+      "path": "test_source_controls.py",
+      "sha256": "d42381e766dfb42dc1463af952fd8e576359b050f694e837a09ff8aea9d707c2"
+    }
+  ],
+  "full_host_qualified": false,
+  "input_pins": {
+    "/home/barberb/lift_coding/artifacts/legal-ir-callable-handoff-20261017-01/handoff-v03/proposed/ipfs_accelerate_py/agent_supervisor/runtime/ordinary_success_handoff.py": "47464be42c3c11e15dc9144c807badcb383bfd8d6ba9f8f4a0445c8b570d298a",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/borrowed-state-v01/SOURCE_MANIFEST.json": "d836fc4545d5f86de2f2913fe194f79a2fd9e48b95eef96b212d12b1f8494c21",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v02/ASSEMBLY.json": "068ebf54614e3dd5089aebf023cd694a2d4fdc3bb9878f95ab0512351e2c911e",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/daemon-integration-v02/SOURCE_MANIFEST.json": "2690f6df93740dcfcd7457c33a1f57dcc0a78c86a09cc710baa8484adb97a3fa",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/freezer-board-v04/SOURCE_MANIFEST.json": "a36463f140a3e9ee35cf29ecdaa51e37ac50348f8f99c9eda5b3e23485630297",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/host-settlement-gap-observation-r01.json": "b1d1fdf89ddd9a8aa7a548508da8945bea2ef5474ae6bcb253e5a82853fd2d51",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-controls-v02/SOURCE_MANIFEST.json": "b5645966092fbef77522f501869430c18db5f18d7f5321edc593bfba35d4eef7",
+    "/home/barberb/lift_coding/artifacts/legal-ir-daemon-bridge-20261017-01/native-host-v01/SOURCE_MANIFEST.json": "b74455cd469cbf78892d6fda2b09c8234cd5922b7e72f741c845c2b0c2f8f0d8"
+  },
+  "known_limits": [
+    "same phase admin queries use cooperative capacity observation, not qualified native child attachment",
+    "original finalizer resumption afterpending remains unimplemented",
+    "full originalhost and actualsuccess callback remain unqualified"
+  ],
+  "predecessor_failed_before_tests": true,
+  "production_hook_deployed": false,
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-host-source@1"
+}

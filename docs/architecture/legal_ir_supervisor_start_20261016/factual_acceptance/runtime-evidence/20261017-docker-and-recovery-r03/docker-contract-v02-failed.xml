@@ -1,0 +1,724 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="10" skipped="0" tests="17" time="0.163" timestamp="2026-10-17T01:32:23.160112+00:00" hostname="spark-b271"><testcase classname="test_docker_container_contract" name="test_explicit_engineering_container_metadata_contract_is_accepted" time="0.000" /><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[wrong_image]" time="0.000" /><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[network_access]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_host_isolation_differs:NetworkMode">fault = 'network_access'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+                    backend.verify_container(mutated, expected, running=False)
+            assert expected == frozen_expected
+            return
+        if fault == "wrong_image":
+            actual["Image"] = "sha256:" + "0" * 64
+        elif fault == "network_access":
+            host["NetworkMode"] = "bridge"
+        elif fault == "writable_root":
+            host["ReadonlyRootfs"] = False
+        elif fault == "privileged":
+            host["Privileged"] = True
+        elif fault == "root_uid":
+            config["User"] = "0:0"
+        elif fault == "extra_writable_mount":
+            # Preserve mount count while broadening a previously read-only checker.
+            next(item for item in actual["Mounts"] if item["Destination"] == "/opt/legal-ir/factual_candidate.py")["RW"] = True
+        elif fault == "missing_readonly_source":
+            actual["Mounts"] = [item for item in actual["Mounts"] if item["Destination"] != "/opt/legal-ir/factual_candidate.py"]
+        elif fault == "docker_socket":
+            actual["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock",
+                "Destination": "/var/run/docker.sock", "RW": True, "Propagation": "rprivate"})
+        elif fault == "unexpected_tmpfs":
+            host["Tmpfs"] = {"/outside-attempt": "rw,size=1048576"}
+        elif fault == "host_cgroup_namespace":
+            host["CgroupnsMode"] = "host"
+        elif fault == "missing_ulimit":
+            host["Ulimits"] = [item for item in host["Ulimits"] if item["Name"] != "nofile"]
+        else:
+            actual["State"].update(Running=True, Status="running", Pid=1234)
+        with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;           backend.verify_container(actual, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:89: in verify_container
+    facts.same(host.get(key), value, "actual_container_host_isolation_differs:" + key)
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False
+reason = 'actual_container_host_isolation_differs:NetworkMode'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_host_isolation_differs:NetworkMode
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[writable_root]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_host_isolation_differs:ReadonlyRootfs">fault = 'writable_root'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+                    backend.verify_container(mutated, expected, running=False)
+            assert expected == frozen_expected
+            return
+        if fault == "wrong_image":
+            actual["Image"] = "sha256:" + "0" * 64
+        elif fault == "network_access":
+            host["NetworkMode"] = "bridge"
+        elif fault == "writable_root":
+            host["ReadonlyRootfs"] = False
+        elif fault == "privileged":
+            host["Privileged"] = True
+        elif fault == "root_uid":
+            config["User"] = "0:0"
+        elif fault == "extra_writable_mount":
+            # Preserve mount count while broadening a previously read-only checker.
+            next(item for item in actual["Mounts"] if item["Destination"] == "/opt/legal-ir/factual_candidate.py")["RW"] = True
+        elif fault == "missing_readonly_source":
+            actual["Mounts"] = [item for item in actual["Mounts"] if item["Destination"] != "/opt/legal-ir/factual_candidate.py"]
+        elif fault == "docker_socket":
+            actual["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock",
+                "Destination": "/var/run/docker.sock", "RW": True, "Propagation": "rprivate"})
+        elif fault == "unexpected_tmpfs":
+            host["Tmpfs"] = {"/outside-attempt": "rw,size=1048576"}
+        elif fault == "host_cgroup_namespace":
+            host["CgroupnsMode"] = "host"
+        elif fault == "missing_ulimit":
+            host["Ulimits"] = [item for item in host["Ulimits"] if item["Name"] != "nofile"]
+        else:
+            actual["State"].update(Running=True, Status="running", Pid=1234)
+        with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;           backend.verify_container(actual, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:89: in verify_container
+    facts.same(host.get(key), value, "actual_container_host_isolation_differs:" + key)
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False
+reason = 'actual_container_host_isolation_differs:ReadonlyRootfs'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_host_isolation_differs:ReadonlyRootfs
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[privileged]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_host_isolation_differs:Privileged">fault = 'privileged'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+                    backend.verify_container(mutated, expected, running=False)
+            assert expected == frozen_expected
+            return
+        if fault == "wrong_image":
+            actual["Image"] = "sha256:" + "0" * 64
+        elif fault == "network_access":
+            host["NetworkMode"] = "bridge"
+        elif fault == "writable_root":
+            host["ReadonlyRootfs"] = False
+        elif fault == "privileged":
+            host["Privileged"] = True
+        elif fault == "root_uid":
+            config["User"] = "0:0"
+        elif fault == "extra_writable_mount":
+            # Preserve mount count while broadening a previously read-only checker.
+            next(item for item in actual["Mounts"] if item["Destination"] == "/opt/legal-ir/factual_candidate.py")["RW"] = True
+        elif fault == "missing_readonly_source":
+            actual["Mounts"] = [item for item in actual["Mounts"] if item["Destination"] != "/opt/legal-ir/factual_candidate.py"]
+        elif fault == "docker_socket":
+            actual["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock",
+                "Destination": "/var/run/docker.sock", "RW": True, "Propagation": "rprivate"})
+        elif fault == "unexpected_tmpfs":
+            host["Tmpfs"] = {"/outside-attempt": "rw,size=1048576"}
+        elif fault == "host_cgroup_namespace":
+            host["CgroupnsMode"] = "host"
+        elif fault == "missing_ulimit":
+            host["Ulimits"] = [item for item in host["Ulimits"] if item["Name"] != "nofile"]
+        else:
+            actual["State"].update(Running=True, Status="running", Pid=1234)
+        with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;           backend.verify_container(actual, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:89: in verify_container
+    facts.same(host.get(key), value, "actual_container_host_isolation_differs:" + key)
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'actual_container_host_isolation_differs:Privileged'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_host_isolation_differs:Privileged
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[root_uid]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_config_differs:User">fault = 'root_uid'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+                    backend.verify_container(mutated, expected, running=False)
+            assert expected == frozen_expected
+            return
+        if fault == "wrong_image":
+            actual["Image"] = "sha256:" + "0" * 64
+        elif fault == "network_access":
+            host["NetworkMode"] = "bridge"
+        elif fault == "writable_root":
+            host["ReadonlyRootfs"] = False
+        elif fault == "privileged":
+            host["Privileged"] = True
+        elif fault == "root_uid":
+            config["User"] = "0:0"
+        elif fault == "extra_writable_mount":
+            # Preserve mount count while broadening a previously read-only checker.
+            next(item for item in actual["Mounts"] if item["Destination"] == "/opt/legal-ir/factual_candidate.py")["RW"] = True
+        elif fault == "missing_readonly_source":
+            actual["Mounts"] = [item for item in actual["Mounts"] if item["Destination"] != "/opt/legal-ir/factual_candidate.py"]
+        elif fault == "docker_socket":
+            actual["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock",
+                "Destination": "/var/run/docker.sock", "RW": True, "Propagation": "rprivate"})
+        elif fault == "unexpected_tmpfs":
+            host["Tmpfs"] = {"/outside-attempt": "rw,size=1048576"}
+        elif fault == "host_cgroup_namespace":
+            host["CgroupnsMode"] = "host"
+        elif fault == "missing_ulimit":
+            host["Ulimits"] = [item for item in host["Ulimits"] if item["Name"] != "nofile"]
+        else:
+            actual["State"].update(Running=True, Status="running", Pid=1234)
+        with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;           backend.verify_container(actual, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:82: in verify_container
+    facts.same(config.get(key), expected["config"][key], "actual_container_config_differs:" + key)
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'actual_container_config_differs:User'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_config_differs:User
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[different_command_or_environment]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_config_differs:Cmd">fault = 'different_command_or_environment'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;                   backend.verify_container(mutated, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:116: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:82: in verify_container
+    facts.same(config.get(key), expected["config"][key], "actual_container_config_differs:" + key)
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'actual_container_config_differs:Cmd'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_config_differs:Cmd
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[extra_writable_mount]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_mount_boundary_differs">fault = 'extra_writable_mount'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+                    backend.verify_container(mutated, expected, running=False)
+            assert expected == frozen_expected
+            return
+        if fault == "wrong_image":
+            actual["Image"] = "sha256:" + "0" * 64
+        elif fault == "network_access":
+            host["NetworkMode"] = "bridge"
+        elif fault == "writable_root":
+            host["ReadonlyRootfs"] = False
+        elif fault == "privileged":
+            host["Privileged"] = True
+        elif fault == "root_uid":
+            config["User"] = "0:0"
+        elif fault == "extra_writable_mount":
+            # Preserve mount count while broadening a previously read-only checker.
+            next(item for item in actual["Mounts"] if item["Destination"] == "/opt/legal-ir/factual_candidate.py")["RW"] = True
+        elif fault == "missing_readonly_source":
+            actual["Mounts"] = [item for item in actual["Mounts"] if item["Destination"] != "/opt/legal-ir/factual_candidate.py"]
+        elif fault == "docker_socket":
+            actual["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock",
+                "Destination": "/var/run/docker.sock", "RW": True, "Propagation": "rprivate"})
+        elif fault == "unexpected_tmpfs":
+            host["Tmpfs"] = {"/outside-attempt": "rw,size=1048576"}
+        elif fault == "host_cgroup_namespace":
+            host["CgroupnsMode"] = "host"
+        elif fault == "missing_ulimit":
+            host["Ulimits"] = [item for item in host["Ulimits"] if item["Name"] != "nofile"]
+        else:
+            actual["State"].update(Running=True, Status="running", Pid=1234)
+        with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;           backend.verify_container(actual, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:106: in verify_container
+    facts.same(actual, wanted, "actual_container_mount_boundary_differs")
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'actual_container_mount_boundary_differs'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_mount_boundary_differs
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[missing_readonly_source]" time="0.000" /><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[docker_socket]" time="0.000" /><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[host_device]" time="0.000" /><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[resource_bounds_broadened]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_host_isolation_differs:NanoCpus">fault = 'resource_bounds_broadened'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;                   backend.verify_container(mutated, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:116: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:89: in verify_container
+    facts.same(host.get(key), value, "actual_container_host_isolation_differs:" + key)
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'actual_container_host_isolation_differs:NanoCpus'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_host_isolation_differs:NanoCpus
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[unexpected_running_state]" time="0.000" /><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[unexpected_tmpfs]" time="0.000" /><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[widened_ulimits]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_ulimits_differ">fault = 'widened_ulimits'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;                   backend.verify_container(mutated, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:116: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:97: in verify_container
+    facts.same(sorted(actual_ulimits, key=lambda item: item["Name"]), [
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'actual_container_ulimits_differ'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_ulimits_differ
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[missing_ulimit]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_ulimits_differ">fault = 'missing_ulimit'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+                    backend.verify_container(mutated, expected, running=False)
+            assert expected == frozen_expected
+            return
+        if fault == "wrong_image":
+            actual["Image"] = "sha256:" + "0" * 64
+        elif fault == "network_access":
+            host["NetworkMode"] = "bridge"
+        elif fault == "writable_root":
+            host["ReadonlyRootfs"] = False
+        elif fault == "privileged":
+            host["Privileged"] = True
+        elif fault == "root_uid":
+            config["User"] = "0:0"
+        elif fault == "extra_writable_mount":
+            # Preserve mount count while broadening a previously read-only checker.
+            next(item for item in actual["Mounts"] if item["Destination"] == "/opt/legal-ir/factual_candidate.py")["RW"] = True
+        elif fault == "missing_readonly_source":
+            actual["Mounts"] = [item for item in actual["Mounts"] if item["Destination"] != "/opt/legal-ir/factual_candidate.py"]
+        elif fault == "docker_socket":
+            actual["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock",
+                "Destination": "/var/run/docker.sock", "RW": True, "Propagation": "rprivate"})
+        elif fault == "unexpected_tmpfs":
+            host["Tmpfs"] = {"/outside-attempt": "rw,size=1048576"}
+        elif fault == "host_cgroup_namespace":
+            host["CgroupnsMode"] = "host"
+        elif fault == "missing_ulimit":
+            host["Ulimits"] = [item for item in host["Ulimits"] if item["Name"] != "nofile"]
+        else:
+            actual["State"].update(Running=True, Status="running", Pid=1234)
+        with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;           backend.verify_container(actual, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:97: in verify_container
+    facts.same(sorted(actual_ulimits, key=lambda item: item["Name"]), [
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, reason = 'actual_container_ulimits_differ'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_ulimits_differ
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase><testcase classname="test_docker_container_contract" name="test_unsafe_container_metadata_is_refused_without_runtime_effects[host_cgroup_namespace]" time="0.000"><failure message="factual_candidate.FactualRefusal: actual_container_host_isolation_differs:CgroupnsMode">fault = 'host_cgroup_namespace'
+
+    @pytest.mark.parametrize("fault", [
+        "wrong_image", "network_access", "writable_root", "privileged", "root_uid",
+        "different_command_or_environment", "extra_writable_mount", "missing_readonly_source",
+        "docker_socket", "host_device", "resource_bounds_broadened", "unexpected_running_state",
+        "unexpected_tmpfs", "widened_ulimits", "missing_ulimit", "host_cgroup_namespace",
+    ])
+    def test_unsafe_container_metadata_is_refused_without_runtime_effects(fault):
+        actual, expected = normative_contract()
+        frozen_expected = copy.deepcopy(expected)
+        host, config = actual["HostConfig"], actual["Config"]
+        if fault in {"different_command_or_environment", "resource_bounds_broadened", "widened_ulimits", "host_device"}:
+            # Independent mutations each reach the real pure verifier. These loops
+            # avoid inflating JUnit cases without combining unsafe fields in one row.
+            alternatives = ({"Cmd": ["-i", "/bin/sh"],
+                             "Env": config["Env"] + ["AUTH_TOKEN=authored-nonsecret-canary"]}
+                            if fault == "different_command_or_environment" else
+                            {"NanoCpus": 2000000000, "Memory": 536870912, "PidsLimit": 256}
+                            if fault == "resource_bounds_broadened" else
+                            {"Devices": [{"PathOnHost": "/dev/authored-device", "PathInContainer": "/dev/authored-device", "CgroupPermissions": "rwm"}],
+                             "GroupAdd": ["0"], "DeviceCgroupRules": ["a *:* rwm"]}
+                            if fault == "host_device" else
+                            {name: value for name, value in (("cpu", 240), ("fsize", 4194304), ("nofile", 128))})
+            for key, value in alternatives.items():
+                mutated = copy.deepcopy(actual)
+                if fault == "different_command_or_environment":
+                    mutated["Config"][key] = value
+                elif fault in {"resource_bounds_broadened", "host_device"}:
+                    mutated["HostConfig"][key] = value
+                else:
+                    limit = next(item for item in mutated["HostConfig"]["Ulimits"] if item["Name"] == key)
+                    limit.update(Soft=value, Hard=value)
+                with pytest.raises(backend.acceptance.AcceptanceRefusal):
+                    backend.verify_container(mutated, expected, running=False)
+            assert expected == frozen_expected
+            return
+        if fault == "wrong_image":
+            actual["Image"] = "sha256:" + "0" * 64
+        elif fault == "network_access":
+            host["NetworkMode"] = "bridge"
+        elif fault == "writable_root":
+            host["ReadonlyRootfs"] = False
+        elif fault == "privileged":
+            host["Privileged"] = True
+        elif fault == "root_uid":
+            config["User"] = "0:0"
+        elif fault == "extra_writable_mount":
+            # Preserve mount count while broadening a previously read-only checker.
+            next(item for item in actual["Mounts"] if item["Destination"] == "/opt/legal-ir/factual_candidate.py")["RW"] = True
+        elif fault == "missing_readonly_source":
+            actual["Mounts"] = [item for item in actual["Mounts"] if item["Destination"] != "/opt/legal-ir/factual_candidate.py"]
+        elif fault == "docker_socket":
+            actual["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock",
+                "Destination": "/var/run/docker.sock", "RW": True, "Propagation": "rprivate"})
+        elif fault == "unexpected_tmpfs":
+            host["Tmpfs"] = {"/outside-attempt": "rw,size=1048576"}
+        elif fault == "host_cgroup_namespace":
+            host["CgroupnsMode"] = "host"
+        elif fault == "missing_ulimit":
+            host["Ulimits"] = [item for item in host["Ulimits"] if item["Name"] != "nofile"]
+        else:
+            actual["State"].update(Running=True, Status="running", Pid=1234)
+        with pytest.raises(backend.acceptance.AcceptanceRefusal):
+&gt;           backend.verify_container(actual, expected, running=False)
+
+acceptance-adapter/native-regression/v04-tests/v02/test_docker_container_contract.py:146: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+acceptance-adapter/native-regression/v04/docker_fixture_roundtrip.py:89: in verify_container
+    facts.same(host.get(key), value, "actual_container_host_isolation_differs:" + key)
+acceptance-adapter/adapter-v02/factual_candidate.py:95: in same
+    need(canonical(actual) == canonical(expected), reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False
+reason = 'actual_container_host_isolation_differs:CgroupnsMode'
+
+    def need(condition: bool, reason: str) -&gt; None:
+        if not condition:
+&gt;           raise FactualRefusal(reason)
+E           factual_candidate.FactualRefusal: actual_container_host_isolation_differs:CgroupnsMode
+
+acceptance-adapter/adapter-v02/factual_candidate.py:85: FactualRefusal</failure></testcase></testsuite></testsuites>

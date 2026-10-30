@@ -1,0 +1,134 @@
+--- native-host-v02/report_only_native_host.py
++++ native-host-v03/report_only_native_host.py
+@@ -17,7 +17,7 @@
+ LEDGER = ROOTS[0]/'federal-corpus-audits/owned-daemon-resource-control/disk-reservations.json'
+ STATE = Path('/tmp/ipfs-datasets-resource-scheduler-1000.json')
+ POLICY = 'f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661'
+-DAEMON_SHA = '9da3b39ff403317d5d3b5343a6b2f6bb4224510f676a458ee71d683dff4b6179'
++DAEMON_SHA = '4984370456bd304dd9d89550c05e2d364fd9f0ca4849db560cb10caddfe3f407'
+ MIB = 1024*1024
+ _HOST = ContextVar('actual_report_only_native_host', default=None)
+ _RETAINED = {}
+@@ -79,6 +79,8 @@
+         self.git_pending, self.ordinary_pending = None, None
+         self.task, self.state, self.command, self.args, self.workspace, self.invocation = (None,)*6
+         self.result, self.bound, self.finished = None, False, False
++        self.disposition_pending = False
++        self.finalizers = None
+         self.storage_roots = None
+         self.dispatch_attempted = False
+         self.handoff_module, self.freezer_module = None, None
+@@ -87,6 +89,8 @@
+         module = self._module(TODO+'implementation_daemon')
+         need(type(daemon) is module.PortalImplementationDaemon and self.pins[str(Path(module.__file__).absolute())] == DAEMON_SHA,
+              'actual_composed_original_daemon_required')
++        continuations = self._module(TODO+'original_finalizer_continuations')
++        self.finalizers = continuations.OriginalFinalizerContinuations(module, daemon)
+ 
+     def __reduce__(self):
+         raise NativeHostRefusal('actual_host_and_native_references_not_serializable')
+@@ -174,9 +178,15 @@
+         return result
+ 
+     def _finish_borrow(self):
+-        need(self.pending is None, "original_finalizer_settlement_required_before_borrow_exit")
+-        need(self.observe_pending(), 'actual_host_must_be_stopped_before_borrow_exit')
+-        self.borrow.__exit__(None,None,None)  # Borrow unregisters; never closes caller connection.
++        try:
++            need(self.pending is None, "original_finalizer_settlement_required_before_borrow_exit")
++            need(not self.disposition_pending, 'original_attempt_disposition_required_before_borrow_exit')
++            need(self.finalizers is not None and self.finalizers.complete(), 'all_original_finalizers_required_before_borrow_exit')
++            need(self.observe_pending(), 'actual_host_must_be_stopped_before_borrow_exit')
++            self.borrow.__exit__(None,None,None)  # Borrow unregisters; never closes caller connection.
++        except BaseException as error:
++            self.frames.append(error)
++            self._retain(error)
+         self.daemon._report_only_native_host = None
+         _HOST.reset(self.token); self.bound = False; self.finished = True
+         _RETAINED.pop(id(self),None)
+@@ -407,14 +417,81 @@
+         self.result = dict(status='report_only_refused',failure_type=type(exc).__name__,acceptance_authority=False,canonical_tasks_accepted=0)
+         return self.result
+ 
++    def _latch_disposition(self):
++        # This latch only retains more custody; it grants no transition/acceptance.
++        self.disposition_pending = bool(self.disposition_pending
++            or self.state is not None and self.state.implementation_in_progress
++            or getattr(self.daemon, '_report_only_before_attempt', None) is not None
++            or getattr(self.daemon, '_report_only_dispatch', None) is not None
++            or getattr(self.daemon, '_active_worktree_lifecycle', None) is not None
++            or self.result is not None and self.result.get('status') == 'report_only_candidate_frozen')
++
++    def _drain_original_finalizers(self):
++        try:
++            return self.finalizers.drain()
++        except BaseException as error:
++            self.frames.append(error)
++            self._retain(error)
++
++    def _run_original_finalizer(self, daemon, *, stage, original_frame, continuation, caller_frame):
++        # The public direct wrapper has already retained/authenticated the frame.
++        self._identity(daemon)
++        self._latch_disposition()
++        if not self.observe_pending():
++            self._retain(NativeHostRefusal('original_finalizer_requires_independent_stopped_closeout'))
++        return self._drain_original_finalizers()
++
+     def before_original_finalizer(self, daemon, *, stage, original_frame):
++        # Only the old host-exit guard remains; original finally sites use exact continuations.
++        self.frames.append((stage, original_frame))
+         self._identity(daemon)
+-        need(type(stage) is str and type(original_frame) is dict, 'original_frame_reference_carrier_required')
+-        if 'task' in original_frame:need(self.task is original_frame['task'] and self.state is original_frame['state'], 'original_finalizer_task_identity_changed')
+-        self.frames.append((stage,original_frame))  # References only; never capacity/cleanup authority.
+-        if not self.observe_pending():self._retain(NativeHostRefusal('original_finalizer_requires_independent_stopped_closeout'))
++        need(stage == 'host_exit' and type(original_frame) is dict, 'explicit_host_exit_guard_only')
++        self._latch_disposition()
++        if not self.observe_pending():
++            self._retain(NativeHostRefusal('original_finalizer_requires_independent_stopped_closeout'))
++        self._drain_original_finalizers()
++        if self.disposition_pending:
++            self._retain(NativeHostRefusal('original_attempt_requires_explicit_parking_or_validation_handoff'))
++
++    def settle_retained_finalizers(self):
++        """Observe and run original stopped cleanup; never settle an attempt disposition.
++
++        The caller must still hold the original actual root/phase and connection.
++        No task IDs, replacement callbacks, result JSON or new native grant enter.
++        """
++        need(self.pending is not None and _RETAINED.get(id(self)) is self,
++             'actual_original_retained_host_required')
++        self._identity(self.daemon)
++        self._latch_disposition()
++        if not self.observe_pending():
++            return dict(physical_stopped=False, original_finalizers_drained=False,
++                original_borrow_retained=True, disposition_pending=self.disposition_pending,
++                acceptance_authority=False, canonical_tasks_accepted=0)
++        report = self._drain_original_finalizers()
++        return dict(physical_stopped=True, original_finalizers_drained=self.finalizers.complete(),
++            original_finalizers=report, original_borrow_retained=True,
++            disposition_pending=self.disposition_pending, acceptance_authority=False,
++            canonical_tasks_accepted=0)
+ 
+     def require_candidate_result(self, daemon, result):
+         self._identity(daemon)
+         need(result is self.result and self.result is not None and self.observe_pending(), 'actual_inert_candidate_result_and_stopped_host_required')
+         return result
++
++
++def run_original_finalizer(daemon, *, stage, original_frame, continuation):
++    """Join one actual original finally frame before any fallible source/DB query."""
++    import inspect
++    host = _HOST.get()
++    need(type(host) is ReportOnlyNativeHost and host.daemon is daemon
++         and getattr(daemon, '_report_only_native_host', None) is host
++         and host.bound and not host.finished and host.pid == os.getpid()
++         and host.thread == threading.get_ident(), 'actual_original_finalizer_host_binding_required')
++    caller = inspect.currentframe().f_back
++    host.frames.append((stage, original_frame, continuation, caller))
++    try:
++        host.finalizers.register(stage, continuation, caller, original_frame)
++    except BaseException as error:
++        host._retain(error)
++    return host._run_original_finalizer(daemon, stage=stage, original_frame=original_frame,
++        continuation=continuation, caller_frame=caller)

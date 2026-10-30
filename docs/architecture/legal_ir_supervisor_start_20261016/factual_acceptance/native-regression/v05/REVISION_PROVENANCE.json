@@ -1,0 +1,24 @@
+{
+  "schema": "legal-ir-native-docker-fixture-source-revision@5",
+  "status": "source_authored_not_executed_or_adopted",
+  "original_V04_manifest_sha256": "276338ca14edc7c1c7cdb76413ddf316a5d5290dd13b129e7b4b3a5ea5659387",
+  "base_adapter_manifest_sha256": "c9042090f0a9772c666dfa7b15f321a6c495989fbefcda8de30bd792dc0d6d5b",
+  "common_V03_manifest_sha256": "8240d5562e88c89bd4079e1b5605d4f57b8da7e8a3315d2942c5d31a5ee63c9a",
+  "changes": [
+    "Explicit --ipc=none and exact inspected IpcMode=none prevent the daemon-managed /dev/shm mount",
+    "Versioned runtime profile legal-ir-factual-validation-docker-v05",
+    "Both actual readers wait on verified regular single-link zero-size publication under the same absolute180s deadline",
+    "Only exact one-byteG releases; invalid observed bytes/sizes, aliases and expiry refuse"
+  ],
+  "unchanged": [
+    "Entry, request and terminal API schemas@4",
+    "Protected image74 route and closed ordinary A91 image/daemon authority",
+    "Genuine native preparation, validation, one-use handle and independent orchestration coordinator",
+    "Cleanup-before-issuer/context-unwind and ambiguous create custody",
+    "Native/storage caps, CPU proof gate, deadlines, task identity/history/manual acceptance",
+    "All prior source manifests, packet pins and failed runtime evidence"
+  ],
+  "adoption_requires": "New source-pinned V05 request/profile, fresh actual native fixture qualification and separately reviewed prerequisite projection",
+  "docker_primary_reference": "https://docs.docker.com/reference/cli/docker/container/run/#ipc-settings---ipc",
+  "author_runtime_tests_native_Docker_or_provider_execution": false
+}

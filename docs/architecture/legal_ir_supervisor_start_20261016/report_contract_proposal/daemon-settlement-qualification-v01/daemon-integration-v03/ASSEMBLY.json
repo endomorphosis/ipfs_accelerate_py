@@ -1,0 +1,8 @@
+{
+  "base_sha256": "9da3b39ff403317d5d3b5343a6b2f6bb4224510f676a458ee71d683dff4b6179",
+  "original_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+  "proposed_sha256": "4984370456bd304dd9d89550c05e2d364fd9f0ca4849db560cb10caddfe3f407",
+  "qualification": "source assembly only",
+  "runtime_enabled": false,
+  "schema": "legal-ir-finalizer-source-assembly@1"
+}

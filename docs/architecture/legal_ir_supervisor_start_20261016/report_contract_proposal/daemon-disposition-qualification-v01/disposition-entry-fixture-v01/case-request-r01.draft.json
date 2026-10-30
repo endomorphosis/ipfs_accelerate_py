@@ -1,0 +1,13 @@
+{
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-qualification-20261017-r01",
+  "capsule_manifest_sha256": "PENDING_ACTUAL_FINALIZED_PREPARATION_CAPSULE_SHA",
+  "capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-capsule-20261017-r01/capsule",
+  "parent_request_name": "legal-ir-disposition-entry-qualification-20261017-r01",
+  "parent_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/disposition-entry-fixture-v01/qualify-request-r01.json",
+  "preparation_root_observation_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/disposition-entry-capsule-root-observation-r01.json",
+  "preparation_root_observation_sha256": "PENDING_ACTUAL_FINALIZED_ROOT_OBSERVATION_SHA",
+  "reviewed_composed_daemon_sha256": "67f4959c391776a1361a98f2a5f8d137e86ea5651e9ced0ab96fca3eb91f15a0",
+  "schema": "legal-ir-disposition-entry-request@1",
+  "source_manifest_sha256": "c5003da45ad3ab5a65d02d45dec1406c85e923d234138b0adfe661460cc11ecb",
+  "storage_bytes": 67108864
+}

@@ -1,0 +1,18 @@
+{
+  "actual_jobs_executed_by_author": false,
+  "capsule_manifest_sha256": "01f38d5aa9ea18dc84b45909cdc2265fbd4ffcc8f35f4cda5e49d54ca5cfd1db",
+  "capsule_reprepared": false,
+  "correction": "Set umask077 in fresh already-attached private fixture child before original Git/import/constructors, then require actual original lifecycle namespace0700.",
+  "diagnostics": "Bounded per-case stage/type/fixed identifier reason before assertions; unexpected exception is rethrown as the original object.",
+  "external_charges": [],
+  "five_expected_outcome_assertions_changed": false,
+  "full_original_host_qualified": false,
+  "original_failure": "actual_denial_must_precede_host_accessor in last quarantine_without_journal case",
+  "preserved_failed_generation": "disposition-entry-fixture-v01",
+  "product_privacy_predicate_weakened": false,
+  "qualification_storage_bytes": 67108864,
+  "read_only_root_cause": "Original lifecycle directory was owned but0775 under inherited user umask0002; strict source predicate rejects group-write. Allfive case roots and original quarantine receipt existed.",
+  "schema": "legal-ir-disposition-entry-private-permission-correction@1",
+  "source_only": true,
+  "source_owned_consumed_attempt_qualified": false
+}
