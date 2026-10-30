@@ -1,5 +1,6 @@
 """The real module entrypoint must retain exact native callback identities."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -10,6 +11,32 @@ from unittest.mock import patch
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.project_adapters import worldwide_legal_search_runtime as runtime_module
+
+
+def test_restarted_candidate_cli_preserves_the_original_publication_witness(tmp_path):
+    plan = tmp_path / 'plan.json'
+    runtime_module.atomic_json(plan, {'tasks': [{'id': 'WWL-002', 'repository': 'accelerate'}]})
+    config = runtime_module.CampaignConfig(site_root=tmp_path / 'site',
+        framework_root=Path(__file__).resolve().parents[2], state_root=tmp_path / 'state',
+        plan_path=plan, config_path=tmp_path / 'config.json')
+    request = config.state_root / 'candidate.json'
+    runtime_module.atomic_json(request, {'run_id': config.run_id, 'task_id': 'WWL-002'})
+    pending = config.state_root / 'control/pending-candidate-continuation.json'
+    runtime_module.atomic_json(pending, {'schema': 'wwl.pending-candidate-continuation@1',
+        'run_id': config.run_id, 'request_path': str(request),
+        'request_sha256': hashlib.sha256(request.read_bytes()).hexdigest()})
+    before, contents = pending.stat(), pending.read_bytes()
+    with patch.object(runtime_module, 'config_from_args', return_value=config), \
+            patch.object(runtime_module, 'wait_for_storage', return_value={'blocked': False}), \
+            patch.object(runtime_module, 'bootstrap', return_value={'admitted_plan_revision': 'fixture', 'receipt_id': 'fixture'}), \
+            patch.object(runtime_module.CampaignRuntime, 'run', return_value={}), \
+            patch.object(runtime_module.signal, 'signal'), \
+            patch('ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_migration._registered_stopped_fence',
+                return_value={'owner_alive': False, 'main_pid': 0, 'cgroup_empty': True}):
+        assert runtime_module.main(['continue-candidate', '--request', str(request)]) == 1
+    after = pending.stat()
+    assert pending.read_bytes() == contents
+    assert (before.st_ino, before.st_mtime_ns, before.st_ctime_ns) == (after.st_ino, after.st_mtime_ns, after.st_ctime_ns)
 
 
 def test_real_module_cli_delegates_to_canonical_main(tmp_path):

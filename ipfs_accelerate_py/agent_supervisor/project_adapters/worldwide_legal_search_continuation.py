@@ -155,9 +155,17 @@ def reconcile_candidate(*, portal_daemon: Any, attempt: Any, paths: Any,
     _need(live_proof.get("prior_attempt_number") == request["predecessor_attempt_number"] and
         live_proof.get("prior_execution_status") == "failed", "candidate_predecessor_not_failed")
     repo, worktree = Path(request["repository_root"]), Path(request["worktree_path"])
+    # The retained source is read-only and may precede repository-specific
+    # routing. Its native owner admits the campaign pool; Git identity below
+    # still binds it to this exact repository. Fresh validation checkouts use
+    # only Portal's narrower execution pool.
+    _need(authority.__self__.execution_state_dir is not None, "candidate_native_execution_state_required")
+    source_pool = (Path(authority.__self__.execution_state_dir).resolve(strict=True).parent / "worktrees").resolve(strict=True)
+    execution_pool = portal_daemon.worktree_root.resolve(strict=True)
     _need(repo.resolve(strict=True) == repo == portal_daemon.repo_root.resolve(strict=True) and
         worktree.resolve(strict=True) == worktree and worktree != repo and
-        worktree.is_relative_to(portal_daemon.worktree_root.resolve(strict=True)), "candidate_workspace_outside_custody")
+        execution_pool.is_relative_to(source_pool) and worktree.is_relative_to(source_pool),
+        "candidate_workspace_outside_custody")
     _need(_git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir") ==
         _git(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir"),
         "candidate_repository_changed")

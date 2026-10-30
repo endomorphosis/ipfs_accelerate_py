@@ -1330,9 +1330,14 @@ def main(argv: list[str] | None = None) -> int:
                     pending = config.state_root / "control/pending-candidate-continuation.json"
                     pointer = {"schema": "wwl.pending-candidate-continuation@1", "run_id": config.run_id,
                         "request_path": str(args.request), "request_sha256": hashlib.sha256(request_bytes).hexdigest()}
-                    if pending.exists() and read_json(pending) != pointer:
-                        raise ValueError("another candidate continuation is already pending")
-                    atomic_json(pending, pointer)
+                    if pending.exists():
+                        if read_json(pending) != pointer:
+                            raise ValueError("another candidate continuation is already pending")
+                    else:
+                        # Its original publication precedes the candidate's
+                        # claim. Replacing identical bytes would lose that
+                        # custody witness during a CLI restart.
+                        atomic_json(pending, pointer)
                 def request_stop(_signum: int, _frame: Any) -> None:
                     runtime.cancel.set()
                     runtime.stop.set()

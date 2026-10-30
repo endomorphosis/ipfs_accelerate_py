@@ -94,7 +94,7 @@ def test_actual_public_native_reconciliation_validates_merges_without_paid_attem
 
 
 @pytest.fixture
-def native_continuation(tmp_path, monkeypatch):
+def native_continuation(tmp_path, monkeypatch, request):
     """Real DB leases; only the predecessor is explicitly synthetic/no-provider."""
     monkeypatch.setenv("AGENT_HOME", str(tmp_path / "agent-home"))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR", str(tmp_path / "orchestration"))
@@ -128,10 +128,14 @@ def native_continuation(tmp_path, monkeypatch):
     paths, binding = bridge._ensure_attempt_projection(current, native.task_source.get(current.task_cid))
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.portal_task_state_control_plane import bind_task_state_control_plane
     bind_task_state_control_plane(paths.state, str(paths.root / "portal-state.duckdb"))
+    execution_pool = tmp_path / "worktrees"
+    if getattr(request, "param", None) == "routed":
+        execution_pool /= "repository-pool"
+        execution_pool.mkdir()
     portal = PortalImplementationDaemon(todo_path=paths.task_projection, state_path=paths.state,
         strategy_path=paths.strategy, events_path=paths.events, repo_root=repo,
         task_header_prefix="## WWL-", board_namespace="fixture-continuation",
-        worktree_root=tmp_path / "worktrees", merge_target_branch="main", worktree_submodule_paths=[], implement=False)
+        worktree_root=execution_pool, merge_target_branch="main", worktree_submodule_paths=[], implement=False)
     portal.bind_database_attempt_authority(task_id=current.task_alias, database_task_cid=current.task_cid,
         database_attempt_id=current.attempt_id, database_claim_id=current.claim_id,
         database_attempt_number=current.attempt_number, database_binding_id=binding["binding_id"])
@@ -164,6 +168,21 @@ def test_helper_uses_real_native_fence_fresh_workspace_and_merge(native_continua
     assert native.get_attempt(admission.request["predecessor_attempt_id"]).status == "failed"
     # The bridge/native completion CAS is deliberately outside this helper.
     assert native.task_source.get(attempt.task_cid).status == "in_progress"
+    assert native.get_attempt(attempt.attempt_id).attempt_number == 2
+
+
+@pytest.mark.parametrize("native_continuation", ["routed"], indirect=True)
+def test_read_only_source_can_precede_repository_routing_but_validation_uses_its_pool(native_continuation):
+    portal, attempt, paths, binding, admission, native = native_continuation
+    source = Path(admission.request["worktree_path"])
+    assert not source.is_relative_to(portal.worktree_root)
+    result = reconcile_candidate(portal_daemon=portal, attempt=attempt, paths=paths,
+        binding=binding, admission=admission)
+    assert result["provider_dispatched"] is False
+    assert result["implementation_result"]["validation_result"]["passed"] is True
+    assert result["implementation_result"]["merge_result"]["merged"] is True
+    assert Path(result["continuation_workspace"]).is_relative_to(portal.worktree_root)
+    assert git(source, "rev-parse", "HEAD") == admission.request["candidate_commit"]
     assert native.get_attempt(attempt.attempt_id).attempt_number == 2
 
 
