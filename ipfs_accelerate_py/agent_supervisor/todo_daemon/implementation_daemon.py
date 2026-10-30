@@ -47689,12 +47689,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ]
         except (OSError, TypeError, ValueError):
             pass
+        review_input = dict(result)
+        if proposal_validation is not None and review_input.get("proposal_validation") is proposal_validation:
+            from ..validation.proposal_validation import ProposalValidationResult
+
+            gate = review_input.get("proposal_gate")
+            paths = gate.get("changed_paths") if type(gate) is dict else None
+            if (type(proposal_validation) is ProposalValidationResult
+                    and type(paths) in (list, tuple)
+                    and len(paths) <= 128
+                    and all(type(path) is str for path in paths)
+                    and tuple(paths) == proposal_validation.proposal.changed_paths):
+                # This exact live object is an in-process candidate-binding
+                # seam, not an opaque diagnostic projection. Review the
+                # compact proposal gate without changing the returned binding.
+                # Keep the key so absent/malformed gate paths cannot fall back
+                # to selection's read-only validation impact paths.
+                review_input["proposal_validation"] = None
         review = review_implementation_failure(
             task_id=task.task_id,
             attempt=int(attempt),
             expected_outputs=expected_outputs,
             validation_commands=tuple(task.validation),
-            validation_result=result,
+            validation_result=review_input,
             workspace_path=workspace_path,
             log_excerpt=log_excerpt,
             proposal_accepted=proposal_accepted,
