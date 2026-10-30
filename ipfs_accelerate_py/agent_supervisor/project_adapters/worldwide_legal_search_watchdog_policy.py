@@ -1,4 +1,4 @@
-"""Explicit stopped-owner admission of the seven reviewed repair-scope paths.
+"""Explicit stopped-owner admission of the eight reviewed repair-scope paths.
 
 This is an operator migration, never an automatically repairable policy edit.
 All task specifications, acceptance rules, paid attempts and watchdog budgets
@@ -33,6 +33,7 @@ ADDED_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py",
     "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/fenced_candidate_retirement.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_validation_failure_retry.py",
 )
 
 
@@ -43,10 +44,10 @@ def validate_scope_transition(before: Mapping[str, Any], after: Mapping[str, Any
         raise ValueError("unsupported predecessor policy")
     paths = expected.get("repair_scope", {}).get("allowed_paths")
     if not isinstance(paths, list) or len(set(paths)) != len(paths) or set(paths) & set(ADDED_PATHS):
-        raise ValueError("predecessor must exclude all seven reviewed scope additions")
+        raise ValueError("predecessor must exclude all eight reviewed scope additions")
     paths.extend(ADDED_PATHS)
     if expected != after:
-        raise ValueError("policy migration permits only the exact seven reviewed source paths")
+        raise ValueError("policy migration permits only the exact eight reviewed source paths")
 
 
 def stopped_fences(config: CampaignConfig) -> dict[str, Any]:
@@ -120,7 +121,7 @@ def _native_policy_revision(config: CampaignConfig, before: Mapping[str, Any], a
         item = pc.PlanDeltaItem(item_key="reviewed-watchdog-repair-scope", operation=pc.PlanDeltaOperation.ATTACH_EVIDENCE,
             target_cid=active.plan_root_cid, expected_target_lifecycle=pc.LifecycleState.ADMITTED,
             expected_target_spec_revision=active.revision_cid, before_digest=identity(before), after_record_cid=record_id,
-            effect_class=pc.DeltaEffectClass.EVIDENCE_ONLY, rationale="Operator-admitted seven exact supervisor repair paths; all task specifications and history are retained.",
+            effect_class=pc.DeltaEffectClass.EVIDENCE_ONLY, rationale="Operator-admitted eight exact supervisor repair paths; all task specifications and history are retained.",
             expected_effects=("admit_reviewed_watchdog_repair_scope",))
         delta = pc.PlanDelta(base_plan_root=active.plan_root_cid, base_plan_revision=active.semantic_revision,
             request_cid=record_id, roots=roots, items=(item,), expected_effects=item.expected_effects,
