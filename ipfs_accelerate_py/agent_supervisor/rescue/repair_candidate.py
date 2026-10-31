@@ -662,3 +662,89 @@ def resume_candidate(*, policy: CandidatePolicy, board_id: str, attempt_id: str,
     else:
         _write_new(resume_path, receipt)
     return session
+
+
+def observe_verified_deferred_adoption(*, policy: CandidatePolicy, board_id: str,
+        attempt_id: str, attempt_number: int, authority: CandidateAuthority,
+        deferred_receipt: Mapping[str, Any], activation_receipt: Mapping[str, Any],
+        source_successor: Mapping[str, Any]) -> dict[str, Any]:
+    """Record an already activated, original-owner-verified source successor.
+
+    This API does not resume a provider, validate again, mutate a checkout,
+    transfer lifecycle custody, adopt a source or touch services. It observes
+    the exact completed external operation. Ordinary resume/_current keep
+    their original active-baseline refusal without any exception.
+    """
+    from .repair_candidate_owners import verify_source_successor_activation
+    from .repair_authorization import checked_descriptor, json_object
+    _require(type(policy) is CandidatePolicy, "validated current source policy required")
+    _integer(attempt_number, "attempt_number", 3)
+    _require(bool(_NAME.fullmatch(board_id)) and bool(_NAME.fullmatch(attempt_id)), "original board/token required")
+    metadata = policy.state_root / "repair-candidates" / board_id / attempt_id
+    prepared = _read_evidence(metadata / "prepared.json")
+    ready = _read_evidence(metadata / "candidate-ready.json")
+    pending = _read_evidence(metadata / "adoption-pending.json")
+    binding = prepared["binding"]
+    old = parse_candidate_policy({"candidate_policy": prepared["policy"]})
+    _require(old is not None and {k: v for k, v in old.to_dict().items() if k != "base_commit"}
+             == {k: v for k, v in policy.to_dict().items() if k != "base_commit"},
+             "deferred observation cannot widen source policy or resource bounds")
+    _require(binding == ready["binding"] == pending["binding"]
+             and binding["board_id"] == board_id and binding["attempt_id"] == attempt_id
+             and binding["attempt_number"] == attempt_number
+             and binding["base_commit"] == old.base_commit
+             and binding["policy_sha256"] == digest(old.to_dict()), "original frozen binding differs")
+    unsigned = dict(ready); freeze_sha = unsigned.pop("freeze_sha256", None)
+    _require(freeze_sha == digest(unsigned) and ready["source_commitment"]
+             == digest(dict(base_commit=old.base_commit, manifest=ready["manifest"])), "original freeze changed")
+    candidate_root = Path(binding["candidate_root"])
+    _require(candidate_root == policy.state_root / "worktrees" / policy.namespace / attempt_id
+             and _inventory(candidate_root, old) == ready["manifest"]
+             and _file(candidate_root / ".git", 16384) == prepared["git_marker"], "retained candidate changed")
+    validation = pending["validation"]
+    _require(pending["stage"] == "adoption_pending" and pending["freeze_sha256"] == freeze_sha
+             and pending["validation_sha256"] == digest(validation)
+             and validation["schema"] == VALIDATION_SCHEMA and validation["passed"] is True
+             and validation["freeze_sha256"] == freeze_sha, "original accepted validation differs")
+    _positive_closeout(validation)
+    _require(deferred_receipt["known_deferred"] is True and deferred_receipt["adopted"] is False
+             and deferred_receipt["freeze_sha256"] == freeze_sha
+             and activation_receipt["schema"] == ADOPTION_SCHEMA and activation_receipt["adopted"] is True
+             and activation_receipt["freeze_sha256"] == freeze_sha
+             and activation_receipt["validation_sha256"] == digest(validation)
+             and activation_receipt["loaded_source_commitment"] == ready["source_commitment"],
+             "actual deferred adoption binding differs")
+    _positive_closeout(activation_receipt)
+    link = dict(source_successor)
+    _require(link["prior_policy"] == old.to_dict() and link["successor_policy"] == policy.to_dict()
+             and link["attempt_number"] == attempt_number, "source successor is not this original attempt")
+    actual = json_object(checked_descriptor(link["activation"]))
+    verify_source_successor_activation(link, ready, actual)
+    _require(_selected(Path(binding["active_root"]), policy.source_paths, policy.max_source_bytes)
+             == ready["manifest"], "current activated source is not the validated manifest")
+    lifecycle = WorktreeLifecycleStore(repo_root=policy.repository_root)
+    record = lifecycle.load_workspace(candidate_root)
+    original = WorkspaceLifecycleRecord.from_dict(prepared["lifecycle"])
+    _require(type(record) is WorkspaceLifecycleRecord and record.record_id == original.record_id
+             and record.task_id == "infrastructure-repair:" + board_id and record.attempt == attempt_number
+             and record.workspace_path == str(candidate_root) and record.merge_target == old.base_commit
+             and record.state_dir == str(metadata) and record.state.value == "settling",
+             "original retained lifecycle differs")
+    lifecycle.require_exact_dead_owner(candidate_root, expected_record_id=record.record_id,
+        expected_fence=record.fence, expected_lease_id=record.lease_id, expected_task_id=record.task_id,
+        expected_canonical_task_cid=record.canonical_task_cid, expected_attempt=record.attempt,
+        expected_branch=record.branch, expected_merge_target=record.merge_target,
+        expected_repo_root=record.repo_root, expected_state_dir=record.state_dir)
+    authority.require_receipt("adopt", binding, activation_receipt)
+    value = dict(schema=STATE_SCHEMA, stage="adopted_pending_probe", binding=binding,
+        adoption=dict(activation_receipt), adoption_sha256=digest(activation_receipt),
+        source_successor_sha256=digest(link), deferred_original_owner_observation=True,
+        fresh_observer_probe_required=True, observer_verified=False,
+        provider_or_validation_or_adoption_replayed=False, completion_authority=False,
+        coding_attempts_incremented=False, lifecycle_mutations=0)
+    path = metadata / "adopted-pending-probe.json"
+    if path.exists():
+        _require(_read_evidence(path) == value, "existing deferred observation differs; no replay")
+    else:
+        _write_new(path, value)
+    return value

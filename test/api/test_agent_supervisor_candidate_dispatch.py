@@ -207,8 +207,13 @@ def test_resume_requires_positive_closed_unit_custody(tmp_path, monkeypatch, sna
     assert path.read_bytes() == before
 
 
-def test_resume_only_dispatches_original_owner_stages_inside_bounded_same_unit(tmp_path, monkeypatch):
+@pytest.mark.parametrize("expanded_parent", [False, True])
+def test_resume_only_dispatches_original_owner_stages_inside_bounded_same_unit(tmp_path, monkeypatch, expanded_parent):
     cfg, board, path, job = _case(tmp_path)
+    if expanded_parent:
+        cfg["repair_worker"]["candidate_runtime"]["resource_bounds"] = {
+            "memory_max_bytes": 34359738368, "tasks_max": 512,
+            "cpu_quota_percent": 100, "runtime_max_seconds": 1500}
     calls, waits = [], []
     monkeypatch.setattr(repair.time, "time", lambda: 1001)
     monkeypatch.setattr(repair, "candidate_dispatch_preflight", lambda *a: None)
@@ -231,8 +236,11 @@ def test_resume_only_dispatches_original_owner_stages_inside_bounded_same_unit(t
     monkeypatch.setattr(repair, "_SERVICE_HEARTBEAT", repair.SystemdHeartbeat.from_environment({}))
     result = repair.resume_pending_candidate(cfg, board, path)
     argv = next(argv for argv in calls if argv[0] == "systemd-run")
-    assert "--property=CPUQuota=100%" in argv and "--property=TasksMax=64" in argv
-    assert "--property=RuntimeMaxSec=2400" in argv and "--property=KillMode=control-group" in argv
+    assert "--property=CPUQuota=100%" in argv
+    assert ("--property=TasksMax=512" if expanded_parent else "--property=TasksMax=64") in argv
+    assert ("--property=RuntimeMaxSec=1500" if expanded_parent else "--property=RuntimeMaxSec=2400") in argv
+    assert ("--property=MemoryHigh=34359738368" if expanded_parent else "--property=MemoryHigh=17179869184") in argv
+    assert "--property=KillMode=control-group" in argv
     assert "--unit=" + cfg["repair_worker"]["job_unit"] in argv
     module_at = argv.index("-m")
     assert argv[module_at + 1:module_at + 3] == [
@@ -484,3 +492,63 @@ def test_missing_candidate_dependency_never_resumes_or_accepts_bootstrap(tmp_pat
     monkeypatch.setattr(repair.subprocess, "Popen", _no_process)
     assert getattr(repair, helper)(cfg, board, job) is False
     assert blocked in calls and path.read_bytes() == before
+
+
+@pytest.mark.parametrize("isolated", [False, True])
+def test_new_job_uses_parent_envelope_only_for_explicit_candidate_branch(tmp_path, monkeypatch, isolated):
+    """Capture actual run_job argv; no service, owner, provider or resource grant runs."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import diagnostic_handoff
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog
+    cfg, board, path, job = _case(tmp_path, status="queued")
+    job.update(attempts=2, next_attempt_at=0)
+    write_json(path, job)
+    cfg["repair_worker"]["candidate_runtime"]["resource_bounds"] = {
+        "memory_max_bytes": 32 * 1024**3, "tasks_max": 512,
+        "cpu_quota_percent": 100, "runtime_max_seconds": 1500}
+    if not isolated:
+        cfg["repair_worker"].pop("candidate_policy")
+        cfg["repair_worker"].pop("candidate_runtime")
+    monkeypatch.setattr(repair, "candidate_dispatch_preflight", lambda *a: None)
+    monkeypatch.setattr(repair, "_launch_preflight", lambda *a: None)
+    monkeypatch.setattr(repair, "_storage_preflight", lambda *a: None)
+    monkeypatch.setattr(repair, "_check_repair_budget", lambda *a, **k: None)
+    monkeypatch.setattr(repair, "_recovery_denial", lambda *a: None)
+    monkeypatch.setattr(repair, "board_wait_stall", lambda *a: None)
+    monkeypatch.setattr(repair, "repair_prompt", lambda *a: "explicit invented repair prompt")
+    monkeypatch.setattr(repair, "_continuation_context", lambda *a: {})
+    monkeypatch.setattr(diagnostic_handoff, "load_diagnostic_handoff", lambda *a, **k: {})
+    monkeypatch.setattr(fleet_watchdog, "normalize_probe", lambda board_id, result: {
+        "board_id": board_id, "health": "blocked"})
+    monkeypatch.setattr(repair, "command", lambda *a, **k: {
+        "returncode": 3, "stdout": "inactive\n", "stderr": ""})
+    monkeypatch.setattr(repair, "llm_router_repair_argv", lambda *a, **k: ["invented-provider-never-executed"])
+    calls = []
+    class CapturedLaunch(Exception):
+        pass
+    def capture(argv, **kwargs):
+        calls.append(list(argv))
+        raise CapturedLaunch()
+    monkeypatch.setattr(repair.subprocess, "Popen", capture)
+    with pytest.raises(CapturedLaunch):
+        repair.run_job(cfg, board, path)
+    assert len(calls) == 1
+    argv = calls[0]
+    assert argv[:5] == ["systemd-run", "--user", "--wait", "--collect", "--pipe"]
+    assert "--property=CPUQuota=100%" in argv
+    if isolated:
+        assert "--property=MemoryHigh=34359738368" in argv
+        assert "--property=MemoryMax=34359738368" in argv
+        assert "--property=TasksMax=512" in argv
+        assert "--property=RuntimeMaxSec=1500" in argv
+        i = argv.index("-m")
+        assert argv[i + 1:i + 3] == [
+            "ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_runtime", "run"]
+        assert "--attempt-token" in argv and "--prompt" in argv
+        assert "invented-provider-never-executed" not in argv
+    else:
+        assert "--property=MemoryHigh=8G" in argv
+        assert "--property=MemoryMax=16G" in argv
+        assert "--property=TasksMax=64" in argv
+        assert "--property=RuntimeMaxSec=2400" in argv
+        assert argv[-1] == "invented-provider-never-executed"
+    assert read_json(path)["attempts"] == 3
