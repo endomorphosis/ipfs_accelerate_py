@@ -1447,7 +1447,7 @@ finally:
 def read_only_normal_import_source(tmp_path_factory):
     # One genuine source tree is shared by the sequential subprocess cases;
     # each process is cold and drift is restored before it exits.
-    return _clean_control_plane_source(tmp_path_factory.mktemp('read-only-normal-import-source'))
+    return _clean_control_plane_source(tmp_path_factory.mktemp('read-only-normal-import-source',numbered=False))
 
 
 @pytest.mark.parametrize('mode',['normal','head-mismatch','source-drift'])
