@@ -30,6 +30,7 @@ RECEIPT_KEYS = frozenset({'schema', 'profile_ref', 'sequence', 'identity', 'obse
 MAX_JSON = 4 * 1024**2
 MAX_SOURCE = 4 * 1024**2
 MAX_INSTALLED_TOOL = 64 * 1024**2
+MAX_DATABASE_PREIMAGE = 128 * 1024**2
 MAX_EPOCH_ARCHIVES = 64
 MAX_ARCHIVE_DIRECTORY_ENTRIES = 4096
 ENV_PROFILE_SHA = 'IPFS_NATIVE_EXECUTOR_PROFILE_SHA256'
@@ -79,11 +80,14 @@ def _path(value):
     _need(path.is_absolute() and str(path) == os.path.abspath(value) and not any(p.is_symlink() for p in (path, *path.parents)), 'aliased_or_relative_path')
     return path
 
-def _raw(path, maximum=MAX_JSON):
+def _raw(path, maximum=MAX_JSON, *, database_preimage=False):
     path = _path(str(path))
+    _need(type(database_preimage) is bool and (not database_preimage or maximum == MAX_DATABASE_PREIMAGE),
+          'database_preimage_bound')
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
         first = os.fstat(stream.fileno())
-        _need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and first.st_uid in (0, os.geteuid()) and not first.st_mode & 0o022 and 0 <= first.st_size <= maximum, 'unsafe_or_oversized_file')
+        custody = (first.st_uid == os.geteuid() and not first.st_mode & 0o002 and first.st_size > 0) if database_preimage else (first.st_uid in (0, os.geteuid()) and not first.st_mode & 0o022)
+        _need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and custody and 0 <= first.st_size <= maximum, 'unsafe_or_oversized_file')
         raw = stream.read(maximum + 1)
         last = os.fstat(stream.fileno())
     stamp = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
@@ -93,6 +97,17 @@ def _raw(path, maximum=MAX_JSON):
 def descriptor(path, *, maximum=MAX_JSON):
     raw = _raw(path, maximum)
     return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def database_preimage_descriptor(path):
+    """Describe the physical preimage of an owned shared catalogue database.
+
+    Group writes are expected for this explicit role; world writes are refused.
+    This hashes stable bytes only and establishes no database or WAL semantics.
+    Ordinary metadata, project sources and installed tools retain their policy.
+    """
+    raw = _raw(path, MAX_DATABASE_PREIMAGE, database_preimage=True)
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
 
 def installed_tool_descriptor(path):
     """Describe an installed ELF interpreter, outside the project-source class.

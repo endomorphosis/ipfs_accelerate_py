@@ -282,3 +282,81 @@ def test_main_process_gate_rejects_foreign_identity_and_source(monkeypatch, fail
 
 
 
+
+
+
+def test_prepare_cycle_refreshes_group_writable_database_preimage(service_case):
+    """Invented bytes exercise candidate code, without opening a database."""
+    case = service_case
+    runtime_root = Path(executor.__file__).resolve().parents[3]
+    rescue = runtime_root / 'ipfs_accelerate_py/agent_supervisor/rescue'
+    assert Path(health.__file__).resolve() == rescue / 'native_executor_health.py'
+    roles = {name: health.descriptor(rescue / filename) for name, filename in (
+        ('main_entrypoint', 'scientific_executor.py'),
+        ('health_module', 'native_executor_health.py'),
+        ('owner_source', 'original_embedded_observation_owner.py'),
+        ('driver_source', 'native_embedded_observation_driver.py'))}
+    case['profile'].update(roles)
+    case['profile']['unit']['argv'][-1] = roles['main_entrypoint']['path']
+    case['profile']['source_descriptors'] = [*roles.values(),
+        health.installed_tool_descriptor(case['profile']['unit']['interpreter']), case['config_ref']]
+    case['profile_ref'] = put(Path(case['profile_ref']['path']), case['profile'])
+    case['request']['source_sha256'] = {roles[field]['path']: roles[field]['sha256']
+        for field in ('owner_source', 'driver_source')}
+    case['request']['source_sha256'][case['template']['plan_ref']['path']] = case['template']['plan_ref']['sha256']
+    case['template']['request_ref'] = put(Path(case['template']['request_ref']['path']), case['request'])
+    case['template_ref'] = put(Path(case['template_ref']['path']), case['template'])
+    case['config']['idle_template_ref'] = case['template_ref']
+    case['config_ref'] = put(Path(case['config_ref']['path']), case['config'])
+    case['profile']['source_descriptors'][-1] = case['config_ref']
+    case['profile_ref'] = put(Path(case['profile_ref']['path']), case['profile'])
+    database = Path(case['config']['catalogue']['database_path'])
+    payload = b'explicit invented shared database preimage\n' * (5 * 1024**2 // 42 + 1)
+    database.write_bytes(payload); database.chmod(0o664)
+    expected = {'path': str(database), 'bytes': len(payload), 'sha256': hashlib.sha256(payload).hexdigest()}
+    assert len(payload) > health.MAX_SOURCE
+    config, _, profile = executor.load_configuration(case['config_ref'])
+    preview = case['root'] / 'source-only-database-role-preview'; preview.mkdir(mode=0o700)
+    request_ref, plan_ref, _ = executor.prepare_cycle(case['template_ref'], 'genuine_scoped_idle', config, profile, preview)
+    request, plan = health._document(request_ref), health._document(plan_ref)
+    assert request['database_preimage'] == expected
+    assert plan['native_metadata_cli']['observation_binding']['database_preimage'] == expected
+    assert expected != case['request']['database_preimage']
+    assert database.read_bytes() == payload and database.stat().st_mode & 0o777 == 0o664
+    with pytest.raises(health.ExecutorHealthError, match='^unsafe_or_oversized_file$'):
+        health.descriptor(database, maximum=health.MAX_DATABASE_PREIMAGE)
+
+
+def test_database_preimage_role_rejects_world_write_and_foreign_owner(tmp_path, monkeypatch):
+    """The shared-file exception is restricted to the actual owning UID."""
+    database = tmp_path / 'invented-shared-preimage.bin'
+    database.write_bytes(b'explicit invented database bytes'); database.chmod(0o666)
+    with pytest.raises(health.ExecutorHealthError, match='^unsafe_or_oversized_file$'):
+        health.database_preimage_descriptor(database)
+    database.chmod(0o664)
+    actual_uid = database.stat().st_uid
+    with monkeypatch.context() as patch:
+        patch.setattr(health.os, 'geteuid', lambda: actual_uid + 1)
+        with pytest.raises(health.ExecutorHealthError, match='^unsafe_or_oversized_file$'):
+            health.database_preimage_descriptor(database)
+    assert database.read_bytes() == b'explicit invented database bytes'
+
+
+def test_database_preimage_role_enforces_128_mib_and_keeps_metadata_strict(tmp_path):
+    """The sparse overbound fixture is always removed before custody closes."""
+    database = tmp_path / 'invented-overbound-preimage.bin'
+    try:
+        with database.open('wb') as stream:
+            stream.truncate(128 * 1024**2 + 1)
+        database.chmod(0o664)
+        with pytest.raises(health.ExecutorHealthError, match='^unsafe_or_oversized_file$'):
+            health.database_preimage_descriptor(database)
+    finally:
+        database.unlink(missing_ok=True)
+    assert not database.exists()
+    metadata = tmp_path / 'ordinary-metadata.json'
+    metadata.write_bytes(b'{"explicit_invented_fixture": true}\n'); metadata.chmod(0o664)
+    with pytest.raises(health.ExecutorHealthError, match='^unsafe_or_oversized_file$'):
+        health.descriptor(metadata)
+    with pytest.raises(health.ExecutorHealthError, match='^database_preimage_bound$'):
+        health._raw(metadata, health.MAX_JSON, database_preimage=True)

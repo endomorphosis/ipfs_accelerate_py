@@ -182,7 +182,7 @@ def prepare_cycle(template_ref, kind, config, profile, root):
     # Refresh only the read-only DB preimage. Nothing changes task admission.
     preimage = request.get('database_preimage')
     need(type(preimage) is dict and preimage.get('path') == config['catalogue']['database_path'], 'prepared_database_binding')
-    current_db = h.descriptor(config['catalogue']['database_path'], maximum=MAX_DATABASE_PREIMAGE)
+    current_db = h.database_preimage_descriptor(config['catalogue']['database_path'])
     request['database_preimage'] = current_db
     command = plan.get('native_metadata_cli', {})
     if kind == 'genuine_scoped_idle':
