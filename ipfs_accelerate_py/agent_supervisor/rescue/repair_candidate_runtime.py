@@ -187,8 +187,10 @@ def parse_runtime_policy(worker: Mapping[str, Any], policy: candidate.CandidateP
     _need(type(bounds) is dict and set(bounds) == {
         "memory_max_bytes", "cpu_quota_percent", "tasks_max", "runtime_max_seconds"},
         "closed existing job-unit bounds required")
-    caps = {"memory_max_bytes": 16 * 1024 ** 3, "cpu_quota_percent": 100,
-            "tasks_max": 64, "runtime_max_seconds": 2400}
+    # Physical parent limits must accommodate unchanged native proof headroom.
+    # These caps grant no extra native CPU, memory, process slots or repair attempts.
+    caps = {"memory_max_bytes": 32 * 1024 ** 3, "cpu_quota_percent": 100,
+            "tasks_max": 512, "runtime_max_seconds": 2400}
     for name, maximum in caps.items():
         _integer(bounds[name], maximum, name)
     validation, adoption = (_owner(value[k], stage) for k, stage in

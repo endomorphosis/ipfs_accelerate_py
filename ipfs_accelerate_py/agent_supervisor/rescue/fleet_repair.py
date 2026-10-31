@@ -1671,7 +1671,9 @@ def _candidate_unit_argv(config: dict[str, Any], board: dict[str, Any], job: dic
             "--property=TimeoutStopSec=30", "--property=Nice=10",
             "--property=CPUWeight=20", f"--property=CPUQuota={int(bounds.get('cpu_quota_percent', 100))}%",
             f"--property=TasksMax={int(bounds.get('tasks_max', 64))}",
-            f"--property=MemoryHigh={min(8 * 1024**3, memory_max)}",
+            # The native scheduler retains global proof headroom inside this parent.
+            # Its finite workload grant remains separate from the physical cgroup cap.
+            f"--property=MemoryHigh={memory_max}",
             f"--property=MemoryMax={memory_max}", "--property=UMask=0077",
             *(f"--setenv={key}={_repair_temporary_directory(policy)}" for key in ("TMPDIR", "TEMP", "TMP")),
             f"--setenv=PYTHONPATH={supervisor_pythonpath()}",
