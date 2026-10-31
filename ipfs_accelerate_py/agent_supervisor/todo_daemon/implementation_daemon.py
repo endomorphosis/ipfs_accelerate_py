@@ -30,6 +30,9 @@ from types import MappingProxyType
 from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence, TextIO
 from urllib.parse import unquote, urlsplit
 
+from ...agent_implementation_route import (
+    current_agent_implementation_read_only_import_scope,
+)
 from ...llm_router import (
     AgentImplementationInvocationBinding,
     AgentImplementationRoutePlan,
@@ -5217,6 +5220,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
+        if implement and _IMPORTED_READ_ONLY_CONTROL_PLANE_IMPORT:
+            raise ValueError("a read-only imported daemon cannot implement tasks")
         automatic_retry_rearm_enabled()
         configured_task_source = task_source
         if configured_task_source is None and task_source_kind:
@@ -80815,13 +80820,31 @@ def main(argv: list[str] | None = None) -> None:
             startup_watchdog.close()
 
 
-def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
-    """Seal the generation that finished importing this daemon module."""
+def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path | None]:
+    """Seal implementation imports, or verify an explicit read-only import."""
+
+    global _IMPORTED_READ_ONLY_CONTROL_PLANE
 
     source_root = Path(__file__).resolve(strict=True).parents[3]
     head_before, tree_before = (
         agent_implementation_control_plane_source_generation(source_root)
     )
+    read_only = current_agent_implementation_read_only_import_scope()
+    if read_only is not None:
+        if read_only.source_root != source_root or read_only.source_head != head_before:
+            raise ValueError("read-only import source root/HEAD differs")
+        head_after, tree_after = (
+            agent_implementation_control_plane_source_generation(source_root)
+        )
+        if (head_after, tree_after) != (head_before, tree_before):
+            raise ValueError("read-only import source generation changed")
+        _IMPORTED_READ_ONLY_CONTROL_PLANE = {
+            "schema": "agent-implementation-read-only-import@1",
+            "source_root": str(source_root),
+            "source_head": head_before,
+            "source_tree": tree_before,
+        }
+        return None, None, None
     parent = Path(
         tempfile.mkdtemp(prefix="asref-imported-control-plane-")
     )
@@ -80847,6 +80870,12 @@ def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
         except OSError:
             pass
         raise
+
+
+_IMPORTED_READ_ONLY_CONTROL_PLANE_IMPORT = (
+    current_agent_implementation_read_only_import_scope() is not None
+)
+_IMPORTED_READ_ONLY_CONTROL_PLANE: dict[str, str] | None = None
 
 
 try:

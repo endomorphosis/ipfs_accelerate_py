@@ -462,3 +462,92 @@ def test_resolution_only_present_module_cannot_escape_execution_provenance(guard
     assert finder.project_origins[spec.name]['execution_status']=='resolution_only'
     assert 'execution_profile' not in finder.project_origins[spec.name]
     assert not (finder.directory/'project-import-origins-present-resolution-only.json').exists()
+
+
+@pytest.fixture
+def read_only_route():
+    path=BASE/'ipfs_accelerate_py/agent_implementation_route.py'
+    name='_qualified_read_only_import_route'
+    spec=importlib.util.spec_from_file_location(name,path)
+    module=importlib.util.module_from_spec(spec);sys.modules[name]=module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_read_only_import_scope_is_explicit_and_resets_after_exception(read_only_route,tmp_path):
+    route=read_only_route
+    assert route.current_agent_implementation_read_only_import_scope() is None
+    with pytest.raises(RuntimeError,match='fixture exit'):
+        with route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head='1'*40) as scope:
+            assert type(scope)is route.AgentImplementationReadOnlyImportScope
+            assert (scope.source_root,scope.source_head)==(tmp_path,'1'*40)
+            assert route.current_agent_implementation_read_only_import_scope() is scope
+            raise RuntimeError('fixture exit')
+    assert route.current_agent_implementation_read_only_import_scope() is None
+    assert list(tmp_path.iterdir())==[]
+
+
+@pytest.mark.parametrize('head',[None,True,'111111111111111111111111111111111111111','GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG'])
+def test_read_only_import_scope_refuses_noncanonical_heads(read_only_route,tmp_path,head):
+    with pytest.raises(ValueError,match='exact source HEAD'):
+        with read_only_route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head=head):
+            pytest.fail('invalid source HEAD entered a read-only scope')
+    assert read_only_route.current_agent_implementation_read_only_import_scope() is None
+
+
+def test_read_only_import_scope_refuses_nesting_without_losing_outer_restriction(read_only_route,tmp_path):
+    route=read_only_route
+    with route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head='1'*40) as outer:
+        with pytest.raises(ValueError,match='cannot be nested'):
+            with route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head='2'*40):
+                pytest.fail('nested source scope accepted')
+        assert route.current_agent_implementation_read_only_import_scope() is outer
+    assert route.current_agent_implementation_read_only_import_scope() is None
+
+
+def test_read_only_import_scope_refuses_parent_traversal(read_only_route,tmp_path):
+    with pytest.raises(ValueError,match='parent traversal'):
+        with read_only_route.agent_implementation_read_only_import_scope(source_root=tmp_path/'..',source_head='1'*40):
+            pytest.fail('aliased source root entered a scope')
+    assert read_only_route.current_agent_implementation_read_only_import_scope() is None
+
+
+@pytest.mark.parametrize('scope_kind',['archived','read-only'])
+def test_owner_and_driver_agree_on_both_exact_import_modes(owner,driver,tmp_path,scope_kind):
+    plan=_plan(driver,tmp_path);c=plan['native_metadata_cli']
+    scope=driver.ARCHIVED_IMPORT_SCOPE if scope_kind=='archived' else driver.READ_ONLY_IMPORT_SCOPE
+    c['import_head_capsule_Git']['scope']=scope
+    assert driver.validate_import_git_binding(c) is c['import_head_capsule_Git']
+    assert owner.validate_import_git_binding(c) is c['import_head_capsule_Git']
+    c['import_head_capsule_Git']['scope']=scope+' unreviewed'
+    with pytest.raises(RuntimeError,match='HEAD read scope'):
+        driver.validate_import_git_binding(c)
+    with pytest.raises(RuntimeError,match='HEAD read scope'):
+        owner.validate_import_git_binding(c)
+
+
+def test_read_only_import_admission_refuses_capsule_blob_archive(driver,import_git_case,monkeypatch):
+    case=import_git_case;_refresh_import_git_environment_for_call(case,monkeypatch)
+    case['plan']['native_metadata_cli']['import_head_capsule_Git']['scope']=driver.READ_ONLY_IMPORT_SCOPE
+    with pytest.raises(RuntimeError,match='does not archive HEAD blobs'):
+        driver.authorize_native_control_popen(case['argv'],(),case['kwargs'],case['plan'])
+
+
+def test_read_only_import_admission_preserves_original_clean_generation_query(driver,import_git_case,monkeypatch):
+    import subprocess
+    case=import_git_case;_refresh_import_git_environment_for_call(case,monkeypatch)
+    case['plan']['native_metadata_cli']['import_head_capsule_Git']['scope']=driver.READ_ONLY_IMPORT_SCOPE
+    kwargs=dict(case['kwargs']);kwargs.pop('close_fds');kwargs.pop('bufsize')
+    kwargs.update(stdin=subprocess.DEVNULL,stderr=subprocess.PIPE)
+    row=driver.authorize_native_control_popen(case['prefix']+['rev-parse','--show-toplevel'],(),kwargs,case['plan'])
+    assert row['original_frame']=='_agent_git_output' and row['sealed_launcher_fds']==[]
+
+
+def test_read_only_import_witness_cannot_be_minted_outside_active_scope(driver,read_only_route,tmp_path,monkeypatch):
+    route=read_only_route;plan=_plan(driver,tmp_path);c=plan['native_metadata_cli']
+    c['import_head_capsule_Git']['scope']=driver.READ_ONLY_IMPORT_SCOPE
+    monkeypatch.setattr(driver,'module_owner',lambda *args:(route,{}))
+    # No capsule, launch, constructor or daemon execution is fabricated here.
+    # The actual witness is exercised by the normal-import cold owning test.
+    with pytest.raises(RuntimeError,match='genuine current read-only normal import'):
+        driver.require_original_import_capability(types.SimpleNamespace(),c)

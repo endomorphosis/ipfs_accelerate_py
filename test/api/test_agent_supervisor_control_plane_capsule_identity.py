@@ -1345,3 +1345,121 @@ def test_head_payload_batch_write_backpressure_obeys_deadline_and_reaps(tmp_path
     with pytest.raises(ValueError, match="batch timed out"):
         route._agent_control_plane_head_payloads(tmp_path, source_head="f" * 40)
     _assert_batch_process_reaped(processes)
+
+
+_READ_ONLY_NORMAL_IMPORT_BOOTSTRAP = r"""
+import hashlib,importlib,json,os,sys,tempfile
+from pathlib import Path
+source=Path(sys.argv[1]);temporary=Path(sys.argv[2]);mode=sys.argv[3]
+os.environ.update(IPFS_ACCEL_SKIP_CORE='1',PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1',
+                  IPFS_ACCELERATE_AGENT_QUACK_PREFER='0',TMPDIR=str(temporary),TMP=str(temporary),TEMP=str(temporary))
+os.environ.pop('IPFS_ACCELERATE_META_INDEX_DUCKDB',None)
+os.environ.pop('IPFS_ACCELERATE_META_INDEX_DUCKLAKE',None)
+tempfile.tempdir=str(temporary);sys.path.insert(0,str(source))
+from ipfs_accelerate_py import agent_implementation_route as route
+head,tree=route.agent_implementation_control_plane_source_generation(source)
+selected_head='0'*40 if mode=='head-mismatch' else head
+drift=source/'.read-only-import-drift'
+original_generation=route.agent_implementation_control_plane_source_generation
+calls=[]
+if mode=='source-drift':
+    def generation(root):
+        value=original_generation(root);calls.append(value)
+        if len(calls)==1:drift.write_text('actual untracked source drift\n')
+        return value
+    # Only fault injection: the second real Git generation check sees the
+    # actual dirty source. The real capture function and normal loader execute.
+    route.agent_implementation_control_plane_source_generation=generation
+try:
+    with route.agent_implementation_read_only_import_scope(source_root=source,source_head=selected_head):
+        daemon=importlib.import_module('ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon')
+        assert daemon._IMPORTED_READ_ONLY_CONTROL_PLANE_IMPORT is True
+        assert daemon._IMPORTED_CONTROL_PLANE_CAPSULE is None
+        assert daemon._IMPORTED_CONTROL_PLANE_LAUNCH is None
+        assert daemon._IMPORTED_CONTROL_PLANE_TEMP_ROOT is None
+        assert not list(temporary.glob('asref-imported-control-plane-*'))
+        if mode=='normal':
+            expected={'schema':'agent-implementation-read-only-import@1','source_root':str(source),
+                      'source_head':head,'source_tree':tree}
+            assert daemon._IMPORTED_READ_ONLY_CONTROL_PLANE==expected
+            driver=importlib.import_module('ipfs_accelerate_py.agent_supervisor.rescue.native_embedded_observation_driver')
+            selected={p.relative_to(source).as_posix() for p in route._agent_control_plane_source_files(source,verify_loaded_origins=False)}
+            raw=route._agent_git_output(source,('ls-tree','-r','-l','-z',head,'--','ipfs_accelerate_py',
+                'scripts/ops/agent_supervisor/configured_board_scheduler.py',
+                'scripts/ops/agent_supervisor/implementation_supervisor_entry.py'))
+            blobs=[]
+            for row in raw.split(b'\0'):
+                if not row:continue
+                meta,name=row.split(b'\t',1);name=os.fsdecode(name)
+                if name in selected:
+                    mode_bits,kind,oid,size=meta.split()
+                    assert kind==b'blob'
+                    blobs.append({'relative_path':name,'object_id':oid.decode(),'bytes':int(size)})
+            route_path=source/'ipfs_accelerate_py/agent_implementation_route.py'
+            route_raw=route_path.read_bytes();route_ref={'path':str(route_path),'bytes':len(route_raw),
+                'sha256':hashlib.sha256(route_raw).hexdigest()}
+            binding={'blobs':blobs,'ls_tree_tail':['ls-tree','-r','-z',head,'--','ipfs_accelerate_py',
+                'scripts/ops/agent_supervisor/configured_board_scheduler.py',
+                'scripts/ops/agent_supervisor/implementation_supervisor_entry.py'],
+                'payload_bytes':sum(row['bytes']for row in blobs),
+                'required_relative_files':list(route._AGENT_CONTROL_PLANE_RELATIVE_FILES),
+                'route_source':route_ref,'scope':driver.READ_ONLY_IMPORT_SCOPE,
+                'selected_file_count':len(blobs),'source_head':head,'source_root':str(source),
+                'unique_blob_count':len({row['object_id']for row in blobs})}
+            daemon_path=source/driver.RUNNER_REL
+            c={'import_head_capsule_Git':binding,'source_sha256':{
+                str(route_path):route_ref['sha256'],str(daemon_path):hashlib.sha256(daemon_path.read_bytes()).hexdigest()}}
+            witness=driver.require_original_import_capability(daemon,c)
+            assert witness==expected
+        else:
+            assert daemon._IMPORTED_READ_ONLY_CONTROL_PLANE is None
+    assert route.current_agent_implementation_read_only_import_scope() is None
+    if mode=='normal':
+        try:driver.require_original_import_capability(daemon,c)
+        except RuntimeError as exc:assert 'genuine current read-only normal import' in str(exc)
+        else:raise AssertionError('cached witness was accepted outside its explicit scope')
+        binding['source_head']='0'*40;binding['ls_tree_tail'][3]='0'*40
+        try:driver.import_original_daemon(c)
+        except RuntimeError as exc:assert 'genuine current read-only normal import' in str(exc)
+        else:raise AssertionError('cached module was rebound to a different HEAD')
+        assert route.current_agent_implementation_read_only_import_scope() is None
+    # Leaving the temporary restriction cannot rearm this module. Both ordinary
+    # and protected implementation constructors must refuse before any stores.
+    for protected in (False,True):
+        key='IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH'
+        if protected:os.environ[key]=str(temporary/'never-authorized.json')
+        else:os.environ.pop(key,None)
+        try:
+            daemon.PortalImplementationDaemon(state_path=temporary/'state.json',strategy_path=temporary/'strategy.json',
+                events_path=temporary/'events.json',implement=True)
+        except ValueError as exc:
+            assert str(exc)=='a read-only imported daemon cannot implement tasks'
+        else:raise AssertionError('read-only imported module acquired implementation authority')
+    assert not list(temporary.iterdir())
+    print(json.dumps({'mode':mode,'read_only_imported':True,'capsule_created':False,
+                     'implementation_refused':True,'witness_verified':mode=='normal'}))
+finally:
+    if drift.exists():drift.unlink()
+"""
+
+
+@pytest.fixture(scope='module')
+def read_only_normal_import_source(tmp_path_factory):
+    # One genuine source tree is shared by the sequential subprocess cases;
+    # each process is cold and drift is restored before it exits.
+    return _clean_control_plane_source(tmp_path_factory.mktemp('read-only-normal-import-source'))
+
+
+@pytest.mark.parametrize('mode',['normal','head-mismatch','source-drift'])
+def test_read_only_normal_daemon_import_creates_no_capsule_and_never_implements(read_only_normal_import_source,tmp_path,mode):
+    source=read_only_normal_import_source
+    temporary=tmp_path/'temporary';temporary.mkdir(mode=0o700)
+    environment=dict(os.environ);environment['PYTHONDONTWRITEBYTECODE']='1'
+    completed=subprocess.run([sys.executable,'-I','-B','-c',_READ_ONLY_NORMAL_IMPORT_BOOTSTRAP,
+        str(source),str(temporary),mode],cwd=source,env=environment,text=True,
+        capture_output=True,timeout=120,check=False)
+    assert completed.returncode==0,completed.stdout+'\n'+completed.stderr
+    result=json.loads(completed.stdout.splitlines()[-1])
+    assert result=={'mode':mode,'read_only_imported':True,'capsule_created':False,
+                   'implementation_refused':True,'witness_verified':mode=='normal'}
+    assert not _git(source,'status','--porcelain=v1','--untracked-files=all')

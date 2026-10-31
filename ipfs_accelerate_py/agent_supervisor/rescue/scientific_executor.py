@@ -786,6 +786,356 @@ def reconcile_known_closed_idle(recovery_ref, profile_ref, profile, config, open
     return 2
 
 
+CAPACITY_SCHEMA = 'agent-supervisor/scientific-known-unselected-capacity-handover@1'
+CAPACITY_SHA_ENV = 'IPFS_SCIENTIFIC_KNOWN_UNSELECTED_CAPACITY_HANDOVER_SHA256'
+CAPACITY_KEYS = frozenset({'schema', 'recovery_kind', 'profile_ref', 'prior_profile_ref',
+    'prior_profile_snapshot_ref', 'prior_config_snapshot_ref', 'prior_history_ref',
+    'source_commitment_ref', 'scheduler_snapshot_ref', 'current_native_ref',
+    'spent_cycle_count', 'max_cycles', 'authorization', 'recorded_at', 'manager_before'})
+CAPACITY_ARCHIVE_FIELDS = ('prior_profile_snapshot_ref', 'prior_config_snapshot_ref',
+    'prior_history_ref', 'source_commitment_ref', 'scheduler_snapshot_ref', 'current_native_ref')
+CAPACITY_HISTORY_KEYS = frozenset({'schema', 'prior_profile_ref', 'prior_config_ref',
+    'prior_source_commitment_ref', 'closed_idle_authorization_ref', 'closed_idle_ack_ref',
+    'global_hold_ref', 'cycle2_hold_ref', 'latest_receipt_ref', 'capacity_intent_ref',
+    'capacity_hold_ref', 'old_root_storage'})
+READ_ONLY_IMPORT_SCOPE = 'read-only normal import checks clean HEAD/tree without archiving a control-plane capsule; implementation is forbidden'
+
+
+def _capacity_root_storage(root):
+    """Bounded read-only footprint; never prune or make space in prior proofs."""
+    total = count = directories = 0
+    pending = [Path(root)]
+    while pending:
+        directory = pending.pop(); directories += 1
+        need(directories <= 2048, 'capacity_old_root_directory_bound')
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISDIR(info.st_mode):
+                    need(info.st_uid == os.geteuid(), 'capacity_old_root_foreign_directory')
+                    pending.append(Path(entry.path)); continue
+                need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.geteuid(),
+                     'capacity_old_root_nonordinary_artifact')
+                count += 1; total += info.st_size
+                need(count <= 40000 and total <= 2 * 1024**3, 'capacity_old_root_read_bound')
+    return dict(regular_files=count, regular_bytes=total)
+
+
+def _capacity_dead_family(proof, terminal, old_main):
+    h = health_owner(); boot = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    need(h._definitely_dead_identity(old_main, boot), 'capacity_prior_main_alive')
+    owner = proof['owner_observation']
+    need(h._definitely_dead_identity(owner, boot), 'capacity_prior_owner_alive')
+    rows = terminal.get('sampled_process_custody_final', {}).get('observed_identities')
+    need(type(rows) is list and len(rows) <= 4096, 'capacity_prior_descendant_custody_unknown')
+    for row in rows:
+        need(type(row) is dict and h._integer(row.get('pid'), 2) and h._integer(row.get('birth_ticks'), 1)
+             and h._definitely_dead_identity(dict(row, boot_id=old_main['boot_id']), boot),
+             'capacity_prior_descendant_alive')
+
+
+def _capacity_negative_history(history, prior, prior_ref, cycles, old_main, scheduler_ref):
+    """Keep the two original negative histories negative; never relabel origins."""
+    h = health_owner(); closed_auth = h._document(history['closed_idle_authorization_ref'])
+    closed_ack = h._document(history['closed_idle_ack_ref'])
+    need(closed_auth.get('schema') == CLOSED_IDLE_SCHEMA and closed_auth.get('profile_ref') == prior_ref
+         and closed_auth.get('authorization') == 'resume_genuine_scoped_idle'
+         and closed_auth.get('max_cycles') == 10000
+         and closed_ack.get('schema') == 'agent-supervisor/scientific-closed-idle-reconciliation@1'
+         and closed_ack.get('recovery_ref') == history['closed_idle_authorization_ref']
+         and closed_ack.get('consuming_main_identity') == old_main
+         and type(closed_ack.get('spent_cycle_count')) is int and closed_ack['spent_cycle_count'] == 2
+         and closed_ack.get('next_cycle_number') == 3 and closed_ack.get('first_health_sequence') == 1
+         and all(closed_ack.get(k) is False for k in ('health_credit', 'completion_authority',
+             'dispatch_authority', 'historical_origins_relabelled')), 'capacity_closed_idle_lineage')
+    first_auth = h._document(closed_auth['prior_authorization_ref']); first_ack = h._document(closed_auth['prior_ack_ref'])
+    need(first_auth.get('schema') == RECOVERY_SCHEMA and first_auth.get('authorization') == 'resume_genuine_scoped_idle'
+         and first_ack.get('schema') == 'agent-supervisor/scientific-nonstarted-reconciliation@1'
+         and first_ack.get('recovery_ref') == closed_auth['prior_authorization_ref']
+         and closed_ack.get('prior_authorization_ref') == closed_auth['prior_authorization_ref']
+         and closed_ack.get('prior_ack_ref') == closed_auth['prior_ack_ref']
+         and all(first_ack.get(k) is False for k in ('health_credit', 'completion_authority', 'dispatch_authority')),
+         'capacity_nonstarted_lineage')
+    hold = h._document(history['global_hold_ref']); second_hold = h._document(history['cycle2_hold_ref'])
+    need(history['global_hold_ref']['path'] == str(cycles[0].parent / 'executor-held.json')
+         and history['global_hold_ref'] == closed_auth['global_hold_ref'] == first_auth['hold_ref']
+         == first_ack['hold_ref'] == closed_ack['retained_global_hold_ref']
+         and history['cycle2_hold_ref'] == closed_auth['cycle_hold_ref'] == closed_ack['retained_cycle_hold_ref']
+         and history['cycle2_hold_ref']['path'] == str(cycles[1] / 'cycle-held.json')
+         and hold.get('reason') == 'original_owner_failed' and hold.get('cycle_root') == str(cycles[0])
+         and second_hold.get('reason') == 'original_import_origin_unbound'
+         and hold.get('automatic_retry_admitted') is False and second_hold.get('automatic_retry_admitted') is False,
+         'capacity_original_holds_changed')
+    need(first_auth['request_ref']['path'] == str(cycles[0] / 'request.json')
+         and first_auth['owner_stdout_ref']['path'] == str(cycles[0] / 'owner.stdout')
+         and not any((cycle / 'closed.json').exists() for cycle in cycles[:2]), 'capacity_negative_paths_or_health_changed')
+    first_request = h._document(first_auth['request_ref'])
+    first_terminal = original_terminal(h._bound(first_auth['owner_stdout_ref']), first_auth['request_ref'])
+    first_negative = h._document(first_auth['negative_audit_ref'])
+    need(first_auth['failed_cycle_root'] == str(cycles[0]) and first_ack.get('failed_cycle_root') == str(cycles[0])
+         and first_terminal.get('completed') is False and first_terminal.get('child_launch_attempted') is False
+         and first_terminal.get('child_reaped') is False and first_terminal.get('child_returncode') is None
+         and first_terminal.get('control_effects') == 'not_started' and first_terminal.get('storage_status') == 'not_requested'
+         and first_terminal.get('error_type') == 'ResourceAdmissionDeadlineError'
+         and not any(k in first_terminal for k in ('reservation', 'execution_request', 'external_precharge', 'process_spawn_receipts'))
+         and first_terminal.get('source_READ_closed') is True and first_terminal.get('original_native_compute_closed') is True
+         and first_terminal.get('absolute_resource_operation_deadline_closed') is True
+         and first_terminal.get('cleanup_errors') == [] and first_terminal.get('received_signals') == []
+         and first_terminal.get('task_completion_authority_granted_by_resource_owner') is False
+         and first_negative.get('negative_terminal_and_hold_verified') is True
+         and first_negative.get('original_terminal') == first_terminal and first_negative.get('persistent_hold') == hold,
+         'capacity_first_negative_unknown')
+    first_capture = h._document(first_auth['activation_capture_ref']); first_main = first_capture['opening_actual_main_identity']
+    first_prior = h._document(first_auth['prior_profile_snapshot_ref'])
+    h._stored_identity(first_main, first_auth['prior_profile_ref'], first_prior)
+    need(type(first_terminal.get('owner_birth')) is str and first_terminal['owner_birth'].isdecimal(),
+         'capacity_first_owner_birth_unknown')
+    first_owner = dict(pid=first_terminal.get('owner_pid'), birth_ticks=int(first_terminal['owner_birth']),
+                       boot_id=first_main['boot_id'])
+    boot = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    need(h._integer(first_owner['pid'], 2) and h._integer(first_owner['birth_ticks'], 1)
+         and h._definitely_dead_identity(first_main, boot) and h._definitely_dead_identity(first_owner, boot),
+         'capacity_first_negative_family_alive')
+    attempt = h._path(first_request['attempt_directory'])
+    need(cycles[0] in attempt.parents and not any(attempt.iterdir()), 'capacity_first_negative_attempt_changed')
+    old_plan = h._document(first_auth['activation_plan_ref'])
+    need(old_plan.get('main_loop_limits') == dict(max_cycles=10000, poll_seconds=60, max_proof_bytes=1024**3),
+         'capacity_original_limits_unknown')
+    second_ref = h.descriptor(cycles[1] / 'cycle-proof.json'); proof = h._document(second_ref)
+    need(second_ref == closed_auth['cycle_proof_ref'] == closed_ack['rejected_cycle_proof_ref'],
+         'capacity_second_negative_proof_changed')
+    prior2 = h._document(closed_auth['prior_profile_snapshot_ref']); negative = h._document(closed_auth['negative_audit_ref'])
+    capture2 = h._document(closed_auth['prior_administrative_capture_ref']); main2 = capture2['opening_identity']
+    h._stored_identity(main2, closed_auth['prior_profile_ref'], prior2)
+    need(first_ack.get('consuming_main_identity') == main2, 'capacity_first_ack_main_changed')
+    second_intent = h._document(h.descriptor(cycles[1] / 'intent.json'))
+    need(type(second_intent.get('sequence')) is int and second_intent['sequence'] == 1
+         and second_intent.get('request_ref') == proof.get('request_ref'), 'capacity_second_intent_changed')
+    request, terminal, result, plan, origins, native = (h._document(proof[k]) for k in
+        ('request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref'))
+    need(proof.get('kind') == 'genuine_scoped_idle' and type(proof.get('sequence')) is int and proof['sequence'] == 1
+         and negative.get('accepted_as_executor_health_or_activation') is False
+         and negative.get('cycle_proof_ref') == second_ref
+         and original_terminal(h._raw(cycles[1] / 'owner.stdout'), proof['request_ref']) == terminal,
+         'capacity_second_negative_unknown')
+    native_identity = h._native(native, prior2, now=proof['finished_at'])
+    try:
+        h._cycle(second_ref, prior2, main2, native_identity, now=proof['finished_at'],
+                 monotonic_ns=proof['finished_monotonic_ns'])
+    except h.ExecutorHealthError as exc:
+        need(str(exc) == 'original_import_origin_unbound', 'capacity_second_negative_other_refusal')
+    else:
+        raise ExecutorHold('capacity_unknown_history_cannot_gain_health')
+    _closed_idle_origins(origins, prior2, request, plan, negative)
+    _closed_idle_observation(result, request, plan, origins, prior2, native, terminal)
+    _capacity_dead_family(proof, terminal, main2)
+    _recovery_scheduler(first_request, scheduler_ref); _recovery_scheduler(request, scheduler_ref)
+    return closed_auth
+
+
+def _validate_capacity_handover(value, profile_ref, profile, config):
+    """Exact thirteen-spent, idle-only transfer into a distinct empty proof root."""
+    h = health_owner(); h._keys(value, CAPACITY_KEYS, 'capacity_handover_shape')
+    need(value['schema'] == CAPACITY_SCHEMA and value['recovery_kind'] == 'known_unselected_capacity_hold'
+         and value['authorization'] == 'resume_genuine_scoped_idle_in_fresh_root'
+         and value['profile_ref'] == profile_ref and h._profile(profile_ref) == profile
+         and type(value['spent_cycle_count']) is int and value['spent_cycle_count'] == 13
+         and value['max_cycles'] == config['max_cycles'] == 10000 and config['poll_seconds'] == 60
+         and config['max_proof_bytes'] == 1024**3 and config['execution_templates'] == [], 'capacity_handover_authority')
+    root = h._path(profile['proof_root']); archive = root / 'reconciliation-v03'
+    total = 0
+    for field in CAPACITY_ARCHIVE_FIELDS:
+        h._within(value[field], archive); h._bound(value[field]); total += value[field]['bytes']
+    need(total <= 1024**2, 'capacity_archive_bound')
+    prior = h._document(value['prior_profile_snapshot_ref']); prior_config = h._document(value['prior_config_snapshot_ref'])
+    history = h._document(value['prior_history_ref']); h._keys(history, CAPACITY_HISTORY_KEYS, 'capacity_history_shape')
+    need(history['schema'] == 'agent-supervisor/scientific-capacity-prior-history@1'
+         and history['prior_profile_ref'] == value['prior_profile_ref']
+         and _same_payload(value['prior_profile_ref'], value['prior_profile_snapshot_ref'])
+         and value['prior_profile_ref']['path'] == profile_ref['path'], 'capacity_prior_profile_snapshot')
+    old_root = h._path(prior['proof_root'])
+    need(old_root != root and old_root.parent == root.parent and not old_root.is_relative_to(root)
+         and not root.is_relative_to(old_root), 'capacity_requires_distinct_sibling_proof_root')
+    for directory in (old_root, root):
+        info = directory.lstat()
+        need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700,
+             'capacity_proof_root_not_private')
+    check_proof_budget(root, config['max_proof_bytes'])
+    need(not list(root.glob('cycle-*')) and not os.path.lexists(root / 'executor-held.json')
+         and not os.path.lexists(profile['receipt_path'])
+         and Path(profile['receipt_path']).parent == root, 'capacity_new_root_not_fresh')
+    need(all(prior.get(k) == profile[k] for k in ('catalogue', 'task_scope', 'max_age_seconds', 'max_cycle_seconds', 'cycle_contract'))
+         and all(prior['unit'][k] == profile['unit'][k] for k in ('name', 'interpreter', 'working_directory')),
+         'capacity_prior_scope_or_unit_changed')
+    old_source = Path(prior['owner_source']['path']).parents[3]; new_source = Path(profile['owner_source']['path']).parents[3]
+    need(old_source != new_source and not old_source.is_relative_to(new_source) and not new_source.is_relative_to(old_source)
+         and _same_payload(prior['health_module'], profile['health_module']), 'capacity_requires_retained_source_generation')
+    expected_env = dict(prior['unit']['environment'])
+    if 'PYTHONPATH' in expected_env:
+        expected_env['PYTHONPATH'] = ':'.join(str(new_source) if part == str(old_source) else part
+            for part in expected_env['PYTHONPATH'].split(':'))
+    need(profile['unit']['environment'] == expected_env, 'capacity_unit_environment_changed')
+    old_argv = prior['unit']['argv']; old_config_path = old_argv[old_argv.index('--config') + 1]
+    need(history['prior_config_ref']['path'] == old_config_path
+         and history['prior_config_ref'] in prior['source_descriptors']
+         and _same_payload(history['prior_config_ref'], value['prior_config_snapshot_ref'])
+         and prior_config.get('schema') == CONFIG_SCHEMA and prior_config.get('execution_templates') == []
+         and all(prior_config[k] == config[k] for k in ('catalogue', 'max_cycles', 'poll_seconds', 'max_proof_bytes')),
+         'capacity_original_configuration_changed')
+    for pin in prior['source_descriptors']:
+        if pin == history['prior_config_ref']: continue
+        if pin['path'] == prior['unit']['interpreter']: h._bound_installed_tool(pin)
+        else: h._bound_project_source(pin, prior)
+    _closed_idle_source_inventory(value, profile)
+    _closed_idle_source_inventory({'source_commitment_ref': history['prior_source_commitment_ref']}, prior)
+    cycles = sorted(old_root.glob('cycle-*'))
+    need(len(cycles) == 13, 'capacity_old_cycle_population')
+    for number, cycle in enumerate(cycles, 1):
+        need(cycle.name.startswith('cycle-%08d-' % number), 'capacity_old_cycle_counter_gap_or_duplicate')
+        intent = h._document(h.descriptor(cycle / 'intent.json'))
+        need(type(intent.get('cycle_number', intent.get('sequence'))) is int
+             and intent.get('cycle_number', intent.get('sequence')) == number
+             and intent.get('automatic_retry_admitted') is False, 'capacity_old_cycle_intent_unknown')
+        if number < 13:
+            need(intent.get('kind') == 'genuine_scoped_idle', 'capacity_prior_execution_or_unknown_intent')
+    last = cycles[-1]; intent = h._document(history['capacity_intent_ref']); held = h._document(history['capacity_hold_ref'])
+    need(history['capacity_intent_ref']['path'] == str(last / 'intent.json')
+         and history['capacity_hold_ref']['path'] == str(last / 'cycle-held.json')
+         and set(path.name for path in last.iterdir()) == {'intent.json', 'cycle-held.json'}
+         and intent == dict(kind='not_selected', sequence=11, cycle_number=13, automatic_retry_admitted=False)
+         and held.get('schema') == 'agent-supervisor/scientific-cycle-held@1'
+         and held.get('reason') == 'proof_storage_bound' and held.get('automatic_retry_admitted') is False,
+         'capacity_not_exact_unselected_storage_hold')
+    h._keys(history['old_root_storage'], {'regular_files', 'regular_bytes'}, 'capacity_old_storage_shape')
+    need(all(type(history['old_root_storage'][k]) is int for k in ('regular_files', 'regular_bytes')), 'capacity_old_storage_types')
+    footprint = _capacity_root_storage(old_root)
+    need(footprint == history['old_root_storage'] and footprint['regular_files'] > 20000
+         and footprint['regular_bytes'] <= 1024**3, 'capacity_old_file_limit_not_proven')
+    receipt = h._document(history['latest_receipt_ref']); old_main = receipt['identity']
+    need(history['latest_receipt_ref']['path'] == prior['receipt_path'] and type(receipt.get('sequence')) is int
+         and receipt['sequence'] == 10 and receipt.get('profile_ref') == value['prior_profile_ref'], 'capacity_last_receipt_binding')
+    h._stored_identity(old_main, value['prior_profile_ref'], prior)
+    closed_auth = _capacity_negative_history(history, prior, value['prior_profile_ref'], cycles, old_main, value['scheduler_snapshot_ref'])
+    need(_same_payload(closed_auth['source_commitment_ref'], history['prior_source_commitment_ref']),
+         'capacity_prior_source_history_join')
+    for number, cycle in enumerate(cycles[2:12], 3):
+        intent = h._document(h.descriptor(cycle / 'intent.json')); closed = h._document(h.descriptor(cycle / 'closed.json'))
+        h._keys(closed, {'cycle_proof_ref', 'receipt_ref'}, 'capacity_closed_cycle_shape')
+        need(type(closed.get('receipt_ref')) is dict and closed['receipt_ref'].get('path') == prior['receipt_path'],
+             'capacity_prior_receipt_path_changed')
+        proof_ref = h.descriptor(cycle / 'cycle-proof.json'); proof = h._document(proof_ref)
+        need(closed.get('cycle_proof_ref') == proof_ref and proof.get('kind') == 'genuine_scoped_idle'
+             and type(intent.get('sequence')) is int and intent['sequence'] == number - 2 == proof.get('sequence')
+             and intent.get('request_ref') == proof.get('request_ref')
+             and not os.path.lexists(cycle / 'cycle-held.json'), 'capacity_prior_cycle_not_genuine_closed_idle')
+        native = h._document(proof['native_diagnostic_ref']); native_identity = h._native(native, prior, now=proof['finished_at'])
+        h._cycle(proof_ref, prior, old_main, native_identity, now=proof['finished_at'], monotonic_ns=proof['finished_monotonic_ns'])
+        request = h._document(proof['request_ref']); terminal = h._document(proof['terminal_ref'])
+        need(original_terminal(h._raw(cycle / 'owner.stdout'), proof['request_ref']) == terminal
+             and terminal.get('task_completion_authority_granted_by_resource_owner') is False,
+             'capacity_prior_terminal_or_authority_changed')
+        _capacity_dead_family(proof, terminal, old_main); _recovery_scheduler(request, value['scheduler_snapshot_ref'])
+    need(receipt.get('cycle_proof_ref') == proof_ref and closed.get('receipt_ref') == history['latest_receipt_ref'],
+         'capacity_last_cycle_receipt_join')
+    h._receipt(history['latest_receipt_ref'], value['prior_profile_ref'], prior, native_identity, old_main,
+               now=receipt['observed_at'], monotonic_ns=receipt['observed_monotonic_ns'])
+    current = h._document(value['current_native_ref']); h._native(current, profile)
+    def tasks(report):
+        return sorted(({k: row[k] for k in ('task_cid', 'status', 'revision')} for row in report['tasks']
+            if row['task_cid'] in profile['task_scope']), key=lambda row: row['task_cid'])
+    need(current['event_cursor'] == native['event_cursor'] and tasks(current) == tasks(native)
+         and all(row['status'] in QUIET_STATUSES for row in current['tasks'] if row['task_cid'] in profile['task_scope']),
+         'capacity_current_catalogue_changed_or_runnable')
+    request = h._document(proof['request_ref']); database = request['database_preimage']
+    need(h.database_descriptor(config['catalogue']['database_path']) == database
+         and terminal.get('database_preimage_before_grants') == database == terminal.get('database_preimage_observed')
+         == terminal.get('database_postimage'), 'capacity_database_history_or_current_changed')
+    template = h._document(config['idle_template_ref']); validate_template(template, profile, 'genuine_scoped_idle')
+    future = h._document(template['plan_ref']); cli = future.get('native_metadata_cli', {}); git = cli.get('import_head_capsule_Git', {})
+    commitment = h._document(value['source_commitment_ref']); future_request = h._document(template['request_ref'])
+    observer = cli.get('observation_binding', {}).get('observer_source')
+    declared = cli.get('project_import_plan', {}).get('source_pins')
+    need(future_request.get('schema') == 'legal-ir-original-native-control-request/v1'
+         and future_request.get('purpose') == 'native_control_metadata'
+         and future.get('schema') == profile['cycle_contract']['plan_schema'] and future.get('operation') == profile['cycle_contract']['plan_operation']
+         and future.get('task_scope') == profile['task_scope'] and git.get('scope') == READ_ONLY_IMPORT_SCOPE
+         and git.get('source_root') == cli.get('runtime_root') == future.get('accelerate_root') == str(new_source)
+         and git.get('source_head') == commitment['source_commit']
+         and git.get('route_source') in profile['source_descriptors']
+         and git['route_source']['path'] == str(new_source / 'ipfs_accelerate_py/agent_implementation_route.py')
+         and cli.get('schema') == 'native-embedded-scoped-observation-cli/v2'
+         and cli.get('observation_binding', {}).get('task_scope') == profile['task_scope']
+         and observer in profile['source_descriptors']
+         and observer['path'] == str(new_source / 'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py')
+         and cli.get('pre_body_guard') in profile['source_descriptors']
+         and cli['pre_body_guard']['path'] == str(new_source / 'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py')
+         and type(declared) is list
+         and any(pin['path'] == str(new_source / 'ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py')
+             for pin in profile['source_descriptors'])
+         and all(pin in declared and cli.get('source_sha256', {}).get(pin['path']) == future_request.get('source_sha256', {}).get(pin['path']) == pin['sha256']
+             for pin in profile['source_descriptors'] if Path(pin['path']).is_relative_to(new_source) and Path(pin['path']).suffix == '.py')
+         and all(future_request.get('source_sha256', {}).get(profile[k]['path']) == profile[k]['sha256']
+             for k in ('owner_source', 'driver_source')),
+         'capacity_readonly_source_successor_not_adopted')
+    need({k: future_request.get(k) for k in ('cpu_slots', 'memory_mb', 'child_process_slots', 'storage_bytes', 'timeout_seconds')}
+         == dict(cpu_slots=1, memory_mb=1536, child_process_slots=8, storage_bytes=384 * 1024**2, timeout_seconds=300),
+         'capacity_original_native_envelope_changed')
+    manager = value['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('failed', 'inactive') and h._number(value['recorded_at'])
+         and value['recorded_at'] <= time.time(), 'capacity_admin_main_absence')
+    return 13
+
+
+def authorize_known_unselected_capacity_handover(spec_ref, output):
+    """Explicit one-use administrative metadata; old root stays read-only."""
+    h = health_owner(); spec = h._document(spec_ref)
+    h._keys(spec, CAPACITY_KEYS - {'schema', 'recorded_at', 'manager_before'}, 'capacity_authorization_spec')
+    profile = h._profile(spec['profile_ref'])
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] in profile['unit']['argv']
+        and pin['path'].endswith('.json') and h._document(pin).get('schema') == CONFIG_SCHEMA)
+    config, _, _ = load_configuration(config_ref); root = h._path(profile['proof_root']); output = h._path(str(output))
+    prior = h._document(spec['prior_profile_snapshot_ref']); old_root = h._path(prior['proof_root'])
+    need(output == root / 'reconciliation-v03/known-unselected-capacity-authorization.json', 'capacity_authorization_versioned_path')
+    with os.fdopen(os.open(old_root / 'scientific-executor.lock', os.O_RDWR | os.O_NOFOLLOW), 'rb') as old_lock, \
+         os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_NOFOLLOW), 'rb') as new_lock:
+        fcntl.flock(old_lock, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(new_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('MainPID') == '0' and manager.get('ActiveState') in ('failed', 'inactive'), 'capacity_admin_requires_no_main')
+        value = dict(spec, schema=CAPACITY_SCHEMA, recorded_at=time.time(), manager_before=manager)
+        _validate_capacity_handover(value, spec['profile_ref'], profile, config)
+        need(h._manager(profile['unit']['name']) == manager, 'capacity_manager_changed_before_authorization')
+        return put(output, value)
+
+
+def reconcile_known_unselected_capacity_handover(recovery_ref, profile_ref, profile, config, opening_identity):
+    """Acknowledge thirteen spent slots; only subsequent real cycles earn health."""
+    h = health_owner(); root = h._path(profile['proof_root'])
+    need(recovery_ref['path'] == str(root / 'reconciliation-v03/known-unselected-capacity-authorization.json'),
+         'capacity_recovery_versioned_path')
+    value = h._document(recovery_ref)
+    need(os.environ.get(CAPACITY_SHA_ENV) == recovery_ref['sha256'], 'capacity_receipt_not_unit_pinned')
+    need(not any(name in os.environ for name in (RECOVERY_SHA_ENV, CLOSED_IDLE_SHA_ENV)),
+         'capacity_previous_authorization_environment_retained')
+    argv = profile['unit']['argv']; flag = '--known-unselected-capacity-handover'
+    need(argv.count(flag) == 1 and argv.index(flag) + 1 < len(argv) and argv[argv.index(flag) + 1] == recovery_ref['path']
+         and '--known-nonstarted-recovery' not in argv and '--known-closed-idle-recovery' not in argv,
+         'capacity_receipt_not_in_unit_argv')
+    spent = _validate_capacity_handover(value, profile_ref, profile, config)
+    ack = dict(schema='agent-supervisor/scientific-unselected-capacity-handover-ack@1', recovery_ref=recovery_ref,
+        prior_history_ref=value['prior_history_ref'], prior_profile_ref=value['prior_profile_ref'],
+        prior_proof_root=h._document(value['prior_profile_snapshot_ref'])['proof_root'],
+        new_proof_root=str(root), consuming_main_identity=opening_identity, spent_cycle_count=spent,
+        next_cycle_number=14, first_health_sequence=1, remaining_cycle_count=9987,
+        health_credit=False, completion_authority=False, dispatch_authority=False, historical_origins_relabelled=False)
+    ack_path = root / 'reconciliation-v03/capacity-handover-acknowledgement.json'
+    if os.path.lexists(ack_path):
+        need(h._document(h.descriptor(ack_path)) == ack, 'capacity_authorization_consumed_by_other_main')
+    else:
+        put(ack_path, ack)
+    return spent
+
+
 def _recovery_failure(root, cycle_number, sequence, reason):
     """Retain a later failure even while the original global hold is immutable."""
     matches = list(root.glob('cycle-%08d-*' % cycle_number))
@@ -883,9 +1233,11 @@ def serve(config_ref, stop, *, recovery_ref=None):
             kind = h._document(recovery_ref).get('schema')
             if kind == RECOVERY_SCHEMA:
                 reconciled_count = reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, opening_identity)
-            else:
-                need(kind == CLOSED_IDLE_SCHEMA, 'unknown_typed_recovery')
+            elif kind == CLOSED_IDLE_SCHEMA:
                 reconciled_count = reconcile_known_closed_idle(recovery_ref, profile_ref, profile, config, opening_identity)
+            else:
+                need(kind == CAPACITY_SCHEMA, 'unknown_typed_recovery')
+                reconciled_count = reconcile_known_unselected_capacity_handover(recovery_ref, profile_ref, profile, config, opening_identity)
         sequence = 1
         if os.path.lexists(profile['receipt_path']):
             previous = h._document(h.descriptor(profile['receipt_path']))
@@ -933,6 +1285,7 @@ def main(argv=None):
     recovery_flags = parser.add_mutually_exclusive_group()
     recovery_flags.add_argument('--known-nonstarted-recovery')
     recovery_flags.add_argument('--known-closed-idle-recovery')
+    recovery_flags.add_argument('--known-unselected-capacity-handover')
     args = parser.parse_args(argv)
     # This is set before any project import, including file-path invocation.
     os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
@@ -946,7 +1299,7 @@ def main(argv=None):
         config_ref = health_owner().descriptor(args.config)
         need(config_ref['sha256'] == args.config_sha256, 'service_config_digest')
         recovery_ref = None
-        recovery_path = args.known_nonstarted_recovery or args.known_closed_idle_recovery
+        recovery_path = args.known_nonstarted_recovery or args.known_closed_idle_recovery or args.known_unselected_capacity_handover
         if recovery_path:
             recovery_ref = health_owner().descriptor(recovery_path)
         return serve(config_ref, stop, recovery_ref=recovery_ref)
