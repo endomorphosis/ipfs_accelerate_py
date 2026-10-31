@@ -34249,17 +34249,21 @@ def test_supervisor_runtime_regular_log_marker_rejects_untrusted_marker_metadata
 def test_supervisor_runtime_regular_log_marker_rejects_internal_absolute_alias(tmp_path, monkeypatch, alias):
     spec = _regular_log_marker_spec(tmp_path, monkeypatch)
     prior = spec.resolve(spec.log_path).with_name("prior.log")
-    prior.write_text("prior output\n")
-    prior.chmod(0o600)
-    marker = _regular_log_marker_write_fixture(spec, _regular_log_marker_payload(spec))
+    marker = spec.resolve(spec.latest_log_path)
     if alias == "marker":
+        prior.write_text("prior output\n")
+        prior.chmod(0o600)
         target = marker.with_name("marker-target.json")
-        marker.rename(target)
+        target.write_text(json.dumps(_regular_log_marker_payload(spec)), encoding="utf-8")
+        target.chmod(0o600)
         alias_path = marker
     else:
+        _regular_log_marker_write_fixture(spec, _regular_log_marker_payload(spec))
         target = prior.with_name("prior-target.log")
-        prior.rename(target)
+        target.write_text("prior output\n")
+        target.chmod(0o600)
         alias_path = prior
+    assert not alias_path.exists() and not alias_path.is_symlink()
     alias_path.symlink_to(target.absolute())
     _regular_log_marker_live_child(spec, monkeypatch)
     calls = _regular_log_marker_fake_launcher(monkeypatch)
