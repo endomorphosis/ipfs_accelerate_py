@@ -28,7 +28,9 @@ PROFILE_KEYS = frozenset({'schema', 'catalogue', 'unit', 'receipt_path', 'source
 CYCLE_KEYS = frozenset({'schema', 'kind', 'sequence', 'started_at', 'finished_at', 'started_monotonic_ns', 'finished_monotonic_ns', 'process', 'request_ref', 'execution_request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref', 'owner_observation'})
 RECEIPT_KEYS = frozenset({'schema', 'profile_ref', 'sequence', 'identity', 'observed_at', 'observed_monotonic_ns', 'cycle_proof_ref', 'catalogue', 'origins', 'previous_receipt_sha256'})
 MAX_JSON = 4 * 1024**2
-MAX_SOURCE = 16 * 1024**2
+MAX_SOURCE = 4 * 1024**2
+MAX_INSTALLED_TOOL = 64 * 1024**2
+MAX_DATABASE_DATA_BYTES = 128 * 1024**2
 MAX_EPOCH_ARCHIVES = 64
 MAX_ARCHIVE_DIRECTORY_ENTRIES = 4096
 ENV_PROFILE_SHA = 'IPFS_NATIVE_EXECUTOR_PROFILE_SHA256'
@@ -93,12 +95,70 @@ def descriptor(path, *, maximum=MAX_JSON):
     raw = _raw(path, maximum)
     return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
 
+def database_descriptor(path):
+    """Describe bounded mutable catalogue DATA, without opening a database.
+
+    Group-writable owner data is allowed. Control documents, project source and
+    installed tools continue using their existing readers and mode checks. The
+    streaming hash certifies one stable file observation, not a SQL snapshot.
+    """
+    path = _path(str(path))
+    before = path.lstat()
+    stamp = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid,
+                       s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        first = os.fstat(fd)
+        _need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and
+              first.st_uid == os.geteuid() and not first.st_mode & 0o002 and
+              0 < first.st_size <= MAX_DATABASE_DATA_BYTES,
+              'unsafe_or_oversized_database_data')
+        _need(stamp(before) == stamp(first), 'database_data_changed_before_open')
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = os.read(fd, 64 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            _need(total <= first.st_size and total <= MAX_DATABASE_DATA_BYTES,
+                  'database_data_grew_during_read')
+            digest.update(chunk)
+        last = os.fstat(fd)
+        current = _path(str(path)).lstat()
+        _need(total == first.st_size and stamp(first) == stamp(last) == stamp(current),
+              'database_data_changed_during_read')
+        return dict(path=str(path), bytes=total, sha256=digest.hexdigest())
+    finally:
+        os.close(fd)
+
+def installed_tool_descriptor(path):
+    """Describe an installed ELF interpreter, outside the project-source class.
+
+    Only the exact unit.interpreter slot receives this larger bound in profiles;
+    project sources and imported module origins retain their ordinary limit.
+    """
+    path = _path(str(path))
+    raw = _raw(path, MAX_INSTALLED_TOOL)
+    _need(raw.startswith(b'\x7fELF'), 'installed_tool_not_elf')
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
 def _bound(ref, maximum=MAX_JSON):
     _keys(ref, {'path', 'bytes', 'sha256'}, 'descriptor_shape')
     _need(_integer(ref['bytes'], 0, maximum) and type(ref['sha256']) is str and re.fullmatch('[0-9a-f]{64}', ref['sha256']), 'descriptor_bounds')
     raw = _raw(ref['path'], maximum)
     _need(len(raw) == ref['bytes'] and hashlib.sha256(raw).hexdigest() == ref['sha256'], 'descriptor_changed')
     return raw
+
+def _bound_installed_tool(ref):
+    raw = _bound(ref, MAX_INSTALLED_TOOL)
+    _need(raw.startswith(b'\x7fELF'), 'installed_tool_not_elf')
+    return raw
+
+def _bound_project_source(ref, profile):
+    _keys(ref, {'path', 'bytes', 'sha256'}, 'descriptor_shape')
+    _need(ref['path'] != profile['unit']['interpreter'], 'installed_tool_is_not_project_source')
+    return _bound(ref, MAX_SOURCE)
 
 def _document(ref):
     value = _decode(_bound(ref))
@@ -120,10 +180,19 @@ def _profile(ref):
     _need(type(unit['environment']) is dict and 0 < len(unit['environment']) <= 32 and all(_text(k) and _text(v) for k, v in unit['environment'].items()), 'unit_environment')
     _need(set(unit['environment']) <= SAFE_ENV, 'unapproved_environment_field')
     _need(type(profile['source_descriptors']) is list and 4 <= len(profile['source_descriptors']) <= 4096, 'source_population')
+    # Classify by the already validated exact role/path before reading content.
+    # No required project role may borrow the installed interpreter allowance.
+    for field in ('main_entrypoint', 'health_module', 'owner_source', 'driver_source'):
+        _keys(profile[field], {'path', 'bytes', 'sha256'}, 'required_source_shape')
+        _need(profile[field]['path'] != unit['interpreter'], 'project_role_aliases_installed_tool')
     sources = {}
     total = 0
     for pin in profile['source_descriptors']:
-        _bound(pin, MAX_SOURCE)
+        _keys(pin, {'path', 'bytes', 'sha256'}, 'descriptor_shape')
+        if pin['path'] == unit['interpreter']:
+            _bound_installed_tool(pin)
+        else:
+            _bound_project_source(pin, profile)
         _need(pin['path'] not in sources, 'duplicate_source')
         sources[pin['path']] = pin
         total += pin['bytes']
@@ -168,6 +237,9 @@ def _identity(profile_ref, profile, manager_reader, process_reader):
     process = process_reader(int(pid_text))
     _need(type(process) is dict and process.get('pid') == int(pid_text) and _integer(process.get('birth_ticks'), 1), 'process_identity')
     _need(process.get('argv') == unit['argv'] and process.get('exe') == unit['interpreter'] and process.get('cwd') == unit['working_directory'], 'process_entrypoint_changed')
+    tools = [pin for pin in profile['source_descriptors'] if pin['path'] == process['exe']]
+    _need(len(tools) == 1, 'process_installed_tool_not_pinned')
+    _bound_installed_tool(tools[0])
     invocation = manager.get('InvocationID')
     _need(type(invocation) is str and re.fullmatch('[0-9a-f]{32}', invocation), 'invocation_unavailable')
     environment = process.get('environment', {})
@@ -214,7 +286,100 @@ def _origins(value, profile):
         _need(type(row) is dict and _text(row.get('module')) and row['module'] not in seen, 'original_import_origin_duplicate')
         seen.add(row['module'])
         _need(sources.get(row.get('path')) == {k: row.get(k) for k in ('path', 'bytes', 'sha256')} and row.get('execution_profile') == 'compiled_exact_authenticated_source_bytes', 'original_import_origin_unbound')
+        _bound_project_source(sources[row['path']], profile)
     return rows
+
+def _embedded_idle_result(result, request, plan, origins, profile, native):
+    """Join genuine embedded read-only observation to original source/custody.
+
+    This is a separate backend contract. It never relabels an embedded source as
+    TypedDatabaseTaskSource, and it cannot grant task or provider authority.
+    Physical descriptors are checked as metadata; the mutable DB is never opened.
+    """
+    base = {'schema', 'ready_task_count', 'selection_idle_reason', 'unchanged',
+            'write_count', 'provider_dispatched', 'attempt_consumed', 'completion_authority'}
+    _keys(result, base | {'backend', 'database_path', 'task_scope', 'observer_source',
+                         'observer_callable', 'catalogue_binding'}, 'embedded_idle_result_shape')
+    _need(result['backend'] == 'embedded' and result['observer_callable'] ==
+          'observe_embedded_database_without_dispatch', 'embedded_idle_backend_or_callable')
+    _need(result['task_scope'] == profile['task_scope'] and
+          result['selection_idle_reason'] == 'no_scoped_ready_tasks', 'embedded_idle_scope_or_selection')
+    _keys(plan, {'schema', 'operation', 'accelerate_root', 'task_scope', 'native_metadata_cli'},
+          'embedded_idle_plan_shape')
+    _need(plan['schema'] == 'native-embedded-scoped-observation-plan/v1' and
+          plan['operation'] == 'native_embedded_scoped_observation_v1', 'embedded_idle_plan_contract')
+    command = plan['native_metadata_cli']
+    _keys(command, {'schema', 'runtime_root', 'cwd', 'attempt_directory', 'temporary_directory',
+                    'project_import_plan', 'pre_body_guard', 'result_path', 'source_sha256',
+                    'observation_binding', 'import_head_capsule_Git'}, 'embedded_idle_cli_shape')
+    _need(command['schema'] == 'native-embedded-scoped-observation-cli/v2' and
+          _text(command['runtime_root']) and command['runtime_root'] == plan['accelerate_root'],
+          'embedded_idle_cli_contract')
+    git = command['import_head_capsule_Git']
+    _keys(git, {'blobs', 'ls_tree_tail', 'payload_bytes', 'required_relative_files', 'route_source',
+                'scope', 'selected_file_count', 'source_head', 'source_root', 'unique_blob_count'},
+          'embedded_idle_import_git_shape')
+    route = git['route_source']
+    _keys(route, {'path', 'bytes', 'sha256'}, 'embedded_idle_import_route_descriptor')
+    _need(git['source_root'] == command['runtime_root'] and type(git['source_head']) is str and
+          re.fullmatch('[0-9a-f]{40}', git['source_head']) and route in profile['source_descriptors'] and
+          route['path'] == str(Path(git['source_root']) / 'ipfs_accelerate_py/agent_implementation_route.py') and
+          request.get('source_sha256', {}).get(route['path']) == route['sha256'] and
+          type(command['source_sha256']) is dict and command['source_sha256'].get(route['path']) == route['sha256'],
+          'embedded_idle_import_source_binding')
+    _need(any(row.get('module') == 'ipfs_accelerate_py.agent_implementation_route' and
+              {key: row.get(key) for key in ('path', 'bytes', 'sha256')} == route for row in _origins(origins, profile)),
+          'embedded_idle_import_route_origin_missing')
+
+    binding = command['observation_binding']
+    _keys(binding, {'schema', 'database_preimage', 'task_scope', 'plan_root_cid',
+                    'repository_tree_id', 'observer_source', 'source_schema'}, 'embedded_idle_plan_binding_shape')
+    _need(binding['schema'] == 'native-embedded-daemon-observation-binding@1', 'embedded_idle_plan_binding')
+    source = result['observer_source']
+    _keys(source, {'path', 'bytes', 'sha256'}, 'embedded_idle_observer_descriptor')
+    _need(_integer(source['bytes'], 1, MAX_JSON) and source in profile['source_descriptors'] and
+          binding['observer_source'] == source and
+          request.get('source_sha256', {}).get(source['path']) == source['sha256'] and
+          type(command['source_sha256']) is dict and
+          command['source_sha256'].get(source['path']) == source['sha256'], 'embedded_idle_observer_source')
+    rows = _origins(origins, profile)
+    _need(any(row.get('module') == 'ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap'
+              and {key: row.get(key) for key in ('path', 'bytes', 'sha256')} == source for row in rows),
+          'embedded_idle_observer_origin_missing')
+    db = request.get('database_preimage')
+    _keys(db, {'path', 'bytes', 'sha256'}, 'embedded_idle_database_descriptor')
+    _need(_integer(db['bytes'], 1, 128 * 1024**2) and type(db['sha256']) is str and
+          re.fullmatch('[0-9a-f]{64}', db['sha256']), 'embedded_idle_database_descriptor_bounds')
+    _path(db['path'])
+    _need(binding['database_preimage'] == db and result['database_path'] == db['path'],
+          'embedded_idle_database_join')
+    external = request.get('external_files')
+    _need(type(external) is list and 1 <= len(external) <= 64, 'embedded_idle_external_declarations')
+    for row in external:
+        _keys(row, {'path', 'max_bytes'}, 'embedded_idle_external_declaration_shape')
+        _path(row['path'])
+        _need(_integer(row['max_bytes'], 1, 128 * 1024**2), 'embedded_idle_external_declaration_bounds')
+    declared_db = [row for row in external if row['path'] == db['path']]
+    _need(len(declared_db) == 1 and declared_db[0]['max_bytes'] >= db['bytes'],
+          'embedded_idle_database_not_declared')
+    catalogue = result['catalogue_binding']
+    _keys(catalogue, {'database_preimage', 'plan_root_cid', 'repository_tree_id',
+                     'source_schema', 'event_cursor', 'task_statuses'}, 'embedded_idle_catalogue_shape')
+    _need(catalogue['database_preimage'] == db and binding['task_scope'] == profile['task_scope']
+          and catalogue['plan_root_cid'] == binding['plan_root_cid'] == profile['catalogue']['plan_root_cid']
+          and catalogue['repository_tree_id'] == binding['repository_tree_id'] == profile['catalogue']['repository_tree_id']
+          and catalogue['source_schema'] == binding['source_schema'] ==
+              'ipfs_accelerate_py/agent-supervisor/database-task-source@1', 'embedded_idle_catalogue_binding')
+    _need(_integer(catalogue['event_cursor']) and catalogue['event_cursor'] == native['event_cursor'],
+          'embedded_idle_catalogue_cursor_changed')
+    expected = {row['task_cid']: {key: row[key] for key in ('task_cid', 'status', 'revision')}
+                for row in native['tasks'] if row['task_cid'] in profile['task_scope']}
+    tasks = catalogue['task_statuses']
+    _need(type(tasks) is list and len(tasks) == len(profile['task_scope']) and
+          all(type(row) is dict and set(row) == {'task_cid', 'status', 'revision'} and
+              _integer(row.get('revision'), 1) and row.get('task_cid') in expected and
+              row == expected[row['task_cid']] for row in tasks)
+          and len({row['task_cid'] for row in tasks}) == len(tasks), 'embedded_idle_catalogue_tasks_changed')
 
 def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
     _within(cycle_ref, profile['proof_root'])
@@ -231,6 +396,7 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
         _within(proof[key], profile['proof_root'])
     request, execution, terminal, result, plan, origins = (_document(proof[k]) for k in refs[:-1])
     _need(request.get('schema') == 'legal-ir-original-native-control-request/v1' and request.get('purpose') == 'native_control_metadata', 'original_request_schema')
+    _need(request.get('source_sha256', {}).get(profile['owner_source']['path']) == profile['owner_source']['sha256'], 'original_owner_source_not_selected')
     _need(execution.get('schema') == 'native-metadata-resource-owner-execution-request/v1' and execution.get('request') == proof['request_ref'] and execution.get('owner_source') == profile['owner_source'], 'original_owner_request_join')
     _need(terminal.get('schema') == 'legal-ir-original-native-control-terminal/v1' and terminal.get('request_sha256') == proof['request_ref']['sha256'] and terminal.get('execution_request') == proof['execution_request_ref'], 'original_terminal_request_join')
     _need(terminal.get('completed') is True and terminal.get('source_READ_closed') is True and terminal.get('original_native_compute_closed') is True and terminal.get('child_reaped') is True and type(terminal.get('child_returncode')) is int and terminal['child_returncode'] == 0 and terminal.get('storage_status') == 'released' and terminal.get('cleanup_errors') == [] and terminal.get('received_signals') == [] and terminal.get('partial_or_failed_control_must_be_reconciled') is False, 'original_cycle_not_closed')
@@ -261,7 +427,7 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
     _need(plan.get('schema') == profile['cycle_contract']['plan_schema'] and plan.get('operation') == profile['cycle_contract']['plan_operation'], 'original_cycle_plan_changed')
     _need(type(request.get('argv')) is list and request['argv'] and request['argv'][0] in (profile['unit']['argv'][0], profile['unit']['interpreter']), 'original_driver_interpreter_changed')
     expected = [request['argv'][0], '-B', profile['driver_source']['path'], '--plan', proof['plan_ref']['path'], '--plan-sha256', proof['plan_ref']['sha256']]
-    _need(request.get('argv') == expected and request.get('source_sha256', {}).get(profile['driver_source']['path']) == profile['driver_source']['sha256'] and request.get('source_sha256', {}).get(profile['owner_source']['path']) == profile['owner_source']['sha256'], 'original_driver_source_or_argv_changed')
+    _need(request.get('argv') == expected and request.get('source_sha256', {}).get(profile['driver_source']['path']) == profile['driver_source']['sha256'], 'original_driver_source_or_argv_changed')
     _need(plan.get('native_metadata_cli', {}).get('result_path') == proof['result_ref']['path'], 'original_result_path_not_bound')
     _origins(origins, profile)
     cycle_native_value, cycle_native = _linked_native(proof['native_diagnostic_ref'], profile, now=now)
@@ -278,8 +444,12 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
             _need(argv.count(key) == 1 and argv[argv.index(key) + 1] == value, 'original_native_cli_task_binding')
     else:
         _need(plan.get('task_scope') == profile['task_scope'], 'original_idle_task_scope_changed')
-        _keys(result, {'schema', 'ready_task_count', 'selection_idle_reason', 'unchanged', 'write_count', 'provider_dispatched', 'attempt_consumed', 'completion_authority'}, 'original_idle_result_shape')
-        _need(result['schema'] == 'native-typed-daemon-observation@1' and type(result['ready_task_count']) is int and result['ready_task_count'] == 0 and result['unchanged'] is True and type(result['write_count']) is int and result['write_count'] == 0 and result['provider_dispatched'] is False and result['attempt_consumed'] is False and result['completion_authority'] is False and _text(result['selection_idle_reason']), 'original_idle_result_not_quiet')
+        if result.get('schema') == 'native-embedded-daemon-observation@1':
+            _embedded_idle_result(result, request, plan, origins, profile, cycle_native_value)
+        else:
+            _keys(result, {'schema', 'ready_task_count', 'selection_idle_reason', 'unchanged', 'write_count', 'provider_dispatched', 'attempt_consumed', 'completion_authority'}, 'original_idle_result_shape')
+            _need(result['schema'] == 'native-typed-daemon-observation@1', 'original_idle_result_schema')
+        _need(type(result['ready_task_count']) is int and result['ready_task_count'] == 0 and result['unchanged'] is True and type(result['write_count']) is int and result['write_count'] == 0 and result['provider_dispatched'] is False and result['attempt_consumed'] is False and result['completion_authority'] is False and _text(result['selection_idle_reason']), 'original_idle_result_not_quiet')
         tasks = {t['task_cid']: t for t in cycle_native_value['tasks']}
         _need(all(tasks[c]['status'] in ('blocked', 'completed', 'complete', 'done', 'skipped') for c in profile['task_scope']), 'scoped_idle_has_runnable_work')
     return proof
@@ -307,7 +477,7 @@ def _receipt(ref, profile_ref, profile, native, identity, *, now, monotonic_ns):
         _stored_identity(archived['identity'], profile_ref, profile)
         _need(archived['profile_ref'] == profile_ref and archived['identity']['invocation_id'] != identity['invocation_id'], 'previous_epoch_archive_binding_changed')
     sources = {p['path']: p for p in profile['source_descriptors']}
-    _need(type(receipt['origins']) is dict and 1 <= len(receipt['origins']) <= 4096 and all(type(pin) is dict and sources.get(pin.get('path')) == pin for pin in receipt['origins'].values()), 'producer_import_origins_unbound')
+    _need(type(receipt['origins']) is dict and 1 <= len(receipt['origins']) <= 4096 and all(type(pin) is dict and sources.get(pin.get('path')) == pin and pin['path'] != profile['unit']['interpreter'] for pin in receipt['origins'].values()), 'producer_import_origins_unbound')
     _need(receipt['origins'].get('__main__') == profile['main_entrypoint'] and profile['health_module'] in receipt['origins'].values(), 'producer_entrypoint_or_health_origin_missing')
     return receipt, proof
 
@@ -505,7 +675,7 @@ def publish_after_native_cycle(profile_ref, cycle_proof_ref, native_diagnostic, 
         origin = getattr(module, '__file__', None)
         _need(origin is not None and str(Path(origin).resolve()) in sources, 'live_producer_import_origin_unbound')
         pin = sources[str(Path(origin).resolve())]
-        _bound(pin, MAX_SOURCE)
+        _bound_project_source(pin, profile)
         origins[name] = pin
     _need(origins.get('__main__') == profile['main_entrypoint'] and profile['health_module'] in origins.values(), 'producer_main_origin_unbound')
     receipt = dict(schema=RECEIPT_SCHEMA, profile_ref=profile_ref, sequence=sequence, identity=identity, observed_at=now, observed_monotonic_ns=mono, cycle_proof_ref=cycle_proof_ref, catalogue=native, origins=origins, previous_receipt_sha256=previous_sha)
