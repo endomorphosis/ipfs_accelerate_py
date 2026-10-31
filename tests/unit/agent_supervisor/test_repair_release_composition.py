@@ -635,3 +635,85 @@ def test_separate_producer_refuses_extra_inventory_outside_its_four_roles(tmp_pa
     d["seal"]()
     with pytest.raises(ValueError, match="producer inventory must contain exactly its entrypoint and three package parents"):
         installer._repair_scientific_profile(d["profile_ref"], d["release"], d["binding_ref"])
+
+
+def legacy_first_Git_fixture(tmp_path,monkeypatch,kind,reverse=False):
+    """Reuse typed source/parser fixtures; old enrollment is retained DATA only.
+
+    Existing fixtures model Git commands and source-only metadata interfaces.
+    No new parser/guard is replaced here and no health/runtime credit is claimed.
+    """
+    d=git_fixture(tmp_path,monkeypatch,reverse)if kind=='v1'else separate_producer_fixture(tmp_path,monkeypatch)
+    if kind=='v2'and reverse:d['config']['boards'].reverse()
+    oldprofile=copy.deepcopy(d['profile'])
+    if kind=='v2':oldprofile['main_entrypoint']=copy.deepcopy(d['roles']['main_entrypoint'])
+    old=write(tmp_path/'legacy-existing-profile.json',oldprofile)
+    board=next(b for b in d['config']['boards']if b['id']=='legal-ir-scientific')
+    assert 'native_executor_git_binding'not in board
+    board['native_executor_binding']=old
+    for flag,value in zip(('--executor-profile','--executor-profile-bytes','--executor-profile-sha256'),
+        (old['path'],str(old['bytes']),old['sha256'])):board['probe']['argv'].extend((flag,value))
+    d['legacy_profile_ref']=old
+    return d
+
+
+@pytest.mark.parametrize('kind,reverse',[('v1',False),('v1',True),('v2',False),('v2',True)],
+    ids=['v1-engineering-first','v1-science-first','v2-engineering-first','v2-science-first'])
+def test_first_explicit_Git_enrollment_can_replace_exact_legacy_profile(tmp_path,monkeypatch,kind,reverse):
+    d=legacy_first_Git_fixture(tmp_path,monkeypatch,kind,reverse)
+    before=copy.deepcopy(d['config']);old=d['legacy_profile_ref'];assert old!=d['profile_ref']
+    actual=installer._repair_scientific_configuration(d['config'],d['profile_ref'],d['release'],d['binding_ref'])
+    science=next(b for b in actual['boards']if b['id']=='legal-ir-scientific')
+    assert science['native_executor_binding']==d['profile_ref']and science['native_executor_git_binding']==d['binding_ref']
+    args=science['probe']['argv']
+    for flag,value in zip(('--executor-profile','--executor-profile-bytes','--executor-profile-sha256'),
+        (d['profile_ref']['path'],str(d['profile_ref']['bytes']),d['profile_ref']['sha256'])):
+        assert args.count(flag)==1 and args[args.index(flag)+1]==value
+    # Equal profile DATA may legitimately share a SHA at distinct paths.
+    # The loop above authenticates all three exact new slots/counts.
+    assert old['path']not in args
+    assert next(b for b in actual['boards']if b['id']=='legal-ir')==next(b for b in before['boards']if b['id']=='legal-ir')
+    assert d['config']==before
+    assert installer._repair_scientific_configuration(actual,d['profile_ref'],d['release'],d['binding_ref'])==actual
+    assert d['config']==before
+
+
+@pytest.mark.parametrize('failure',['probe-path','descriptor-sha','descriptor-extra','catalogue'],
+    ids=['old-probe-path','old-descriptor-digest','old-descriptor-shape','foreign-catalogue'])
+def test_first_Git_enrollment_keeps_existing_probe_descriptor_and_catalogue_fences(tmp_path,monkeypatch,failure):
+    d=legacy_first_Git_fixture(tmp_path,monkeypatch,'v2')
+    science=next(b for b in d['config']['boards']if b['id']=='legal-ir-scientific')
+    if failure=='probe-path':science['probe']['argv'][science['probe']['argv'].index('--executor-profile')+1]='/foreign/profile.json'
+    elif failure=='descriptor-sha':science['native_executor_binding']['sha256']='0'*64
+    elif failure=='descriptor-extra':science['native_executor_binding']['allow_replace']=True
+    else:science['native_catalogue_binding']['population_sha256']='f'*64
+    before=copy.deepcopy(d['config'])
+    with pytest.raises(ValueError):installer._repair_scientific_configuration(d['config'],d['profile_ref'],d['release'],d['binding_ref'])
+    assert d['config']==before
+
+
+@pytest.mark.parametrize('kind,action',[('v1','retarget'),('v1','remove'),('v2','retarget'),('v2','remove')],
+    ids=['v1-retarget','v1-remove','v2-retarget','v2-remove'])
+def test_first_enrollment_exception_never_retargets_or_removes_an_existing_Git_binding(tmp_path,monkeypatch,kind,action):
+    d=legacy_first_Git_fixture(tmp_path,monkeypatch,kind)
+    bound=installer._repair_scientific_configuration(d['config'],d['profile_ref'],d['release'],d['binding_ref'])
+    before=copy.deepcopy(bound)
+    if action=='retarget':
+        # A newly declared profile/environment is metadata-valid on the same
+        # native generation; an existing Git enrollment still cannot move.
+        profile=copy.deepcopy(d['profile']);profile['unit'].setdefault('environment',{})['PYTHONDONTWRITEBYTECODE']='1'
+        other=write(Path(d['profile_ref']['path']),profile)
+        typed=json.loads(Path(d['binding_ref']['path']).read_bytes());typed['profile']=other
+        othergit=write(tmp_path/'different-declared-Git-binding.json',typed)
+    else:
+        # Use the existing valid plain-release interface so removal reaches
+        # the declared-Git fence, rather than failing an unrelated role path.
+        directory=d['release']/'ipfs_accelerate_py/agent_supervisor/rescue'
+        names={'main_entrypoint':'scientific_executor.py','health_module':'native_executor_health.py',
+            'owner_source':'original_embedded_observation_owner.py','driver_source':'native_embedded_observation_driver.py'}
+        other=write(tmp_path/'plain-release-profile.json',{'schema':'fixture-interface-only',
+            'catalogue':copy.deepcopy(d['profile']['catalogue']),**{role:pin(directory/name)for role,name in names.items()}})
+        othergit=None
+    with pytest.raises(ValueError,match='existing scientific Git binding cannot be silently changed or removed'):
+        installer._repair_scientific_configuration(bound,other,d['release'],othergit)
+    assert bound==before

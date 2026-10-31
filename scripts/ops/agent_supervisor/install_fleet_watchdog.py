@@ -1165,7 +1165,7 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path,
     need(declared_git is None or declared_git == git_binding,
          "existing scientific Git binding cannot be silently changed or removed")
     if git_binding is not None:
-        need(board.get("native_executor_binding") in (None, binding),
+        need(declared_git is None or board.get("native_executor_binding") in (None, binding),
              "scientific Git binding cannot replace another producer profile")
         board["native_executor_git_binding"] = json.loads(json.dumps(git_binding))
     catalogue = board.get("native_catalogue_binding")
