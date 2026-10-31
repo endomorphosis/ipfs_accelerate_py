@@ -1131,17 +1131,25 @@ def test_head_payload_budget_stops_before_loading_overflow_blob(tmp_path: Path, 
     _git(root, "commit", "-qm", "bounded source payload")
     head = _git(root, "rev-parse", "HEAD")
     calls = []
+    processes = []
     original = route._agent_git_output
+    original_popen = route.subprocess.Popen
     def observe(repository, arguments, **kwargs):
         calls.append(tuple(arguments))
         return original(repository, arguments, **kwargs)
+    def observe_process(command, **kwargs):
+        processes.append(tuple(command))
+        return original_popen(command, **kwargs)
     monkeypatch.setattr(route, "_agent_git_output", observe)
+    monkeypatch.setattr(route.subprocess, "Popen", observe_process)
     monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES", 1024 * 1024)
     with pytest.raises(ValueError, match="source payload is oversized"):
         route._agent_control_plane_head_payloads(root, source_head=head)
-    assert sum(call[:2] == ("cat-file", "-s") for call in calls) == 1 + sum(
-        call[:2] == ("cat-file", "blob") for call in calls
-    )
+    # Header reads can prefetch at most127 body bytes; the overflow body is
+    # refused before read_exact admits it, without an unbounded output read.
+    assert len(calls) == 1 and calls[0][:3] == ("ls-tree", "-r", "-z")
+    assert len(processes) == 2
+    assert sum(command[-2:] == ("cat-file", "--batch") for command in processes) == 1
 
 
 def test_current_normal_daemon_import_has_real_sealed_source_capsule() -> None:
@@ -1155,3 +1163,185 @@ def test_current_normal_daemon_import_has_real_sealed_source_capsule() -> None:
     assert (pin.source_head, pin.source_tree) == route.agent_implementation_control_plane_source_generation(source)
     assert route.verify_agent_implementation_sealed_control_plane(pin, sealed.descriptor) == sealed.executable_path
     assert sealed.archive_sha256 == pin.archive_sha256
+
+
+# A deliberately faulty Git transport, not a replacement product actor. The
+# genuine implementation owns the real pipes, selector deadline and cleanup.
+_BATCH_GIT_PROTOCOL_CHILD = r"""
+import base64,json,sys,time
+config=json.loads(sys.argv[1])
+mode=config["mode"]
+objects={key:base64.b64decode(value) for key,value in config["objects"]}
+out=sys.stdout.buffer
+if mode == "write_backpressure":
+    for oid,payload in objects.items():
+        out.write((oid+" blob "+str(len(payload))+"\n").encode()+payload+b"\n")
+    out.flush()
+    time.sleep(30)
+    raise SystemExit(0)
+for index,request in enumerate(sys.stdin.buffer):
+    oid=request.strip().decode("ascii")
+    payload=objects[oid]
+    if mode == "silent":
+        time.sleep(30)
+    if mode == "truncated_header":
+        out.write((oid+" blob ").encode());out.flush();raise SystemExit(0)
+    if mode == "long_header":
+        out.write(b"x"*129);out.flush();time.sleep(30)
+    response_oid="0"*40 if mode == "wrong_oid" else oid
+    kind="tree" if mode == "wrong_type" else "blob"
+    size="-1" if mode == "invalid_size" else str(len(payload))
+    if mode == "oversized":size=str(config["max_file"]+1)
+    if mode == "missing":
+        out.write((oid+" missing\n").encode());out.flush();time.sleep(30)
+    out.write((response_oid+" "+kind+" "+size+"\n").encode());out.flush()
+    if mode == "oversized" or (mode == "aggregate_header_only" and index == 1):
+        time.sleep(30)
+    if mode == "truncated_payload":
+        out.write(payload[:-1]);out.flush();raise SystemExit(0)
+    if mode == "wrong_payload":payload=bytes([payload[0]^1])+payload[1:]
+    out.write(payload+(b"!" if mode == "wrong_separator" else b"\n"));out.flush()
+if mode == "extra_output":out.write(b"unexpected");out.flush()
+if mode == "nonzero_exit":raise SystemExit(7)
+"""
+
+
+def _batch_git_transport(tmp_path, monkeypatch, payloads, mode, *, timeout=2.0):
+    """Fault only the Git boundary while exercising actual stream ownership."""
+    from ipfs_accelerate_py import agent_implementation_route as route
+    objects = []
+    entries = []
+    for relative, payload in sorted(payloads.items()):
+        oid = hashlib.sha1(f"blob {len(payload)}\0".encode("ascii") + payload).hexdigest()
+        objects.append((oid, base64.b64encode(payload).decode("ascii")))
+        entries.append(f"100644 blob {oid}\t{relative}\0".encode())
+    monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_RELATIVE_FILES", tuple(payloads))
+    monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_GIT_TIMEOUT_SECONDS", timeout)
+    tree_calls = []
+    def tree_only(repository, arguments, **kwargs):
+        assert Path(repository) == tmp_path
+        assert tuple(arguments[:3]) == ("ls-tree", "-r", "-z")
+        tree_calls.append(tuple(arguments))
+        return b"".join(entries)
+    monkeypatch.setattr(route, "_agent_git_output", tree_only)
+    original_popen = route.subprocess.Popen
+    processes = []
+    launches = []
+    config = json.dumps({"mode": mode, "objects": objects,
+                         "max_file": route._AGENT_CONTROL_PLANE_MAX_FILE_BYTES})
+    def faulty_git(command, **kwargs):
+        assert tuple(command[-2:]) == ("cat-file", "--batch")
+        launches.append((tuple(command), dict(kwargs["env"])))
+        process = original_popen(
+            [sys.executable, "-I", "-S", "-B", "-c", _BATCH_GIT_PROTOCOL_CHILD, config],
+            **kwargs,
+        )
+        processes.append(process)
+        if mode == "write_backpressure":
+            import fcntl
+            assert fcntl.fcntl(process.stdin.fileno(), fcntl.F_SETPIPE_SZ, 4096) == 4096
+        return process
+    monkeypatch.setattr(route.subprocess, "Popen", faulty_git)
+    return route, processes, launches, tree_calls
+
+
+def _assert_batch_process_reaped(processes):
+    assert len(processes) == 1
+    assert processes[0].poll() is not None
+    assert processes[0].stdin.closed and processes[0].stdout.closed
+
+
+def test_head_payload_batch_matches_exact_git_bytes_with_two_processes(tmp_path, monkeypatch):
+    from ipfs_accelerate_py import agent_implementation_route as route
+    root = tmp_path / "source"
+    payloads = _inert_required_payloads()
+    payloads["ipfs_accelerate_py/agent_supervisor/empty.py"] = b""
+    payloads["ipfs_accelerate_py/agent_supervisor/raw_bytes.py"] = b"# raw\x00\xff\n"
+    for relative, payload in payloads.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "capsule-test@example.invalid")
+    _git(root, "config", "user.name", "Capsule Test")
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "exact batch bytes")
+    head = _git(root, "rev-parse", "HEAD")
+    original_popen = route.subprocess.Popen
+    launches = []
+    processes = []
+    def observe(command, **kwargs):
+        launches.append((tuple(command), dict(kwargs["env"])))
+        process = original_popen(command, **kwargs)
+        processes.append(process)
+        return process
+    monkeypatch.setenv("GIT_DIR", "/untrusted/ambient-git-dir")
+    monkeypatch.setattr(route.subprocess, "Popen", observe)
+    assert route._agent_control_plane_head_payloads(root, source_head=head) == payloads
+    assert len(launches) == 2
+    assert "ls-tree" in launches[0][0]
+    assert launches[1][0][-2:] == ("cat-file", "--batch")
+    assert not any("-s" in command or "blob" in command for command, _ in launches)
+    for command, environment in launches:
+        assert "core.fsmonitor=false" in command
+        assert f"core.hooksPath={os.devnull}" in command
+        assert "GIT_DIR" not in environment
+        assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
+        assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
+        assert environment["GIT_NO_REPLACE_OBJECTS"] == "1"
+        assert environment["GIT_NO_LAZY_FETCH"] == "1"
+        assert environment["GIT_OPTIONAL_LOCKS"] == "0"
+        assert environment["GIT_TERMINAL_PROMPT"] == "0"
+    assert all(process.poll() == 0 for process in processes)
+
+
+@pytest.mark.parametrize("mode", [
+    "wrong_oid", "wrong_type", "invalid_size", "missing", "long_header",
+    "truncated_header", "truncated_payload", "wrong_separator", "wrong_payload",
+    "extra_output", "nonzero_exit",
+])
+def test_head_payload_batch_rejects_faulty_git_protocol_and_reaps(tmp_path, monkeypatch, mode):
+    payloads = {"ipfs_accelerate_py/agent_supervisor/one.py": b"abc"}
+    route, processes, launches, tree_calls = _batch_git_transport(
+        tmp_path, monkeypatch, payloads, mode)
+    with pytest.raises(ValueError, match="accepted control-plane Git batch"):
+        route._agent_control_plane_head_payloads(tmp_path, source_head="f" * 40)
+    _assert_batch_process_reaped(processes)
+    assert len(launches) == len(tree_calls) == 1
+
+
+def test_head_payload_batch_rejects_oversized_header_without_waiting_for_body(tmp_path, monkeypatch):
+    payloads = {"ipfs_accelerate_py/agent_supervisor/one.py": b"abc"}
+    route, processes, _, _ = _batch_git_transport(tmp_path, monkeypatch, payloads, "oversized")
+    with pytest.raises(ValueError, match="Git blob is oversized"):
+        route._agent_control_plane_head_payloads(tmp_path, source_head="f" * 40)
+    _assert_batch_process_reaped(processes)
+
+
+def test_head_payload_batch_rejects_aggregate_overflow_before_second_body(tmp_path, monkeypatch):
+    payloads = {"ipfs_accelerate_py/agent_supervisor/one.py": b"abcd",
+                "ipfs_accelerate_py/agent_supervisor/two.py": b"efgh"}
+    route, processes, _, _ = _batch_git_transport(tmp_path, monkeypatch, payloads, "aggregate_header_only")
+    monkeypatch.setattr(route, "_AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES", 7)
+    with pytest.raises(ValueError, match="source payload is oversized"):
+        route._agent_control_plane_head_payloads(tmp_path, source_head="f" * 40)
+    _assert_batch_process_reaped(processes)
+
+
+def test_head_payload_batch_read_timeout_kills_and_reaps_git(tmp_path, monkeypatch):
+    payloads = {"ipfs_accelerate_py/agent_supervisor/one.py": b"abc"}
+    route, processes, _, _ = _batch_git_transport(
+        tmp_path, monkeypatch, payloads, "silent", timeout=0.2)
+    with pytest.raises(ValueError, match="batch timed out"):
+        route._agent_control_plane_head_payloads(tmp_path, source_head="f" * 40)
+    _assert_batch_process_reaped(processes)
+
+
+def test_head_payload_batch_write_backpressure_obeys_deadline_and_reaps(tmp_path, monkeypatch):
+    payloads = {f"ipfs_accelerate_py/agent_supervisor/p{i:03d}.py": str(i).encode()
+                for i in range(128)}
+    route, processes, _, _ = _batch_git_transport(
+        tmp_path, monkeypatch, payloads, "write_backpressure", timeout=0.3)
+    with pytest.raises(ValueError, match="batch timed out"):
+        route._agent_control_plane_head_payloads(tmp_path, source_head="f" * 40)
+    _assert_batch_process_reaped(processes)

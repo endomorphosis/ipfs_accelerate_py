@@ -696,45 +696,93 @@ def test_legal_ir_profile_cli_plans_without_entering_global_install_or_enrollmen
 
 
 
-def test_installed_policy_and_runtime_assets_cold_import_from_release_only(tmp_path, monkeypatch):
-    """The immutable package must work when no development overlay is available."""
-    import importlib
-    from types import ModuleType
-
+def test_installed_policy_and_runtime_assets_cold_import_from_release_only(tmp_path):
+    """Normal advertised runtime imports must work without an SDK checkout overlay."""
     source = SCRIPT.parents[3]
     release, contents = installer._enrollment_runtime(source, tmp_path / "cold-home")
-    assert {"recovery_policy", "runtime_assets"} <= contents.keys()
     installer._materialize_enrollment_release(release, contents, source)
-    prefix = "cold_private_watchdog_runtime"
-    for suffix in ("", ".agent_supervisor", ".agent_supervisor.rescue"):
-        name = prefix + suffix
-        module = ModuleType(name)
-        module.__path__ = [str(release / "ipfs_accelerate_py" / suffix.lstrip(".").replace(".", "/"))]
-        monkeypatch.setitem(sys.modules, name, module)
-    loaded = {}
-    try:
-        for name in ("fleet_watchdog", "fleet_repair", "fleet_heals", "recovery_policy", "runtime_assets"):
-            module = importlib.import_module(prefix + ".agent_supervisor.rescue." + name)
-            assert Path(module.__file__).resolve().is_relative_to(release.resolve())
-            loaded[name] = module
-        board = {"max_repair_attempts": 3, "recovery_policy": {"profile": "infrastructure-only/v1",
-            "repairable_stalls": ["probe_failed"], "max_actions_per_window": 3,
-            "window_seconds": 86400, "circuit_breaker_seconds": 3600}}
-        guard = loaded["recovery_policy"].recovery_denial
-        assert guard(board, {}) == "infrastructure_only_recovery"
-        assert guard(board, {}, allow_infrastructure=True) == ""
-        assert loaded["fleet_watchdog"].infrastructure_policy(board) == board["recovery_policy"]
-        repair = loaded["fleet_repair"]
-        assert not (release / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").exists()
-        policy = {"cwd": str(source), "argv": ["codex", "exec"]}
-        argv = repair.llm_router_repair_argv(policy, tmp_path / "prompt.txt", tmp_path / "last.json")
-        primary = json.loads(argv[argv.index("--primary-command-json") + 1])
-        assert Path(primary[2]) == (source / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").resolve()
-        assert primary[:2] == [sys.executable, "-P"]
-        missing = tmp_path / "missing-engine";missing.mkdir()
-        assert repair._launch_preflight({"cwd": str(missing), "argv": ["codex", "exec"]}) == "repair_adapter_unavailable"
-        with pytest.raises(ValueError): repair._physical_grok_adapter({"cwd": "relative-source"})
-    finally:
-        for name in tuple(sys.modules):
-            if name.startswith(prefix + "."):
-                sys.modules.pop(name, None)
+    expected = {name: installer.PACKAGE_MODULES.get(name,
+        "ipfs_accelerate_py/agent_supervisor/rescue/" + name + ".py") for name in contents}
+    for relative in installer.PACKAGE_MODULES.values():
+        assert (release / relative).read_bytes() == (source / relative).read_bytes()
+    code = r'''
+import hashlib, importlib, inspect, json, sys
+from pathlib import Path
+release, source, scratch = map(Path, sys.argv[1:4])
+expected = json.loads(sys.argv[4])
+assert not any(n == "ipfs_accelerate_py" or n.startswith("ipfs_accelerate_py.") for n in sys.modules)
+sys.path.insert(0, str(release))
+loaded = {}
+for name, relative in expected.items():
+    fullname = (name if name.startswith("ipfs_accelerate_py.") else
+        "ipfs_accelerate_py.agent_implementation_route" if name == "agent_implementation_route" else
+        "ipfs_accelerate_py.agent_supervisor.rescue." + name)
+    module = importlib.import_module(fullname)
+    assert Path(module.__file__) == release / relative
+    loaded[fullname] = module
+watch = loaded["ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog"]
+repair = loaded["ipfs_accelerate_py.agent_supervisor.rescue.fleet_repair"]
+policy = loaded["ipfs_accelerate_py.agent_supervisor.rescue.recovery_policy"]
+candidate = loaded["ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate"]
+assert repair.infrastructure_classification is watch.infrastructure_classification
+assert repair.recovery_denial is watch.recovery_denial is policy.recovery_denial
+assert candidate.CheckoutMutationLease.__module__ == "ipfs_accelerate_py.agent_supervisor.merge.checkout_lock"
+assert candidate.WorktreeLifecycleStore.__module__ == "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle"
+assert candidate.run_command.__module__ == "ipfs_accelerate_py.agent_supervisor.todo_daemon.engine"
+for name in ("merge", "proof", "todo_daemon", "control", "validation"):
+    package = sys.modules["ipfs_accelerate_py.agent_supervisor." + name]
+    assert package.__spec__.origin == package.__file__
+    assert Path(package.__file__).read_bytes() == (source / "ipfs_accelerate_py/agent_supervisor" / name / "__init__.py").read_bytes()
+board = {"max_repair_attempts": 3, "recovery_policy": {"profile": "infrastructure-only/v1",
+    "repairable_stalls": ["probe_failed"], "max_actions_per_window": 3,
+    "window_seconds": 86400, "circuit_breaker_seconds": 3600}}
+assert policy.recovery_denial(board, {}) == "infrastructure_only_recovery"
+assert policy.recovery_denial(board, {}, allow_infrastructure=True) == ""
+assert watch.infrastructure_policy(board) == board["recovery_policy"]
+assert not (release / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").exists()
+argv = repair.llm_router_repair_argv({"cwd": str(source), "argv": ["codex", "exec"]}, scratch / "prompt.txt", scratch / "last.json")
+primary = json.loads(argv[argv.index("--primary-command-json") + 1])
+assert Path(primary[2]) == (source / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").resolve()
+assert primary[:2] == [sys.executable, "-P"]
+missing = scratch / "missing-engine"; missing.mkdir()
+assert repair._launch_preflight({"cwd": str(missing), "argv": ["codex", "exec"]}) == "repair_adapter_unavailable"
+try:
+    repair._physical_grok_adapter({"cwd": "relative-source"})
+except ValueError:
+    pass
+else:
+    raise AssertionError("relative repair source accepted")
+assert not any(n in ("duckdb", "_duckdb") or n.startswith(("torch", "transformers")) for n in sys.modules)
+print(json.dumps({"normal_modules": len(loaded), "all_sources_inside_release": True}))
+'''
+    environment = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", code,
+        str(release), str(source), str(tmp_path), json.dumps(expected)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"normal_modules": len(contents), "all_sources_inside_release": True}
+
+
+def test_auxiliary_source_changes_select_a_new_immutable_runtime_generation(tmp_path):
+    """A changed dependency cannot silently reuse the previous release digest."""
+    source = SCRIPT.parents[3]
+    _release, contents = installer._enrollment_runtime(source, tmp_path / "unused-home")
+    snapshot = tmp_path / "selected-source"
+    for name, body in contents.items():
+        relative = installer.PACKAGE_MODULES.get(name,
+            "ipfs_accelerate_py/agent_supervisor/rescue/" + name + ".py")
+        path = snapshot / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+    old_release, old_contents = installer._enrollment_runtime(snapshot, tmp_path / "home")
+    installer._materialize_enrollment_release(old_release, old_contents, snapshot)
+    relative = "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py"
+    old_body = (old_release / relative).read_bytes()
+    with (snapshot / relative).open("ab") as stream:
+        stream.write(b"\n# Different immutable dependency generation.\n")
+    new_release, new_contents = installer._enrollment_runtime(snapshot, tmp_path / "home")
+    assert new_release != old_release
+    installer._materialize_enrollment_release(new_release, new_contents, snapshot)
+    assert (old_release / relative).read_bytes() == old_body
+    assert (new_release / relative).read_bytes() != old_body
+

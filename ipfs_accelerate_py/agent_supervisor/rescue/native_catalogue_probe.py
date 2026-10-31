@@ -486,7 +486,7 @@ def _unknown(board_id, arguments, code):
 def observe_native_catalogue(database_path: Path, population_path: Path, *, board_id: str,
         board_namespace: str, plan_root_cid: str, repository_tree_id: str,
         population_sha256: str, max_age_seconds: float = 180, timeout_seconds: float = 15,
-        now: float | None = None):
+        now: float | None = None, executor_profile_ref: dict | None = None):
     """Fresh catalogue observation; no executor or task-activation authority."""
     arguments = {"database_path": str(database_path), "population_path": str(population_path),
                  "board_namespace": board_namespace, "plan_root_cid": plan_root_cid,
@@ -598,6 +598,28 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
         if data.get("population_schema") == LINEAGE_POPULATION_SCHEMA:
             diagnostic.update(population_schema=LINEAGE_POPULATION_SCHEMA,
                               plan_lineage=data["plan_lineage"])
+        if executor_profile_ref is not None:
+            # The native catalogue remains an observer. Its opt-in executor
+            # signal comes from independent process/source/original-cycle proof.
+            try:
+                from .native_executor_health import verify_bound_executor
+                verification = verify_bound_executor(executor_profile_ref, diagnostic,
+                                                       now=observed)
+            except (ImportError, OSError, ValueError, TypeError, KeyError):
+                verification = {"verified": False, "reason": "executor_verifier_unavailable"}
+            diagnostic["executor_verification"] = verification
+            if verification.get("verified") is True:
+                diagnostic.update(activation_state="active", executor_health="healthy",
+                                  executor_scope=verification["scope"])
+                codes = [code for code in codes if code not in {
+                    "native_catalogue_activation_missing", "native_catalogue_executor_unverified"}]
+                if diagnostic["ready_status_count"] == 0 and counts.get("blocked", 0):
+                    if "native_catalogue_expected_blocked" not in codes:
+                        codes.append("native_catalogue_expected_blocked")
+                elif not codes:
+                    codes.append("native_catalogue_executor_active")
+            elif "native_catalogue_executor_unverified" not in codes:
+                codes.append("native_catalogue_executor_unverified")
         token = hashlib.sha256(json.dumps([data["event_cursor"],
             [[task["task_cid"], task["status"], task["revision"]] for task in tasks]],
             separators=(",", ":")).encode()).hexdigest()
@@ -640,11 +662,21 @@ def main(argv=None):
     parser.add_argument("--population-sha256", required=True)
     parser.add_argument("--max-age-seconds", type=float, default=180)
     parser.add_argument("--timeout-seconds", type=float, default=15)
+    parser.add_argument("--executor-profile", type=Path)
+    parser.add_argument("--executor-profile-bytes", type=int)
+    parser.add_argument("--executor-profile-sha256")
     args = parser.parse_args(argv)
+    selected = (args.executor_profile, args.executor_profile_bytes, args.executor_profile_sha256)
+    if any(value is not None for value in selected) and not all(value is not None for value in selected):
+        parser.error("executor health requires the complete path/bytes/SHA descriptor")
+    executor_ref = (None if args.executor_profile is None else {
+        "path": str(args.executor_profile), "bytes": args.executor_profile_bytes,
+        "sha256": args.executor_profile_sha256})
     print(json.dumps(observe_native_catalogue(args.database, args.population,
         board_id=args.board, board_namespace=args.namespace, plan_root_cid=args.plan_root_cid,
         repository_tree_id=args.repository_tree_id, population_sha256=args.population_sha256,
-        max_age_seconds=args.max_age_seconds, timeout_seconds=args.timeout_seconds), sort_keys=True))
+        max_age_seconds=args.max_age_seconds, timeout_seconds=args.timeout_seconds,
+        executor_profile_ref=executor_ref), sort_keys=True))
     return 0
 
 
