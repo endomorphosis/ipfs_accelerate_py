@@ -80818,19 +80818,26 @@ def main(argv: list[str] | None = None) -> None:
 def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
     """Seal the generation that finished importing this daemon module."""
 
+    from ...agent_implementation_route import agent_implementation_control_plane_capture_pin
+
     source_root = Path(__file__).resolve(strict=True).parents[3]
     head_before, tree_before = (
         agent_implementation_control_plane_source_generation(source_root)
     )
-    parent = Path(
-        tempfile.mkdtemp(prefix="asref-imported-control-plane-")
+    retained = agent_implementation_control_plane_capture_pin(source_root)
+    owns_parent = retained is None
+    parent = (
+        Path(tempfile.mkdtemp(prefix="asref-imported-control-plane-"))
+        if owns_parent else Path(retained.capsule_root).parent
     )
     try:
+        capture_options = {} if owns_parent else {"reuse_only": True, "accepted_pin": retained}
         pin = materialize_agent_implementation_control_plane_capsule(
             source_root=source_root,
             capsule_parent=parent,
             source_head=head_before,
             source_tree=tree_before,
+            **capture_options,
         )
         launch = seal_agent_implementation_control_plane_capsule(pin)
         head_after, tree_after = (
@@ -80842,11 +80849,22 @@ def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
             )
         return pin, launch, parent
     except Exception:
-        try:
-            shutil.rmtree(parent)
-        except OSError:
-            pass
+        # Original closed evidence is never removed or retried as a fresh
+        # source capture when an explicit reuse-only contract fails.
+        if owns_parent:
+            try:
+                shutil.rmtree(parent)
+            except OSError:
+                pass
         raise
+
+
+def _has_explicit_control_plane_capture_context() -> bool:
+    from ...agent_implementation_route import agent_implementation_control_plane_capture_pin
+
+    return agent_implementation_control_plane_capture_pin(
+        Path(__file__).resolve(strict=True).parents[3]
+    ) is not None
 
 
 try:
@@ -80856,6 +80874,9 @@ try:
         _IMPORTED_CONTROL_PLANE_TEMP_ROOT,
     ) = _capture_imported_control_plane_generation()
 except (OSError, ValueError, subprocess.SubprocessError):
+    if _has_explicit_control_plane_capture_context():
+        # Do not fall through to the legacy constructor's fresh-capture retry.
+        raise
     # Dirty development/import trees cannot be used for the protected route.
     # Its constructor will retry only against the same on-disk generation and
     # fail closed if no clean exact capsule can be proven.

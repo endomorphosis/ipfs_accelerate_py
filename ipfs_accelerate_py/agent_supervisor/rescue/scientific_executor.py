@@ -51,6 +51,28 @@ CLOSED_IDLE_ARCHIVE_FIELDS = ('prior_profile_snapshot_ref', 'prior_administrativ
     'negative_audit_ref', 'source_commitment_ref', 'scheduler_snapshot_ref', 'current_native_ref')
 
 
+GENERATION_SCHEMA = 'agent-supervisor/scientific-bounded-generation-handover@1'
+GENERATION_SHA_ENV = 'IPFS_SCIENTIFIC_BOUNDED_GENERATION_SHA256'
+GENERATION_KEYS = frozenset({'schema','authorization','profile_ref','prior_profile_ref','prior_profile_snapshot_ref',
+    'prior_config_ref','prior_config_snapshot_ref','retained_census_ref','prior_global_hold_ref','prior_cycle_hold_ref',
+    'prior_intent_ref','prior_last_closed_cycle_ref','prior_main_identity','source_capsule_ref',
+    'cache_initialization_request_ref','cache_initialization_terminal_ref','scheduler_snapshot_ref',
+    'retained_generations','generation_number','max_generations','global_max_bytes','spent_cycle_count',
+    'recorded_at','manager_before'})
+ORIGINAL_NAMED_ROOTS = (Path('/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs'),
+    Path('/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues'),
+    Path('/home/barberb/lift_coding/external/ipfs_datasets/docs/implementation/reports/evidence'), Path('/tmp/pytest-of-barberb'))
+ORIGINAL_RESOURCE_LEDGER = ORIGINAL_NAMED_ROOTS[0]/'federal-corpus-audits/owned-daemon-resource-control/disk-reservations.json'
+GLOBAL_RETAINED_BYTES = 220000000000
+# Original native storage controls the entire attempt. The producer writes at
+# most twelve bounded JSON/stdout artifacts outside that attempt. The v3 actor
+# enforces <=256 created file paths and <=32 process constructors, while its
+# original parent enforces <=276 total attempt files. Twelve producer files
+# outside that attempt complete the fixed288-path allowance.
+REUSE_CYCLE_RESERVE_BYTES = 384 * 1024**2 + 12 * 4 * 1024**2
+REUSE_CYCLE_RESERVE_FILES = 256 + 32
+
+
 class ExecutorHold(ValueError):
     """A cycle cannot be replayed or silently discarded."""
 
@@ -165,7 +187,8 @@ def relocate(value, seed, root):
     return value
 
 
-def check_proof_budget(root, maximum):
+def check_proof_budget(root, maximum, *, reserve_bytes=0, reserve_files=0):
+    need(type(reserve_bytes)is int and reserve_bytes>=0 and type(reserve_files)is int and reserve_files>=0, 'proof_reserve_shape')
     total = count = 0
     for path in root.rglob('*'):
         info = path.lstat()
@@ -175,6 +198,8 @@ def check_proof_budget(root, maximum):
         need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'proof_nonordinary_artifact')
         total += info.st_size; count += 1
         need(count <= 20000 and total <= maximum, 'proof_storage_bound')
+    need(count+reserve_files <= 20000 and total+reserve_bytes <= maximum, 'proof_projected_storage_bound')
+    return {'files':count,'bytes':total}
 
 
 def prepare_cycle(template_ref, kind, config, profile, root):
@@ -454,6 +479,10 @@ def reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, openi
         need(cycle.name.startswith('cycle-%08d-' % number), 'recovery_cycle_number_path')
         need(cycle == failed or (cycle / 'closed.json').is_file(), 'recovery_other_unfinished_cycle')
         numbers.append(number)
+        if number<spent:
+            closed=(cycle/'closed.json').is_file()
+            acknowledgments=(cycle/'nonstarted-reconciliation.json',cycle/'closed-idle-reconciliation-v01.json')
+            need(closed or any(path.is_file() for path in acknowledgments),'generation_other_unfinished_cycle')
     need(sorted(numbers) == list(range(1, len(numbers) + 1)), 'recovery_cycle_counter_gap_or_duplicate')
     need(len(numbers) < config['max_cycles'], 'recovery_cycle_budget_exhausted')
     if os.path.lexists(ack_path):
@@ -816,6 +845,13 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
     h = health_owner()
     need(cycle_number is None or h._integer(cycle_number, 1), 'cycle_number')
     root = Path(profile['proof_root']) / ('cycle-%08d-%s' % (sequence if cycle_number is None else cycle_number, uuid.uuid4().hex))
+    template=health_owner()._document(template_ref)
+    selected_plan=health_owner()._document(template['plan_ref'])
+    if selected_plan.get('native_metadata_cli',{}).get('schema')=='native-embedded-scoped-observation-cli/v3':
+        original_request=health_owner()._document(template['request_ref'])
+        need(original_request.get('storage_bytes')==384*1024**2 and type(original_request.get('storage_bytes'))is int,'reuse_original_storage_grant_changed')
+        check_proof_budget(Path(profile['proof_root']),config['max_proof_bytes'],
+            reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,reserve_files=REUSE_CYCLE_RESERVE_FILES)
     root.mkdir(mode=0o700)
     process = None
     try:
@@ -866,7 +902,230 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
         raise
 
 
-def serve(config_ref, stop, *, recovery_ref=None):
+def _generation_census(reference):
+    """Verify every retained byte/path; never remove, relocate or relabel it."""
+    h=health_owner(); value=h._document(reference)
+    h._keys(value,{'schema','root','manifests','file_count','source_bytes','directory_sha256'},'generation_census_shape')
+    need(value['schema']=='agent-supervisor/scientific-proof-generation-census@1','generation_census_schema')
+    root=h._path(value['root']); info=root.lstat()
+    need(any(parent in root.parents for parent in ORIGINAL_NAMED_ROOTS)
+         and stat.S_ISDIR(info.st_mode) and info.st_uid==os.geteuid() and not info.st_mode&0o022,
+         'retained_generation_directory_identity')
+    need(not Path(reference['path']).lstat().st_mode&0o222,'generation_census_not_immutable')
+    manifests=value['manifests']; need(type(manifests)is list and 1<=len(manifests)<=64,'generation_manifest_population')
+    expected={}; total=0
+    for reference in manifests:
+        node=h._document(reference)
+        need(not Path(reference['path']).lstat().st_mode&0o222,'generation_file_manifest_not_immutable')
+        h._keys(node,{'schema','root','files'},'generation_file_manifest_shape')
+        need(node['schema']=='agent-supervisor/scientific-proof-file-manifest@1' and node['root']==str(root)
+             and type(node['files'])is list and 0<len(node['files'])<=4096,'generation_file_manifest_population')
+        for row in node['files']:
+            h._keys(row,{'relative_path','bytes','sha256','mode'},'generation_retained_file_shape')
+            rel=row['relative_path']; need(type(rel)is str and rel and not Path(rel).is_absolute()
+                and '..'not in Path(rel).parts and str(Path(rel))==rel and rel not in expected,
+                'generation_retained_file_alias')
+            path=root/rel; pin={key:row[key] for key in ('bytes','sha256')};pin['path']=str(path)
+            h._bound(pin,128*1024**2)
+            need(type(row['mode'])is int and 0<=row['mode']<=0o777 and not row['mode']&0o022
+                 and stat.S_IMODE(path.lstat().st_mode)==row['mode'],'generation_retained_file_mode')
+            expected[rel]=pin;total+=row['bytes']
+            need(len(expected)<=22337 and total<=2*1024**3,'generation_retained_population_bound')
+    observed=set();directories=[('.',stat.S_IMODE(root.lstat().st_mode))]
+    for path in root.rglob('*'):
+        info=path.lstat();need(not stat.S_ISLNK(info.st_mode),'generation_retained_symlink')
+        if stat.S_ISDIR(info.st_mode):
+            need(info.st_uid==os.geteuid() and not info.st_mode&0o022,'generation_retained_directory_identity')
+            directories.append((path.relative_to(root).as_posix(),stat.S_IMODE(info.st_mode)))
+            continue
+        need(stat.S_ISREG(info.st_mode) and info.st_uid==os.geteuid() and info.st_nlink==1,'generation_retained_nonordinary')
+        observed.add(path.relative_to(root).as_posix())
+    directory_digest=hashlib.sha256(json.dumps(sorted(directories),separators=(',',':')).encode()).hexdigest()
+    need(value['directory_sha256']==directory_digest,'generation_retained_directory_modes_changed')
+    need(observed==set(expected) and type(value['file_count'])is int and value['file_count']==len(expected)
+         and type(value['source_bytes'])is int and value['source_bytes']==total,'generation_census_changed')
+    return value
+
+
+def _released_initialization_record(request,terminal):
+    """Read the original ledger; never acquire, renew, release or normalize it."""
+    h=health_owner();path=Path(request['resource_ledger'])
+    need(path==ORIGINAL_RESOURCE_LEDGER,'generation_original_ledger_path_changed')
+    ref=h.database_descriptor(path);raw=path.read_bytes()
+    need(len(raw)==ref['bytes'] and hashlib.sha256(raw).hexdigest()==ref['sha256']
+         and h.database_descriptor(path)==ref,'generation_original_ledger_changed')
+    value=h._decode(raw)
+    need(value.get('schema')=='daemon-resource-reservations-v1' and value.get('limit_bytes')==GLOBAL_RETAINED_BYTES
+         and [row['path'] for row in value.get('roots',[])]==[str(p) for p in ORIGINAL_NAMED_ROOTS],
+         'generation_original_ledger_policy_changed')
+    for row in value['roots']:
+        info=Path(row['path']).stat()
+        need((info.st_dev,info.st_ino)==(row['device'],row['inode']),'generation_original_root_identity_changed')
+    reservation=terminal['reservation'];record=value.get('reservations',{}).get(reservation['reservation_id'])
+    need(type(record)is dict and record.get('status')=='released' and record.get('artifacts_durable_asserted')is True
+         and record.get('owner_pid')==terminal['owner_pid']==reservation['record']['owner_pid']
+         and record.get('native_lease_id')==reservation['resource_lease']['lease_id']
+         and record.get('scheduler_policy_sha256')==request['expected_scheduler_policy_sha256']
+         and record.get('scheduler_state_path')==request['scheduler_state_path']
+         and record.get('workload')=='canonical_parented_phase' and record.get('scheduler_lane')=='orchestration'
+         and record.get('attempt_directory',{}).get('path')==request['attempt_directory']
+         and all(record.get(key)==request[key] for key in ('cpu_slots','memory_mb','child_process_slots','storage_bytes')),
+         'generation_cache_original_reservation_not_released')
+    return sum(row['storage_bytes'] for row in value['reservations'].values() if row.get('status')!='released')
+
+
+def _validate_generation_handover(value,profile_ref,profile,config):
+    h=health_owner();h._keys(value,GENERATION_KEYS,'generation_handover_shape')
+    need(value['schema']==GENERATION_SCHEMA and value['authorization']=='one_bounded_source_generation_handover'
+         and value['profile_ref']==profile_ref and h._profile(profile_ref)==profile,'generation_handover_authority')
+    need(type(value['max_generations'])is int and value['max_generations']==2
+         and type(value['retained_generations'])is list and len(value['retained_generations'])==1
+         and type(value['generation_number'])is int and value['generation_number']==2 and type(value['global_max_bytes'])is int
+         and value['global_max_bytes']==GLOBAL_RETAINED_BYTES,'generation_finite_population_or_global_budget')
+    prior=h._document(value['prior_profile_snapshot_ref']);oldconfig=h._document(value['prior_config_snapshot_ref'])
+    need(_same_payload(value['prior_profile_snapshot_ref'],value['prior_profile_ref'])
+         and _same_payload(value['prior_config_snapshot_ref'],value['prior_config_ref']), 'generation_prior_snapshot')
+    for key in ('catalogue','task_scope','max_age_seconds','max_cycle_seconds','cycle_contract'):
+        need(prior.get(key)==profile[key],'generation_prior_scope')
+    need(oldconfig['execution_templates']==config['execution_templates']==[]
+         and all(oldconfig[k]==config[k] for k in ('catalogue','max_cycles','max_proof_bytes','poll_seconds')),
+         'generation_original_limits_or_authority_changed')
+    need(prior['unit']['name']==profile['unit']['name']
+         and prior['unit']['working_directory']==profile['unit']['working_directory'], 'generation_unit_scope')
+    oldroot=Path(prior['proof_root']);root=Path(profile['proof_root'])
+    need(root!=oldroot and root.parent==oldroot.parent and root not in oldroot.parents and oldroot not in root.parents
+         and any(parent in root.parents for parent in ORIGINAL_NAMED_ROOTS),'generation_named_root_scope')
+    censuses=[];seen=set()
+    for ref in value['retained_generations']:
+        census=_generation_census(ref)
+        need(census['root']not in seen and Path(census['root']).parent==oldroot.parent,'generation_registry_duplicate_or_crossed_root')
+        seen.add(census['root']);censuses.append(census)
+    need(value['retained_census_ref'] in value['retained_generations']
+         and h._document(value['retained_census_ref'])['root']==str(oldroot),'generation_prior_census_missing')
+    need(all(row['source_bytes']<=oldconfig['max_proof_bytes'] for row in censuses),'generation_prior_byte_quota_changed')
+    need(sum(row['source_bytes'] for row in censuses)+check_proof_budget(root,config['max_proof_bytes'])['bytes']
+         +REUSE_CYCLE_RESERVE_BYTES<=value['global_max_bytes'],'generation_aggregate_storage_bound')
+    cycles=sorted(oldroot.glob('cycle-*'));spent=value['spent_cycle_count']
+    need(h._integer(spent,1,config['max_cycles']-1) and len(cycles)==spent,'generation_spent_history_changed')
+    numbers=[]
+    for cycle in cycles:
+        intent=h._document(h.descriptor(cycle/'intent.json'));number=intent.get('cycle_number',intent.get('sequence'))
+        need(h._integer(number,1,spent) and cycle.name.startswith('cycle-%08d-'%number),'generation_spent_number_changed')
+        numbers.append(number)
+    need(sorted(numbers)==list(range(1,spent+1)),'generation_spent_gap_or_duplicate')
+    failed=Path(value['prior_cycle_hold_ref']['path']).parent
+    need(failed==cycles[-1] and value['prior_intent_ref']['path']==str(failed/'intent.json')
+         and not any((failed/name).exists() for name in ('request.json','owner.stdout','terminal.json','cycle-proof.json','closed.json')),
+         'generation_quota_failure_not_before_owner')
+    hold=h._document(value['prior_cycle_hold_ref']);intent=h._document(value['prior_intent_ref'])
+    need(hold.get('schema')=='agent-supervisor/scientific-cycle-held@1' and hold.get('reason')=='proof_storage_bound'
+         and hold.get('automatic_retry_admitted')is False and intent.get('cycle_number')==spent
+         and intent.get('kind')=='not_selected' and intent.get('automatic_retry_admitted')is False,'generation_quota_hold_changed')
+    need(value['prior_global_hold_ref']['path']==str(oldroot/'executor-held.json'),'generation_original_global_hold_path')
+    h._document(value['prior_global_hold_ref'])
+    proof_ref=value['prior_last_closed_cycle_ref'];proof=h._document(proof_ref);cycle=Path(proof_ref['path']).parent
+    need(oldroot in cycle.parents and (cycle/'closed.json').is_file()
+         and h._document(h.descriptor(cycle/'closed.json'))['cycle_proof_ref']==proof_ref,'generation_last_closed_proof')
+    old_identity=value['prior_main_identity']
+    h._stored_identity(old_identity,value['prior_profile_ref'],prior)
+    native=h._document(proof['native_diagnostic_ref'])
+    h._cycle(proof_ref,prior,old_identity,h._native(native,prior,now=proof['finished_at']),
+             now=proof['finished_at'],monotonic_ns=proof['finished_monotonic_ns'])
+    template=h._document(config['idle_template_ref']);plan=h._document(template['plan_ref']);command=plan['native_metadata_cli']
+    need(command.get('schema')=='native-embedded-scoped-observation-cli/v3'
+         and command.get('source_capsule_ref')==value['source_capsule_ref'],'generation_source_cache_not_selected')
+    runtime=Path(command['runtime_root'])
+    for role,name in (('main_entrypoint','scientific_executor.py'),('health_module','native_executor_health.py'),('owner_source','original_embedded_observation_owner.py'),('driver_source','native_embedded_observation_driver.py')):
+        need(profile[role]['path']==str(runtime/'ipfs_accelerate_py/agent_supervisor/rescue'/name),'generation_source_role_root_changed')
+    cache=h._document(value['source_capsule_ref'])
+    need(value['source_capsule_ref'] in profile['source_descriptors'],'generation_cache_binding_not_source_pinned')
+    need(cache.get('schema')=='agent-supervisor/scientific-source-capsule-reuse@1','generation_cache_binding_schema')
+    request=h._document(value['cache_initialization_request_ref']);terminal=h._document(value['cache_initialization_terminal_ref'])
+    need(terminal.get('schema')=='legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256')==value['cache_initialization_request_ref']['sha256']
+         and terminal.get('completed')is True and terminal.get('source_READ_closed')is True
+         and terminal.get('original_native_compute_closed')is True and terminal.get('child_reaped')is True
+         and type(terminal.get('child_returncode'))is int and terminal['child_returncode']==0
+         and terminal.get('storage_status')=='released' and terminal.get('cleanup_errors')==[]
+         and terminal.get('received_signals')==[] and terminal.get('partial_or_failed_control_must_be_reconciled')is False,
+         'generation_cache_initialization_not_original_closed')
+    reservation=terminal.get('reservation',{})
+    need(reservation.get('resource_lease',{}).get('released')is True
+         and reservation.get('record',{}).get('status')=='released'
+         and request.get('source_roots')==[str(ORIGINAL_NAMED_ROOTS[0].parents[1]),'/home/barberb/lift_coding/external/ipfs_accelerate']
+         and {key:request.get(key) for key in ('cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds')}==
+             dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300),
+         'generation_original_native_grants_or_closure_changed')
+    cache_root=Path(cache['accepted_pin']['capsule_root'])
+    need(Path(request['attempt_directory']) in cache_root.parents
+         and root in Path(request['attempt_directory']).parents and root in cache_root.parents
+         and any(parent in cache_root.parents for parent in ORIGINAL_NAMED_ROOTS), 'generation_cache_not_original_owned_capture')
+    execution=h._document(terminal['execution_request'])
+    need(execution.get('request')==value['cache_initialization_request_ref']
+         and execution.get('owner_source')==profile['owner_source']
+         and execution.get('disk_reservation_id')==reservation.get('reservation_id')==reservation.get('record',{}).get('reservation_id')
+         and request.get('source_sha256',{}).get(profile['owner_source']['path'])==profile['owner_source']['sha256']
+         and request.get('source_sha256',{}).get(profile['driver_source']['path'])==profile['driver_source']['sha256'],
+         'generation_cache_original_source_or_reservation_join')
+    custody=terminal.get('sampled_process_custody_final',{})
+    need(custody.get('live_processes')==0 and type(custody.get('live_processes'))is int
+         and custody.get('live_identities')==[] and custody.get('rss_bytes')==0 and not custody.get('tracking_error')
+         and terminal.get('process_spawn_receipts',{}).get('all_recorded_original_births_stopped')is True,
+         'generation_cache_original_process_not_closed')
+    init_plan_ref=h.descriptor(Path(request['argv'][4]));init_plan=h._document(init_plan_ref)
+    need(request['source_sha256'].get(init_plan_ref['path'])==init_plan_ref['sha256'],'generation_cache_original_plan_not_pinned')
+    need(init_plan['native_metadata_cli']['schema']=='native-embedded-scoped-observation-cli/v2'
+         and init_plan['native_metadata_cli']['import_head_capsule_Git']['source_head']==cache['accepted_pin']['source_head']
+         and init_plan['accelerate_root']==command['runtime_root'],
+         'generation_cache_not_new_HEAD_initialization')
+    outstanding=_released_initialization_record(request,terminal)
+    need(outstanding+sum(row['source_bytes'] for row in censuses)
+         +check_proof_budget(root,config['max_proof_bytes'],reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,reserve_files=REUSE_CYCLE_RESERVE_FILES)['bytes']
+         +REUSE_CYCLE_RESERVE_BYTES<=GLOBAL_RETAINED_BYTES,'generation_global_storage_with_outstanding_claims')
+    _recovery_scheduler(request,value['scheduler_snapshot_ref'])
+    return prior,proof,spent
+
+
+def authorize_bounded_generation_handover(spec_ref,output):
+    """One explicit metadata grant; never start, clear, delete or replay."""
+    h=health_owner();spec=h._document(spec_ref)
+    h._keys(spec,GENERATION_KEYS-{'recorded_at','manager_before'},'generation_handover_spec')
+    profile=h._profile(spec['profile_ref']);config_ref=next(pin for pin in profile['source_descriptors']
+        if pin['path']==profile['unit']['argv'][profile['unit']['argv'].index('--config')+1])
+    config,profile_ref,_=load_configuration(config_ref)
+    manager=h._manager(profile['unit']['name'])
+    need(manager.get('MainPID')=='0' and manager.get('ActiveState')in('failed','inactive'),'generation_admin_requires_no_main')
+    value=dict(spec,recorded_at=time.time(),manager_before=manager)
+    _validate_generation_handover(value,profile_ref,profile,config)
+    path=h._path(str(output));need(Path(profile['proof_root']) in path.parents,'generation_grant_outside_root')
+    reference=put(path,value);path.chmod(0o400);return reference
+
+
+def reconcile_bounded_generation_handover(reference,profile_ref,profile,config,opening_identity):
+    h=health_owner();value=h._document(reference)
+    need(os.environ.get(GENERATION_SHA_ENV)==reference['sha256'],'generation_grant_not_unit_pinned')
+    argv=profile['unit']['argv'];flag='--bounded-generation-handover'
+    need(argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path']
+         and not any(flag in argv for flag in ('--known-nonstarted-recovery','--known-closed-idle-recovery')),
+         'generation_grant_not_exact_unit_argv')
+    need(not h._path(reference['path']).lstat().st_mode&0o222,'generation_grant_not_immutable')
+    prior,proof,spent=_validate_generation_handover(value,profile_ref,profile,config)
+    terminal=h._document(value['cache_initialization_terminal_ref'])
+    init_identity=dict(pid=terminal['owner_pid'],birth_ticks=int(terminal['owner_birth']),boot_id=terminal['owner_boot_id'])
+    need(h._definitely_dead_identity(init_identity,opening_identity),'generation_cache_initializer_not_definitely_dead')
+    need(h._definitely_dead_identity(value['prior_main_identity'],opening_identity),'generation_old_main_not_definitely_dead')
+    owner=proof['owner_observation'];need(h._definitely_dead_identity(owner,opening_identity),'generation_old_owner_not_definitely_dead')
+    ack=dict(schema='agent-supervisor/scientific-bounded-generation-ack@1',handover_ref=reference,
+        retained_census_ref=value['retained_census_ref'],retained_hold_ref=value['prior_cycle_hold_ref'],
+        consuming_main_identity=opening_identity,spent_cycle_count=spent,next_cycle_number=spent+1,
+        generation_number=value['generation_number'],max_generations=value['max_generations'])
+    path=Path(profile['proof_root'])/'bounded-generation-handover.json'
+    if path.exists():need(h._document(h.descriptor(path))==ack,'generation_grant_consumed_by_other_main')
+    else:put(path,ack)
+    return spent
+
+
+def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None):
     h = health_owner(); config, profile_ref, profile = load_configuration(config_ref)
     root = h._path(profile['proof_root']); info = root.lstat()
     need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and
@@ -874,7 +1133,12 @@ def serve(config_ref, stop, *, recovery_ref=None):
     with os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'rb') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         reconciled_count = 0
-        if recovery_ref is None:
+        need(recovery_ref is None or generation_ref is None,'generation_recovery_modes_crossed')
+        if generation_ref is not None:
+            need(not os.path.lexists(root/'executor-held.json') and not any(root.glob('cycle-*')), 'generation_target_not_fresh')
+            opening_identity=require_main_process(profile_ref,profile)
+            reconciled_count=reconcile_bounded_generation_handover(generation_ref,profile_ref,profile,config,opening_identity)
+        elif recovery_ref is None:
             need(not os.path.lexists(root / 'executor-held.json'), 'persistent_hold_requires_original_reconciliation')
             need(not any(not (path / 'closed.json').exists() for path in root.glob('cycle-*')), 'unfinished_cycle_requires_original_reconciliation')
             opening_identity = require_main_process(profile_ref, profile)
@@ -901,10 +1165,13 @@ def serve(config_ref, stop, *, recovery_ref=None):
                 need(h._document(config_ref) == config and h._profile(profile_ref) == profile,
                     'service_binding_changed')
                 need(require_main_process(profile_ref, profile) == opening_identity, 'service_main_identity_changed')
+                if generation_ref is not None:
+                    retained=h._document(generation_ref)
+                    _generation_census(retained['retained_census_ref'])
                 check_proof_budget(root, config['max_proof_bytes'])
                 native = observe_native(config)
                 template_ref, kind = select_template(config, profile, native)
-                if recovery_ref is None:
+                if recovery_ref is None and generation_ref is None:
                     run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop)
                 else:
                     run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, cycle_number=cycle_number)
@@ -917,7 +1184,8 @@ def serve(config_ref, stop, *, recovery_ref=None):
                     return HOLD_EXIT
             except Exception as exc:
                 persistent_hold(root, root, str(exc))
-                if recovery_ref is not None: _recovery_failure(root, cycle_number, sequence, exc)
+                if (recovery_ref is not None or generation_ref is not None) and str(exc)!='proof_projected_storage_bound':
+                    _recovery_failure(root, cycle_number, sequence, exc)
                 return HOLD_EXIT
             if stop.wait(config['poll_seconds']):
                 return 0
@@ -933,6 +1201,7 @@ def main(argv=None):
     recovery_flags = parser.add_mutually_exclusive_group()
     recovery_flags.add_argument('--known-nonstarted-recovery')
     recovery_flags.add_argument('--known-closed-idle-recovery')
+    recovery_flags.add_argument('--bounded-generation-handover')
     args = parser.parse_args(argv)
     # This is set before any project import, including file-path invocation.
     os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
@@ -949,7 +1218,8 @@ def main(argv=None):
         recovery_path = args.known_nonstarted_recovery or args.known_closed_idle_recovery
         if recovery_path:
             recovery_ref = health_owner().descriptor(recovery_path)
-        return serve(config_ref, stop, recovery_ref=recovery_ref)
+        generation_ref = health_owner().descriptor(args.bounded_generation_handover) if args.bounded_generation_handover else None
+        return serve(config_ref, stop, recovery_ref=recovery_ref, generation_ref=generation_ref)
     except Exception as exc:
         print(json.dumps({'schema': 'agent-supervisor/scientific-executor-held@1',
             'reason': str(exc), 'automatic_retry_admitted': False}), file=sys.stderr)

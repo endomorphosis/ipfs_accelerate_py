@@ -77,6 +77,56 @@ def decode(raw):
         parse_constant=lambda _:(_ for _ in ()).throw(ValueError('nonfinite JSON')))
 
 
+REUSE_ROOTS = (DATASETS/'workspace/test-logs', DATASETS/'workspace/todo-queues', DATASETS/'docs/implementation/reports/evidence',Path('/tmp/pytest-of-barberb'))
+
+def capsule_reuse_binding(c):
+    """Authenticate closed read-only cache metadata; canonical SDK validates bytes."""
+    if c.get('schema') == 'native-embedded-scoped-observation-cli/v2':
+        return None
+    need(c.get('schema') == 'native-embedded-scoped-observation-cli/v3', 'closed reuse CLI version required')
+    reference=c['source_capsule_ref']
+    def document(ref):
+        need(type(ref)is dict and set(ref)=={'path','bytes','sha256'} and type(ref['path'])is str
+             and type(ref['bytes'])is int and 0<ref['bytes']<=4*1024**2
+             and type(ref['sha256'])is str and re.fullmatch(r'[0-9a-f]{64}',ref['sha256']), 'closed reuse metadata descriptor required')
+        raw=regular(ref['path'])
+        need(len(raw)==ref['bytes'] and hashlib.sha256(raw).hexdigest()==ref['sha256']
+             and c['source_sha256'].get(ref['path'])==ref['sha256'], 'reuse metadata source pin changed')
+        return decode(raw)
+    value=document(reference)
+    need(type(value)is dict and set(value)=={'schema','accepted_pin','manifest_ref','source_commitment_ref'}
+         and value['schema']=='agent-supervisor/scientific-source-capsule-reuse@1', 'closed immutable source cache binding required')
+    pin=value['accepted_pin']
+    need(type(pin)is dict and set(pin)=={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}
+         and pin['schema']=='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2', 'original accepted capsule pin required')
+    root=Path(pin['capsule_root']); runtime=Path(c['runtime_root'])
+    roots=REUSE_ROOTS
+    need(root.is_absolute() and any(parent in root.parents for parent in roots)
+         and not any(p.is_symlink() for p in (root,*root.parents))
+         and root != Path(c['attempt_directory']) and Path(c['attempt_directory']) not in root.parents,
+         'retained read-only source cache must precede this attempt in original named roots')
+    for key in ('capsule_id','runner_sha256','archive_sha256'):
+        need(type(pin[key])is str and re.fullmatch(r'sha256:[0-9a-f]{64}',pin[key]), 'original capsule digest required')
+    for key in ('source_head','source_tree'):
+        need(type(pin[key])is str and re.fullmatch(r'[0-9a-f]{40}',pin[key]), 'original capsule Git generation required')
+    need(root.name==pin['capsule_id'][7:]
+         and pin['runner_path']==str(root/'ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py')
+         and pin['source_head']==c['import_head_capsule_Git']['source_head'], 'retained cache path/HEAD differs')
+    manifest=document(value['manifest_ref']); commitment=document(value['source_commitment_ref'])
+    need(value['manifest_ref']['path']==str(root/'.agent-control-plane-manifest.json')
+         and set(manifest)=={'schema','source_head','source_tree','files','capsule_id'}
+         and manifest['schema']=='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1'
+         and all(manifest[key]==pin[key] for key in ('source_head','source_tree','capsule_id'))
+         and type(manifest['files'])is dict and 1<=len(manifest['files'])<=2048
+         and manifest['files'].get('ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py')==pin['runner_sha256'],
+         'retained source manifest differs')
+    need(commitment.get('schema')=='legal-ir-scientific-source-commitment/v1'
+         and commitment.get('source_root')==str(runtime)
+         and commitment.get('source_commit')==pin['source_head'] and commitment.get('source_tree')==pin['source_tree']
+         and commitment.get('runtime_activation_or_task_authority')is False, 'retained source commitment generation differs')
+    return value
+
+
 def configuration(plan):
     need(type(plan) is dict and set(plan)==PLAN_FIELDS
          and plan['schema']=='native-embedded-scoped-observation-plan/v1'
@@ -88,8 +138,8 @@ def configuration(plan):
          and len(set(scope))==len(scope),
          'finite unique task CID scope required')
     c=plan['native_metadata_cli']
-    need(type(c) is dict and set(c)==CLI_FIELDS
-         and c['schema']=='native-embedded-scoped-observation-cli/v2'
+    need(type(c) is dict and ((c.get('schema')=='native-embedded-scoped-observation-cli/v2' and set(c)==CLI_FIELDS)
+         or (c.get('schema')=='native-embedded-scoped-observation-cli/v3' and set(c)==CLI_FIELDS|{'source_capsule_ref'}))
          and c['runtime_root']==str(RUNTIME) and c['cwd']==str(WORKSPACE),
          'closed original observation CLI binding required')
     attempt=Path(c['attempt_directory']);temporary=Path(c['temporary_directory'])
@@ -123,6 +173,7 @@ def configuration(plan):
              for k in ('plan_root_cid','repository_tree_id','source_schema')),
          'exact actual database/helper/catalogue binding required')
     validate_import_git_binding(c)
+    capsule_reuse_binding(c)
     return c
 
 
@@ -334,7 +385,16 @@ def main():
     tempfile.tempdir=str(temporary);sys.path.insert(0,str(RUNTIME));sys.dont_write_bytecode=True
     source=daemon=None
     try:
-        daemon_module=importlib.import_module(CLI_MODULE);module_owner(CLI_MODULE,RUNNER_REL,c)
+        retained=capsule_reuse_binding(c)
+        if retained is None:
+            daemon_module=importlib.import_module(CLI_MODULE)
+        else:
+            route=importlib.import_module('ipfs_accelerate_py.agent_implementation_route')
+            module_owner('ipfs_accelerate_py.agent_implementation_route','ipfs_accelerate_py/agent_implementation_route.py',c)
+            accepted=route.AgentImplementationControlPlanePin(**retained['accepted_pin'])
+            with route.agent_implementation_control_plane_capture_context(source_root=RUNTIME,accepted_pin=accepted):
+                daemon_module=importlib.import_module(CLI_MODULE)
+        module_owner(CLI_MODULE,RUNNER_REL,c)
         require_original_import_capability(daemon_module,c)
         helper=importlib.import_module(HELPER_MODULE);module_owner(HELPER_MODULE,HELPER_REL,c)
         source_module=importlib.import_module(SOURCE_MODULE);module_owner(SOURCE_MODULE,SOURCE_REL,c)

@@ -309,12 +309,30 @@ def _embedded_idle_result(result, request, plan, origins, profile, native):
     _need(plan['schema'] == 'native-embedded-scoped-observation-plan/v1' and
           plan['operation'] == 'native_embedded_scoped_observation_v1', 'embedded_idle_plan_contract')
     command = plan['native_metadata_cli']
-    _keys(command, {'schema', 'runtime_root', 'cwd', 'attempt_directory', 'temporary_directory',
+    cli_fields = {'schema', 'runtime_root', 'cwd', 'attempt_directory', 'temporary_directory',
                     'project_import_plan', 'pre_body_guard', 'result_path', 'source_sha256',
-                    'observation_binding', 'import_head_capsule_Git'}, 'embedded_idle_cli_shape')
-    _need(command['schema'] == 'native-embedded-scoped-observation-cli/v2' and
+                    'observation_binding', 'import_head_capsule_Git'}
+    reuse = command.get('schema') == 'native-embedded-scoped-observation-cli/v3'
+    _keys(command, cli_fields | ({'source_capsule_ref'} if reuse else set()), 'embedded_idle_cli_shape')
+    _need(command['schema'] in ('native-embedded-scoped-observation-cli/v2','native-embedded-scoped-observation-cli/v3') and
           _text(command['runtime_root']) and command['runtime_root'] == plan['accelerate_root'],
           'embedded_idle_cli_contract')
+    if reuse:
+        reference=command['source_capsule_ref']; data=_document(reference)
+        _keys(data, {'schema','accepted_pin','manifest_ref','source_commitment_ref'}, 'source_cache_binding_shape')
+        _need(data['schema']=='agent-supervisor/scientific-source-capsule-reuse@1', 'source_cache_binding_schema')
+        pin=data['accepted_pin']; _keys(pin, {'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}, 'source_cache_pin_shape')
+        manifest=_document(data['manifest_ref']); commitment=_document(data['source_commitment_ref'])
+        _keys(manifest, {'schema','source_head','source_tree','files','capsule_id'}, 'source_cache_manifest_shape')
+        _need(pin['schema']=='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2'
+              and manifest['schema']=='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1'
+              and all(manifest[k]==pin[k] for k in ('source_head','source_tree','capsule_id'))
+              and pin['source_head']==command['import_head_capsule_Git']['source_head']
+              and commitment.get('source_root')==command['runtime_root']
+              and commitment.get('source_commit')==pin['source_head'] and commitment.get('source_tree')==pin['source_tree'], 'source_cache_generation')
+        for ref in (reference,data['manifest_ref'],data['source_commitment_ref']):
+            _need(ref in profile['source_descriptors'] and request.get('source_sha256',{}).get(ref['path'])==ref['sha256']
+                  and command['source_sha256'].get(ref['path'])==ref['sha256'], 'source_cache_metadata_not_pinned')
     git = command['import_head_capsule_Git']
     _keys(git, {'blobs', 'ls_tree_tail', 'payload_bytes', 'required_relative_files', 'route_source',
                 'scope', 'selected_file_count', 'source_head', 'source_root', 'unique_blob_count'},

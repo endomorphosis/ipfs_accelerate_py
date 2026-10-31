@@ -14,6 +14,8 @@ from typing import Any
 
 import pytest
 
+from ipfs_accelerate_py import agent_implementation_route as capture_route
+
 from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.core import multiformats_identity
 from ipfs_accelerate_py.utils import cid_utils
@@ -132,6 +134,195 @@ def _inert_required_payloads() -> dict[str, bytes]:
         relative: f"# inert accepted dependency: {relative}\n".encode()
         for relative in llm_router._AGENT_CONTROL_PLANE_RELATIVE_FILES
     }
+
+
+def _retained_source_fixture(tmp_path, monkeypatch):
+    """Real capsule bytes and public validators; only source Git I/O is modeled."""
+    source = tmp_path / "source"
+    source.mkdir(mode=0o700)
+    payloads = _inert_required_payloads()
+    files = []
+    for relative, body in payloads.items():
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+        path.chmod(0o644)
+        files.append(path)
+    generations = []
+    def generation(root, *, expected_head, expected_tree):
+        assert root == source
+        assert (expected_head, expected_tree) == ("0" * 40, "1" * 40)
+        generations.append((expected_head, expected_tree))
+    def selected(root, *, verify_loaded_origins):
+        assert root == source and verify_loaded_origins is True
+        return files
+    def head_payloads(root, *, source_head):
+        assert root == source and source_head == "0" * 40
+        return payloads
+    monkeypatch.setattr(capture_route, "_agent_control_plane_git_state", generation)
+    monkeypatch.setattr(capture_route, "_agent_control_plane_source_files", selected)
+    monkeypatch.setattr(capture_route, "_agent_control_plane_head_payloads", head_payloads)
+    parent = tmp_path / "retained"
+    pin = capture_route.materialize_agent_implementation_control_plane_capsule(
+        source_root=source, capsule_parent=parent,
+        source_head="0" * 40, source_tree="1" * 40,
+    )
+    return source, parent, pin, generations, payloads
+
+
+def _retained_inventory(root):
+    return {
+        str(path.relative_to(root)): (path.stat().st_size, path.stat().st_mode,
+                                     path.stat().st_ino, path.stat().st_nlink)
+        for path in root.rglob("*") if path.is_file()
+    }
+
+
+def test_retained_capsule_reuse_keeps_one_copy_and_seals_each_capture(tmp_path, monkeypatch):
+    source, parent, pin, generations, _ = _retained_source_fixture(tmp_path, monkeypatch)
+    before = _retained_inventory(parent)
+    seen = len(generations)
+    for _ in range(2):
+        actual = capture_route.materialize_agent_implementation_control_plane_capsule(
+            source_root=source, capsule_parent=parent, source_head=pin.source_head,
+            source_tree=pin.source_tree, reuse_only=True, accepted_pin=pin,
+        )
+        assert actual == pin and _retained_inventory(parent) == before
+        sealed = capture_route.seal_agent_implementation_control_plane_capsule(actual)
+        try:
+            assert sealed.capsule_id == pin.capsule_id
+            assert sealed.archive_sha256 == pin.archive_sha256
+            capture_route.verify_agent_implementation_sealed_control_plane(pin, sealed.descriptor)
+        finally:
+            os.close(sealed.descriptor)
+    assert len(generations) == seen + 4
+
+
+@pytest.mark.parametrize("failure", ["missing-parent", "missing-capsule", "body-drift", "live-drift", "wrong-head", "wrong-tree", "wrong-archive"], ids=["missing-parent", "missing-capsule", "body-drift", "live-drift", "wrong-head", "wrong-tree", "wrong-archive"])
+def test_retained_capsule_failure_never_creates_or_repairs_files(tmp_path, monkeypatch, failure):
+    from dataclasses import replace
+    source, parent, pin, _, payloads = _retained_source_fixture(tmp_path, monkeypatch)
+    if failure == "missing-parent":
+        parent.rename(tmp_path / "preserved-parent")
+    elif failure == "missing-capsule":
+        Path(pin.capsule_root).rename(parent / "preserved-capsule")
+    elif failure == "body-drift":
+        path = Path(pin.runner_path)
+        path.chmod(0o600); path.write_bytes(b"# drifted retained body\n"); path.chmod(0o400)
+    elif failure == "live-drift":
+        (source / next(iter(payloads))).write_bytes(b"# changed live body\n")
+    elif failure == "wrong-head":
+        pin = replace(pin, source_head="2" * 40)
+    elif failure == "wrong-tree":
+        pin = replace(pin, source_tree="2" * 40)
+    elif failure == "wrong-archive":
+        pin = replace(pin, archive_sha256="sha256:" + "f" * 64)
+    before = _retained_inventory(tmp_path)
+    with pytest.raises(ValueError):
+        capture_route.materialize_agent_implementation_control_plane_capsule(
+            source_root=source, capsule_parent=parent, source_head="0" * 40,
+            source_tree="1" * 40, reuse_only=True, accepted_pin=pin,
+        )
+    assert _retained_inventory(tmp_path) == before
+    assert not list(tmp_path.rglob(".capsule-*"))
+
+
+@pytest.mark.parametrize("reuse_only,with_pin", [(True, False), (False, True), (1, True)], ids=["missing-pin", "pin-in-create-mode", "nonboolean-mode"])
+def test_retained_capture_mode_is_closed(tmp_path, monkeypatch, reuse_only, with_pin):
+    source, parent, pin, _, _ = _retained_source_fixture(tmp_path, monkeypatch)
+    before = _retained_inventory(tmp_path)
+    with pytest.raises(ValueError, match="mode/pin"):
+        capture_route.materialize_agent_implementation_control_plane_capsule(
+            source_root=source, capsule_parent=parent, source_head=pin.source_head,
+            source_tree=pin.source_tree, reuse_only=reuse_only,
+            accepted_pin=pin if with_pin else None,
+        )
+    assert _retained_inventory(tmp_path) == before
+
+
+def test_source_capture_context_is_scoped_and_does_no_capture_io(tmp_path, monkeypatch):
+    source, _, pin, _, _ = _retained_source_fixture(tmp_path, monkeypatch)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("context entry must not capture, seal or invoke Git")
+    monkeypatch.setattr(capture_route, "materialize_agent_implementation_control_plane_capsule", forbidden)
+    monkeypatch.setattr(capture_route, "seal_agent_implementation_control_plane_capsule", forbidden)
+    monkeypatch.setattr(capture_route, "_agent_control_plane_git_state", forbidden)
+    assert capture_route.agent_implementation_control_plane_capture_pin(source) is None
+    with pytest.raises(RuntimeError, match="exit-context"):
+        with capture_route.agent_implementation_control_plane_capture_context(source_root=source, accepted_pin=pin):
+            assert capture_route.agent_implementation_control_plane_capture_pin(source) == pin
+            with pytest.raises(ValueError, match="already active"):
+                with capture_route.agent_implementation_control_plane_capture_context(source_root=source, accepted_pin=pin):
+                    pass
+            with pytest.raises(ValueError, match="source root differs"):
+                capture_route.agent_implementation_control_plane_capture_pin(tmp_path)
+            raise RuntimeError("exit-context")
+    assert capture_route.agent_implementation_control_plane_capture_pin(source) is None
+
+
+def _canonical_daemon_capture_fragment():
+    """Use canonical code objects from authenticated whole source, without import.
+
+    This source-only unit fixture never executes the daemon module body or
+    claims a real SDK cold import. The original guard sees the exact full raw
+    compile, rather than an unauthenticated rewritten AST buffer.
+    """
+    import shutil
+    import tempfile
+    from types import CodeType, FunctionType
+    path = Path(capture_route.__file__).parent / "agent_supervisor/todo_daemon/implementation_daemon.py"
+    code = compile(path.read_bytes(), str(path), "exec", dont_inherit=True)
+    namespace = {"__file__": str(path),
+                 "__package__": "ipfs_accelerate_py.agent_supervisor.todo_daemon",
+                 "Path": Path, "tempfile": tempfile, "shutil": shutil}
+    for name in ("_capture_imported_control_plane_generation",
+                 "_has_explicit_control_plane_capture_context"):
+        canonical = next(item for item in code.co_consts
+                         if isinstance(item, CodeType) and item.co_name == name)
+        namespace[name] = FunctionType(canonical, namespace, name)
+    return namespace, path, code
+
+
+
+def test_daemon_retained_capture_uses_context_and_never_removes_retained_parent(tmp_path, monkeypatch):
+    _, parent, pin, _, _ = _retained_source_fixture(tmp_path, monkeypatch)
+    namespace, path, _ = _canonical_daemon_capture_fragment()
+    source = path.resolve().parents[3]
+    removals = []
+    seen = []
+    namespace["agent_implementation_control_plane_capture_pin"] = capture_route.agent_implementation_control_plane_capture_pin
+    namespace["agent_implementation_control_plane_source_generation"] = lambda root: (pin.source_head, pin.source_tree)
+    def capture(**kwargs):
+        seen.append(kwargs)
+        assert kwargs["source_root"] == source and kwargs["capsule_parent"] == parent
+        assert kwargs["reuse_only"] is True and kwargs["accepted_pin"] == pin
+        return pin
+    namespace["materialize_agent_implementation_control_plane_capsule"] = capture
+    namespace["seal_agent_implementation_control_plane_capsule"] = lambda actual: (_ for _ in ()).throw(ValueError("seal-refused"))
+    from types import SimpleNamespace
+    namespace["tempfile"] = SimpleNamespace(mkdtemp=lambda **kwargs: pytest.fail("reuse must not make a fresh parent"))
+    namespace["shutil"] = SimpleNamespace(rmtree=lambda path: removals.append(path))
+    before = _retained_inventory(parent)
+    with capture_route.agent_implementation_control_plane_capture_context(source_root=source, accepted_pin=pin):
+        with pytest.raises(ValueError, match="seal-refused"):
+            namespace["_capture_imported_control_plane_generation"]()
+    assert len(seen) == 1 and removals == [] and _retained_inventory(parent) == before
+
+
+@pytest.mark.parametrize("active", [False, True], ids=["legacy-no-context", "explicit-retained-context"])
+def test_daemon_explicit_capture_guard_uses_actual_context(tmp_path, monkeypatch, active):
+    namespace, path, _ = _canonical_daemon_capture_fragment()
+    _, _, pin, _, _ = _retained_source_fixture(tmp_path, monkeypatch)
+    source = path.resolve().parents[3]
+    guard = namespace["_has_explicit_control_plane_capture_context"]
+    assert guard() is False
+    if active:
+        with capture_route.agent_implementation_control_plane_capture_context(source_root=source, accepted_pin=pin):
+            assert guard() is True
+    else:
+        assert guard() is False
+    assert guard() is False
+
 
 
 def _git(repository: Path, *arguments: str) -> str:

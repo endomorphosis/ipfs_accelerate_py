@@ -153,6 +153,72 @@ def validate_import_git_binding(c):
     return capsule
 
 
+REUSE_ROOTS = ROOTS
+
+def capsule_reuse_binding(c):
+    """Authenticate closed read-only cache metadata; canonical SDK validates bytes."""
+    if c.get('schema') == 'native-embedded-scoped-observation-cli/v2':
+        return None
+    need(c.get('schema') == 'native-embedded-scoped-observation-cli/v3', 'closed reuse CLI version required')
+    reference=c['source_capsule_ref']
+    def document(ref):
+        need(type(ref)is dict and set(ref)=={'path','bytes','sha256'} and type(ref['path'])is str
+             and type(ref['bytes'])is int and 0<ref['bytes']<=4*1024**2
+             and type(ref['sha256'])is str and re.fullmatch(r'[0-9a-f]{64}',ref['sha256']), 'closed reuse metadata descriptor required')
+        raw=regular(ref['path'])
+        need(len(raw)==ref['bytes'] and hashlib.sha256(raw).hexdigest()==ref['sha256']
+             and c['source_sha256'].get(ref['path'])==ref['sha256'], 'reuse metadata source pin changed')
+        return decode(raw)
+    value=document(reference)
+    need(type(value)is dict and set(value)=={'schema','accepted_pin','manifest_ref','source_commitment_ref'}
+         and value['schema']=='agent-supervisor/scientific-source-capsule-reuse@1', 'closed immutable source cache binding required')
+    pin=value['accepted_pin']
+    need(type(pin)is dict and set(pin)=={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}
+         and pin['schema']=='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2', 'original accepted capsule pin required')
+    root=Path(pin['capsule_root']); runtime=Path(c['runtime_root'])
+    roots=REUSE_ROOTS
+    need(root.is_absolute() and any(parent in root.parents for parent in roots)
+         and not any(p.is_symlink() for p in (root,*root.parents))
+         and root != Path(c['attempt_directory']) and Path(c['attempt_directory']) not in root.parents,
+         'retained read-only source cache must precede this attempt in original named roots')
+    for key in ('capsule_id','runner_sha256','archive_sha256'):
+        need(type(pin[key])is str and re.fullmatch(r'sha256:[0-9a-f]{64}',pin[key]), 'original capsule digest required')
+    for key in ('source_head','source_tree'):
+        need(type(pin[key])is str and re.fullmatch(r'[0-9a-f]{40}',pin[key]), 'original capsule Git generation required')
+    need(root.name==pin['capsule_id'][7:]
+         and pin['runner_path']==str(root/'ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py')
+         and pin['source_head']==c['import_head_capsule_Git']['source_head'], 'retained cache path/HEAD differs')
+    manifest=document(value['manifest_ref']); commitment=document(value['source_commitment_ref'])
+    need(value['manifest_ref']['path']==str(root/'.agent-control-plane-manifest.json')
+         and set(manifest)=={'schema','source_head','source_tree','files','capsule_id'}
+         and manifest['schema']=='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1'
+         and all(manifest[key]==pin[key] for key in ('source_head','source_tree','capsule_id'))
+         and type(manifest['files'])is dict and 1<=len(manifest['files'])<=2048
+         and manifest['files'].get('ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py')==pin['runner_sha256'],
+         'retained source manifest differs')
+    need(commitment.get('schema')=='legal-ir-scientific-source-commitment/v1'
+         and commitment.get('source_root')==str(runtime)
+         and commitment.get('source_commit')==pin['source_head'] and commitment.get('source_tree')==pin['source_tree']
+         and commitment.get('runtime_activation_or_task_authority')is False, 'retained source commitment generation differs')
+    return value
+
+
+def reuse_process_constructor_bound(ordinal):
+    need(type(ordinal)is int and 1<=ordinal<=32,'retained-cache readonly process constructor bound exceeded')
+
+
+def reuse_attempt_file_bound(attempt, *, maximum=276):
+    """Bound actor256 plus at most20 original outer-owner files."""
+    count=0
+    for path in Path(attempt).rglob('*'):
+        info=path.lstat()
+        need(not stat.S_ISLNK(info.st_mode),'retained-cache attempt aliases forbidden')
+        if stat.S_ISDIR(info.st_mode):continue
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink==1,'retained-cache attempt artifact identity changed')
+        count+=1;need(count<=maximum,'retained-cache total attempt file bound exceeded')
+    return count
+
+
 def request(path,digest):
     raw=regular(path)
     need(hashlib.sha256(raw).hexdigest()==digest,'request digest changed')
@@ -225,9 +291,7 @@ def request(path,digest):
          and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}',x) for x in scope)
          and len(set(scope))==len(scope),'finite unique task CID scope required')
     c=plan['native_metadata_cli']
-    need(type(c) is dict and set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory',
-         'project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git'}
-         and c['schema']=='native-embedded-scoped-observation-cli/v2'
+    need(type(c) is dict and ((c.get('schema')=='native-embedded-scoped-observation-cli/v2' and set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory','project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git'}) or (c.get('schema')=='native-embedded-scoped-observation-cli/v3' and set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory','project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git','source_capsule_ref'}))
          and c['runtime_root']==plan['accelerate_root'] and c['cwd']==str(WORKSPACE)
          and c['attempt_directory']==str(attempt) and c['temporary_directory']==str(attempt/'temporary')
          and c['result_path']==str(attempt/'exports/native-cli-driver-result.json'),
@@ -236,6 +300,7 @@ def request(path,digest):
          and all(name in pins and pins[name]==digest for name,digest in c['source_sha256'].items()),
          'driver immutable source graph differs from original owner graph')
     validate_import_git_binding(c)
+    capsule_reuse_binding(c)
     binding=c['observation_binding']
     need(type(binding) is dict and set(binding)=={'schema','database_preimage','task_scope',
          'plan_root_cid','repository_tree_id','observer_source','source_schema'}
@@ -433,6 +498,7 @@ def child_main(args):
     need(os.environ.get('IPFS_ACCELERATE_AGENT_QUACK_PREFER')=='0','explicit original embedded file mode changed')
     denied=[];allowed_events=[];write_events=[];mkdir_events=[];fd_events=[];parent_io_events=[]
     actual_popen=subprocess.Popen
+    reuse_mode=False  # Set from the exact pinned plan below.
     spawn_lock=threading.RLock();pending_spawn={};spawn_index=0
     driver_raw=regular(ACTOR_PATH)
     need(hashlib.sha256(driver_raw).hexdigest()==value['source_sha256'][str(ACTOR_PATH)],'guarded driver source changed')
@@ -446,6 +512,8 @@ def child_main(args):
          'exact source-bound driver admission functions required')
     plan_path=Path(value['argv'][4]);plan=decode(regular(plan_path))
     need(hashlib.sha256(regular(plan_path)).hexdigest()==value['argv'][6],'driver plan changed')
+    reuse_mode=plan['native_metadata_cli']['schema']=='native-embedded-scoped-observation-cli/v3'
+    created_private_files=set()
     sys.path[:0]=[str(R),plan['accelerate_root']]
     # The source guard inside driver.main refuses ipfs_datasets_py if it is already
     # loaded. Telemetry is only needed when a checked child exists, which is after
@@ -476,6 +544,7 @@ def child_main(args):
                 admission=checked_record(authorize(argv,popen_args[1:] if popen_args else (),kwargs,plan),PROCESS_ADMISSION_FIELDS)
                 need(admission['kind'] in PROCESS_ADMISSION_KINDS and admission['argv']==argv,'closed native process family required')
                 need(not pending_spawn,'nested or concurrent unowned process constructor')
+                if reuse_mode:reuse_process_constructor_bound(spawn_index+1)
                 spawn_index+=1;ordinal=spawn_index
                 cwd=str(Path.cwd()) if kwargs.get('cwd') is None else str(kwargs['cwd'])
                 expected=dict(argv=list(argv),cwd=cwd,env=kwargs.get('env'),admission=admission)
@@ -585,6 +654,9 @@ def child_main(args):
                 else:
                     resolved=target_path(path)
                     if resolved is not None and not writable(resolved):refuse(event, str(resolved))
+                    if reuse_mode and resolved is not None and flags & os.O_CREAT:
+                        created_private_files.add(str(resolved))
+                        need(len(created_private_files)<=256,'retained-cache private file creation bound exceeded')
                     write_events.append(str(resolved) if resolved is not None else 'inherited-standard-descriptor')
         elif event=='os.mkdir':
             path,_mode,dir_fd=event_args;resolved=target_path(path,dir_fd)
@@ -599,6 +671,9 @@ def child_main(args):
             src,dst,src_fd,dst_fd=event_args
             source=target_path(src,src_fd);destination=target_path(dst,dst_fd)
             if not private(source) or not writable(destination):refuse(event)
+            if reuse_mode:
+                created_private_files.add(str(destination))
+                need(len(created_private_files)<=256,'retained-cache private file creation bound exceeded')
         elif event in {'os.remove','os.rmdir'}:
             path,dir_fd=event_args
             resolved=target_path(path,dir_fd)
@@ -702,6 +777,7 @@ def main():
     if args._child:
         child_main(args);return 0
     value,raw=request(args.request,args.expected_request_sha256)
+    reuse_mode=decode(regular(value['argv'][4]))['native_metadata_cli']['schema']=='native-embedded-scoped-observation-cli/v3'
     os.environ.pop(PARENT_CAPACITY_FD_ENV, None)
     source_guard(value,args.request,raw)
     lease_module=load_source_lease()
@@ -712,7 +788,7 @@ def main():
     cancelled=threading.Event();signals=[];started=time.monotonic();deadline=started+value['timeout_seconds']
     work_deadline=deadline-60.0  # Reserve60s of the unchanged300s lifetime for stopped cleanup.
     result={'schema':'legal-ir-original-native-control-terminal/v1','request_sha256':args.expected_request_sha256,
-        'owner_pid':os.getpid(),'completed':False,'child_returncode':None,'source_READ_closed':False,
+        'owner_pid':os.getpid(),'owner_boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'completed':False,'child_returncode':None,'source_READ_closed':False,
         'control_effects':'not_started','task_completion_authority_granted_by_resource_owner':False,
         'resource_profile':'original_orchestration_parented_disk_sampled_birth_bound_descendants',
         'external_file_growth_enforcement':'polled_size_caps_and_original_conservative_precharge_not_sandbox'}
@@ -726,7 +802,9 @@ def main():
         remaining();source_guard(value,args.request,raw)
         if root is not None:need(root.renew() and not root.cancelled,'original root revoked')
         if phase is not None:need(phase.renew() and not phase.cancelled,'original phase revoked')
-        if owner_entered:need(owner.heartbeat() and not owner.cancelled,'original disk child revoked')
+        if owner_entered:
+            need(owner.heartbeat() and not owner.cancelled,'original disk child revoked')
+            if reuse_mode:reuse_attempt_file_bound(Path(value['attempt_directory']))
     try:
         for source_root in value['source_roots']:
             ctx=lease_module.source_lease(source_root,mode='read',timeout_seconds=min(60,remaining()))
@@ -850,6 +928,7 @@ def main():
         result['allowed_subprocess_events']=pin(event_path)
         result['control_effects']='actor_exit_zero_independent_task_receipt_still_required'
         write_json(attempt/'control-execution.json',{**result,'completed':True})
+        if reuse_mode:reuse_attempt_file_bound(attempt)
         owner.finalize(attempt,artifacts_durable=True);storage_status='released'
         result['completed']=True
     except BaseException as error:

@@ -462,3 +462,75 @@ def test_resolution_only_present_module_cannot_escape_execution_provenance(guard
     assert finder.project_origins[spec.name]['execution_status']=='resolution_only'
     assert 'execution_profile' not in finder.project_origins[spec.name]
     assert not (finder.directory/'project-import-origins-present-resolution-only.json').exists()
+
+
+def _reuse_cache_fixture(c,tmp_path):
+    root=tmp_path/'retained-cache'/('c'*64);root.mkdir(parents=True)
+    runner='ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py'
+    accepted=dict(schema='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2',runner_path=str(root/runner),
+        runner_sha256='sha256:'+'a'*64,capsule_root=str(root),capsule_id='sha256:'+'c'*64,
+        source_head=c['import_head_capsule_Git']['source_head'],source_tree='2'*40,archive_sha256='sha256:'+'b'*64)
+    manifest=dict(schema='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1',source_head=accepted['source_head'],
+        source_tree=accepted['source_tree'],files={runner:accepted['runner_sha256']},capsule_id=accepted['capsule_id'])
+    commitment=dict(schema='legal-ir-scientific-source-commitment/v1',source_root=c['runtime_root'],
+        source_commit=accepted['source_head'],source_tree=accepted['source_tree'],runtime_activation_or_task_authority=False)
+    m=_write(root/'.agent-control-plane-manifest.json',manifest);z=_write(tmp_path/'source-generation.json',commitment)
+    data=dict(schema='agent-supervisor/scientific-source-capsule-reuse@1',accepted_pin=accepted,manifest_ref=m,source_commitment_ref=z)
+    path=tmp_path/'source-capsule-ref.json'
+    def seal():
+        ref=_write(path,data);c['schema']='native-embedded-scoped-observation-cli/v3';c['source_capsule_ref']=ref
+        for pin in (ref,m,z):c['source_sha256'][pin['path']]=pin['sha256']
+        return ref
+    seal();return data,seal
+
+
+@pytest.mark.parametrize('target',['driver','owner'])
+def test_reuse_metadata_is_closed_source_input_without_native_or_cache_writes(driver,owner,tmp_path,monkeypatch,target):
+    plan=_plan(driver,tmp_path);c=plan['native_metadata_cli'];data,_=_reuse_cache_fixture(c,tmp_path)
+    module=driver if target=='driver' else owner;monkeypatch.setattr(module,'REUSE_ROOTS',(tmp_path,))
+    before={str(p):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    assert module.capsule_reuse_binding(c)==data
+    assert {str(p):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}==before
+
+
+@pytest.mark.parametrize('mutation',['extra','head','tree','commitment_root','source_pin','inside_attempt','manifest_path'])
+def test_reuse_metadata_rejects_cache_scope_and_generation_drift(driver,tmp_path,monkeypatch,mutation):
+    c=_plan(driver,tmp_path)['native_metadata_cli'];data,seal=_reuse_cache_fixture(c,tmp_path)
+    monkeypatch.setattr(driver,'REUSE_ROOTS',(tmp_path,))
+    if mutation=='extra':data['write_on_miss']=True
+    elif mutation=='head':data['accepted_pin']['source_head']='3'*40
+    elif mutation=='tree':data['accepted_pin']['source_tree']='3'*40
+    elif mutation=='commitment_root':
+        p=Path(data['source_commitment_ref']['path']);x=json.loads(p.read_bytes());x['source_root']='/arbitrary/root'
+        data['source_commitment_ref']=_write(p,x)
+    elif mutation=='inside_attempt':data['accepted_pin']['capsule_root']=str(Path(c['attempt_directory'])/'cache'/('c'*64))
+    elif mutation=='manifest_path':data['manifest_ref']=_write(tmp_path/'other-manifest.json',json.loads(Path(data['manifest_ref']['path']).read_bytes()))
+    seal()
+    if mutation=='source_pin':c['source_sha256'].pop(data['manifest_ref']['path'])
+    with pytest.raises(RuntimeError):driver.capsule_reuse_binding(c)
+
+
+def test_original_owner_cli3_transport_keeps_exact_grants_and_empty_attempt(owner,driver,tmp_path,monkeypatch):
+    value,plan,path=_request(owner,driver,tmp_path,monkeypatch);c=plan['native_metadata_cli']
+    _reuse_cache_fixture(c,tmp_path);monkeypatch.setattr(owner,'REUSE_ROOTS',(tmp_path,))
+    value['source_sha256'].update(c['source_sha256']);ref=_write(path,plan)
+    value['argv'][6]=ref['sha256'];value['source_sha256'][str(path)]=ref['sha256']
+    req=tmp_path/'v3-request.json';ref=_write(req,value)
+    actual,_=owner.request(req,ref['sha256'])
+    assert actual==value and {k:actual[k] for k in ('cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds')}==dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300)
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('files',[276,277])
+def test_reuse_parent_file_bound_is_enforced_independently_of_byte_usage(owner,tmp_path,files):
+    for n in range(files):(tmp_path/str(n)).write_bytes(b'')
+    if files==276:assert owner.reuse_attempt_file_bound(tmp_path)==276
+    else:
+        with pytest.raises(RuntimeError,match='total attempt file bound'):owner.reuse_attempt_file_bound(tmp_path)
+
+
+@pytest.mark.parametrize('ordinal',[32,33])
+def test_reuse_process_constructor_cap_precedes_any_subprocess(owner,ordinal):
+    if ordinal==32:owner.reuse_process_constructor_bound(ordinal)
+    else:
+        with pytest.raises(RuntimeError,match='constructor bound'):owner.reuse_process_constructor_bound(ordinal)

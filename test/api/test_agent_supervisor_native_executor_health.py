@@ -983,3 +983,21 @@ def test_database_data_descriptor_reuses_path_and_bounded_regular_file_fences(tm
         offered=path;reason='unsafe_or_oversized_database_data'
     with pytest.raises(health.ExecutorHealthError,match=reason):
         health.database_descriptor(offered)
+
+
+@pytest.mark.parametrize('mutation',['none','unbound_metadata'])
+def test_cli3_cache_metadata_does_not_relax_original_cycle_health(cycle_case,tmp_path,mutation):
+    case=_embedded_idle_shape(cycle_case);command=case['plan']['native_metadata_cli']
+    root=tmp_path/'retained-cache';root.mkdir();head=command['import_head_capsule_Git']['source_head'];tree='2'*40
+    pin=dict(schema='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2',runner_path=str(root/'runner.py'),runner_sha256='sha256:'+'a'*64,
+        capsule_root=str(root),capsule_id='sha256:'+'c'*64,source_head=head,source_tree=tree,archive_sha256='sha256:'+'b'*64)
+    manifest=_put(root/'manifest.json',dict(schema='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1',source_head=head,source_tree=tree,files={},capsule_id=pin['capsule_id']))
+    commitment=_put(root/'commitment.json',dict(source_root=command['runtime_root'],source_commit=head,source_tree=tree))
+    cache=_put(root/'binding.json',dict(schema='agent-supervisor/scientific-source-capsule-reuse@1',accepted_pin=pin,manifest_ref=manifest,source_commitment_ref=commitment))
+    command['schema']='native-embedded-scoped-observation-cli/v3';command['source_capsule_ref']=cache
+    for ref in (cache,manifest,commitment):
+        case['profile']['source_descriptors'].append(ref);case['request']['source_sha256'][ref['path']]=ref['sha256'];command['source_sha256'][ref['path']]=ref['sha256']
+    if mutation=='unbound_metadata':case['request']['source_sha256'].pop(manifest['path'])
+    _write_evidence(case);result=_verify(case,profile_ref=case['profile_ref'])
+    assert result['verified'] is (mutation=='none')
+    assert result['dispatch_authority']is False and result['completion_authority']is False
