@@ -997,7 +997,7 @@ def _bounded_handover_fixture(case,tmp_path,monkeypatch):
     hold=put(oldroot/'executor-held.json',dict(schema='agent-supervisor/scientific-executor-persistent-hold@1',reason='retained_original',automatic_retry_admitted=False))
     held=put(cycles[-1]/'cycle-held.json',dict(schema='agent-supervisor/scientific-cycle-held@1',reason='proof_storage_bound',automatic_retry_admitted=False))
     diagnostic=put(cycles[-2]/'native.json',case['native'])
-    oldproof=dict(native_diagnostic_ref=diagnostic,finished_at=case['native']['checked_at_epoch'],finished_monotonic_ns=1,
+    oldproof=dict(kind='genuine_scoped_idle',sequence=12,process={key:old_identity[key] for key in ('pid','birth_ticks','boot_id','invocation_id')},native_diagnostic_ref=diagnostic,finished_at=case['native']['checked_at_epoch'],finished_monotonic_ns=1,
         owner_observation=dict(pid=2000002,birth_ticks=101,boot_id='fixture-old-boot'))
     proof_ref=put(cycles[-2]/'cycle-proof.json',oldproof);put(cycles[-2]/'closed.json',dict(cycle_proof_ref=proof_ref))
     census=put(tmp_path/'retained-census.json',dict(schema='agent-supervisor/scientific-proof-generation-census@1',root=str(oldroot),file_count=20121,source_bytes=999887773))
@@ -1033,7 +1033,7 @@ def _bounded_handover_fixture(case,tmp_path,monkeypatch):
     grant_path=newroot/'one-handover.json';profile['unit']['argv'] += ['--config',config_ref['path'],'--config-sha256',config_ref['sha256'],'--bounded-generation-handover',str(grant_path)]
     profile_ref=put(Path(config['profile_path']),profile)
     policy=dict(fixture_original_policy=True);policy_sha=hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-    state=dict(config=policy,groups={},requests={});state_ref=put(tmp_path/'scheduler.json',state);state_snapshot=put(newroot/'scheduler-snapshot.json',state)
+    state=dict(config=policy,waiters={},leases={});state_ref=put(tmp_path/'scheduler.json',state);state_snapshot=put(newroot/'scheduler-snapshot.json',state)
     init_plan=copy.deepcopy(plan);init_plan['native_metadata_cli']={**init_plan['native_metadata_cli'],'schema':'native-embedded-scoped-observation-cli/v2','import_head_capsule_Git':dict(source_head=pin['source_head'])};init_plan['native_metadata_cli'].pop('source_capsule_ref')
     init_plan_ref=put(newroot/'initial-plan.json',init_plan)
     ledger_path=tmp_path/'original-disk-ledger.json';monkeypatch.setattr(executor,'ORIGINAL_RESOURCE_LEDGER',ledger_path)
@@ -1043,6 +1043,14 @@ def _bounded_handover_fixture(case,tmp_path,monkeypatch):
         source_roots=[str(tmp_path.parents[1]),'/home/barberb/lift_coding/external/ipfs_accelerate'],resource_ledger=str(ledger_path),
         scheduler_state_path=state_ref['path'],expected_scheduler_policy_sha256=policy_sha,cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300)
     request_ref=put(newroot/'initial-request.json',request)
+    historical={**request,'request_id':'fixture:historical12'}
+    historical_ref=put(cycles[-2]/'request.json',historical)
+    oldproof['request_ref']=historical_ref
+    proof_ref=put(cycles[-2]/'cycle-proof.json',oldproof)
+    put(cycles[-2]/'closed.json',dict(cycle_proof_ref=proof_ref))
+    intent=health._document(health.descriptor(cycles[-2]/'intent.json'));intent['request_ref']=historical_ref;put(cycles[-2]/'intent.json',intent)
+    for c in cycles[:-2]:
+        r=put(c/'cycle-proof.json',oldproof);put(c/'closed.json',dict(cycle_proof_ref=r))
     record=dict(status='released',reservation_id='fixture:initial',owner_pid=2000003,native_lease_id='fixture:native',scheduler_lane='orchestration',workload='canonical_parented_phase',
         artifacts_durable_asserted=True,attempt_directory=dict(path=str(init)),scheduler_policy_sha256=policy_sha,scheduler_state_path=state_ref['path'],
         **{k:request[k] for k in ('cpu_slots','memory_mb','child_process_slots','storage_bytes')})
@@ -1062,6 +1070,7 @@ def _bounded_handover_fixture(case,tmp_path,monkeypatch):
         cache_initialization_terminal_ref=terminal_ref,scheduler_snapshot_ref=state_snapshot,retained_generations=[census],generation_number=2,max_generations=2,
         global_max_bytes=220000000000,spent_cycle_count=13,recorded_at=time.time(),manager_before=dict(Id=profile['unit']['name'],MainPID='0',ActiveState='failed'))
     def seal():
+        if grant_path.exists():grant_path.chmod(0o600)
         reference=put(grant_path,value);grant_path.chmod(0o400);monkeypatch.setenv(executor.GENERATION_SHA_ENV,reference['sha256']);return reference
     return dict(value=value,ref=seal(),seal=seal,profile=profile,profile_ref=profile_ref,config=config,oldroot=oldroot,root=newroot,calls=calls,
         opening=dict(pid=2000004,birth_ticks=104,boot_id='fixture-current-boot',invocation_id='d'*32))
@@ -1088,3 +1097,36 @@ def test_bounded_generation_cannot_expand_or_borrow_unknown_native_custody(servi
         d['opening']={**d['opening'],'pid':2000005}
     with pytest.raises((executor.ExecutorHold,health.ExecutorHealthError)):
         executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+
+
+
+def test_generation_handover_refuses_borrowing_an_earlier_closed_cycle(service_case,tmp_path,monkeypatch):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    earlier=next(d['oldroot'].glob('cycle-00000011-*'))/'cycle-proof.json'
+    d['value']['prior_last_closed_cycle_ref']=health.descriptor(earlier);d['ref']=d['seal']()
+    with pytest.raises(executor.ExecutorHold,match='last_closed_proof'):
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+
+
+@pytest.mark.parametrize('state',['alive','unknown'])
+def test_generation_grant_refuses_live_or_unknown_original_initialization_owner(service_case,tmp_path,monkeypatch,state):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    def decision(previous,current):
+        if previous['pid']==2000003:
+            if state=='unknown':raise health.ExecutorHealthError('previous_process_custody_unknown')
+            return False
+        return True
+    monkeypatch.setattr(health,'_definitely_dead_identity',decision)
+    with pytest.raises((executor.ExecutorHold,health.ExecutorHealthError)):
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+    assert not (d['root']/'bounded-generation-handover.json').exists()
+
+
+
+def test_generation_grant_preserves_an_active_historical_original_request(service_case,tmp_path,monkeypatch):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    original=health._document(d['value']['cache_initialization_request_ref']);state=Path(original['scheduler_state_path'])
+    value=health._document(health.descriptor(state));value['leases']['retained']={'request_id':'fixture:historical12:root'};put(state,value)
+    with pytest.raises(executor.ExecutorHold,match='original_request_still_active'):
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+    assert health._document(health.descriptor(state))==value

@@ -479,10 +479,6 @@ def reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, openi
         need(cycle.name.startswith('cycle-%08d-' % number), 'recovery_cycle_number_path')
         need(cycle == failed or (cycle / 'closed.json').is_file(), 'recovery_other_unfinished_cycle')
         numbers.append(number)
-        if number<spent:
-            closed=(cycle/'closed.json').is_file()
-            acknowledgments=(cycle/'nonstarted-reconciliation.json',cycle/'closed-idle-reconciliation-v01.json')
-            need(closed or any(path.is_file() for path in acknowledgments),'generation_other_unfinished_cycle')
     need(sorted(numbers) == list(range(1, len(numbers) + 1)), 'recovery_cycle_counter_gap_or_duplicate')
     need(len(numbers) < config['max_cycles'], 'recovery_cycle_budget_exhausted')
     if os.path.lexists(ack_path):
@@ -1012,6 +1008,9 @@ def _validate_generation_handover(value,profile_ref,profile,config):
         intent=h._document(h.descriptor(cycle/'intent.json'));number=intent.get('cycle_number',intent.get('sequence'))
         need(h._integer(number,1,spent) and cycle.name.startswith('cycle-%08d-'%number),'generation_spent_number_changed')
         numbers.append(number)
+        if number<spent:
+            need((cycle/'closed.json').is_file() or (cycle/'nonstarted-reconciliation.json').is_file()
+                 or (cycle/'closed-idle-reconciliation-v01.json').is_file(),'generation_other_unfinished_cycle')
     need(sorted(numbers)==list(range(1,spent+1)),'generation_spent_gap_or_duplicate')
     failed=Path(value['prior_cycle_hold_ref']['path']).parent
     need(failed==cycles[-1] and value['prior_intent_ref']['path']==str(failed/'intent.json')
@@ -1024,8 +1023,12 @@ def _validate_generation_handover(value,profile_ref,profile,config):
     need(value['prior_global_hold_ref']['path']==str(oldroot/'executor-held.json'),'generation_original_global_hold_path')
     h._document(value['prior_global_hold_ref'])
     proof_ref=value['prior_last_closed_cycle_ref'];proof=h._document(proof_ref);cycle=Path(proof_ref['path']).parent
-    need(oldroot in cycle.parents and (cycle/'closed.json').is_file()
+    need(len(cycles)>1 and cycle==cycles[-2] and proof_ref['path']==str(cycle/'cycle-proof.json')
+         and proof.get('kind')=='genuine_scoped_idle' and (cycle/'closed.json').is_file()
          and h._document(h.descriptor(cycle/'closed.json'))['cycle_proof_ref']==proof_ref,'generation_last_closed_proof')
+    last_intent=h._document(h.descriptor(cycle/'intent.json'))
+    need(last_intent.get('kind')==proof['kind'] and last_intent.get('sequence')==proof['sequence']
+         and last_intent.get('request_ref')==proof['request_ref'],'generation_latest_intent_proof_join')
     old_identity=value['prior_main_identity']
     h._stored_identity(old_identity,value['prior_profile_ref'],prior)
     native=h._document(proof['native_diagnostic_ref'])
@@ -1086,6 +1089,55 @@ def _validate_generation_handover(value,profile_ref,profile,config):
     return prior,proof,spent
 
 
+def _generation_processes_dead(value,proof,current):
+    """Reconcile every recorded original owner; UNKNOWN never grants activation."""
+    h=health_owner();prior=h._document(value['prior_profile_snapshot_ref']);root=Path(prior['proof_root'])
+    identities=[value['prior_main_identity']]
+    for cycle in sorted(root.glob('cycle-*')):
+        request_path=cycle/'request.json'
+        if request_path.is_file():
+            historical=h._document(h.descriptor(request_path))
+            _recovery_scheduler(historical,value['scheduler_snapshot_ref'])
+        proof_path=cycle/'cycle-proof.json'
+        if proof_path.is_file():
+            reference=h.descriptor(proof_path);record=h._document(reference)
+            identities.extend((record['process'],record['owner_observation']))
+            if (cycle/'closed.json').is_file():
+                need(h._document(h.descriptor(cycle/'closed.json')).get('cycle_proof_ref')==reference,
+                     'generation_historical_closed_proof_changed')
+                native=h._document(record['native_diagnostic_ref'])
+                h._cycle(reference,prior,value['prior_main_identity'],h._native(native,prior,now=record['finished_at']),
+                         now=record['finished_at'],monotonic_ns=record['finished_monotonic_ns'])
+            else:
+                ack=h._document(h.descriptor(cycle/'closed-idle-reconciliation-v01.json'))
+                need(ack.get('schema')=='agent-supervisor/scientific-closed-idle-reconciliation@1'
+                     and ack.get('rejected_cycle_proof_ref')==reference,'generation_unknown_historical_cycle')
+        elif request_path.is_file():
+            ack=h._document(h.descriptor(cycle/'nonstarted-reconciliation.json'))
+            need(ack.get('schema')=='agent-supervisor/scientific-nonstarted-reconciliation@1'
+                 and ack.get('failed_cycle_root')==str(cycle),'generation_unknown_nonstarted_history')
+            authorization=h._document(ack['recovery_ref']);capture=h._document(authorization['activation_capture_ref'])
+            old_profile=h._document(authorization['prior_profile_snapshot_ref'])
+            old_main=capture['opening_actual_main_identity']
+            h._stored_identity(old_main,authorization['prior_profile_ref'],old_profile)
+            terminal=original_terminal(h._raw(cycle/'owner.stdout'),h.descriptor(request_path))
+            need(terminal.get('control_effects')=='not_started' and terminal.get('storage_status')=='not_requested'
+                 and type(terminal.get('owner_birth'))is str and terminal['owner_birth'].isdecimal(),
+                 'generation_unknown_original_nonstarted_owner')
+            identities.extend((old_main,dict(pid=terminal['owner_pid'],birth_ticks=int(terminal['owner_birth']),boot_id=old_main['boot_id'])))
+        elif (cycle/'closed.json').is_file():
+            raise ExecutorHold('generation_historical_closed_proof_missing')
+    terminal=h._document(value['cache_initialization_terminal_ref'])
+    need(type(terminal.get('owner_birth'))is str and terminal['owner_birth'].isdecimal(),
+         'generation_cache_initializer_birth_unknown')
+    identities.append(dict(pid=terminal['owner_pid'],birth_ticks=int(terminal['owner_birth']),boot_id=terminal['owner_boot_id']))
+    for identity in identities:
+        need(h._integer(identity.get('pid'),2) and h._integer(identity.get('birth_ticks'),1)
+             and h._text(identity.get('boot_id')) and h._definitely_dead_identity(identity,current),
+             'generation_original_owner_not_definitely_dead')
+    return identities
+
+
 def authorize_bounded_generation_handover(spec_ref,output):
     """One explicit metadata grant; never start, clear, delete or replay."""
     h=health_owner();spec=h._document(spec_ref)
@@ -1096,7 +1148,8 @@ def authorize_bounded_generation_handover(spec_ref,output):
     manager=h._manager(profile['unit']['name'])
     need(manager.get('MainPID')=='0' and manager.get('ActiveState')in('failed','inactive'),'generation_admin_requires_no_main')
     value=dict(spec,recorded_at=time.time(),manager_before=manager)
-    _validate_generation_handover(value,profile_ref,profile,config)
+    _,proof,_=_validate_generation_handover(value,profile_ref,profile,config)
+    _generation_processes_dead(value,proof,dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip()))
     path=h._path(str(output));need(Path(profile['proof_root']) in path.parents,'generation_grant_outside_root')
     reference=put(path,value);path.chmod(0o400);return reference
 
@@ -1110,11 +1163,7 @@ def reconcile_bounded_generation_handover(reference,profile_ref,profile,config,o
          'generation_grant_not_exact_unit_argv')
     need(not h._path(reference['path']).lstat().st_mode&0o222,'generation_grant_not_immutable')
     prior,proof,spent=_validate_generation_handover(value,profile_ref,profile,config)
-    terminal=h._document(value['cache_initialization_terminal_ref'])
-    init_identity=dict(pid=terminal['owner_pid'],birth_ticks=int(terminal['owner_birth']),boot_id=terminal['owner_boot_id'])
-    need(h._definitely_dead_identity(init_identity,opening_identity),'generation_cache_initializer_not_definitely_dead')
-    need(h._definitely_dead_identity(value['prior_main_identity'],opening_identity),'generation_old_main_not_definitely_dead')
-    owner=proof['owner_observation'];need(h._definitely_dead_identity(owner,opening_identity),'generation_old_owner_not_definitely_dead')
+    _generation_processes_dead(value,proof,opening_identity)
     ack=dict(schema='agent-supervisor/scientific-bounded-generation-ack@1',handover_ref=reference,
         retained_census_ref=value['retained_census_ref'],retained_hold_ref=value['prior_cycle_hold_ref'],
         consuming_main_identity=opening_identity,spent_cycle_count=spent,next_cycle_number=spent+1,
