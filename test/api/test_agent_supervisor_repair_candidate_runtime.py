@@ -114,7 +114,7 @@ class CandidateRuntimeAPITests(unittest.TestCase):
 
     def test_runtime_bounds_cannot_remove_original_pid_cap(self):
         value = self.settings()
-        value["resource_bounds"]["tasks_max"] = 65
+        value["resource_bounds"]["tasks_max"] = 513
         with self.assertRaisesRegex(ValueError, "tasks_max"):
             runtime.parse_runtime_policy({"candidate_runtime": value}, self.policy())
 
@@ -128,19 +128,20 @@ class CandidateRuntimeAPITests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot accommodate owner"):
             runtime.parse_runtime_policy({"candidate_runtime": self.settings(), "timeout_seconds": 40}, self.policy())
 
-    def _unit(self, *, quota="100000 100000", memory="16777216", pid=None, runtime_limit="40min"):
+    def _unit(self, *, quota="100000 100000", memory="16777216", pid=None, runtime_limit="40min",
+              tasks="64", bounds=None, membership="/test-owned.service"):
         pid = os.getpid() if pid is None else pid
         stdout = (f"MainPID={pid}\nInvocationID={'a'*32}\nControlGroup=/test-owned.service\n"
                   f"ActiveState=active\nKillMode=control-group\nRuntimeMaxUSec={runtime_limit}\n"
                   "ActiveEnterTimestampMonotonic=1000000\n")
-        files = {"/proc/self/cgroup": "0::/test-owned.service\n",
+        files = {"/proc/self/cgroup": "0::" + membership + "\n",
                  "/sys/fs/cgroup/test-owned.service/memory.max": memory,
-                 "/sys/fs/cgroup/test-owned.service/pids.max": "64",
+                 "/sys/fs/cgroup/test-owned.service/pids.max": tasks,
                  "/sys/fs/cgroup/test-owned.service/cpu.max": quota}
         def read(path, *args, **kwargs):
             return files[str(path)]
         with patch.object(Path, "read_text", autospec=True, side_effect=read):
-            return runtime._unit_snapshot("test-owned.service", self.settings()["resource_bounds"],
+            return runtime._unit_snapshot("test-owned.service", self.settings()["resource_bounds"] if bounds is None else bounds,
                                           Mock(return_value={"returncode": 0, "stdout": stdout}))
 
     def test_unit_requires_actual_own_main_pid(self):
@@ -394,6 +395,45 @@ class CandidateRuntimeAPITests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "hold or recovery policy"):
                 value._job()
             self.assertEqual(value._job(execution=False)["attempts"], 1)
+
+    def test_explicit_parent_envelope_keeps_native_owners_and_time_finite(self):
+        value = self.settings()
+        previous_owners = (value["validation_owner"], value["adoption_owner"])
+        value["resource_bounds"].update(memory_max_bytes=32 * 1024**3,
+            tasks_max=512, runtime_max_seconds=1500)
+        parsed = runtime.parse_runtime_policy({"candidate_runtime": value,
+            "timeout_seconds": 1500}, self.policy())
+        self.assertEqual(parsed.bounds, value["resource_bounds"])
+        self.assertEqual(parsed.validation_owner.argv, tuple(previous_owners[0]["argv"]))
+        self.assertEqual(parsed.adoption_owner.argv, tuple(previous_owners[1]["argv"]))
+        self.assertEqual(parsed.bounds["cpu_quota_percent"], 100)
+        self.assertEqual(parsed.bounds["runtime_max_seconds"], 1500)
+
+    def test_parent_memory_above_32_gib_refuses_before_any_owner(self):
+        value = self.settings()
+        value["resource_bounds"]["memory_max_bytes"] = 32 * 1024**3 + 1
+        with self.assertRaisesRegex(ValueError, "memory_max_bytes"):
+            runtime.parse_runtime_policy({"candidate_runtime": value}, self.policy())
+
+    def test_parent_cpu_and_time_bounds_are_not_expanded(self):
+        for field, overbound in (("cpu_quota_percent", 101), ("runtime_max_seconds", 2401)):
+            with self.subTest(field=field):
+                value = self.settings()
+                value["resource_bounds"][field] = overbound
+                with self.assertRaisesRegex(ValueError, field):
+                    runtime.parse_runtime_policy({"candidate_runtime": value}, self.policy())
+
+    def test_explicit_parent_observation_requires_same_actual_job_cgroup(self):
+        bounds = dict(self.settings()["resource_bounds"], memory_max_bytes=32 * 1024**3,
+                      tasks_max=512, runtime_max_seconds=1500)
+        value = self._unit(memory=str(32 * 1024**3), tasks="512", bounds=bounds,
+                           runtime_limit="1500s")
+        self.assertEqual(value["memory_max_bytes"], 32 * 1024**3)
+        self.assertEqual(value["tasks_max"], 512)
+        self.assertEqual(value["control_group"], "/test-owned.service")
+        with self.assertRaisesRegex(ValueError, "outside the original job cgroup"):
+            self._unit(memory=str(32 * 1024**3), tasks="512", bounds=bounds,
+                       runtime_limit="1500s", membership="/unrelated-fleet.service")
 
 
 if __name__ == "__main__":
