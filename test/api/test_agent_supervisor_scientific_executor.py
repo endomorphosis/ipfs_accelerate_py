@@ -530,4 +530,45 @@ def test_resumed_observation_failure_is_recorded_without_overwriting_original_ho
         _resume(case)
 
 
+def test_recovery_live_scheduler_group_writable_data_preserves_strict_archive(nonstarted_case):
+    case = nonstarted_case; live = Path(case['scheduler_ref']['path']); before = live.read_bytes()
+    live.chmod(0o664)
+    with pytest.raises(health.ExecutorHealthError, match='unsafe_or_oversized_file'):
+        health.descriptor(live)
+    assert _resume(case) == 1
+    assert live.read_bytes() == before and live.stat().st_mode & 0o777 == 0o664
+    assert (case['root'] / 'executor-held.json').read_bytes() == case['old_hold_bytes']
+    assert not (case['failed'] / 'closed.json').exists() and not Path(case['profile']['receipt_path']).exists()
+    # The separately archived control snapshot remains source-fenced.
+    archive = Path(case['recovery']['scheduler_snapshot_ref']['path']); archive.chmod(0o664)
+    with pytest.raises(health.ExecutorHealthError, match='unsafe_or_oversized_file'):
+        executor._recovery_scheduler(health._document(case['recovery']['request_ref']), case['recovery']['scheduler_snapshot_ref'])
+
+
+def test_recovery_live_scheduler_world_writable_data_is_refused_before_ack(nonstarted_case):
+    case = nonstarted_case; Path(case['scheduler_ref']['path']).chmod(0o666)
+    with pytest.raises(health.ExecutorHealthError, match='unsafe_or_oversized_database_data'):
+        _resume(case)
+    assert not (case['failed'] / 'nonstarted-reconciliation.json').exists()
+    assert (case['root'] / 'executor-held.json').read_bytes() == case['old_hold_bytes']
+
+
+def test_recovery_live_scheduler_change_during_data_read_is_refused_before_ack(nonstarted_case, monkeypatch):
+    case = nonstarted_case; live = Path(case['scheduler_ref']['path']); actual = health.database_descriptor
+    calls = []
+    def changed_after_first_descriptor(path):
+        ref = actual(path)
+        if Path(path) == live:
+            calls.append(ref)
+            if len(calls) == 1:
+                value = json.loads(live.read_bytes()); value['non_authoritative_diagnostic'] = 'changed'
+                live.write_bytes((json.dumps(value, sort_keys=True) + '\n').encode())
+        return ref
+    monkeypatch.setattr(health, 'database_descriptor', changed_after_first_descriptor)
+    with pytest.raises(executor.ExecutorHold, match='recovery_scheduler_data_changed'):
+        _resume(case)
+    assert len(calls) == 1 and not (case['failed'] / 'nonstarted-reconciliation.json').exists()
+    assert (case['root'] / 'executor-held.json').read_bytes() == case['old_hold_bytes']
+
+
 

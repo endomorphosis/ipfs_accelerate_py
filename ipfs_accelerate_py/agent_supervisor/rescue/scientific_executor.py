@@ -248,7 +248,22 @@ def _recovery_scheduler(request, snapshot_ref):
     """Read the original state; never allocate, normalize, prune or persist it."""
     h = health_owner(); expected = request['expected_scheduler_policy_sha256']
     family = {request['request_id'], request['request_id'] + ':root', request['request_id'] + ':phase'}
-    for state in (h._document(snapshot_ref), h._document(h.descriptor(request['scheduler_state_path']))):
+    archived = h._document(snapshot_ref)
+    # The live scheduler is operational DATA; group-write permission is not
+    # executable authority. The archived snapshot retains strict control rules.
+    path = Path(request['scheduler_state_path']); before = path.lstat()
+    need(0 < before.st_size <= h.MAX_JSON, 'recovery_scheduler_data_bound')
+    live_ref = h.database_descriptor(path)
+    stamp = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid,
+                       s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+        first = os.fstat(stream.fileno()); raw = stream.read(h.MAX_JSON + 1)
+        last = os.fstat(stream.fileno())
+    need(stamp(before) == stamp(first) == stamp(last) == stamp(path.lstat())
+         and len(raw) == live_ref['bytes'] <= h.MAX_JSON
+         and hashlib.sha256(raw).hexdigest() == live_ref['sha256']
+         and h.database_descriptor(path) == live_ref, 'recovery_scheduler_data_changed')
+    for state in (archived, h._decode(raw)):
         need(type(state.get('config')) is dict, 'recovery_scheduler_policy_missing')
         digest = hashlib.sha256(json.dumps(state['config'], sort_keys=True,
             separators=(',', ':'), allow_nan=False).encode()).hexdigest()
