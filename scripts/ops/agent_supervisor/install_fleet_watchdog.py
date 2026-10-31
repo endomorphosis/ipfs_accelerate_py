@@ -17,7 +17,60 @@ MODULES = ("fleet_watchdog", "fleet_repair", "fleet_completion", "fleet_heals",
            "fleet_holds", "live_board_probe", "canonical_writer_custody",
            "diagnostic_handoff", "storage_diagnostics", "service_fleet_probe", "native_catalogue_probe",
            "recovery_policy", "runtime_assets", "systemd_heartbeat", "repair_candidate", "repair_candidate_runtime", "native_executor_health")
-PACKAGE_MODULES = {"agent_implementation_route": "ipfs_accelerate_py/agent_implementation_route.py"}
+# Finite stdlib-only module-body closure of the advertised rescue runtime.
+# Auxiliary package initializers are their real source bodies, never namespace stubs.
+PACKAGE_MODULES = {
+    'agent_implementation_route': 'ipfs_accelerate_py/agent_implementation_route.py',
+    'ipfs_accelerate_py.agent_supervisor.control': 'ipfs_accelerate_py/agent_supervisor/control/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.control.control_contracts': 'ipfs_accelerate_py/agent_supervisor/control/control_contracts.py',
+    'ipfs_accelerate_py.agent_supervisor.core': 'ipfs_accelerate_py/agent_supervisor/core/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.core.wrapper_utils': 'ipfs_accelerate_py/agent_supervisor/core/wrapper_utils.py',
+    'ipfs_accelerate_py.agent_supervisor.git_environment': 'ipfs_accelerate_py/agent_supervisor/git_environment.py',
+    'ipfs_accelerate_py.agent_supervisor.merge': 'ipfs_accelerate_py/agent_supervisor/merge/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.merge.checkout_lock': 'ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py',
+    'ipfs_accelerate_py.agent_supervisor.merge.quarantine_validation': 'ipfs_accelerate_py/agent_supervisor/merge/quarantine_validation.py',
+    'ipfs_accelerate_py.agent_supervisor.merge.workspace_quarantine': 'ipfs_accelerate_py/agent_supervisor/merge/workspace_quarantine.py',
+    'ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle': 'ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py',
+    'ipfs_accelerate_py.agent_supervisor.proof': 'ipfs_accelerate_py/agent_supervisor/proof/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts': 'ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py',
+    'ipfs_accelerate_py.agent_supervisor.runtime': 'ipfs_accelerate_py/agent_supervisor/runtime/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.runtime.event_log': 'ipfs_accelerate_py/agent_supervisor/runtime/event_log.py',
+    'ipfs_accelerate_py.agent_supervisor.self_improvement': 'ipfs_accelerate_py/agent_supervisor/self_improvement/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts': 'ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py',
+    'ipfs_accelerate_py.agent_supervisor.task_sources': 'ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts': 'ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.app': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/app.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.artifacts': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/artifacts.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.auto_commit': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.cli': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/cli.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.context': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/context.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.core': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.deterministic_fallback': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_fallback.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/diagnostics.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.engine': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.file_replacement': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/file_replacement.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.git_utils': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/git_utils.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.history': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/history.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.lifecycle_wrapper': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/lifecycle_wrapper.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.llm': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.llm_defaults': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/llm_defaults.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.plans': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/plans.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.registry': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.runner': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/runner.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.specs': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/specs.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.status': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.task_board': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/task_board.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.typescript': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/typescript.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py',
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.wrapper': 'ipfs_accelerate_py/agent_supervisor/todo_daemon/wrapper.py',
+    'ipfs_accelerate_py.agent_supervisor.validation': 'ipfs_accelerate_py/agent_supervisor/validation/__init__.py',
+    'ipfs_accelerate_py.agent_supervisor.validation.validation_commands': 'ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py',
+    'ipfs_accelerate_py.agent_supervisor.validation.validation_runtime': 'ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py',
+}
 
 
 def unit_directory(value: str) -> str:
@@ -158,6 +211,7 @@ def _materialize_enrollment_release(release: Path, contents: dict[str, bytes], s
             atomic_write(initial, b'"""Standalone fleet watchdog runtime."""\n')
     for name, data in contents.items():
         target = release / PACKAGE_MODULES[name] if name in PACKAGE_MODULES else package / f"{name}.py"
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if target.exists() and target.read_bytes() != data:
             raise ValueError(f"existing immutable release is inconsistent: {name}")
         if not target.exists():

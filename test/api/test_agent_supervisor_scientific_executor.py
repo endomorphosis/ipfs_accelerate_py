@@ -286,4 +286,248 @@ def test_main_process_gate_rejects_foreign_identity_and_source(monkeypatch, fail
         executor.require_main_process({'fixture': 'profile'}, profile)
 
 
+@pytest.fixture
+def nonstarted_case(service_case, monkeypatch):
+    """Explicit source-only historical data; no systemd/native/DB acceptance."""
+    case = service_case; archive = case['root'] / 'reconciliation-v01'; archive.mkdir(mode=0o700)
+    source_root = case['root'].parent / 'explicit-source'
+    role_names = {'main_entrypoint': 'scientific_executor.py', 'health_module': 'native_executor_health.py',
+        'owner_source': 'original_embedded_observation_owner.py', 'driver_source': 'native_embedded_observation_driver.py'}
+    for role, name in role_names.items():
+        old = case['profile'][role]
+        new = put(source_root / 'ipfs_accelerate_py/agent_supervisor/rescue' / name, Path(old['path']).read_bytes())
+        case['profile']['source_descriptors'] = [new if pin == old else pin for pin in case['profile']['source_descriptors']]
+        case['profile'][role] = new
+        case['profile']['unit']['argv'] = [new['path'] if arg == old['path'] else arg for arg in case['profile']['unit']['argv']]
+        if role in ('owner_source', 'driver_source'):
+            case['request']['source_sha256'].pop(old['path']); case['request']['source_sha256'][new['path']] = new['sha256']
+    case['profile_ref'] = put(Path(case['profile_ref']['path']), case['profile'])
+    prior_ref = dict(case['profile_ref']); prior = copy.deepcopy(case['profile'])
+    prior_snapshot = put(archive / 'prior-profile.json', Path(prior_ref['path']).read_bytes())
+    failed = case['root'] / ('cycle-00000001-' + '1' * 32); failed.mkdir(mode=0o700)
+    attempt = failed / 'attempt'; attempt.mkdir(mode=0o700)
+    policy = {'fixture_memory_mb': 1536, 'fixture_global_headroom_mb': 24922}
+    state = {'config': policy, 'waiters': {}, 'leases': {}}
+    scheduler = put(case['root'].parent / 'explicit-scheduler.json', state)
+    request = dict(case['request'], request_id='fixture:failed-cycle-1',
+        attempt_directory=str(attempt), scheduler_state_path=scheduler['path'],
+        expected_scheduler_policy_sha256=hashlib.sha256(json.dumps(policy, sort_keys=True,
+            separators=(',', ':'), allow_nan=False).encode()).hexdigest())
+    request_ref = put(failed / 'request.json', request)
+    intent_ref = put(failed / 'intent.json', dict(kind='genuine_scoped_idle', sequence=1,
+        request_ref=request_ref, automatic_retry_admitted=False))
+    terminal = dict(schema='legal-ir-original-native-control-terminal/v1',
+        request_sha256=request_ref['sha256'], owner_pid=1000002, owner_birth='2',
+        completed=False, child_launch_attempted=False, child_reaped=False, child_returncode=None,
+        control_effects='not_started', storage_status='not_requested', original_native_compute_closed=True,
+        source_READ_closed=True, absolute_resource_operation_deadline_closed=True,
+        cleanup_errors=[], received_signals=[], error_type='ResourceAdmissionDeadlineError',
+        database_preimage_before_grants=request['database_preimage'],
+        task_completion_authority_granted_by_resource_owner=False)
+    stdout_ref = put(failed / 'owner.stdout', terminal)
+    executor.persistent_hold(case['root'], failed, 'original_owner_failed')
+    hold_ref = health.descriptor(case['root'] / 'executor-held.json'); hold = health._document(hold_ref)
+    old_main = dict(unit=prior['unit']['name'], pid=1000001, birth_ticks=1,
+        boot_id='explicit-old-source-fixture-boot', invocation_id='a' * 32,
+        argv=prior['unit']['argv'], exe=prior['unit']['interpreter'], cwd=prior['unit']['working_directory'],
+        environment={**prior['unit']['environment'], 'INVOCATION_ID': 'a' * 32,
+            health.ENV_PROFILE_SHA: prior_ref['sha256']})
+    plan = dict(files=[{}, {'after': {**prior_snapshot, 'path': '/historical/not-opened/profile.json'}}],
+        main_loop_limits={key: case['config'][key] for key in ('max_cycles', 'poll_seconds', 'max_proof_bytes')})
+    plan_ref = put(archive / 'activation-plan.json', plan)
+    capture = dict(schema='legal-ir-scientific-first-install-actual-capture/v1', accepted=False,
+        applied=True, source_READ_closed_before_start=True, start_requested=True,
+        plan={**plan_ref, 'path': '/historical/not-opened/plan.json'}, opening_actual_main_identity=old_main)
+    capture_ref = put(archive / 'activation-capture.json', capture)
+    negative = dict(schema='scientific-first-activation-independent-negative-audit/v1',
+        accepted_as_runtime_activation=False, negative_terminal_and_hold_verified=True,
+        attempt_directory_empty=True, cycle_receipts_absent=True, original_terminal=terminal,
+        persistent_hold=hold, failed_initial_activation={'opening_identity': old_main})
+    negative_ref = put(archive / 'negative-audit.json', negative)
+    dropin = put(case['root'].parent / 'explicit-memory.conf', b'[Service]\nMemoryHigh=infinity\n')
+    correction = dict(schema='scientific-service-memory-context-actual-repair/v1', accepted=True,
+        native_envelope_and_policy_changed=False, restart_or_cycle_replay=False,
+        scientific_after={'Id': prior['unit']['name'], 'MainPID': '0', 'MemoryHigh': 'infinity'},
+        persistent_manager_dropin={**dropin, 'text': '[Service]\nMemoryHigh=infinity\n'})
+    correction_ref = put(archive / 'memory-correction.json', correction)
+    inventory = dict(schema='legal-ir-scientific-source-inventory/v1', source_root=str(source_root),
+        source_commit='c' * 40, source_tree='d' * 40, file_count=4,
+        files=[case['profile'][field] for field in role_names])
+    inventory_ref = put(archive / 'source-inventory.json', inventory)
+    source_commitment = dict(schema='legal-ir-scientific-source-commitment/v1', source_root=str(source_root),
+        source_commit='c' * 40, source_tree='d' * 40, source_inventory=inventory_ref, runtime_activation_or_task_authority=False)
+    commitment = put(archive / 'source-commitment.json', source_commitment)
+    recovery_path = archive / 'explicit-authorization.json'
+    case['profile']['unit']['argv'].extend(['serve', '--config', case['config_ref']['path'],
+        '--config-sha256', case['config_ref']['sha256'], '--known-nonstarted-recovery', str(recovery_path)])
+    case['profile_ref'] = put(Path(case['profile_ref']['path']), case['profile'])
+    value = dict(schema=executor.RECOVERY_SCHEMA, profile_ref=case['profile_ref'],
+        prior_profile_ref=prior_ref, prior_profile_snapshot_ref=prior_snapshot,
+        activation_capture_ref=capture_ref, activation_plan_ref=plan_ref, negative_audit_ref=negative_ref,
+        memory_correction_ref=correction_ref, source_commitment_ref=commitment, hold_ref=hold_ref,
+        intent_ref=intent_ref, request_ref=request_ref, owner_stdout_ref=stdout_ref, failed_cycle_root=str(failed),
+        scheduler_snapshot_ref=put(archive / 'scheduler.snapshot.json', state), max_cycles=case['config']['max_cycles'],
+        authorization='resume_genuine_scoped_idle', recorded_at=time.time(),
+        manager_before={'Id': prior['unit']['name'], 'MainPID': '0', 'ActiveState': 'failed'})
+    recovery_ref = put(recovery_path, value)
+    put(case['root'] / 'scientific-executor.lock', b'')
+    monkeypatch.setenv(executor.RECOVERY_SHA_ENV, recovery_ref['sha256'])
+    opening = {'pid': 1000003, 'birth_ticks': 3, 'boot_id': 'explicit-new-fixture-boot', 'invocation_id': 'b' * 32}
+    monkeypatch.setattr(executor, 'require_main_process', lambda *args: opening)
+    case.update(recovery=value, recovery_ref=recovery_ref, failed=failed, archive=archive,
+        terminal=terminal, negative=negative, correction=correction, scheduler_state=state,
+        scheduler_ref=scheduler, inventory=inventory, source_commitment=source_commitment,
+        old_hold_bytes=Path(hold_ref['path']).read_bytes(), opening=opening)
+    return case
+
+
+def _resume(case):
+    return executor.reconcile_known_nonstarted(case['recovery_ref'], case['profile_ref'],
+        case['profile'], case['config'], case['opening'])
+
+
+def _resign_recovery(case, monkeypatch):
+    case['recovery_ref'] = put(Path(case['recovery_ref']['path']), case['recovery'])
+    monkeypatch.setenv(executor.RECOVERY_SHA_ENV, case['recovery_ref']['sha256'])
+
+
+def test_explicit_nonstarted_ack_is_negative_same_main_idempotent_and_preserves_hold(nonstarted_case):
+    case = nonstarted_case
+    assert _resume(case) == 1
+    ack = case['failed'] / 'nonstarted-reconciliation.json'; first = ack.read_bytes()
+    assert _resume(case) == 1 and ack.read_bytes() == first
+    document = json.loads(first)
+    assert document['health_credit'] is False and document['completion_authority'] is False
+    assert document['dispatch_authority'] is False and document['consuming_main_identity'] == case['opening']
+    assert (case['root'] / 'executor-held.json').read_bytes() == case['old_hold_bytes']
+    assert not (case['failed'] / 'closed.json').exists() and not Path(case['profile']['receipt_path']).exists()
+
+
+@pytest.mark.parametrize('field,value', [('child_launch_attempted', True), ('child_reaped', True),
+    ('child_returncode', 0), ('control_effects', 'started_reconcile_on_failure'), ('storage_status', 'active'),
+    ('original_native_compute_closed', False), ('source_READ_closed', False),
+    ('absolute_resource_operation_deadline_closed', False), ('cleanup_errors', ['unknown']),
+    ('received_signals', [15]), ('completed', True), ('owner_birth', True)],
+    ids=['launch-attempted', 'reaped-child', 'returncode', 'effects', 'storage', 'native-open',
+        'source-open', 'deadline-open', 'cleanup-unknown', 'operator-signal', 'success-not-negative', 'boolean-birth'])
+def test_recovery_refuses_nonclosed_or_launched_original_terminal(nonstarted_case, monkeypatch, field, value):
+    case = nonstarted_case; case['terminal'][field] = value
+    case['recovery']['owner_stdout_ref'] = put(Path(case['recovery']['owner_stdout_ref']['path']), case['terminal'])
+    case['negative']['original_terminal'] = case['terminal']
+    case['recovery']['negative_audit_ref'] = put(Path(case['recovery']['negative_audit_ref']['path']), case['negative'])
+    _resign_recovery(case, monkeypatch)
+    with pytest.raises((executor.ExecutorHold, health.ExecutorHealthError)):
+        _resume(case)
+    assert not (case['failed'] / 'nonstarted-reconciliation.json').exists()
+
+
+@pytest.mark.parametrize('mutation', ['environment', 'profile', 'hold', 'request', 'negative',
+    'correction', 'scope', 'waiter', 'lease', 'policy', 'other-cycle', 'execution', 'budget', 'unit-argv',
+    'stale-commitment', 'new-main-sha'],
+    ids=['environment', 'profile', 'hold', 'request', 'negative', 'correction', 'scope', 'waiter',
+        'lease', 'policy', 'other-cycle', 'execution', 'budget', 'unit-argv', 'stale-commitment', 'new-main-sha'])
+def test_recovery_refuses_foreign_or_live_state_before_ack(nonstarted_case, monkeypatch, mutation):
+    case = nonstarted_case
+    if mutation == 'environment': monkeypatch.setenv(executor.RECOVERY_SHA_ENV, 'f' * 64)
+    elif mutation == 'profile': case['recovery']['profile_ref'] = dict(case['profile_ref'], sha256='f' * 64)
+    elif mutation == 'hold': put(case['root'] / 'executor-held.json', {'changed': True})
+    elif mutation == 'request': case['recovery']['request_ref'] = dict(case['recovery']['request_ref'], sha256='f' * 64)
+    elif mutation == 'negative': case['negative']['negative_terminal_and_hold_verified'] = False; case['recovery']['negative_audit_ref'] = put(Path(case['recovery']['negative_audit_ref']['path']), case['negative'])
+    elif mutation == 'correction': case['correction']['native_envelope_and_policy_changed'] = True; case['recovery']['memory_correction_ref'] = put(Path(case['recovery']['memory_correction_ref']['path']), case['correction'])
+    elif mutation == 'scope': case['profile']['task_scope'] = ['fixture:foreign-cid']
+    elif mutation in ('waiter', 'lease'):
+        key = 'waiters' if mutation == 'waiter' else 'leases'
+        case['scheduler_state'][key]['named-original'] = {'request_id': 'fixture:failed-cycle-1:root'}
+        put(Path(case['scheduler_ref']['path']), case['scheduler_state'])
+    elif mutation == 'policy': case['scheduler_state']['config']['fixture_memory_mb'] += 1; put(Path(case['scheduler_ref']['path']), case['scheduler_state'])
+    elif mutation == 'other-cycle':
+        extra = case['root'] / ('cycle-00000002-' + '2' * 32); extra.mkdir()
+        put(extra / 'intent.json', {'sequence': 2})
+    elif mutation == 'execution': case['config']['execution_templates'] = [{'task_cid': TASK}]
+    elif mutation == 'budget': case['config']['max_cycles'] = 3; case['recovery']['max_cycles'] = 3
+    elif mutation == 'unit-argv': case['profile']['unit']['argv'].remove('--known-nonstarted-recovery')
+    elif mutation == 'stale-commitment':
+        case['source_commitment']['source_commit'] = 'e' * 40
+        case['recovery']['source_commitment_ref'] = put(Path(case['recovery']['source_commitment_ref']['path']), case['source_commitment'])
+    else:
+        case['inventory']['files'][0] = dict(case['inventory']['files'][0], sha256='f' * 64)
+        case['source_commitment']['source_inventory'] = put(Path(case['source_commitment']['source_inventory']['path']), case['inventory'])
+        case['recovery']['source_commitment_ref'] = put(Path(case['recovery']['source_commitment_ref']['path']), case['source_commitment'])
+    if mutation != 'environment': _resign_recovery(case, monkeypatch)
+    with pytest.raises((executor.ExecutorHold, health.ExecutorHealthError)):
+        _resume(case)
+    assert not (case['failed'] / 'nonstarted-reconciliation.json').exists()
+
+
+@pytest.mark.parametrize('identity', ['old-main', 'old-owner', 'unknown'], ids=['old-main', 'old-owner', 'unknown'])
+def test_recovery_refuses_live_or_unknown_old_processes(nonstarted_case, monkeypatch, identity):
+    case = nonstarted_case
+    def decision(old, current):
+        if identity == 'unknown': raise health.ExecutorHealthError('previous_process_custody_unknown')
+        return old['pid'] != (1000001 if identity == 'old-main' else 1000002)
+    monkeypatch.setattr(health, '_definitely_dead_identity', decision)
+    with pytest.raises((executor.ExecutorHold, health.ExecutorHealthError)):
+        _resume(case)
+    assert not (case['failed'] / 'nonstarted-reconciliation.json').exists()
+
+
+def test_consumed_recovery_receipt_cannot_bind_another_main(nonstarted_case):
+    case = nonstarted_case; assert _resume(case) == 1
+    case['opening'] = dict(case['opening'], pid=1000004, birth_ticks=4, invocation_id='c' * 32)
+    with pytest.raises(executor.ExecutorHold, match='already_consumed'):
+        _resume(case)
+
+
+def test_admin_authorization_is_metadata_only_and_requires_actual_no_main(nonstarted_case, monkeypatch):
+    case = nonstarted_case
+    spec = {key: value for key, value in case['recovery'].items()
+        if key not in ('schema', 'recorded_at', 'manager_before')}
+    spec_ref = put(case['archive'] / 'authorization-spec.json', spec)
+    target = Path(case['recovery_ref']['path']); target.unlink()
+    monkeypatch.setattr(health, '_manager', lambda unit: dict(Id=unit, MainPID='0', ActiveState='failed'))
+    monkeypatch.setattr(executor.subprocess, 'Popen', lambda *a, **k: pytest.fail('admin metadata must not spawn'))
+    created = executor.authorize_known_nonstarted_recovery(spec_ref, target)
+    assert created['path'] == str(target)
+    assert health._document(created)['manager_before']['MainPID'] == '0'
+    assert not (case['failed'] / 'nonstarted-reconciliation.json').exists()
+    assert (case['root'] / 'executor-held.json').read_bytes() == case['old_hold_bytes']
+
+
+def test_admin_authorization_refuses_running_unit_before_publication(nonstarted_case, monkeypatch):
+    case = nonstarted_case
+    spec = {key: value for key, value in case['recovery'].items()
+        if key not in ('schema', 'recorded_at', 'manager_before')}
+    spec_ref = put(case['archive'] / 'authorization-spec.json', spec)
+    monkeypatch.setattr(health, '_manager', lambda unit: dict(Id=unit, MainPID='12345', ActiveState='active'))
+    target = case['archive'] / 'must-remain-absent.json'
+    with pytest.raises(executor.ExecutorHold, match='requires_no_main'):
+        executor.authorize_known_nonstarted_recovery(spec_ref, target)
+    assert not target.exists()
+
+
+def test_explicit_resume_counts_failed_cycle_and_keeps_first_health_sequence(nonstarted_case, monkeypatch):
+    case = nonstarted_case; seen = []
+    monkeypatch.setattr(executor, 'observe_native', lambda config: case['native'])
+    monkeypatch.setattr(executor, 'run_cycle', lambda *args, **kwargs: seen.append((args[5], kwargs['cycle_number'])))
+    class NoWait:
+        def is_set(self): return False
+        def wait(self, seconds): return False
+    assert executor.serve(case['config_ref'], NoWait(), recovery_ref=case['recovery_ref']) == 78
+    assert seen == [(1, 2)]
+    assert (case['root'] / 'executor-held.json').read_bytes() == case['old_hold_bytes']
+
+
+def test_resumed_observation_failure_is_recorded_without_overwriting_original_hold(nonstarted_case, monkeypatch):
+    case = nonstarted_case
+    def failure(config): raise executor.ExecutorHold('new observation is unknown')
+    monkeypatch.setattr(executor, 'observe_native', failure)
+    monkeypatch.setattr(executor.subprocess, 'Popen', lambda *a, **k: pytest.fail('no observation may spawn'))
+    assert executor.serve(case['config_ref'], threading.Event(), recovery_ref=case['recovery_ref']) == 78
+    assert (case['root'] / 'executor-held.json').read_bytes() == case['old_hold_bytes']
+    later = list(case['root'].glob('cycle-00000002-*')); assert len(later) == 1
+    assert json.loads((later[0] / 'cycle-held.json').read_text())['reason'] == 'new observation is unknown'
+    with pytest.raises(executor.ExecutorHold, match='other_unfinished'):
+        _resume(case)
+
+
 
