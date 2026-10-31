@@ -223,6 +223,8 @@ def frozen_candidate(path: Path, commitment: str, root: Path) -> dict:
 
 
 def validation_plan(policy, policy_pin, frozen, freeze_pin, root, invocation):
+    # Authenticate path components before constructing any candidate attempt.
+    validation_control_directory(policy, frozen)
     binding = frozen["binding"]
     attempt = Path(policy["validation"]["attempt_root"]) / binding["namespace"] / binding["board_id"] / binding["attempt_id"]
     tests = policy["validation"]["trusted_tests"]
@@ -308,12 +310,17 @@ def immutable_bytes(path, raw):
 
 
 def validation_control_directory(policy, frozen):
-    """The one approved namespace/board registry, sibling to every attempt."""
+    """Keep the fixed original registry separate from the candidate lane."""
     binding = frozen["binding"]
-    need(binding["namespace"] == "legal_ir_unattended_repair" and binding["board_id"] == REPAIR_PROFILE
+    namespace = binding["namespace"]
+    need(type(namespace) is str and len(namespace) <= 64
+         and (namespace == "legal_ir_unattended_repair" or re.fullmatch(r"ptr_lane_\d+", namespace) is not None)
+         and binding["board_id"] == REPAIR_PROFILE
          and type(binding["attempt_id"]) is str and re.fullmatch(r"[0-9a-f]{32}", binding["attempt_id"]),
          "finite original legal-ir control namespace/board/attempt required")
-    directory = Path(policy["validation"]["attempt_root"]) / "control-requests" / binding["namespace"] / binding["board_id"] / binding["attempt_id"]
+    root = Path(policy["validation"]["attempt_root"])
+    need(root.is_absolute() and ".." not in root.parts, "canonical original control registry root required")
+    directory = root / "control-requests" / "legal_ir_unattended_repair" / binding["board_id"] / binding["attempt_id"]
     need(not any(parent.is_symlink() for parent in (directory, *directory.parents)), "original control registry must not be aliased")
     return directory
 

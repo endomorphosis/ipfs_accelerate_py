@@ -270,6 +270,18 @@ def original_pytest_failure_attribution(guard, *, error, report_path, nodeid, wh
         result["kind"] = "trusted_test_assertion"
     return result
 
+def _pure_pytest_arguments(plan, datasets_root, attempt):
+    """Keep logging and the original ordinary tmp_path fixture inside custody."""
+    plugin = "ipfs_datasets_py.optimizers.logic_theorem_optimizer.validation_pytest"
+    plugin_source = Path(datasets_root) / "ipfs_datasets_py/optimizers/logic_theorem_optimizer/validation_pytest.py"
+    need(plan["source_pins"].get(str(plugin_source)) == descriptor(plugin_source)["sha256"],
+         "maintained private tmp_path plugin source must be pinned and unchanged")
+    return ["-c", "/dev/null", "--noconftest", "--capture=sys", "--assert=plain", "--import-mode=importlib",
+        "-p", "no:cacheprovider", "-p", plugin, "--basetemp", str(attempt / "tmp/pytest"),
+        "--log-file", str(attempt / "exports/pytest.log"), "--junitxml", str(attempt / "exports/test-results.xml"),
+        *plan["selected_checks"]]
+
+
 def validation_worker(args):
     raw = ordinary_bytes(args.plan, 4 * 1024**2)
     need(hashlib.sha256(raw).hexdigest() == args.plan_sha256, "trusted work plan changed")
@@ -281,6 +293,7 @@ def validation_worker(args):
          "trusted worker must start before any cached project package initialization")
     need(type(plan["source_pins"]) is dict and 0 < len(plan["source_pins"]) <= 4096,
          "finite complete normal source manifest required")
+    pytest_arguments = _pure_pytest_arguments(plan, d, attempt)
     # This worker, rather than its parent, owns the only sustained source READs
     # across test execution. The resource CLI itself takes no source lease.
     namespace_profiles = plan.get("normal_namespace_profiles", [])
@@ -432,9 +445,7 @@ def validation_worker(args):
         guard.verify_normal_namespaces()
         active[0] = True
         try:
-            code = pytest.main(["-c", "/dev/null", "--noconftest", "--capture=sys", "--assert=plain", "--import-mode=importlib",
-                "-p", "no:cacheprovider", "--basetemp", str(attempt / "pytest"), "--junitxml", str(attempt / "exports/test-results.xml"),
-                *plan["selected_checks"]], plugins=[Evidence()])
+            code = pytest.main(pytest_arguments, plugins=[Evidence()])
         finally:
             for path, sha in plan["source_pins"].items():
                 need(descriptor(Path(path))["sha256"] == sha, "source changed during tests")

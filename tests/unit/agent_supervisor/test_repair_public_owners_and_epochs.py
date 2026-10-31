@@ -487,3 +487,96 @@ def test_source_upgrade_board_selection_does_not_mutate_any_namespace(productive
     before = auth.canonical(old)
     assert productive_installer._repair_upgrade_board_id(old, contract, None) == "legal-ir"
     assert auth.canonical(old) == before
+
+
+# These real private files exercise publication/path parsing only. They do not
+# execute Git, the native owner, a provider, or an isolated coding attempt.
+def _registry_scope(tmp_path, namespace="ptr_lane_3"):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate as candidate
+    source = tmp_path / "candidate-source"; source.mkdir()
+    state = tmp_path / "candidate-state"; state.mkdir()
+    subject = source / "subject.py"; subject.write_text("private_parser_fixture = True\n")
+    candidate_value = {"schema": candidate.POLICY_SCHEMA,
+        "repository_root": str(source), "state_root": str(state), "namespace": namespace,
+        "base_commit": "a" * 40, "source_paths": ["subject.py"], "allowed_paths": ["subject.py"],
+        "max_source_bytes": 1024, "max_candidate_bytes": 4096, "max_files": 4, "git_timeout_seconds": 10}
+    parsed = candidate.parse_candidate_policy({"candidate_policy": candidate_value})
+    trusted = tmp_path / "trusted.py"; trusted.write_text("# Private trusted source descriptor fixture.\n")
+    trusted_pin = owners.descriptor(trusted)
+    policy = {"source_descriptors": [], "validation": {
+        "attempt_root": str(state / "validation"), "trusted_tests": [trusted_pin],
+        "pytest_module": trusted_pin, "import_sources": [],
+        "selected_checks": [str(trusted) + "::private_parser_fixture"]}}
+    frozen = {"binding": {"namespace": parsed.namespace, "board_id": "legal-ir",
+        "attempt_id": "c" * 32, "candidate_root": str(source)},
+        "source_commitment": "d" * 64,
+        "manifest": {"subject.py": {k: v for k, v in owners.descriptor(subject).items() if k != "path"}},
+        "changed_paths": ["subject.py"]}
+    frozen["manifest"]["subject.py"]["executable"] = False
+    invocation = tmp_path / "invocation"; invocation.mkdir()
+    policy_pin = put(tmp_path / "owner-policy.json", policy)
+    freeze_pin = put(tmp_path / "candidate-ready.json", frozen)
+    return parsed, policy, policy_pin, frozen, freeze_pin, source, invocation
+
+
+@pytest.mark.parametrize("namespace", ["ptr_lane_0", "ptr_lane_3", "ptr_lane_" + "1" * 55],
+    ids=["lane-zero", "actual-lane-three", "maximum-canonical-lane"])
+def test_public_registry_accepts_actual_candidate_policy_lane_without_rewriting_it(tmp_path, namespace):
+    parsed, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path, namespace)
+    before = auth.canonical(frozen)
+    plan = owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    assert plan["attempt_directory"] == str(Path(policy["validation"]["attempt_root"]) / parsed.namespace / "legal-ir" / ("c" * 32))
+    assert owners.validation_control_directory(policy, frozen) == Path(policy["validation"]["attempt_root"]) / "control-requests/legal_ir_unattended_repair/legal-ir" / ("c" * 32)
+    assert auth.canonical(frozen) == before and not Path(plan["attempt_directory"]).exists()
+    assert not (Path(policy["validation"]["attempt_root"]) / "control-requests").exists()
+
+
+@pytest.mark.parametrize("namespace", ["legal_ir_unattended_repair", "ptr_lane_3"], ids=["legacy-history", "canonical-lane"])
+def test_public_registry_preserves_original_published_request_reader(tmp_path, namespace):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    frozen["binding"]["namespace"] = namespace
+    freeze_pin = put(Path(freeze_pin["path"]), frozen)
+    plan = owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    put(invocation / "validation-plan.json", plan)
+    local = put(invocation / "execution-request.json", {"private_metadata_fixture": True})
+    pin = owners.publish_validation_request(policy, frozen, invocation, local)
+    assert pin["path"] == str(Path(policy["validation"]["attempt_root"]) / "control-requests/legal_ir_unattended_repair/legal-ir" / ("c" * 32) / "execution-request.json")
+    assert owners.original_execution_request(invocation) == pin
+    assert owners.checked_descriptor(pin) == owners.checked_descriptor(local)
+    assert not Path(plan["attempt_directory"]).exists()
+
+
+@pytest.mark.parametrize("namespace", ["", "ptr_lane_", "ptr_lane_-1", "ptr_lane_3/elsewhere", "../ptr_lane_3", "/ptr_lane_3", "ptr_lane_3/../x", "ptr_lane_" + "1" * 56, True, 3],
+    ids=["empty", "missing-index", "negative", "separator", "parent", "absolute", "traversal", "oversized", "boolean", "integer"])
+def test_public_registry_rejects_invalid_lane_before_plan_or_publication(tmp_path, namespace):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    frozen["binding"]["namespace"] = namespace
+    before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
+    # Missing later plan inputs deliberately prove the closed path check runs
+    # first; rejection may not read a source manifest or build any output path.
+    incomplete = {"validation": {"attempt_root": policy["validation"]["attempt_root"]}}
+    with pytest.raises(ValueError, match="namespace/board/attempt"):
+        owners.validation_plan(incomplete, policy_pin, frozen, freeze_pin, source, invocation)
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")) == before
+
+
+@pytest.mark.parametrize("field,value", [("board_id", "legal-ir-scientific"), ("board_id", "../legal-ir"),
+    ("attempt_id", "c" * 31), ("attempt_id", "C" * 32), ("attempt_id", "../" + "c" * 32), ("attempt_id", True)],
+    ids=["other-board", "board-traversal", "short-attempt", "uppercase-attempt", "attempt-traversal", "boolean-attempt"])
+def test_public_registry_rejects_crossed_board_or_attempt_without_mutation(tmp_path, field, value):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    frozen["binding"][field] = value
+    before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
+    with pytest.raises(ValueError, match="namespace/board/attempt"):
+        owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")) == before
+
+
+@pytest.mark.parametrize("root", ["relative-root", "/tmp/../escaped-control-root"], ids=["relative", "parent-component"])
+def test_public_registry_rejects_noncanonical_root_before_source_plan(tmp_path, root):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    policy["validation"]["attempt_root"] = root
+    before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
+    with pytest.raises(ValueError, match="canonical original control registry root"):
+        owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")) == before
