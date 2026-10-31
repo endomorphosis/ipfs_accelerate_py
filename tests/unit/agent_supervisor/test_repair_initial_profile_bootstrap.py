@@ -245,3 +245,39 @@ def test_bootstrap_rejects_orphan_typed_binding_before_readiness(tmp_path, monke
     d["reseal"]()
     with pytest.raises(ValueError, match="requires its exact profile"): invoke(d)
     assert d["seen"] == []
+
+
+@pytest.mark.parametrize('reverse',[False,True],ids=['engineering-first','science-first'])
+def test_bootstrap_preserves_five_field_producer_v2_binding_in_both_board_orders(tmp_path,monkeypatch,reverse):
+    """Real B65 reconstruction transports @2 DATA; renderer parsing is separate.
+
+    These source-only fixture descriptors have no Git/runtime/health authority.
+    The port's composition owning cases exercise the complete @2 parser.
+    """
+    d=bootstrap_scope(tmp_path,monkeypatch)
+    science=next(board for board in d['projection']['boards']if board['id']=='legal-ir-scientific')
+    profile=write(tmp_path/'operator-profile-v2.json',{'source_only_fixture':True},True)
+    native=write(tmp_path/'native-source-commitment.json',{'source_only_fixture':'retained-native-H'},True)
+    plan=write(tmp_path/'native-observer-plan.json',{'source_only_fixture':'unchanged-cli3'},True)
+    producer=write(tmp_path/'producer-source-commitment.json',{'source_only_fixture':'producer-only-PW'},True)
+    payload={'schema':installer.SCIENTIFIC_PRODUCER_GIT_BINDING_SCHEMA,'profile':profile,
+        'source_commitment':native,'observer_plan':plan,'producer_source_commitment':producer}
+    git=write(tmp_path/'operator-producer-v2-binding.json',payload,True)
+    science['native_executor_binding']=profile;science['native_executor_git_binding']=git
+    if reverse:d['projection']['boards'].reverse()
+    d['reseal']();calls=[]
+    def compose(config,profile_ref,release,git_ref=None):
+        assert profile_ref==profile and git_ref==git
+        assert json.loads(Path(git_ref['path']).read_bytes())==payload
+        calls.append((copy.deepcopy(profile_ref),copy.deepcopy(git_ref)))
+        return config
+    monkeypatch.setattr(installer,'_repair_scientific_configuration',compose)
+    result=invoke(d);stage=d['seen'][0]
+    assert calls and stage['scientific_executor_binding']==profile and stage['scientific_executor_git_binding']==git
+    assert result['config']==pin(d['configpath'])
+    assert json.loads(stage['files'][-1]['postimage_utf8'])==d['config']
+    selected=next(board for board in d['config']['boards']if board['id']=='legal-ir-scientific')
+    assert selected['native_executor_git_binding']==git and selected['native_executor_binding']==profile
+    counterpart=next(board for board in d['config']['boards']if board['id']=='legal-ir')
+    assert counterpart['hold_files']==['HOLD']and counterpart['repair_authorization_epoch']['max_attempts']==3
+    assert json.loads(Path(git['path']).read_bytes())==payload
