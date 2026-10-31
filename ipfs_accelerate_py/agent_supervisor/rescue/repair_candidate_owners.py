@@ -1977,12 +1977,226 @@ def seal_external_activation_terminal(activation_pin, invocation):
     return pin
 
 
-def current_profile_contract(policy, frozen):
+INITIAL_PROFILE_BOOTSTRAP_SCHEMA = "agent-supervisor/repair-initial-profile-bootstrap@1"
+INITIAL_PROFILE_POLICY_HASH = "__CHECKED_OWNER_POLICY_SHA256__"
+INITIAL_PROFILE_POLICY_BYTES = "__CHECKED_OWNER_POLICY_BYTES__"
+
+
+def _bootstrap_marker_paths(value, prefix=()):
+    result = set()
+    if type(value) is str:
+        markers = (INITIAL_PROFILE_POLICY_HASH, INITIAL_PROFILE_POLICY_BYTES)
+        need(all(marker not in value or value == marker for marker in markers),
+             "reserved bootstrap marker embedded in unrelated text")
+        if value in markers:
+            result.add(prefix)
+    elif type(value) is dict:
+        for key, item in value.items():
+            need(type(key) is str and all(marker not in key for marker in
+                 (INITIAL_PROFILE_POLICY_HASH, INITIAL_PROFILE_POLICY_BYTES)),
+                 "reserved bootstrap marker used as a key")
+            result.update(_bootstrap_marker_paths(item, prefix + (key,)))
+    elif type(value) is list:
+        for index, item in enumerate(value):
+            result.update(_bootstrap_marker_paths(item, prefix + (index,)))
+    return result
+
+
+
+def _bootstrap_config_projection(config, policy, checked_policy_reference, owner_policy_path):
+    need(type(checked_policy_reference) is dict and
+         checked_policy_reference.get("path") == owner_policy_path,
+         "actual checked owner policy reference required")
+    raw = checked_descriptor(checked_policy_reference)
+    need(json_object(raw) == policy, "actual checked policy differs from the invoked policy")
+    need(not _bootstrap_marker_paths(config), "live configuration contains a bootstrap marker")
+    value = json_object(canonical(config))
+    paths = set()
+    runtime = value["repair_worker"]["candidate_runtime"]
+    for role in ("validation_owner", "adoption_owner"):
+        for command in ("argv", "verify_argv"):
+            argv = runtime[role][command]
+            need(type(argv) is list and all(type(arg) is str for arg in argv)
+                 and argv.count("--policy") == argv.count("--policy-sha256") == 1
+                 and not any(arg.startswith(("--policy=", "--policy-sha256=")) for arg in argv),
+                 "four exact separate owner policy arguments required")
+            policy_index = argv.index("--policy") + 1
+            hash_index = argv.index("--policy-sha256") + 1
+            need(policy_index < len(argv) and hash_index < len(argv)
+                 and argv[policy_index] == owner_policy_path
+                 and argv[hash_index] == checked_policy_reference["sha256"],
+                 "live owner policy path/hash differs from the actual checked policy")
+            argv[hash_index] = INITIAL_PROFILE_POLICY_HASH
+            paths.add(("repair_worker", "candidate_runtime", role, command, hash_index))
+    descriptor_roles = []
+    for role in ("validation_owner", "adoption_owner"):
+        refs = runtime[role].get("source_descriptors")
+        need(type(refs) is list and 0 < len(refs) <= 128,
+             "closed nested owner source descriptors required")
+        matching = [(index, pin) for index, pin in enumerate(refs)
+                    if type(pin) is dict and pin.get("path") == owner_policy_path]
+        need(len(matching) <= 1, "duplicate nested policy source descriptor")
+        descriptor_roles.append(bool(matching))
+        if matching:
+            index, pin = matching[0]
+            need(pin == checked_policy_reference,
+                 "live owner policy source descriptor differs from the actual checked policy")
+            # The current immutable-control renderer includes this policy as
+            # source DATA twice. Authenticate all real fields before replacing
+            # only these two structural self-reference slots in the projection.
+            refs[index] = {"path": owner_policy_path, "bytes": INITIAL_PROFILE_POLICY_BYTES,
+                           "sha256": INITIAL_PROFILE_POLICY_HASH}
+            paths.add(("repair_worker", "candidate_runtime", role, "source_descriptors", index, "bytes"))
+            paths.add(("repair_worker", "candidate_runtime", role, "source_descriptors", index, "sha256"))
+    need(all(descriptor_roles) or not any(descriptor_roles),
+         "nested policy source descriptors must use the same renderer shape")
+    need(_bootstrap_marker_paths(value) == paths and len(paths) == (8 if all(descriptor_roles) else 4),
+         "only exact authenticated owner policy structural slots may be normalized")
+    return value
+
+
+
+def _bootstrap_current_profile_contract(policy, frozen, anchor, config, board, checked_policy_reference, config_raw):
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import digest as source_digest
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate import parse_candidate_policy
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_runtime import parse_runtime_policy
+    from scripts.ops.agent_supervisor.install_fleet_watchdog import observe_repair_upgrade
+    from ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog import command
+    need(set(anchor) == {"schema", "owner_policy_path", "original_contract", "source_snapshot",
+         "expected_config_projection", "expected_unit_postimages"}
+         and anchor["schema"] == INITIAL_PROFILE_BOOTSTRAP_SCHEMA,
+         "closed immutable initial profile bootstrap anchor required")
+    anchor_path = Path(policy["adoption"]["path"])
+    need(not anchor_path.lstat().st_mode & 0o222, "bootstrap anchor must be immutable")
+    base = anchor["original_contract"]
+    fields = {"schema", "profile", "config", "inventory", "units", "prior_job",
+              "expected_loaded_before", "job_unit", "source_successor", "initial_release"}
+    need(type(base) is dict and set(base) == fields
+         and base["schema"] == "agent-supervisor/repair-profile-upgrade-contract@1"
+         and base["profile"] == "legal-ir" and base["source_successor"] is None,
+         "original existing-profile bootstrap grant differs")
+    need(type(config_raw) is bytes and json_object(config_raw) == config,
+         "bootstrap config object is not bound to its original bytes")
+    expected = anchor["expected_config_projection"]
+    projection = _bootstrap_config_projection(config, policy, checked_policy_reference,
+                                              anchor["owner_policy_path"])
+    need(type(expected) is dict and projection == expected
+         and _bootstrap_marker_paths(expected) == _bootstrap_marker_paths(projection),
+         "installed profile differs from the complete operator bootstrap projection")
+    checked_descriptor(base["inventory"])
+    checked_descriptor(base["prior_job"])
+    snapshot = anchor["source_snapshot"]
+    need(type(snapshot) is dict and set(snapshot) == {"prior_policy", "new_commit", "new_tree",
+         "source_commitment", "manifest"}, "closed initial source snapshot required")
+    worker = config["repair_worker"]
+    selected = parse_candidate_policy(worker)
+    need(selected is not None and snapshot["prior_policy"] == worker["candidate_policy"]
+         and snapshot["new_commit"] == worker["candidate_policy"]["base_commit"]
+         and type(snapshot["new_tree"]) is str and len(snapshot["new_tree"]) in (40, 64)
+         and re.fullmatch(r"[0-9a-f]+", snapshot["new_tree"]) is not None,
+         "bootstrap source policy/commit/tree differs")
+    parse_runtime_policy(worker, selected)
+    manifest = snapshot["manifest"]
+    need(type(manifest) is dict and set(manifest) == set(selected.source_paths),
+         "bootstrap selected source manifest differs")
+    initial = json_object(checked_descriptor(base["initial_release"]))
+    need(initial["schema"] == "agent-supervisor/repair-source-release@1"
+         and initial["snapshot_commit"] == snapshot["new_commit"]
+         and initial["snapshot_tree"] == snapshot["new_tree"]
+         and initial["source_commitment"] == snapshot["source_commitment"]
+         == source_digest({"base_commit": snapshot["new_commit"], "manifest": manifest}),
+         "bootstrap release/source commitment differs")
+    release = Path(config["runtime_release"])
+    need(Path(base["initial_release"]["path"]).parent == release,
+         "bootstrap release is not the explicit initial source grant")
+    refs = {pin["path"]: pin for pin in worker["candidate_runtime"]["source_descriptors"]}
+    for rel, row in manifest.items():
+        need(type(row) is dict and set(row) == {"bytes", "sha256", "executable"}
+             and type(row["executable"]) is bool, "closed bootstrap source row required")
+        actual = refs[str(selected.repository_root / rel)]
+        released = initial["selected_sources"][rel]
+        need(actual["bytes"] == released["bytes"] == row["bytes"]
+             and actual["sha256"] == released["sha256"] == row["sha256"]
+             and released["path"] == str(release / rel)
+             and bool((selected.repository_root / rel).lstat().st_mode & 0o111) == row["executable"],
+             "bootstrap current/released source differs")
+        checked_descriptor(released)
+    posts = anchor["expected_unit_postimages"]
+    need(type(posts) is dict and set(posts) == set(base["units"]) == {"watchdog", "repair"},
+         "two exact bootstrap unit postimages required")
+    current_units = {}
+    unit_rows = []
+    config_path = Path(base["config"]["path"])
+    need(config_path.is_absolute() and len(config_path.parents) >= 4
+         and config_path.parents[3] / ".config/ipfs-taskboard-watchdog/legal-ir/fleet.json" == config_path,
+         "original canonical fleet configuration target differs")
+    need(ordinary_bytes(config_path) == config_raw, "bootstrap configuration changed before descriptor")
+    config_pin = descriptor(config_path)
+    need(config_pin == {"path": str(config_path), "bytes": len(config_raw),
+         "sha256": hashlib.sha256(config_raw).hexdigest()},
+         "bootstrap configuration changed while its descriptor was authenticated")
+    for suffix, post in posts.items():
+        need(type(post) is dict and set(post) == {"path", "bytes", "sha256", "mode"}
+             and post["path"] == base["units"][suffix]["path"]
+             and Path(post["path"]).name == "ipfs-taskboard-legal-ir-" + suffix + ".service"
+             and type(post["mode"]) is int and 0 <= post["mode"] <= 0o777,
+             "bootstrap unit target/mode differs")
+        pin = {key: post[key] for key in ("path", "bytes", "sha256")}
+        raw = checked_descriptor(pin)
+        need(stat.S_IMODE(Path(pin["path"]).lstat().st_mode) == post["mode"]
+             and checked_policy_reference["sha256"].encode() not in raw
+             and config_pin["sha256"].encode() not in raw,
+             "bootstrap unit postimage differs or contains a self-referential hash")
+        current_units[suffix] = pin
+        unit_rows.append({"before": pin, "postimage_utf8": raw.decode(), "mode": post["mode"]})
+    current = dict(base, config=config_pin, units=current_units)
+    bindings = {"candidate_policy": worker["candidate_policy"],
+        "candidate_runtime": worker["candidate_runtime"],
+        "authorization_epoch": board["repair_authorization_epoch"], "source_snapshot": snapshot}
+    seed = {"schema": "agent-supervisor/repair-profile-upgrade-stage@1",
+        "release": str(release), "source_commitment": snapshot["source_commitment"],
+        "state_dir": config["state_dir"], "contract": current,
+        "release_sources": initial["sources"], "selected_release_sources": initial["selected_sources"],
+        "release_commitment": base["initial_release"], "source_successor": None,
+        "initial_bindings": bindings, "files": unit_rows + [
+            {"before": config_pin, "postimage_utf8": config_raw.decode(),
+             "mode": stat.S_IMODE(config_path.lstat().st_mode)}]}
+    science = next((item for item in config["boards"] if item["id"] == "legal-ir-scientific"), None)
+    if science is not None and "native_executor_binding" in science:
+        seed["scientific_executor_binding"] = science["native_executor_binding"]
+    if science is not None and "native_executor_git_binding" in science:
+        need("scientific_executor_binding" in seed, "scientific Git binding requires its exact profile")
+        seed["scientific_executor_git_binding"] = science["native_executor_git_binding"]
+    need(ordinary_bytes(config_path) == config_raw and descriptor(config_path) == config_pin
+         and _bootstrap_config_projection(json_object(config_raw), policy, checked_policy_reference,
+             anchor["owner_policy_path"]) == expected,
+         "bootstrap configuration/policy changed before readiness")
+    observed = observe_repair_upgrade(seed, command)
+    need(ordinary_bytes(config_path) == config_raw and descriptor(config_path) == config_pin,
+         "bootstrap configuration changed during readiness")
+    need(set(observed["loaded_runtime"]) == {"watchdog", "repair"},
+         "both genuine imported-source observations required")
+    return dict(current, expected_loaded_before={suffix: json_object(checked_descriptor(pin))["owner"]
+                for suffix, pin in observed["loaded_runtime"].items()})
+
+
+
+def current_profile_contract(policy, frozen, *, checked_policy_reference=None):
     """Advance only exact prior profile postimages from the anchored chain."""
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import repair_job_directory
-    base = json_object(checked_descriptor(policy["adoption"]))
+    grant = json_object(checked_descriptor(policy["adoption"]))
+    bootstrap = grant.get("schema") == INITIAL_PROFILE_BOOTSTRAP_SCHEMA
+    if bootstrap:
+        need(set(grant) == {"schema", "owner_policy_path", "original_contract", "source_snapshot",
+             "expected_config_projection", "expected_unit_postimages"}
+             and type(grant["original_contract"]) is dict,
+             "closed initial profile bootstrap anchor required")
+        base = grant["original_contract"]
+    else:
+        base = grant
     need(base["source_successor"] is None, "immutable adoption contract must not contain a supplied successor")
-    config = json_object(ordinary_bytes(Path(base["config"]["path"])))
+    config_raw = ordinary_bytes(Path(base["config"]["path"]))
+    config = json_object(config_raw)
     board = next((b for b in config["boards"] if b["id"] == frozen["binding"]["board_id"]), None)
     need(board is not None, "original configured repair board required")
     path = repair_job_directory(Path(config["state_dir"]), board) / "job.json"
@@ -1990,6 +2204,9 @@ def current_profile_contract(policy, frozen):
     require_current_authorization(config, board, job=job)
     chain = job.get("repair_source_successors", [])
     if not chain:
+        if bootstrap:
+            return _bootstrap_current_profile_contract(policy, frozen, grant, config, board,
+                                                       checked_policy_reference, config_raw)
         checked_descriptor(base["config"])
         initial = json_object(checked_descriptor(base["initial_release"]))
         need(initial["snapshot_commit"] == config["repair_worker"]["candidate_policy"]["base_commit"]
@@ -2007,6 +2224,11 @@ def current_profile_contract(policy, frozen):
                 {"before": pin, "postimage_utf8": ordinary_bytes(Path(pin["path"])).decode(),
                  "mode": stat.S_IMODE(Path(pin["path"]).lstat().st_mode)}
                 for pin in [*base["units"].values(), base["config"]]]}
+        science = next((item for item in config["boards"] if item["id"] == "legal-ir-scientific"), None)
+        if science is not None and "native_executor_git_binding" in science:
+            need("native_executor_binding" in science, "scientific Git binding requires its exact profile")
+            seed["scientific_executor_binding"] = science["native_executor_binding"]
+            seed["scientific_executor_git_binding"] = science["native_executor_git_binding"]
         observed = observe_repair_upgrade(seed, command)
         return dict(base, expected_loaded_before={suffix: json_object(checked_descriptor(pin))["owner"]
                     for suffix, pin in observed["loaded_runtime"].items()})
@@ -2041,7 +2263,10 @@ def adopt(args):
         json_object(ordinary_bytes(validation_invocation / "validation-plan.json")),
         original_execution_request(validation_invocation),
         json_object(checked_descriptor(validation_receipt["original_receipt_descriptor"])), validation_invocation)
-    contract = current_profile_contract(policy, frozen)
+    checked_reference = descriptor(args.policy)
+    need(checked_reference["sha256"] == args.policy_sha256,
+         "actual checked owner policy changed before adoption")
+    contract = current_profile_contract(policy, frozen, checked_policy_reference=checked_reference)
     contract["source_successor"] = stage_source_successor(args, policy, frozen, contract)
     from scripts.ops.agent_supervisor.install_fleet_watchdog import prepare_repair_upgrade
     stage = prepare_repair_upgrade(args.candidate_root, contract, frozen["source_commitment"])
