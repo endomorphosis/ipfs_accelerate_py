@@ -1772,7 +1772,37 @@ def open_duckdb_connection(
     threads: int = 1,
     prefer_quack: bool | None = None,
     owner_extension_load: bool = False,
+    read_only: bool = False,
 ) -> DuckDBConnection:
+    # Explicit physical reads reuse the original sealed connection policy, with
+    # no Python writer-lock file or directory creation. Legacy calls are unchanged.
+    if type(read_only) is not bool:
+        raise TypeError("DuckDB read_only must be a boolean")
+    if read_only:
+        if (is_quack_transport_target(path) or owner_extension_load is not False
+                or prefer_quack is not None and (type(prefer_quack) is not bool or prefer_quack)):
+            raise DuckDBConnectionPolicyError(
+                "physical read-only connections require an embedded file without owner-extension or Quack mode"
+            )
+        if not isinstance(path, (str, Path)):
+            raise DuckDBConnectionPolicyError("physical read-only connection requires an existing literal file")
+        candidate = Path(path)
+        if (not candidate.is_absolute() or str(candidate) != os.path.abspath(str(path))
+                or any(item.is_symlink() for item in (candidate, *candidate.parents))
+                or not candidate.is_file()):
+            raise DuckDBConnectionPolicyError("physical read-only connection requires an existing literal file")
+        import duckdb
+        native = connect_duckdb_with_policy(
+            duckdb, candidate, read_only=True,
+            configuration={"threads": threads, "memory_limit": memory_limit},
+        )
+        try:
+            # wrap owns close; a missing file-owner lock also refuses the
+            # existing exclusive-owner reconnect path rather than reopening RW.
+            return DuckDBConnection.wrap(native)
+        except BaseException:
+            native.close()
+            raise
     if is_quack_transport_target(path):
         connection = open_quack_transport_connection(path)
         connection._transport_mode = "quack"

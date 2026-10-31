@@ -3005,29 +3005,38 @@ class IntentRepository:
             raise IntentRepositoryNotOpenError("intent repository is not open")
 
     @contextmanager
-    def read_session(self) -> Iterator[IntentRepository]:
+    def read_session(self, *, read_only: bool = False) -> Iterator[IntentRepository]:
         """Reuse one read connection within this thread's bounded observation.
 
-        Nested sessions borrow the outer connection; different threads never
-        share it. This is connection reuse, not a transaction or a frozen
-        snapshot. Callers retain native admission and final drift checks.
-        Repository writes in the session thread are refused before any SQL.
-        The outer context owns physical close, including when close() marks
-        the repository closed while an observation is still unwinding.
+        The default preserves the existing logical read-session API. Explicit
+        read_only=True opens a physical read-only embedded handle and refuses a
+        borrowed writer/Quack connection. Nested default calls may reuse that
+        stronger outer handle. This remains connection reuse, not a frozen SQL
+        snapshot; callers retain native admission and drift checks.
         """
         self._require_open()
+        if type(read_only) is not bool:
+            raise TypeError("read_session read_only must be a boolean")
+        if read_only and (self._bound_connection is not None or self._quack_transport):
+            raise IntentRepositoryError("physical read-only session requires an unbound embedded repository")
         if getattr(self._read_session_state, "connection", None) is not None:
+            if read_only and getattr(self._read_session_state, "read_only", False) is not True:
+                raise IntentRepositoryError("physical read-only session cannot borrow a legacy writer-mode connection")
             yield self
             return
-        connection = open_duckdb_connection(self._open_target)
+        if read_only:
+            connection = open_duckdb_connection(self._open_target, read_only=True, prefer_quack=False)
+        else:
+            connection = open_duckdb_connection(self._open_target)
         try:
             self._require_open()
             self._read_session_state.connection = connection
+            self._read_session_state.read_only = read_only
             yield self
         finally:
-            # Clear before close so an exceptional close cannot leave a stale
-            # adapter installed for a later observation in the same thread.
+            # Clear both before close, including an exceptional body or close.
             self._read_session_state.connection = None
+            self._read_session_state.read_only = False
             connection.close()
 
     @contextmanager

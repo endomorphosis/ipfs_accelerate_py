@@ -319,6 +319,103 @@ def test_bound_idle_manual_blocked_shape_remains_incomplete(cycle_case):
     assert case['native'] == before and case['native']['counts'] == {'blocked': 1}
 
 
+def _embedded_idle_shape(case):
+    """Explicit unit fixture, never evidence of an actual daemon observation."""
+    case['proof']['kind'] = 'genuine_scoped_idle'
+    observer = _put(case['root'] / 'source/native_owner_bootstrap.py', b'# synthetic observer source fixture\n')
+    case['profile']['source_descriptors'].append(observer)
+    case['request']['source_sha256'][observer['path']] = observer['sha256']
+    route=_put(case['root']/'ipfs_accelerate_py/agent_implementation_route.py',b'# explicit source-only route fixture\n')
+    case['profile']['source_descriptors'].append(route)
+    case['request']['source_sha256'][route['path']]=route['sha256']
+    case['origins']['project_imports'].append({'module':'ipfs_accelerate_py.agent_implementation_route',
+        **route,'execution_profile':'compiled_exact_authenticated_source_bytes'})
+    db = {'path': str(case['root'] / 'fixture.duckdb'), 'bytes': 8, 'sha256': 'd' * 64}
+    case['request']['database_preimage'] = db
+    case['request']['external_files'] = [{'path': db['path'], 'max_bytes': 128 * 1024**2}]
+    binding = {'schema': 'native-embedded-daemon-observation-binding@1',
+        'database_preimage': db, 'task_scope': [TASK], 'plan_root_cid': 'plan:fixture',
+        'repository_tree_id': 'tree:fixture', 'observer_source': observer,
+        'source_schema': 'ipfs_accelerate_py/agent-supervisor/database-task-source@1'}
+    case['profile']['cycle_contract'] = {'plan_schema': 'native-embedded-scoped-observation-plan/v1',
+        'plan_operation': 'native_embedded_scoped_observation_v1'}
+    case['plan'] = {'schema': 'native-embedded-scoped-observation-plan/v1',
+        'operation': 'native_embedded_scoped_observation_v1', 'accelerate_root': str(case['root']),
+        'task_scope': [TASK], 'native_metadata_cli': {
+            'schema': 'native-embedded-scoped-observation-cli/v2', 'runtime_root': str(case['root']),
+            'cwd': str(case['root']), 'attempt_directory': str(case['root'] / 'proof'),
+            'temporary_directory': str(case['root'] / 'proof/temporary'),
+            'project_import_plan': {}, 'pre_body_guard': observer, 'result_path': '',
+            'source_sha256': dict(case['request']['source_sha256']), 'observation_binding': binding,
+            'import_head_capsule_Git': _import_git_fixture(case['root'],route)}}
+    case['origins']['project_imports'].append({'module':
+        'ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap',
+        **observer, 'execution_profile': 'compiled_exact_authenticated_source_bytes'})
+    case['result'] = {'schema': 'native-embedded-daemon-observation@1',
+        'backend': 'embedded', 'database_path': db['path'], 'task_scope': [TASK],
+        'observer_source': observer, 'observer_callable': 'observe_embedded_database_without_dispatch',
+        'ready_task_count': 0, 'selection_idle_reason': 'no_scoped_ready_tasks',
+        'unchanged': True, 'write_count': 0, 'provider_dispatched': False,
+        'attempt_consumed': False, 'completion_authority': False,
+        'catalogue_binding': {'database_preimage': db, 'plan_root_cid': 'plan:fixture',
+            'repository_tree_id': 'tree:fixture', 'source_schema': binding['source_schema'],
+            'event_cursor': 253, 'task_statuses': [{'task_cid': TASK, 'status': 'blocked', 'revision': 7}]}}
+    return case
+
+
+def test_genuine_embedded_idle_shape_is_distinct_and_source_bound(cycle_case):
+    case = _embedded_idle_shape(cycle_case)
+    before = copy.deepcopy(case['native'])
+    _write_evidence(case)
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is True and result['scope'] == 'genuine_scoped_idle'
+    assert result['dispatch_authority'] is False and result['completion_authority'] is False
+    assert case['native'] == before
+
+
+@pytest.mark.parametrize('mutation', ['extra', 'backend', 'callable', 'scope', 'selection',
+    'ready', 'boolean_ready', 'writes', 'provider', 'attempt', 'completion', 'unchanged',
+    'database', 'db_preimage', 'observer_source', 'observer_unselected', 'observer_origin',
+    'catalogue_extra', 'catalogue_root', 'catalogue_tree', 'catalogue_schema',
+    'catalogue_cursor', 'task_revision', 'task_status', 'duplicate_task'],
+    ids=['extra', 'backend', 'callable', 'scope', 'selection', 'ready', 'boolean-ready',
+         'writes', 'provider', 'attempt', 'completion', 'unchanged', 'database',
+         'db-preimage', 'observer-source', 'observer-unselected', 'observer-origin',
+         'catalogue-extra', 'catalogue-root', 'catalogue-tree', 'catalogue-schema',
+         'catalogue-cursor', 'task-revision', 'task-status', 'duplicate-task'])
+def test_embedded_idle_cannot_substitute_backend_source_catalogue_or_authority(cycle_case, mutation):
+    case = _embedded_idle_shape(cycle_case)
+    result = case['result']; catalogue = result['catalogue_binding']
+    if mutation == 'extra': result['trusted'] = True
+    elif mutation == 'backend': result['backend'] = 'typed'
+    elif mutation == 'callable': result['observer_callable'] = 'observe_typed_database_without_dispatch'
+    elif mutation == 'scope': result['task_scope'] = []
+    elif mutation == 'selection': result['selection_idle_reason'] = 'scoped_ready'
+    elif mutation == 'ready': result['ready_task_count'] = 1
+    elif mutation == 'boolean_ready': result['ready_task_count'] = False
+    elif mutation == 'writes': result['write_count'] = 1
+    elif mutation == 'provider': result['provider_dispatched'] = True
+    elif mutation == 'attempt': result['attempt_consumed'] = True
+    elif mutation == 'completion': result['completion_authority'] = True
+    elif mutation == 'unchanged': result['unchanged'] = False
+    elif mutation == 'database': result['database_path'] += '.foreign'
+    elif mutation == 'db_preimage': catalogue['database_preimage'] = {**catalogue['database_preimage'], 'sha256': 'e' * 64}
+    elif mutation == 'observer_source': result['observer_source'] = case['profile']['driver_source']
+    elif mutation == 'observer_unselected': case['request']['source_sha256'].pop(result['observer_source']['path'])
+    elif mutation == 'observer_origin': case['origins']['project_imports'].pop()
+    elif mutation == 'catalogue_extra': catalogue['trusted'] = True
+    elif mutation == 'catalogue_root': catalogue['plan_root_cid'] = 'foreign:root'
+    elif mutation == 'catalogue_tree': catalogue['repository_tree_id'] = 'foreign:tree'
+    elif mutation == 'catalogue_schema': catalogue['source_schema'] = 'foreign@1'
+    elif mutation == 'catalogue_cursor': catalogue['event_cursor'] -= 1
+    elif mutation == 'task_revision': catalogue['task_statuses'][0]['revision'] += 1
+    elif mutation == 'task_status': catalogue['task_statuses'][0]['status'] = 'completed'
+    else: catalogue['task_statuses'].append(copy.deepcopy(catalogue['task_statuses'][0]))
+    _write_evidence(case)
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['scope'] == 'none'
+
+
 @pytest.mark.parametrize('mutation', ['dead_pid', 'birth', 'boot', 'invocation', 'argv', 'cwd', 'exe', 'profile_environment'])
 def test_current_process_mismatch_refuses_old_cycle(cycle_case, mutation):
     case = cycle_case
@@ -659,3 +756,230 @@ def test_epoch_archive_collision_refuses_and_preserves_the_existing_bytes(cycle_
         health._archive_previous_receipt(path, raw)
     assert path.read_bytes() == before
     assert Path(case['profile']['receipt_path']).read_bytes() == raw
+
+
+@pytest.mark.parametrize('mutation', ['plan_schema', 'plan_operation', 'plan_extra', 'cli_schema',
+    'cli_extra', 'cli_runtime_root', 'binding_extra', 'binding_schema', 'binding_none',
+    'coordinated_source_schema', 'db_zero', 'db_boolean', 'db_negative', 'db_oversized',
+    'db_float', 'db_digest', 'db_relative', 'db_extra', 'external_missing', 'external_none',
+    'external_extra', 'external_duplicate', 'external_small', 'external_boolean', 'external_float',
+    'external_oversized', 'external_foreign', 'task_revision_float', 'task_revision_boolean',
+    'observer_bytes_float', 'cli_observer_unselected'])
+def test_embedded_idle_closed_physical_and_protocol_joins_refuse_relabelled_metadata(cycle_case, mutation):
+    case = _embedded_idle_shape(cycle_case)
+    plan = case['plan']; command = plan['native_metadata_cli']
+    binding = command['observation_binding']; result = case['result']
+    db = case['request']['database_preimage']
+    external = case['request']['external_files']
+    if mutation == 'plan_schema':
+        plan['schema'] = case['profile']['cycle_contract']['plan_schema'] = 'foreign-plan@1'
+    elif mutation == 'plan_operation':
+        plan['operation'] = case['profile']['cycle_contract']['plan_operation'] = 'foreign_operation'
+    elif mutation == 'plan_extra': plan['grant'] = True
+    elif mutation == 'cli_schema': command['schema'] = 'foreign-cli@1'
+    elif mutation == 'cli_extra': command['grant'] = True
+    elif mutation == 'cli_runtime_root': command['runtime_root'] += '/foreign'
+    elif mutation == 'binding_extra': binding['grant'] = True
+    elif mutation == 'binding_schema': binding['schema'] = 'foreign-binding@1'
+    elif mutation == 'binding_none': command['observation_binding'] = None
+    elif mutation == 'coordinated_source_schema':
+        binding['source_schema'] = result['catalogue_binding']['source_schema'] = 'foreign-source@1'
+    elif mutation.startswith('db_'):
+        if mutation == 'db_zero': db['bytes'] = 0
+        elif mutation == 'db_boolean': db['bytes'] = True
+        elif mutation == 'db_negative': db['bytes'] = -1
+        elif mutation == 'db_oversized': db['bytes'] = 128 * 1024**2 + 1
+        elif mutation == 'db_float': db['bytes'] = 8.0
+        elif mutation == 'db_digest': db['sha256'] = 'invalid-physical-digest'
+        elif mutation == 'db_relative':
+            db['path'] = result['database_path'] = external[0]['path'] = 'relative.duckdb'
+        else: db['grant'] = True
+    elif mutation == 'external_missing': case['request']['external_files'] = []
+    elif mutation == 'external_none': case['request']['external_files'] = None
+    elif mutation == 'external_extra': external[0]['grant'] = True
+    elif mutation == 'external_duplicate': external.append(dict(external[0]))
+    elif mutation == 'external_small': external[0]['max_bytes'] = db['bytes'] - 1
+    elif mutation == 'external_boolean':
+        db['bytes'] = 1; external[0]['max_bytes'] = True
+    elif mutation == 'external_float': external[0]['max_bytes'] = float(128 * 1024**2)
+    elif mutation == 'external_oversized': external[0]['max_bytes'] = 128 * 1024**2 + 1
+    elif mutation == 'external_foreign': external[0]['path'] += '.foreign'
+    elif mutation == 'task_revision_float': result['catalogue_binding']['task_statuses'][0]['revision'] = 7.0
+    elif mutation == 'task_revision_boolean':
+        case['native']['tasks'][0]['revision'] = case['cycle_native']['tasks'][0]['revision'] = 1
+        result['catalogue_binding']['task_statuses'][0]['revision'] = True
+    elif mutation == 'observer_bytes_float':
+        changed = {**result['observer_source'], 'bytes': float(result['observer_source']['bytes'])}
+        result['observer_source'] = binding['observer_source'] = changed
+    else: command['source_sha256'].pop(result['observer_source']['path'])
+    _write_evidence(case)
+    verified = _verify(case, profile_ref=case['profile_ref'])
+    assert verified['verified'] is False and verified['scope'] == 'none'
+    assert verified['dispatch_authority'] is False and verified['completion_authority'] is False
+
+
+def test_embedded_idle_health_validation_never_opens_the_mutable_database(cycle_case, monkeypatch):
+    case = _embedded_idle_shape(cycle_case)
+    database = case['request']['database_preimage']['path']
+    original_raw = health._raw
+    def guarded_raw(path, maximum=health.MAX_JSON):
+        assert str(path) != database, 'health verification must consume the closed observation, not reopen its DB'
+        return original_raw(path, maximum)
+    monkeypatch.setattr(health, '_raw', guarded_raw)
+    _write_evidence(case)
+    verified = _verify(case, profile_ref=case['profile_ref'])
+    assert verified['verified'] is True and verified['scope'] == 'genuine_scoped_idle'
+    assert verified['dispatch_authority'] is False and verified['completion_authority'] is False
+
+
+def test_installed_interpreter_accepts_actual_elf_in_distinct_bounded_role(tmp_path):
+    case = _base_profile(tmp_path)
+    interpreter = Path(sys.executable).resolve()
+    tool = health.installed_tool_descriptor(interpreter)
+    assert tool == _ref(interpreter)
+    with interpreter.open('rb') as stream:
+        assert stream.read(4) == b'\x7fELF'
+    assert health.MAX_SOURCE == health.MAX_JSON == 4 * 1024**2
+    assert health.MAX_INSTALLED_TOOL == 64 * 1024**2
+    assert health._profile(_publish_profile(case)) == case['profile']
+
+
+
+@pytest.mark.parametrize('role', ['main_entrypoint', 'health_module', 'owner_source', 'driver_source'],
+    ids=['main-entrypoint', 'health-module', 'owner-source', 'driver-source'])
+def test_project_role_cannot_borrow_installed_interpreter_allowance(tmp_path, role):
+    case = _base_profile(tmp_path)
+    case['profile'][role] = health.installed_tool_descriptor(Path(sys.executable).resolve())
+    with pytest.raises(health.ExecutorHealthError, match='project_role_aliases_installed_tool'):
+        health._profile(_publish_profile(case))
+
+
+
+@pytest.mark.parametrize('declared_bytes', [67108865, True], ids=['over-64-mib', 'boolean-bytes'])
+def test_installed_tool_metadata_bound_is_checked_before_read(declared_bytes):
+    ref = {'path': str(Path(sys.executable).resolve()), 'bytes': declared_bytes, 'sha256': 'f' * 64}
+    with pytest.raises(health.ExecutorHealthError, match='descriptor_bounds'):
+        health._bound_installed_tool(ref)
+
+
+
+def test_ordinary_project_source_retains_four_mib_bound(tmp_path):
+    case = _base_profile(tmp_path)
+    source = _put(tmp_path / 'source/oversized_project.py', b'#' + b'x' * (4 * 1024**2))
+    case['profile']['source_descriptors'].append(source)
+    with pytest.raises(health.ExecutorHealthError, match='descriptor_bounds'):
+        health._profile(_publish_profile(case))
+
+
+
+def test_installed_binary_is_rejected_as_an_ordinary_project_source(tmp_path):
+    case = _base_profile(tmp_path)
+    tool = health.installed_tool_descriptor(Path(sys.executable).resolve())
+    with pytest.raises(health.ExecutorHealthError, match='installed_tool_is_not_project_source'):
+        health._bound_project_source(tool, case['profile'])
+
+
+
+def test_python_source_cannot_be_declared_an_installed_elf_tool(tmp_path):
+    source = _put(tmp_path / 'pretend_interpreter.py', b'# explicit Python source fixture\n')
+    with pytest.raises(health.ExecutorHealthError, match='installed_tool_not_elf'):
+        health.installed_tool_descriptor(source['path'])
+
+
+
+def test_project_import_origin_cannot_be_laundered_through_interpreter_role(tmp_path):
+    case = _base_profile(tmp_path)
+    tool = health.installed_tool_descriptor(Path(sys.executable).resolve())
+    origins = {'schema': 'legal-ir-pre-execution-project-import-origins/v1',
+        'project_origins_checked_before_module_execution': True, 'denials': [],
+        'project_imports': [{'module': 'ipfs_accelerate_py.fixture', **tool,
+            'execution_profile': 'compiled_exact_authenticated_source_bytes'}]}
+    with pytest.raises(health.ExecutorHealthError, match='installed_tool_is_not_project_source'):
+        health._origins(origins, case['profile'])
+
+
+
+def test_process_identity_rechecks_installed_tool_pin(tmp_path):
+    case = _base_profile(tmp_path)
+    profile_ref = _publish_profile(case)
+    case['process']['environment']['IPFS_NATIVE_EXECUTOR_PROFILE_SHA256'] = profile_ref['sha256']
+    for source in case['profile']['source_descriptors']:
+        if source['path'] == case['profile']['unit']['interpreter']:
+            source['sha256'] = 'f' * 64
+    with pytest.raises(health.ExecutorHealthError, match='descriptor_changed'):
+        health._identity(profile_ref, case['profile'], lambda _: case['manager'], lambda _: case['process'])
+
+
+
+def test_receipt_project_origins_cannot_claim_installed_interpreter(cycle_case):
+    case = cycle_case
+    case['receipt']['origins']['ipfs_accelerate_py.fake_tool_module'] = health.installed_tool_descriptor(Path(sys.executable).resolve())
+    _write_evidence(case)
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['reason'] == 'producer_import_origins_unbound'
+
+
+
+def _import_git_fixture(root, route):
+    relative='ipfs_accelerate_py/agent_implementation_route.py'
+    sql=['ipfs_accelerate_py/agent_supervisor/task_sources/sql/'+name for name in (
+        '0001_control_plane.sql','0002_causal_event_federation_core.sql',
+        '0003_state_server_restart_identity.sql','0004_hash_observations.sql','0005_tasks_index_repair.sql')]
+    blobs=[{'relative_path':relative,'object_id':'0'*40,'bytes':route['bytes']}]
+    blobs.extend({'relative_path':name,'object_id':str(index)*40,'bytes':1} for index,name in enumerate(sql,2))
+    return {'blobs':blobs,
+        'ls_tree_tail':['ls-tree','-r','-z','1'*40,'--','ipfs_accelerate_py',
+            'scripts/ops/agent_supervisor/configured_board_scheduler.py',
+            'scripts/ops/agent_supervisor/implementation_supervisor_entry.py'],
+        'payload_bytes':route['bytes']+5,'required_relative_files':[relative,*sql],'route_source':route,
+        'scope':'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies',
+        'selected_file_count':6,'source_head':'1'*40,'source_root':str(root),'unique_blob_count':6}
+
+
+@pytest.mark.parametrize('mutation',['head','route_source','old_cli_schema'])
+def test_embedded_idle_requires_the_original_import_source_generation_contract(cycle_case,mutation):
+    case=_embedded_idle_shape(cycle_case)
+    command=case['plan']['native_metadata_cli'];git=command['import_head_capsule_Git']
+    if mutation=='head':git['source_head']='not-an-immutable-head'
+    elif mutation=='route_source':case['request']['source_sha256'].pop(git['route_source']['path'])
+    else:command['schema']='native-embedded-scoped-observation-cli/v1'
+    _write_evidence(case)
+    result=_verify(case,profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['scope']=='none'
+    assert result['dispatch_authority'] is False and result['completion_authority'] is False
+
+
+
+def test_group_writable_database_data_does_not_relax_control_or_source_readers(tmp_path):
+    path=tmp_path/'owner-data.json';raw=b'{"explicit_data_fixture":true}\n'
+    path.write_bytes(raw);path.chmod(0o664)
+    ref=health.database_descriptor(path)
+    assert ref=={'path':str(path),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+    assert health.MAX_DATABASE_DATA_BYTES==128*1024**2
+    with pytest.raises(health.ExecutorHealthError,match='unsafe_or_oversized_file'):
+        health._document(ref)
+    with pytest.raises(health.ExecutorHealthError,match='unsafe_or_oversized_file'):
+        health.descriptor(path)
+    path.chmod(0o666)
+    with pytest.raises(health.ExecutorHealthError,match='unsafe_or_oversized_database_data'):
+        health.database_descriptor(path)
+
+
+@pytest.mark.parametrize('case',['relative','directory','alias','oversized'])
+def test_database_data_descriptor_reuses_path_and_bounded_regular_file_fences(tmp_path,monkeypatch,case):
+    path=tmp_path/'data.bin';path.write_bytes(b'explicit small byte fixture')
+    if case=='relative':
+        offered='relative-data.bin';reason='aliased_or_relative_path'
+    elif case=='directory':
+        offered=tmp_path;reason='unsafe_or_oversized_database_data'
+    elif case=='alias':
+        # Exercise the existing alias fence without adding a second special
+        # symlink fixture outside the original owning harness's admitted pair.
+        original=Path.is_symlink
+        monkeypatch.setattr(Path,'is_symlink',lambda item:True if item==path else original(item))
+        offered=path;reason='aliased_or_relative_path'
+    else:
+        monkeypatch.setattr(health,'MAX_DATABASE_DATA_BYTES',len(path.read_bytes())-1)
+        offered=path;reason='unsafe_or_oversized_database_data'
+    with pytest.raises(health.ExecutorHealthError,match=reason):
+        health.database_descriptor(offered)
