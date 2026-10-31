@@ -220,6 +220,7 @@ class GuardedProjectImports:
             read_pin({k: row[k] for k in ('path', 'bytes', 'sha256')})
             module = sys.modules.get(name)
             if module is not None:
+                need(row.get('execution_status') != 'resolution_only', 'loaded project module lacks authenticated execution')
                 need(Path(module.__file__).resolve(strict=True) == Path(row['path']), 'loaded project module origin changed')
         return write_new_or_exact(self.directory / ('project-import-origins-' + label + '.json'), encoded({
             'schema': 'legal-ir-pre-execution-project-import-origins/v1', 'label': label,

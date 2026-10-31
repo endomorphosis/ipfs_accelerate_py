@@ -444,3 +444,21 @@ def test_reresolving_different_authenticated_pin_is_refused(guard,tmp_path,monke
     with pytest.raises(ImportError,match='project_resolution_changed'):
         finder.find_spec('ipfs_accelerate_py.probe')
     assert finder.project_origins[spec.name]==original and module.answer==47
+
+
+@pytest.mark.parametrize('ambient',[False,True],ids=['present-before-exec','ambient-body-outside-guard'])
+def test_resolution_only_present_module_cannot_escape_execution_provenance(guard,tmp_path,monkeypatch,ambient):
+    finder,source=_resolution_case(guard,tmp_path,monkeypatch,'outside_guard = True\n')
+    spec=finder.find_spec('ipfs_accelerate_py.probe');module=_resolution_module(spec)
+    # Both a premature module registration and actual ambient execution must
+    # remain unqualified. This explicit private fixture is not native health.
+    with monkeypatch.context() as context:
+        context.setitem(sys.modules,spec.name,module)
+        if ambient:
+            exec(compile(source.read_bytes(),str(source),'exec'),module.__dict__)
+            assert module.outside_guard is True
+        with pytest.raises(ValueError,match='loaded project module lacks authenticated execution'):
+            finder.checkpoint('present-resolution-only')
+    assert finder.project_origins[spec.name]['execution_status']=='resolution_only'
+    assert 'execution_profile' not in finder.project_origins[spec.name]
+    assert not (finder.directory/'project-import-origins-present-resolution-only.json').exists()
