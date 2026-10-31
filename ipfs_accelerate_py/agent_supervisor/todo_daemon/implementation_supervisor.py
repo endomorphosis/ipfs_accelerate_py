@@ -11327,6 +11327,8 @@ class PortalImplementationSupervisor:
 
         def request_stop(signum: int, _frame: object) -> None:
             nonlocal stop_signal
+            if stop_signal is not None:
+                return
             stop_signal = signum
             raise SystemExit(128 + signum)
 
