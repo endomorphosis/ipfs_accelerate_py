@@ -77,6 +77,285 @@ class ExecutorHold(ValueError):
     """A cycle cannot be replayed or silently discarded."""
 
 
+ADMISSION_SCHEMA = 'agent-supervisor/scientific-source-admission-recovery@1'
+ADMISSION_ACK_SCHEMA = 'agent-supervisor/scientific-source-admission-reconciliation@1'
+ADMISSION_SHA_ENV = 'IPFS_SCIENTIFIC_SOURCE_ADMISSION_RECOVERY_SHA256'
+MAX_CONSECUTIVE_SOURCE_ADMISSION_DEFERRALS = 3
+ADMISSION_KEYS = frozenset({'schema','authorization','profile_ref','prior_profile_ref','prior_profile_snapshot_ref',
+    'prior_config_snapshot_ref','prior_main_identity','prior_generation_authorization_ref','prior_generation_ack_ref',
+    'prior_health_receipt_ref','global_hold_ref','cycle_hold_ref','failed_intent_ref','failed_request_ref','failed_stdout_ref',
+    'negative_audit_ref','scheduler_snapshot_ref','current_native_ref','source_commitment_ref','spent_cycle_count',
+    'generation_number','max_generations','max_cycles','max_proof_bytes','recorded_at','manager_before'})
+
+
+class SourceAdmissionDeferred(ExecutorHold):
+    """An immutable negative; this carries no health or execution credit."""
+
+
+def source_admission_PID_absent(pid):
+    """Only an actual missing proc entry means absent; unreadable is UNKNOWN."""
+    try: (Path('/proc')/str(pid)).lstat()
+    except (FileNotFoundError,ProcessLookupError):return True
+    except OSError as error:raise ExecutorHold('source_admission_PID_observation_unknown')from error
+    return False
+
+
+def source_admission_terminal(terminal, request_ref, request, cycle_root, *, captured_owner=None):
+    """Recognize only the original closed pre-resource source-admission timeout.
+
+    A historical terminal without owner_birth requires literal PID absence on
+    the same boot. A newly running caller can additionally join its captured
+    live original-owner identity; this never fabricates a missing terminal field.
+    """
+    h=health_owner();root=Path(cycle_root)
+    need(type(terminal)is dict and terminal.get('schema')=='legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256')==request_ref['sha256'] and terminal.get('completed')is False
+         and terminal.get('error_type')=='SourceLeaseTimeout'
+         and terminal.get('error')=='timed out waiting for admission source lease'
+         and terminal.get('control_effects')=='not_started' and terminal.get('storage_status')=='not_requested'
+         and terminal.get('child_launch_attempted')is False and terminal.get('child_reaped')is False
+         and terminal.get('child_returncode')is None and terminal.get('source_READ_closed')is True
+         and terminal.get('original_native_compute_closed')is True
+         and terminal.get('absolute_resource_operation_deadline_closed')is True
+         and terminal.get('task_completion_authority_granted_by_resource_owner')is False
+         and terminal.get('cleanup_errors')==[] and terminal.get('received_signals')==[],
+         'source_admission_terminal_not_exact_closed_negative')
+    need(not any(key in terminal for key in ('reservation','execution_request','process_spawn_receipts','sampled_process_custody_final','sampled_process_custody','external_precharge','external_before','external_after','external_output_parent_identities','parent_capacity_handoff','database_preimage_before_grants','database_preimage_observed','database_postimage','allowed_subprocess_events')),
+         'source_admission_terminal_has_resource_or_process_effects')
+    need(request.get('schema')=='legal-ir-original-native-control-request/v1'and request.get('purpose')=='native_control_metadata'
+         and request.get('request_id')=='scientific-executor:'+root.name
+         and request_ref['path']==str(root/'request.json')
+         and h._integer(terminal.get('owner_pid'),2) and h._text(terminal.get('owner_boot_id')),
+         'source_admission_request_or_owner_identity')
+    need(all(type(request.get(k))is int and request[k]==v for k,v in dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300).items())
+         and request.get('resource_ledger')==str(ORIGINAL_RESOURCE_LEDGER),'source_admission_original_native_envelope_changed')
+    boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(terminal['owner_boot_id']==boot,'source_admission_owner_boot_changed')
+    attempt=h._path(request['attempt_directory'])
+    need(root in attempt.parents and (not os.path.lexists(attempt)or
+         stat.S_ISDIR(attempt.lstat().st_mode)and not attempt.is_symlink()and attempt.lstat().st_uid==os.geteuid()
+         and stat.S_IMODE(attempt.lstat().st_mode)==0o700 and not any(attempt.iterdir())),
+         'source_admission_attempt_not_absent_or_empty')
+    need(not any((root/name).exists()for name in ('terminal.json','cycle-proof.json','closed.json','native-diagnostic.json')),
+         'source_admission_has_positive_or_native_evidence')
+    if captured_owner is None:
+        # No birth is invented or inferred for the actual historical terminal.
+        need(source_admission_PID_absent(terminal['owner_pid']),'source_admission_birthless_owner_PID_not_absent')
+    else:
+        need(captured_owner.get('pid')==terminal['owner_pid']and captured_owner.get('boot_id')==boot
+             and h._integer(captured_owner.get('birth_ticks'),1)
+             and h._definitely_dead_identity(captured_owner,dict(boot_id=boot)),
+             'source_admission_captured_owner_not_joined_or_still_live')
+        if 'owner_birth'in terminal:
+            need(terminal['owner_birth']==str(captured_owner['birth_ticks']),'source_admission_original_birth_differs')
+    return terminal
+
+
+def source_admission_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode):
+    """Retain one proved nonstarted negative after the genuine original wait."""
+    h=health_owner()
+    need(kind=='genuine_scoped_idle'and type(returncode)is int and returncode!=0
+         and type(process)is subprocess.Popen and process.returncode==returncode and process.poll()is not None,
+         'source_admission_deferral_requires_original_reaped_idle_owner')
+    terminal=original_terminal(h._raw(root/'owner.stdout'),request_ref)
+    source_admission_terminal(terminal,request_ref,request,root,captured_owner=cycle_fields['owner_observation'])
+    need(cycle_fields['owner_observation']['argv']==[profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
+         '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
+         and request['source_sha256'].get(profile['owner_source']['path'])==profile['owner_source']['sha256']
+         and request['source_sha256'].get(profile['driver_source']['path'])==profile['driver_source']['sha256'],
+         'source_admission_original_owner_source_argv')
+    negative=put(root/'admission-terminal-negative.json',terminal)
+    return put(root/'admission-deferred.json',dict(schema='agent-supervisor/scientific-source-admission-deferred@1',
+        request_ref=request_ref,terminal_ref=negative,original_wait_returncode=returncode,
+        sequence=cycle_fields['sequence'],captured_owner=cycle_fields['owner_observation'],
+        process=cycle_fields['process'],recorded_at=time.time(),health_sequence_advanced=False,
+        health_or_task_completion_authority=False,automatic_retry_of_original_request=False))
+
+
+
+
+def source_admission_unit_projection(argv, entrypoint):
+    """Only producer/config pointers and the one explicit recovery mode may move."""
+    need(type(argv)is list and argv.count(entrypoint)==1 and argv.count('--config')==argv.count('--config-sha256')==1,'source_admission_unit_argv_shape')
+    result=list(argv);result[result.index(entrypoint)]='<producer>'
+    for flag in ('--config','--config-sha256'):result[result.index(flag)+1]='<config>'
+    flags=[flag for flag in ('--bounded-generation-handover','--known-source-admission-recovery')if flag in result]
+    need(len(flags)==1 and result.count(flags[0])==1,'source_admission_unit_recovery_mode')
+    index=result.index(flags[0]);need(index+1<len(result),'source_admission_unit_recovery_path');del result[index:index+2]
+    return result
+
+
+def source_admission_source_inventory(reference, profile):
+    """Reuse bounded committed-inventory joins for producer-only source repair.
+
+    Native owner/driver/cache may retain the already-qualified H root. Every
+    selected Python source under the new producer root, including real package
+    initializers, must be inventory-bound; no SDK cache generation is changed.
+    """
+    h=health_owner();source=h._document(reference);producer=Path(profile['main_entrypoint']['path']).parents[3]
+    need(source.get('schema')=='legal-ir-scientific-source-commitment/v1'and source.get('runtime_activation_or_task_authority')is False
+         and source.get('source_root')==str(producer),'source_admission_source_commitment')
+    invref=source['source_inventory'];need(any(root in Path(invref['path']).parents for root in ORIGINAL_NAMED_ROOTS),'source_admission_inventory_not_durable')
+    inventory=h._document(invref);rows=inventory.get('files')
+    need(inventory.get('schema')=='legal-ir-scientific-source-inventory/v1'
+         and all(inventory.get(k)==source.get(k)for k in ('source_root','source_commit','source_tree'))
+         and all(type(source.get(k))is str and len(source[k])==40 and set(source[k])<=set('0123456789abcdef')for k in ('source_commit','source_tree'))
+         and type(rows)is list and 0<len(rows)<=4096 and inventory.get('file_count')==len(rows)
+         and all(type(row)is dict and type(row.get('path'))is str for row in rows),'source_admission_inventory_shape')
+    indexed={row['path']:row for row in rows};selected=[pin for pin in profile['source_descriptors']if Path(pin['path']).is_relative_to(producer)and Path(pin['path']).suffix=='.py']
+    parents=[producer/'ipfs_accelerate_py/__init__.py',producer/'ipfs_accelerate_py/agent_supervisor/__init__.py',producer/'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py']
+    need(len(indexed)==len(rows)and len(selected)==4 and profile['main_entrypoint']in selected
+         and {pin['path']for pin in selected}=={profile['main_entrypoint']['path'],*(str(path)for path in parents)}
+         and all(all(indexed.get(pin['path'],{}).get(k)==pin[k]for k in ('path','bytes','sha256'))for pin in selected),
+         'source_admission_producer_or_parent_source_inventory_changed')
+    return inventory
+
+
+def _validate_source_admission_recovery(value, profile_ref, profile, config):
+    """Same-root producer repair; preserve consumed generation and physical cycles."""
+    h=health_owner();h._keys(value,ADMISSION_KEYS,'source_admission_recovery_shape')
+    need(value['schema']==ADMISSION_SCHEMA and value['authorization']=='resume_idle_after_closed_source_admission_timeout'
+         and value['profile_ref']==profile_ref and h._profile(profile_ref)==profile,'source_admission_recovery_authority')
+    now=time.time()
+    need(h._number(value['recorded_at'])and 0<=now-value['recorded_at']<=profile['max_age_seconds']
+         and type(value['manager_before'])is dict and value['manager_before'].get('Id')==profile['unit']['name']
+         and value['manager_before'].get('MainPID')=='0'
+         and value['manager_before'].get('ActiveState')in('failed','inactive'),'source_admission_admin_clock_or_manager')
+    for field in ('prior_profile_snapshot_ref','prior_config_snapshot_ref','negative_audit_ref','scheduler_snapshot_ref','current_native_ref','source_commitment_ref'):
+        need(not Path(value[field]['path']).lstat().st_mode&0o222,'source_admission_control_snapshot_not_frozen')
+    prior=h._document(value['prior_profile_snapshot_ref']);oldconfig=h._document(value['prior_config_snapshot_ref'])
+    need(_same_payload(value['prior_profile_snapshot_ref'],value['prior_profile_ref'])
+         and profile['proof_root']==prior['proof_root'] and profile['receipt_path']!=prior['receipt_path']
+         and Path(profile['proof_root']) in Path(profile['receipt_path']).parents
+         and not os.path.lexists(profile['receipt_path']),'source_admission_same_root_new_health_epoch')
+    for key in ('catalogue','task_scope','max_age_seconds','max_cycle_seconds','cycle_contract'):
+        need(profile[key]==prior[key],'source_admission_scope_changed')
+    for role in ('health_module','owner_source','driver_source'):
+        need(profile[role]==prior[role],'source_admission_backend_or_verifier_descriptor_changed')
+    need(all(pin in profile['source_descriptors']for pin in prior['source_descriptors']),
+         'source_admission_original_native_source_pin_removed')
+    need(profile['unit']['name']==prior['unit']['name']and profile['unit']['interpreter']==prior['unit']['interpreter']
+         and profile['unit']['working_directory']==prior['unit']['working_directory'], 'source_admission_unit_scope_changed')
+    oldargv=prior['unit']['argv'];oldconfigpath=oldargv[oldargv.index('--config')+1]
+    oldconfigpin=next(pin for pin in prior['source_descriptors']if pin['path']==oldconfigpath)
+    need(_same_payload(value['prior_config_snapshot_ref'],oldconfigpin)and oldconfigpin['sha256']==oldargv[oldargv.index('--config-sha256')+1], 'source_admission_prior_configuration_snapshot')
+    need(source_admission_unit_projection(profile['unit']['argv'],profile['main_entrypoint']['path'])==source_admission_unit_projection(prior['unit']['argv'],prior['main_entrypoint']['path']),'source_admission_unit_command_broadened')
+    need(profile['unit']['environment']==prior['unit']['environment'],'source_admission_unit_environment_changed')
+    need(oldconfig['execution_templates']==config['execution_templates']==[]
+         and oldconfig['idle_template_ref']==config['idle_template_ref']
+         and all(config[k]==oldconfig[k]for k in ('catalogue','max_cycles','max_proof_bytes','poll_seconds'))
+         and value['max_cycles']==config['max_cycles']and value['max_proof_bytes']==config['max_proof_bytes'],
+         'source_admission_budgets_or_task_authority_changed')
+    auth=h._document(value['prior_generation_authorization_ref']);ack=h._document(value['prior_generation_ack_ref'])
+    need(auth['schema']==GENERATION_SCHEMA and auth['generation_number']==ack['generation_number']==value['generation_number']==2
+         and auth['max_generations']==ack['max_generations']==value['max_generations']==2
+         and ack['schema']=='agent-supervisor/scientific-bounded-generation-ack@1'
+         and ack['handover_ref']==value['prior_generation_authorization_ref']
+         and value['prior_generation_ack_ref']['path']==str(Path(profile['proof_root'])/'bounded-generation-handover.json')
+         and ack['spent_cycle_count']==auth['spent_cycle_count']and ack['next_cycle_number']==auth['spent_cycle_count']+1
+         and auth['profile_ref']==value['prior_profile_ref']and ack['consuming_main_identity']==value['prior_main_identity'],
+         'source_admission_consumed_generation_changed')
+    need(oldargv.count('--bounded-generation-handover')==1 and oldargv[oldargv.index('--bounded-generation-handover')+1]==value['prior_generation_authorization_ref']['path']
+         and type(auth['retained_generations'])is list and len(auth['retained_generations'])==1,'source_admission_prior_generation_authority_join')
+    for ref in auth['retained_generations']:_generation_census(ref)
+    oldtemplate=h._document(config['idle_template_ref']);oldplan=h._document(oldtemplate['plan_ref'])
+    need(oldplan['native_metadata_cli'].get('schema')=='native-embedded-scoped-observation-cli/v3'
+         and oldplan['native_metadata_cli'].get('source_capsule_ref')==auth['source_capsule_ref']
+         and auth['source_capsule_ref']in profile['source_descriptors'],'source_admission_original_cache_binding_changed')
+    need(auth['global_max_bytes']==GLOBAL_RETAINED_BYTES,'source_admission_global_budget_changed')
+    root=Path(profile['proof_root']);base=ack['spent_cycle_count'];spent=value['spent_cycle_count']
+    need(h._integer(base,1)and h._integer(spent,base+1,config['max_cycles']-1),'source_admission_spent_count')
+    cycles=list(root.glob('cycle-*'));numbers={}
+    for cycle in cycles:
+        intent=h._document(h.descriptor(cycle/'intent.json'));number=intent.get('cycle_number',intent.get('sequence'))
+        need(h._integer(number,base+1,spent)and cycle.name.startswith('cycle-%08d-'%number)and number not in numbers,
+             'source_admission_cycle_number_changed')
+        numbers[number]=(cycle,intent)
+    need(set(numbers)==set(range(base+1,spent+1))and len(cycles)+base==spent,'source_admission_spent_history_reset_or_gap')
+    old_identity=value['prior_main_identity'];h._stored_identity(old_identity,value['prior_profile_ref'],prior)
+    boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(old_identity['boot_id']==boot and source_admission_PID_absent(old_identity['pid']),
+         'source_admission_original_Main_PID_not_absent_same_boot')
+    for number,(cycle,intent)in numbers.items():
+        need(intent.get('kind')=='genuine_scoped_idle'and intent.get('automatic_retry_admitted')is False,'source_admission_non_idle_history')
+        if number==spent:continue
+        closed=h._document(h.descriptor(cycle/'closed.json'));proof_ref=closed['cycle_proof_ref'];proof=h._document(proof_ref)
+        need(proof_ref['path']==str(cycle/'cycle-proof.json')and proof['request_ref']==intent['request_ref']
+             and proof['sequence']==intent['sequence'],'source_admission_historical_proof_join')
+        native=h._document(proof['native_diagnostic_ref'])
+        h._cycle(proof_ref,prior,old_identity,h._native(native,prior,now=proof['finished_at']),
+                 now=proof['finished_at'],monotonic_ns=proof['finished_monotonic_ns'])
+    need(value['prior_health_receipt_ref']['path']==prior['receipt_path'],'source_admission_prior_health_path')
+    receipt=h._document(value['prior_health_receipt_ref']);need(receipt['cycle_proof_ref']['path']==str(numbers[spent-1][0]/'cycle-proof.json')
+         and receipt['sequence']==numbers[spent-1][1]['sequence']==numbers[spent][1]['sequence']-1,'source_admission_latest_health_cycle_join')
+    native=h._document(h._document(receipt['cycle_proof_ref'])['native_diagnostic_ref'])
+    h._receipt(value['prior_health_receipt_ref'],value['prior_profile_ref'],prior,h._native(native,prior,now=receipt['observed_at']),
+               old_identity,now=receipt['observed_at'],monotonic_ns=receipt['observed_monotonic_ns'])
+    failed,intent=numbers[spent]
+    need(value['failed_intent_ref']['path']==str(failed/'intent.json')and h._document(value['failed_intent_ref'])==intent
+         and value['failed_request_ref']==intent['request_ref']and value['failed_stdout_ref']['path']==str(failed/'owner.stdout'),
+         'source_admission_failed_cycle_artifact_join')
+    request=h._document(value['failed_request_ref']);terminal=original_terminal(h._bound(value['failed_stdout_ref']),value['failed_request_ref'])
+    source_admission_terminal(terminal,value['failed_request_ref'],request,failed)
+    need(request['source_sha256'].get(prior['owner_source']['path'])==prior['owner_source']['sha256']
+         and request['source_sha256'].get(prior['driver_source']['path'])==prior['driver_source']['sha256']
+         and request['source_roots']==[str(ORIGINAL_NAMED_ROOTS[0].parents[1]),'/home/barberb/lift_coding/external/ipfs_accelerate'],
+         'source_admission_original_owner_or_source_roots_changed')
+    need(value['global_hold_ref']['path']==str(root/'executor-held.json')and value['cycle_hold_ref']['path']==str(failed/'cycle-held.json'),
+         'source_admission_hold_paths_changed')
+    global_hold=h._document(value['global_hold_ref']);cycle_hold=h._document(value['cycle_hold_ref'])
+    need(global_hold.get('cycle_root')==str(failed)and global_hold.get('reason')=='original_owner_failed'
+         and cycle_hold.get('reason')=='original_owner_failed'and global_hold.get('automatic_retry_admitted')is False
+         and cycle_hold.get('automatic_retry_admitted')is False,'source_admission_original_holds_changed')
+    audit=h._document(value['negative_audit_ref']);need(audit.get('schema')=='scientific-nonstarted-source-admission-independent-negative/v1'
+         and audit.get('accepted_as_known_nonstarted_negative')is True and audit.get('accepted_as_runtime_health')is False
+         and audit.get('no_child_native_storage_or_control_effects')is True and audit.get('attempt_directory_empty')is True
+         and audit.get('same_boot_literal_Main_PID_absence_verified')is True
+         and audit.get('same_boot_literal_owner_PID_absence_verified')is True and audit.get('owner_birth_not_present_or_fabricated')is True
+         and audit.get('prior_profile_ref')==value['prior_profile_ref']
+         and audit.get('prior_health_receipt_ref')==value['prior_health_receipt_ref']
+         and audit.get('prior_generation_authorization_ref')==value['prior_generation_authorization_ref']
+         and audit.get('prior_generation_ack_ref')==value['prior_generation_ack_ref']
+         and audit.get('spent_cycle_count')==spent and audit.get('historical_carried_cycle_count')==base
+         and audit.get('local_cycle_count')==len(cycles)and audit.get('recovery_or_retry_authority')is False
+         and audit.get('request_ref')==value['failed_request_ref']and audit.get('owner_stdout_ref')==value['failed_stdout_ref']
+         and audit.get('global_hold_ref')==value['global_hold_ref']and audit.get('cycle_hold_ref')==value['cycle_hold_ref'],
+         'source_admission_independent_negative_artifact_join')
+    _recovery_scheduler(request,value['scheduler_snapshot_ref'])
+    fresh=h._document(value['current_native_ref']);h._native(fresh,profile)
+    need(select_template(config,profile,fresh)[1]=='genuine_scoped_idle','source_admission_current_scope_not_quiet')
+    source_admission_source_inventory(value['source_commitment_ref'],profile)
+    check_proof_budget(root,config['max_proof_bytes'],reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,reserve_files=REUSE_CYCLE_RESERVE_FILES)
+    return spent
+
+
+def authorize_source_admission_recovery(spec_ref, output):
+    """One explicit source-qualified administrative grant; no start or rearm."""
+    h=health_owner();spec=h._document(spec_ref);h._keys(spec,ADMISSION_KEYS-{'recorded_at','manager_before'},'source_admission_spec')
+    profile=h._profile(spec['profile_ref']);config_pin=next(pin for pin in profile['source_descriptors']if pin['path']==profile['unit']['argv'][profile['unit']['argv'].index('--config')+1])
+    config,profile_ref,_=load_configuration(config_pin);manager=h._manager(profile['unit']['name'])
+    need(manager.get('MainPID')=='0'and manager.get('ActiveState')in('failed','inactive'),'source_admission_admin_requires_no_Main')
+    value=dict(spec,recorded_at=time.time(),manager_before=manager);_validate_source_admission_recovery(value,profile_ref,profile,config)
+    output=h._path(str(output));need(Path(profile['proof_root'])in output.parents,'source_admission_grant_outside_same_root')
+    ref=put(output,value);output.chmod(0o400);return ref
+
+
+def reconcile_source_admission_recovery(reference, profile_ref, profile, config, opening_identity):
+    h=health_owner();value=h._document(reference)
+    need(os.environ.get(ADMISSION_SHA_ENV)==reference['sha256'],'source_admission_grant_not_unit_pinned')
+    argv=profile['unit']['argv'];flag='--known-source-admission-recovery'
+    need(argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path']
+         and not any(x in argv for x in ('--known-nonstarted-recovery','--known-closed-idle-recovery','--bounded-generation-handover'))
+         and not Path(reference['path']).lstat().st_mode&0o222,'source_admission_grant_argv_or_mode')
+    spent=_validate_source_admission_recovery(value,profile_ref,profile,config)
+    acknowledgement=dict(schema=ADMISSION_ACK_SCHEMA,recovery_ref=reference,consuming_main_identity=opening_identity,
+        retained_global_hold_ref=value['global_hold_ref'],retained_cycle_hold_ref=value['cycle_hold_ref'],spent_cycle_count=spent,
+        next_cycle_number=spent+1,generation_number=value['generation_number'],max_generations=value['max_generations'],
+        initial_consecutive_admission_failures=1,no_health_or_task_credit_for_failed_cycle=True)
+    put(Path(profile['proof_root'])/'source-admission-reconciliation.json',acknowledgement)
+    return spent,1
+
+
 def health_owner():
     from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health
     return native_executor_health
@@ -869,7 +1148,16 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
                 need(stdout_path.stat().st_size <= h.MAX_JSON and stderr_path.stat().st_size <= h.MAX_JSON,
                     'original_owner_output_bound')
                 stop.wait(0.1)
-            need(process.wait() == 0, 'original_owner_failed')
+            original_returncode=process.wait()
+            if original_returncode!=0 and kind=='genuine_scoped_idle' and not stop.is_set():
+                try:
+                    request=h._document(request_ref)
+                    witness=source_admission_deferral(profile,request_ref,request,root,kind,process,h.cycle_start_fields(handle),original_returncode)
+                except ExecutorHold:
+                    pass
+                else:
+                    raise SourceAdmissionDeferred(witness['path'])
+            need(original_returncode == 0, 'original_owner_failed')
         terminal_ref = put(root / 'terminal.json', original_terminal(h._raw(stdout_path), request_ref))
         native = observe_native(config)
         native_ref = put(root / 'native-diagnostic.json', native)
@@ -884,6 +1172,8 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
             sequence=sequence, cycle_handle=handle)
         put(root / 'closed.json', {'cycle_proof_ref': proof_ref, 'receipt_ref': receipt_ref})
         return receipt_ref
+    except SourceAdmissionDeferred:
+        raise
     except BaseException as exc:
         # A signal is handed to the original owner, which owns cancellation and
         # custody. No synthetic closure, SIGKILL, reservation release or replay.
@@ -1182,11 +1472,14 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None):
     with os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'rb') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         reconciled_count = 0
+        consecutive_admission_failures = 0
+        retained_census_refs = []
         need(recovery_ref is None or generation_ref is None,'generation_recovery_modes_crossed')
         if generation_ref is not None:
             need(not os.path.lexists(root/'executor-held.json') and not any(root.glob('cycle-*')), 'generation_target_not_fresh')
             opening_identity=require_main_process(profile_ref,profile)
             reconciled_count=reconcile_bounded_generation_handover(generation_ref,profile_ref,profile,config,opening_identity)
+            retained_census_refs = [h._document(generation_ref)['retained_census_ref']]
         elif recovery_ref is None:
             need(not os.path.lexists(root / 'executor-held.json'), 'persistent_hold_requires_original_reconciliation')
             need(not any(not (path / 'closed.json').exists() for path in root.glob('cycle-*')), 'unfinished_cycle_requires_original_reconciliation')
@@ -1194,7 +1487,11 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None):
         else:
             opening_identity = require_main_process(profile_ref, profile)
             kind = h._document(recovery_ref).get('schema')
-            if kind == RECOVERY_SCHEMA:
+            if kind == ADMISSION_SCHEMA:
+                reconciled_count,consecutive_admission_failures = reconcile_source_admission_recovery(recovery_ref,profile_ref,profile,config,opening_identity)
+                retained_generation = h._document(h._document(recovery_ref)['prior_generation_authorization_ref'])
+                retained_census_refs = list(retained_generation['retained_generations'])
+            elif kind == RECOVERY_SCHEMA:
                 reconciled_count = reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, opening_identity)
             else:
                 need(kind == CLOSED_IDLE_SCHEMA, 'unknown_typed_recovery')
@@ -1214,16 +1511,16 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None):
                 need(h._document(config_ref) == config and h._profile(profile_ref) == profile,
                     'service_binding_changed')
                 need(require_main_process(profile_ref, profile) == opening_identity, 'service_main_identity_changed')
-                if generation_ref is not None:
-                    retained=h._document(generation_ref)
-                    _generation_census(retained['retained_census_ref'])
+                for retained_census_ref in retained_census_refs:
+                    _generation_census(retained_census_ref)
                 check_proof_budget(root, config['max_proof_bytes'])
                 native = observe_native(config)
                 template_ref, kind = select_template(config, profile, native)
-                if recovery_ref is None and generation_ref is None:
+                if recovery_ref is None and generation_ref is None and cycle_number == sequence:
                     run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop)
                 else:
                     run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, cycle_number=cycle_number)
+                consecutive_admission_failures = 0
                 sequence += 1
                 cycle_number += 1
                 # An approved execution is one finite action. A fresh explicit
@@ -1231,6 +1528,15 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None):
                 if kind != 'genuine_scoped_idle':
                     persistent_hold(root, root, 'approved_execution_closed_no_automatic_followup')
                     return HOLD_EXIT
+            except SourceAdmissionDeferred as deferred:
+                consecutive_admission_failures += 1
+                failed_cycle_number = cycle_number
+                cycle_number += 1
+                if consecutive_admission_failures >= MAX_CONSECUTIVE_SOURCE_ADMISSION_DEFERRALS:
+                    persistent_hold(root, Path(str(deferred)).parent, 'source_admission_consecutive_defer_bound')
+                    _recovery_failure(root, failed_cycle_number, sequence, 'source_admission_consecutive_defer_bound')
+                    return HOLD_EXIT
+                # Negative physical attempt consumed; no health sequence/publication.
             except Exception as exc:
                 persistent_hold(root, root, str(exc))
                 if (recovery_ref is not None or generation_ref is not None) and str(exc)!='proof_projected_storage_bound':
@@ -1251,11 +1557,14 @@ def main(argv=None):
     recovery_flags.add_argument('--known-nonstarted-recovery')
     recovery_flags.add_argument('--known-closed-idle-recovery')
     recovery_flags.add_argument('--bounded-generation-handover')
+    recovery_flags.add_argument('--known-source-admission-recovery')
     args = parser.parse_args(argv)
     # This is set before any project import, including file-path invocation.
     os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
     if __package__ in (None, ''):
-        sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+        producer_root = str(Path(__file__).resolve().parents[3])
+        if producer_root in os.environ.get('PYTHONPATH','').split(os.pathsep):
+            sys.path.insert(0, producer_root)
     stop = threading.Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stop.set())
@@ -1264,7 +1573,7 @@ def main(argv=None):
         config_ref = health_owner().descriptor(args.config)
         need(config_ref['sha256'] == args.config_sha256, 'service_config_digest')
         recovery_ref = None
-        recovery_path = args.known_nonstarted_recovery or args.known_closed_idle_recovery
+        recovery_path = args.known_nonstarted_recovery or args.known_closed_idle_recovery or args.known_source_admission_recovery
         if recovery_path:
             recovery_ref = health_owner().descriptor(recovery_path)
         generation_ref = health_owner().descriptor(args.bounded_generation_handover) if args.bounded_generation_handover else None

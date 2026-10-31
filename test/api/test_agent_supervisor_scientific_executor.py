@@ -228,7 +228,17 @@ def test_unknown_or_failed_original_cycle_is_terminated_held_and_never_retried(s
     process = FixtureProcess()
     def fixture_spawn(*args, **kwargs): calls.append(args[0]); return process
     monkeypatch.setattr(executor.subprocess, 'Popen', fixture_spawn)
-    monkeypatch.setattr(health, 'track_original_cycle', lambda *args, **kwargs: object())
+    # This source-only failure fixture models both halves of the existing
+    # captured-cycle API; it does not claim a live Popen or health capability.
+    fixture_handle = object()
+    monkeypatch.setattr(health, 'track_original_cycle', lambda *args, **kwargs: fixture_handle)
+    def fixture_start_fields(offered):
+        assert offered is fixture_handle
+        return dict(sequence=1, process=dict(pid=123, birth_ticks=1,
+            boot_id='fixture-only', invocation_id='a'*32),
+            owner_observation=dict(pid=124, birth_ticks=2, boot_id='fixture-only'),
+            started_at=0.0, started_monotonic_ns=0)
+    monkeypatch.setattr(health, 'cycle_start_fields', fixture_start_fields)
     monkeypatch.setattr(health, 'publish_after_native_cycle', lambda *args, **kwargs: pytest.fail('failed cycle cannot publish'))
     if failure == 'signal': stop.set()
     elif failure == 'timeout':
