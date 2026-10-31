@@ -30,7 +30,7 @@ HELPER_MODULE = 'ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bo
 HELPER_REL = 'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py'
 SOURCE_MODULE = 'ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source'
 SOURCE_REL = 'ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py'
-GUARD_SHA = '1926462c717afdb265e28c90c7723e8ae04eabb27bc6e54ca73e8169cd27c45f'
+GUARD_SHA = '7a5ff06661eadcadeb9ce1c251cd4ef4c5fb0a890a1b0db1081989d3fd1ae199'
 PLAN_FIELDS = frozenset({'schema','operation','accelerate_root','task_scope','native_metadata_cli'})
 CLI_FIELDS = frozenset({'schema','runtime_root','cwd','attempt_directory','temporary_directory',
     'project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git'})

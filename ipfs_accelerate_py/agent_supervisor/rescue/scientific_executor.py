@@ -40,6 +40,17 @@ RECOVERY_ARCHIVE_FIELDS = ('prior_profile_snapshot_ref', 'activation_capture_ref
     'negative_audit_ref', 'memory_correction_ref', 'source_commitment_ref', 'scheduler_snapshot_ref')
 
 
+CLOSED_IDLE_SCHEMA = 'agent-supervisor/scientific-known-closed-idle-recovery@1'
+CLOSED_IDLE_SHA_ENV = 'IPFS_SCIENTIFIC_KNOWN_CLOSED_IDLE_RECOVERY_SHA256'
+CLOSED_IDLE_KEYS = frozenset({'schema', 'recovery_kind', 'profile_ref', 'prior_profile_ref',
+    'prior_profile_snapshot_ref', 'prior_authorization_ref', 'prior_ack_ref',
+    'prior_administrative_capture_ref', 'negative_audit_ref', 'source_commitment_ref',
+    'scheduler_snapshot_ref', 'current_native_ref', 'global_hold_ref', 'cycle_hold_ref',
+    'cycle_proof_ref', 'max_cycles', 'authorization', 'recorded_at', 'manager_before'})
+CLOSED_IDLE_ARCHIVE_FIELDS = ('prior_profile_snapshot_ref', 'prior_administrative_capture_ref',
+    'negative_audit_ref', 'source_commitment_ref', 'scheduler_snapshot_ref', 'current_native_ref')
+
+
 class ExecutorHold(ValueError):
     """A cycle cannot be replayed or silently discarded."""
 
@@ -452,6 +463,329 @@ def reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, openi
     return len(numbers)
 
 
+def _closed_idle_source_inventory(value, profile):
+    """Authenticate the adopted generation; historical owner/driver may differ."""
+    h = health_owner(); source = h._document(value['source_commitment_ref'])
+    source_root = Path(profile['owner_source']['path']).parents[3]
+    need(source.get('schema') == 'legal-ir-scientific-source-commitment/v1'
+         and source.get('runtime_activation_or_task_authority') is False
+         and source.get('source_root') == str(source_root), 'closed_idle_source_commitment')
+    inventory_ref = source['source_inventory']
+    need(Path(profile['proof_root']).parent in Path(inventory_ref['path']).parents,
+         'closed_idle_inventory_not_durable')
+    inventory = h._document(inventory_ref); rows = inventory.get('files')
+    need(inventory.get('schema') == 'legal-ir-scientific-source-inventory/v1'
+         and all(inventory.get(key) == source.get(key) for key in ('source_root', 'source_commit', 'source_tree'))
+         and all(type(source.get(key)) is str and len(source[key]) == 40
+                 and set(source[key]) <= set('0123456789abcdef') for key in ('source_commit', 'source_tree'))
+         and type(rows) is list and 0 < len(rows) <= 4096 and inventory.get('file_count') == len(rows)
+         and all(type(row) is dict and type(row.get('path')) is str for row in rows),
+         'closed_idle_inventory_shape')
+    indexed = {row['path']: row for row in rows}
+    selected = [pin for pin in profile['source_descriptors']
+                if Path(pin['path']).is_relative_to(source_root) and Path(pin['path']).suffix == '.py']
+    need(len(indexed) == len(rows)
+         and all(profile[field] in selected for field in ('main_entrypoint', 'health_module', 'owner_source', 'driver_source'))
+         and all(all(indexed.get(pin['path'], {}).get(key) == pin[key]
+                     for key in ('path', 'bytes', 'sha256')) for pin in selected),
+         'closed_idle_inventory_current_source_mismatch')
+
+
+def _closed_idle_origins(origins, prior, request, plan, negative):
+    """Historical incomplete execution provenance remains unlabelled; no health credit."""
+    h = health_owner()
+    need(type(origins) is dict and origins.get('schema') == 'legal-ir-pre-execution-project-import-origins/v1'
+         and origins.get('project_origins_checked_before_module_execution') is True
+         and origins.get('denials') == [], 'closed_idle_origin_guard_unknown')
+    rows = origins.get('project_imports'); pins = {pin['path']: pin for pin in prior['source_descriptors']}
+    need(type(rows) is list and 1 <= len(rows) <= 4096
+         and len({row.get('module') for row in rows if type(row) is dict}) == len(rows),
+         'closed_idle_origin_population')
+    missing = []
+    for row in rows:
+        need(type(row) is dict and h._text(row.get('module')), 'closed_idle_origin_shape')
+        pin = {key: row.get(key) for key in ('path', 'bytes', 'sha256')}
+        need(pins.get(row.get('path')) == pin and request['source_sha256'].get(pin['path']) == pin['sha256'],
+             'closed_idle_origin_unpinned')
+        h._bound_project_source(pin, prior)
+        if 'execution_profile' not in row:
+            missing.append(row)
+        else:
+            need(row['execution_profile'] == 'compiled_exact_authenticated_source_bytes',
+                 'closed_idle_origin_other_execution_state')
+    need(len(missing) == 1 and missing[0].get('module') == 'ipfs_datasets_py.ipfs_backend_router'
+         and missing[0] == negative.get('exact_unlabeled_origin')
+         and negative.get('actual_origin_rows') == len(rows)
+         and negative.get('compiled_authenticated_origin_rows') == len(rows) - 1,
+         'closed_idle_not_exact_unlabelled_origin_refusal')
+    command = plan['native_metadata_cli']; declared = command['project_import_plan']['source_pins']
+    need(type(declared) is list and missing[0]['path'] == str(Path(command['project_import_plan']['datasets_root']) /
+         'ipfs_datasets_py/ipfs_backend_router.py') and pins[missing[0]['path']] in declared,
+         'closed_idle_resolution_source_binding')
+    # Do not add execution_profile, rewrite origins, or call a health publisher.
+    return rows
+
+
+def _closed_idle_observation(result, request, plan, origins, prior, native, terminal):
+    """Validate the read-only outcome separately from rejected health evidence."""
+    h = health_owner(); command = plan.get('native_metadata_cli', {}); binding = command.get('observation_binding', {})
+    h._keys(result, {'schema', 'backend', 'database_path', 'task_scope', 'observer_source', 'observer_callable',
+        'catalogue_binding', 'ready_task_count', 'selection_idle_reason', 'unchanged', 'write_count',
+        'provider_dispatched', 'attempt_consumed', 'completion_authority'}, 'closed_idle_result_shape')
+    need(plan.get('schema') == 'native-embedded-scoped-observation-plan/v1'
+         and plan.get('operation') == 'native_embedded_scoped_observation_v1'
+         and result['schema'] == 'native-embedded-daemon-observation@1' and result['backend'] == 'embedded'
+         and result['observer_callable'] == 'observe_embedded_database_without_dispatch'
+         and result['selection_idle_reason'] == 'no_scoped_ready_tasks'
+         and result['task_scope'] == plan.get('task_scope') == prior['task_scope']
+         and type(result['ready_task_count']) is int and result['ready_task_count'] == 0
+         and type(result['write_count']) is int and result['write_count'] == 0
+         and result['unchanged'] is True and all(result[key] is False for key in
+             ('provider_dispatched', 'attempt_consumed', 'completion_authority')),
+         'closed_idle_outcome_not_readonly')
+    db = request['database_preimage']
+    h._keys(db, {'path', 'bytes', 'sha256'}, 'closed_idle_database_descriptor')
+    need(h._integer(db['bytes'], 1, 128 * 1024**2) and type(db['sha256']) is str
+         and len(db['sha256']) == 64 and set(db['sha256']) <= set('0123456789abcdef'), 'closed_idle_database_descriptor_bounds')
+    h._path(db['path'])
+    need(terminal.get('database_preimage_before_grants') == db == terminal.get('database_preimage_observed')
+         == terminal.get('database_postimage') == binding.get('database_preimage')
+         and result['database_path'] == db['path'] and h.database_descriptor(db['path']) == db,
+         'closed_idle_database_history_or_current_changed')
+    source = result['observer_source']; route = command.get('import_head_capsule_Git', {}).get('route_source')
+    need(command.get('schema') == 'native-embedded-scoped-observation-cli/v2'
+         and command.get('runtime_root') == plan.get('accelerate_root')
+         and binding.get('schema') == 'native-embedded-daemon-observation-binding@1'
+         and source == binding.get('observer_source') and source in prior['source_descriptors']
+         and route in prior['source_descriptors']
+         and all(request['source_sha256'].get(pin['path']) == command['source_sha256'].get(pin['path']) == pin['sha256']
+                 for pin in (source, route)), 'closed_idle_observer_or_route_source')
+    rows = origins['project_imports']
+    for name, pin in (('ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap', source),
+                      ('ipfs_accelerate_py.agent_implementation_route', route)):
+        need(any(row.get('module') == name and all(row.get(key) == pin[key] for key in ('path', 'bytes', 'sha256'))
+                 and row.get('execution_profile') == 'compiled_exact_authenticated_source_bytes' for row in rows),
+             'closed_idle_observer_body_not_compiled')
+    catalogue = result['catalogue_binding']
+    h._keys(catalogue, {'database_preimage', 'plan_root_cid', 'repository_tree_id', 'source_schema',
+        'event_cursor', 'task_statuses'}, 'closed_idle_catalogue_shape')
+    need(catalogue['database_preimage'] == db and binding.get('task_scope') == prior['task_scope']
+         and catalogue['source_schema'] == binding.get('source_schema') ==
+             'ipfs_accelerate_py/agent-supervisor/database-task-source@1'
+         and all(catalogue[key] == binding.get(key) == prior['catalogue'][key]
+                 for key in ('plan_root_cid', 'repository_tree_id'))
+         and h._integer(catalogue['event_cursor']) and catalogue['event_cursor'] == native['event_cursor'], 'closed_idle_catalogue_binding')
+    expected = {row['task_cid']: {key: row[key] for key in ('task_cid', 'status', 'revision')}
+                for row in native['tasks'] if row['task_cid'] in prior['task_scope']}
+    tasks = catalogue['task_statuses']
+    need(type(tasks) is list and len(tasks) == len(expected) == len(prior['task_scope'])
+         and len({row.get('task_cid') for row in tasks if type(row) is dict}) == len(tasks)
+         and all(type(row) is dict and set(row) == {'task_cid', 'status', 'revision'}
+                 and h._integer(row.get('revision'), 1)
+                 and row == expected.get(row['task_cid']) and row['status'] in QUIET_STATUSES for row in tasks),
+         'closed_idle_catalogue_tasks_changed')
+
+
+def _validate_closed_idle_recovery(value, profile_ref, profile, config):
+    """Explicit negative reconciliation of exactly two spent idle observations."""
+    h = health_owner(); h._keys(value, CLOSED_IDLE_KEYS, 'closed_idle_recovery_shape')
+    need(value['schema'] == CLOSED_IDLE_SCHEMA and value['recovery_kind'] == 'known_closed_idle_health_rejection'
+         and value['authorization'] == 'resume_genuine_scoped_idle' and value['profile_ref'] == profile_ref
+         and h._profile(profile_ref) == profile and value['max_cycles'] == config['max_cycles']
+         and config['max_cycles'] > 2 and config['execution_templates'] == [], 'closed_idle_recovery_authority')
+    root = Path(profile['proof_root']); archive = root / 'reconciliation-v02'; total = 0
+    for key in CLOSED_IDLE_ARCHIVE_FIELDS:
+        h._within(value[key], archive); h._bound(value[key]); total += value[key]['bytes']
+    need(total <= 1024**2, 'closed_idle_archive_bound')
+    prior = h._document(value['prior_profile_snapshot_ref'])
+    need(_same_payload(value['prior_profile_ref'], value['prior_profile_snapshot_ref'])
+         and value['prior_profile_ref']['path'] == profile_ref['path'], 'closed_idle_prior_profile_snapshot')
+    for key in ('catalogue', 'task_scope', 'proof_root', 'receipt_path', 'max_age_seconds', 'max_cycle_seconds', 'cycle_contract'):
+        need(prior.get(key) == profile[key], 'closed_idle_prior_scope_changed')
+    need(all(prior['unit'][key] == profile['unit'][key] for key in
+         ('name', 'interpreter', 'working_directory', 'environment')), 'closed_idle_prior_unit_changed')
+    _closed_idle_source_inventory(value, profile)
+    old_auth = h._document(value['prior_authorization_ref']); old_ack = h._document(value['prior_ack_ref'])
+    capture = h._document(value['prior_administrative_capture_ref']); negative = h._document(value['negative_audit_ref'])
+    need(old_auth.get('schema') == RECOVERY_SCHEMA and old_auth.get('profile_ref') == value['prior_profile_ref']
+         and old_auth.get('authorization') == 'resume_genuine_scoped_idle'
+         and old_auth.get('max_cycles') == config['max_cycles']
+         and old_ack.get('schema') == 'agent-supervisor/scientific-nonstarted-reconciliation@1'
+         and old_ack.get('recovery_ref') == value['prior_authorization_ref']
+         and all(old_ack.get(key) is False for key in ('health_credit', 'completion_authority', 'dispatch_authority')),
+         'closed_idle_prior_authorization_or_ack')
+    original_plan = h._document(old_auth['activation_plan_ref'])
+    need(all(config[key] == original_plan['main_loop_limits'][key] for key in
+             ('max_cycles', 'poll_seconds', 'max_proof_bytes')), 'closed_idle_original_budget_changed')
+    first_request = h._document(old_auth['request_ref'])
+    first_terminal = original_terminal(h._bound(old_auth['owner_stdout_ref']), old_auth['request_ref'])
+    first_negative = h._document(old_auth['negative_audit_ref'])
+    need(first_terminal.get('completed') is False and first_terminal.get('child_launch_attempted') is False
+         and first_terminal.get('child_reaped') is False and first_terminal.get('child_returncode') is None
+         and first_terminal.get('control_effects') == 'not_started' and first_terminal.get('storage_status') == 'not_requested'
+         and first_terminal.get('source_READ_closed') is True and first_terminal.get('original_native_compute_closed') is True
+         and first_terminal.get('absolute_resource_operation_deadline_closed') is True
+         and first_terminal.get('cleanup_errors') == [] and first_terminal.get('received_signals') == []
+         and first_terminal.get('task_completion_authority_granted_by_resource_owner') is False
+         and first_terminal.get('database_preimage_before_grants') == first_request.get('database_preimage')
+         and first_negative.get('negative_terminal_and_hold_verified') is True
+         and first_negative.get('original_terminal') == first_terminal
+         and first_negative.get('persistent_hold') == h._document(value['global_hold_ref']),
+         'closed_idle_first_nonstarted_history_changed')
+    first_capture = h._document(old_auth['activation_capture_ref'])
+    first_main = first_capture['opening_actual_main_identity']
+    first_prior = h._document(old_auth['prior_profile_snapshot_ref'])
+    h._stored_identity(first_main, old_auth['prior_profile_ref'], first_prior)
+    old_main = capture.get('opening_identity'); h._stored_identity(old_main, value['prior_profile_ref'], prior)
+    need(capture.get('schema') == 'scientific-explicit-known-nonstarted-recovery-actual-capture/v1'
+         and capture.get('accepted') is False and capture.get('start_requested') is True
+         and capture.get('source_leases_closed_before_start') is True and capture.get('hold_removed') is False
+         and capture.get('native_or_task_or_epoch_or_policy_reset') is False
+         and capture.get('recovery_authorization_ref') == value['prior_authorization_ref']
+         and old_ack.get('consuming_main_identity') == old_main, 'closed_idle_original_main_lineage')
+    need(negative.get('schema') == 'scientific-native-completed-idle-health-failure-independent-negative-audit/v1'
+         and _same_payload(negative.get('actual_administrative_capture'), value['prior_administrative_capture_ref'])
+         and negative.get('actual_profile_ref') == value['prior_profile_ref']
+         and negative.get('authorization_ref') == value['prior_authorization_ref']
+         and negative.get('negative_ack_ref') == value['prior_ack_ref']
+         and negative.get('accepted_as_executor_health_or_activation') is False
+         and negative.get('completed_native_read_only_cycle_independently_verified') is True
+         and negative.get('native_source_process_storage_closed') is True
+         and negative.get('task_or_provider_or_completion_effects') is False
+         and negative.get('database_unchanged_during_original_cycle') is True
+         and negative.get('exact_original_cycle_number') == 2 and negative.get('health_sequence_attempted') == 1,
+         'closed_idle_independent_negative_join')
+    hold = h._document(value['global_hold_ref']); cycle_hold = h._document(value['cycle_hold_ref'])
+    failed = Path(value['cycle_proof_ref']['path']).parent
+    need(value['global_hold_ref'] == old_auth['hold_ref'] == old_ack['hold_ref'] == negative['global_original_hold_ref']
+         and value['global_hold_ref']['path'] == str(root / 'executor-held.json')
+         and hold.get('reason') == 'original_owner_failed' and hold.get('automatic_retry_admitted') is False
+         and value['cycle_hold_ref']['path'] == str(failed / 'cycle-held.json')
+         and value['cycle_hold_ref'] == negative['new_cycle_hold_ref']
+         and cycle_hold.get('schema') == 'agent-supervisor/scientific-cycle-held@1'
+         and cycle_hold.get('reason') == 'original_import_origin_unbound'
+         and cycle_hold.get('automatic_retry_admitted') is False, 'closed_idle_exact_two_holds')
+    cycles = sorted(root.glob('cycle-*'))
+    need(len(cycles) == 2 and failed.parent == root and failed.name.startswith('cycle-00000002-')
+         and cycles[0] == Path(old_auth['failed_cycle_root'])
+         and cycles[1] == failed and value['prior_ack_ref']['path'] == str(cycles[0] / 'nonstarted-reconciliation.json')
+         and all(not (cycle / 'closed.json').exists() for cycle in cycles)
+         and not os.path.lexists(profile['receipt_path']), 'closed_idle_cycle_history_or_receipt')
+    intent = h._document(h.descriptor(failed / 'intent.json')); proof = h._document(value['cycle_proof_ref'])
+    need(intent.get('kind') == 'genuine_scoped_idle' and intent.get('automatic_retry_admitted') is False
+         and type(intent.get('cycle_number')) is int and intent['cycle_number'] == 2
+         and type(intent.get('sequence')) is int and intent['sequence'] == 1
+         and intent.get('request_ref') == proof.get('request_ref')
+         and proof.get('kind') == 'genuine_scoped_idle' and proof.get('sequence') == 1,
+         'closed_idle_original_intent')
+    for key in ('request_ref', 'execution_request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref'):
+        need(proof[key] == negative.get(key), 'closed_idle_negative_artifact_join')
+    request, terminal, result, plan, origins, native = (h._document(proof[key]) for key in
+         ('request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref'))
+    need(original_terminal(h._raw(failed / 'owner.stdout'), proof['request_ref']) == terminal,
+         'closed_idle_original_stdout_terminal')
+    native_identity = h._native(native, prior, now=proof['finished_at'])
+    need(proof['started_at'] <= native['checked_at_epoch'] <= proof['finished_at'], 'closed_idle_native_capture_outside_cycle')
+    execution = h._document(proof['execution_request_ref'])
+    need(execution.get('completion_authority') is False and execution.get('provider_authority') is False,
+         'closed_idle_execution_authority')
+    # Reuse every original terminal/process/native/storage check preceding the
+    # historical label refusal. This is an expected rejection, never health.
+    try:
+        h._cycle(value['cycle_proof_ref'], prior, old_main, native_identity,
+                 now=proof['finished_at'], monotonic_ns=proof['finished_monotonic_ns'])
+    except h.ExecutorHealthError as exc:
+        need(str(exc) == 'original_import_origin_unbound', 'closed_idle_other_original_cycle_refusal')
+    else:
+        raise ExecutorHold('closed_idle_historical_health_was_not_rejected')
+    _closed_idle_origins(origins, prior, request, plan, negative)
+    _closed_idle_observation(result, request, plan, origins, prior, native, terminal)
+    need(terminal.get('absolute_resource_operation_deadline_closed') is True
+         and terminal.get('child_launch_attempted') is True
+         and terminal.get('control_effects') == 'actor_exit_zero_independent_task_receipt_still_required'
+         and terminal.get('task_completion_authority_granted_by_resource_owner') is False,
+         'closed_idle_original_terminal_authority')
+    current = h._document(value['current_native_ref']); h._native(current, profile)
+    def scoped_tasks(report):
+        return sorted(({key: row[key] for key in ('task_cid', 'status', 'revision')}
+                       for row in report['tasks'] if row['task_cid'] in profile['task_scope']), key=lambda row: row['task_cid'])
+    need(current['event_cursor'] == native['event_cursor'] and scoped_tasks(current) == scoped_tasks(native),
+         'closed_idle_current_tasks_changed')
+    boot = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    need(h._definitely_dead_identity(first_main, boot), 'closed_idle_first_main_alive')
+    need(type(first_terminal.get('owner_birth')) is str and first_terminal['owner_birth'].isdecimal(),
+         'closed_idle_first_owner_birth_unknown')
+    first_owner = dict(pid=first_terminal['owner_pid'], birth_ticks=int(first_terminal['owner_birth']), boot_id=first_main['boot_id'])
+    need(h._integer(first_owner['pid'], 2) and h._integer(first_owner['birth_ticks'], 1)
+         and h._definitely_dead_identity(first_owner, boot), 'closed_idle_first_owner_alive')
+    need(h._definitely_dead_identity(old_main, boot), 'closed_idle_prior_main_alive')
+    for old in terminal['sampled_process_custody_final']['observed_identities']:
+        need(type(old) is dict and h._integer(old.get('pid'), 2) and h._integer(old.get('birth_ticks'), 1)
+             and h._definitely_dead_identity(dict(old, boot_id=old_main['boot_id']), boot), 'closed_idle_prior_descendant_alive')
+    owner = proof['owner_observation']
+    need(h._definitely_dead_identity(owner, boot), 'closed_idle_prior_owner_alive')
+    manager = value['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('failed', 'inactive')
+         and h._number(value['recorded_at']) and value['recorded_at'] <= time.time(), 'closed_idle_admin_main_absence')
+    _recovery_scheduler(request, value['scheduler_snapshot_ref'])
+    _recovery_scheduler(h._document(old_auth['request_ref']), value['scheduler_snapshot_ref'])
+    # The replacement source must bind the corrected guard plus new owners;
+    # historical role hashes are evidence and are never imposed on the new run.
+    future = h._document(h._document(config['idle_template_ref'])['plan_ref'])['native_metadata_cli']
+    guard = future.get('pre_body_guard'); prior_guard = plan['native_metadata_cli'].get('pre_body_guard')
+    need(type(guard) is dict and guard in profile['source_descriptors'] and guard != prior_guard
+         and all(profile[key]['sha256'] != prior[key]['sha256'] for key in ('owner_source', 'driver_source')),
+         'closed_idle_cause_source_not_adopted')
+    h._bound(guard)
+    return failed
+
+
+def authorize_known_closed_idle_recovery(spec_ref, output):
+    """Existing administrative protocol, distinct typed one-use authorization."""
+    h = health_owner(); spec = h._document(spec_ref)
+    h._keys(spec, CLOSED_IDLE_KEYS - {'schema', 'recorded_at', 'manager_before'}, 'closed_idle_authorization_spec')
+    profile = h._profile(spec['profile_ref'])
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] in profile['unit']['argv']
+        and pin['path'].endswith('.json') and h._document(pin).get('schema') == CONFIG_SCHEMA)
+    config, _, _ = load_configuration(config_ref); root = Path(profile['proof_root']); output = h._path(str(output))
+    need(output.parent == root / 'reconciliation-v02' and output.name == 'known-closed-idle-authorization.json',
+         'closed_idle_authorization_versioned_path')
+    with os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_NOFOLLOW), 'rb') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('MainPID') == '0' and manager.get('ActiveState') in ('failed', 'inactive'),
+             'closed_idle_admin_requires_no_main')
+        value = dict(spec, schema=CLOSED_IDLE_SCHEMA, recorded_at=time.time(), manager_before=manager)
+        _validate_closed_idle_recovery(value, spec['profile_ref'], profile, config)
+        return put(output, value)
+
+
+def reconcile_known_closed_idle(recovery_ref, profile_ref, profile, config, opening_identity):
+    """Retain both holds and consumed old AUTH/ACK; spend neither a third run nor health."""
+    h = health_owner(); root = Path(profile['proof_root'])
+    need(recovery_ref['path'] == str(root / 'reconciliation-v02/known-closed-idle-authorization.json'),
+         'closed_idle_recovery_versioned_path')
+    value = h._document(recovery_ref)
+    need(os.environ.get(CLOSED_IDLE_SHA_ENV) == recovery_ref['sha256'], 'closed_idle_receipt_not_unit_pinned')
+    argv = profile['unit']['argv']; flag = '--known-closed-idle-recovery'
+    need(argv.count(flag) == 1 and argv.index(flag) + 1 < len(argv) and argv[argv.index(flag) + 1] == recovery_ref['path']
+         and '--known-nonstarted-recovery' not in argv, 'closed_idle_receipt_not_in_unit_argv')
+    failed = _validate_closed_idle_recovery(value, profile_ref, profile, config)
+    ack_path = failed / 'closed-idle-reconciliation-v01.json'
+    ack = dict(schema='agent-supervisor/scientific-closed-idle-reconciliation@1', recovery_ref=recovery_ref,
+        retained_global_hold_ref=value['global_hold_ref'], retained_cycle_hold_ref=value['cycle_hold_ref'],
+        prior_authorization_ref=value['prior_authorization_ref'], prior_ack_ref=value['prior_ack_ref'],
+        rejected_cycle_proof_ref=value['cycle_proof_ref'], consuming_main_identity=opening_identity,
+        spent_cycle_count=2, next_cycle_number=3, first_health_sequence=1,
+        health_credit=False, completion_authority=False, dispatch_authority=False, historical_origins_relabelled=False)
+    if os.path.lexists(ack_path):
+        need(h._document(h.descriptor(ack_path)) == ack, 'closed_idle_authorization_consumed_by_other_main')
+    else:
+        put(ack_path, ack)
+    return 2
+
+
 def _recovery_failure(root, cycle_number, sequence, reason):
     """Retain a later failure even while the original global hold is immutable."""
     matches = list(root.glob('cycle-%08d-*' % cycle_number))
@@ -546,7 +880,12 @@ def serve(config_ref, stop, *, recovery_ref=None):
             opening_identity = require_main_process(profile_ref, profile)
         else:
             opening_identity = require_main_process(profile_ref, profile)
-            reconciled_count = reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, opening_identity)
+            kind = h._document(recovery_ref).get('schema')
+            if kind == RECOVERY_SCHEMA:
+                reconciled_count = reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, opening_identity)
+            else:
+                need(kind == CLOSED_IDLE_SCHEMA, 'unknown_typed_recovery')
+                reconciled_count = reconcile_known_closed_idle(recovery_ref, profile_ref, profile, config, opening_identity)
         sequence = 1
         if os.path.lexists(profile['receipt_path']):
             previous = h._document(h.descriptor(profile['receipt_path']))
@@ -591,7 +930,9 @@ def main(argv=None):
     parser.add_argument('operation', choices=['serve'])
     parser.add_argument('--config', required=True)
     parser.add_argument('--config-sha256', required=True)
-    parser.add_argument('--known-nonstarted-recovery')
+    recovery_flags = parser.add_mutually_exclusive_group()
+    recovery_flags.add_argument('--known-nonstarted-recovery')
+    recovery_flags.add_argument('--known-closed-idle-recovery')
     args = parser.parse_args(argv)
     # This is set before any project import, including file-path invocation.
     os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
@@ -605,8 +946,9 @@ def main(argv=None):
         config_ref = health_owner().descriptor(args.config)
         need(config_ref['sha256'] == args.config_sha256, 'service_config_digest')
         recovery_ref = None
-        if args.known_nonstarted_recovery:
-            recovery_ref = health_owner().descriptor(args.known_nonstarted_recovery)
+        recovery_path = args.known_nonstarted_recovery or args.known_closed_idle_recovery
+        if recovery_path:
+            recovery_ref = health_owner().descriptor(recovery_path)
         return serve(config_ref, stop, recovery_ref=recovery_ref)
     except Exception as exc:
         print(json.dumps({'schema': 'agent-supervisor/scientific-executor-held@1',

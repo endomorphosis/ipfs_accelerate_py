@@ -367,3 +367,80 @@ def test_swallowed_normal_import_failure_cannot_be_reported_as_idle(driver,impor
     case['route'].AgentImplementationSealedControlPlane=type('FixtureLaunch',(),{})
     with pytest.raises(RuntimeError,match='genuine current eager'):
         driver.require_original_import_capability(case['daemon'],case['plan']['native_metadata_cli'])
+
+
+def _resolution_case(guard,tmp_path,monkeypatch,body):
+    """Explicit checkpoint fixture, never an installed native import guard."""
+    root=tmp_path/'project';root.mkdir();exports=tmp_path/'exports';exports.mkdir()
+    source=root/'probe.py';source.write_text(body)
+    finder=guard.GuardedProjectImports({'accelerate_root':str(root),'datasets_root':str(root),
+        'publication_root':str(root),'source_pins':[_pin(source)]},exports)
+    finder.path_finder=types.SimpleNamespace(find_spec=lambda *args:
+        importlib.util.spec_from_file_location('ipfs_accelerate_py.probe',source))
+    # checkpoint() checks registration; no unremovable global audit hook is
+    # installed inside a unit case. Only direct finder/loader calls run below.
+    finder.registered=True
+    monkeypatch.setattr(sys,'meta_path',[*sys.meta_path,finder])
+    return finder,source
+
+
+def _resolution_module(spec):
+    module=types.ModuleType(spec.name);module.__spec__=spec;module.__file__=spec.origin
+    return module
+
+
+def test_spec_only_resolution_is_separate_until_actual_authenticated_execution(guard,tmp_path,monkeypatch):
+    finder,source=_resolution_case(guard,tmp_path,monkeypatch,'answer = 47\n')
+    spec=finder.find_spec('ipfs_accelerate_py.probe')
+    before=json.loads(Path(finder.checkpoint('resolved-only')['path']).read_bytes())
+    assert before['project_imports']==[] and len(before['project_resolutions'])==1
+    row=before['project_resolutions'][0]
+    assert row['execution_status']=='resolution_only' and 'execution_profile' not in row
+    assert all(row[key]==_pin(source)[key] for key in ('path','bytes','sha256'))
+    module=_resolution_module(spec);spec.loader.exec_module(module)
+    after=json.loads(Path(finder.checkpoint('executed')['path']).read_bytes())
+    assert module.answer==47 and after['project_resolutions']==[] and len(after['project_imports'])==1
+    assert after['project_imports'][0]['execution_status']=='execution_completed'
+    assert after['project_imports'][0]['execution_profile']=='compiled_exact_authenticated_source_bytes'
+
+
+def test_started_execution_is_not_misreported_as_resolution_or_completed(guard,tmp_path,monkeypatch):
+    finder,_=_resolution_case(guard,tmp_path,monkeypatch,'inside = checkpoint_inside()\nanswer = 47\n')
+    spec=finder.find_spec('ipfs_accelerate_py.probe');module=_resolution_module(spec)
+    module.checkpoint_inside=lambda:finder.checkpoint('inside-execution')
+    spec.loader.exec_module(module)
+    inside=json.loads(Path(module.inside['path']).read_bytes())
+    assert inside['project_resolutions']==[] and len(inside['project_imports'])==1
+    assert inside['project_imports'][0]['execution_status']=='execution_started'
+    assert 'execution_profile' not in inside['project_imports'][0]
+
+
+def test_failed_execution_remains_unqualified_import_provenance(guard,tmp_path,monkeypatch):
+    finder,_=_resolution_case(guard,tmp_path,monkeypatch,'started = True\nraise RuntimeError("explicit fixture failure")\n')
+    spec=finder.find_spec('ipfs_accelerate_py.probe');module=_resolution_module(spec)
+    with pytest.raises(RuntimeError,match='explicit fixture failure'):spec.loader.exec_module(module)
+    value=json.loads(Path(finder.checkpoint('failed-execution')['path']).read_bytes())
+    assert module.started is True and value['project_resolutions']==[] and len(value['project_imports'])==1
+    assert value['project_imports'][0]['execution_status']=='execution_failed'
+    assert 'execution_profile' not in value['project_imports'][0]
+
+
+def test_reresolving_same_pin_preserves_actual_completed_execution(guard,tmp_path,monkeypatch):
+    finder,_=_resolution_case(guard,tmp_path,monkeypatch,'events.append("executed")\n')
+    spec=finder.find_spec('ipfs_accelerate_py.probe');module=_resolution_module(spec);module.events=[]
+    spec.loader.exec_module(module)
+    finder.find_spec('ipfs_accelerate_py.probe')
+    value=json.loads(Path(finder.checkpoint('reresolved')['path']).read_bytes())
+    assert module.events==['executed'] and value['project_resolutions']==[]
+    assert value['project_imports'][0]['execution_status']=='execution_completed'
+    assert value['project_imports'][0]['execution_profile']=='compiled_exact_authenticated_source_bytes'
+
+
+def test_reresolving_different_authenticated_pin_is_refused(guard,tmp_path,monkeypatch):
+    finder,source=_resolution_case(guard,tmp_path,monkeypatch,'answer = 47\n')
+    spec=finder.find_spec('ipfs_accelerate_py.probe');module=_resolution_module(spec);spec.loader.exec_module(module)
+    original=dict(finder.project_origins[spec.name])
+    source.write_text('answer = 99\n');finder.pins[str(source)]=_pin(source)
+    with pytest.raises(ImportError,match='project_resolution_changed'):
+        finder.find_spec('ipfs_accelerate_py.probe')
+    assert finder.project_origins[spec.name]==original and module.answer==47

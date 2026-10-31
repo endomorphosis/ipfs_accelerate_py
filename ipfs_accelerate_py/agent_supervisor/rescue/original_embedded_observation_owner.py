@@ -264,7 +264,7 @@ def request(path,digest):
     guard_ref=c['pre_body_guard']
     need(type(guard_ref) is dict and set(guard_ref)=={'path','bytes','sha256'}
          and guard_ref['path']==str(ACTOR_PATH.with_name('project_import_source_guard.py'))
-         and guard_ref['sha256']=='1926462c717afdb265e28c90c7723e8ae04eabb27bc6e54ca73e8169cd27c45f'
+         and guard_ref['sha256']=='7a5ff06661eadcadeb9ce1c251cd4ef4c5fb0a890a1b0db1081989d3fd1ae199'
          and c['source_sha256'].get(guard_ref['path'])==guard_ref['sha256']
          and pin(guard_ref['path'])==guard_ref,'exact original before-body guard required')
     need(attempt.is_dir() and attempt.lstat().st_uid==os.geteuid()

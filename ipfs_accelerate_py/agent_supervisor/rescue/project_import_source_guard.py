@@ -154,15 +154,30 @@ class GuardedProjectImports:
                     return create(module_spec) if create is not None else None
 
                 def exec_module(self, module):
-                    current_source = read_pin(descriptor)
-                    need(current_source == matched_source, 'project source changed before execution')
-                    need(getattr(module.__spec__, 'origin', None) == str(resolved), 'project loader origin changed')
-                    code = compile(current_source, str(resolved), 'exec', dont_inherit=True)
-                    exec(code, module.__dict__)
-                    guard.project_origins[fullname]['execution_profile'] = 'compiled_exact_authenticated_source_bytes'
+                    row = guard.project_origins[fullname]
+                    row['execution_status'] = 'execution_started'
+                    row.pop('execution_profile', None)
+                    try:
+                        current_source = read_pin(descriptor)
+                        need(current_source == matched_source, 'project source changed before execution')
+                        need(getattr(module.__spec__, 'origin', None) == str(resolved), 'project loader origin changed')
+                        code = compile(current_source, str(resolved), 'exec', dont_inherit=True)
+                        exec(code, module.__dict__)
+                    except BaseException:
+                        row['execution_status'] = 'execution_failed'
+                        raise
+                    row['execution_status'] = 'execution_completed'
+                    row['execution_profile'] = 'compiled_exact_authenticated_source_bytes'
 
             spec.loader = PinnedProjectSourceLoader()
-            self.project_origins[fullname] = {'module': fullname, 'project': project, **descriptor}
+            previous = self.project_origins.get(fullname)
+            if previous is not None:
+                if any(previous.get(key) != value for key, value in
+                       {'module': fullname, 'project': project, **descriptor}.items()):
+                    self._refuse(fullname, resolved, 'project_resolution_changed')
+            else:
+                self.project_origins[fullname] = {'module': fullname, 'project': project, **descriptor,
+                                                  'execution_status': 'resolution_only'}
             if len(self.project_origins) > 1024:
                 self._refuse(fullname, resolved, 'project_import_count_exceeded')
         else:
@@ -208,7 +223,10 @@ class GuardedProjectImports:
                 need(Path(module.__file__).resolve(strict=True) == Path(row['path']), 'loaded project module origin changed')
         return write_new_or_exact(self.directory / ('project-import-origins-' + label + '.json'), encoded({
             'schema': 'legal-ir-pre-execution-project-import-origins/v1', 'label': label,
-            'project_imports': sorted(self.project_origins.values(), key=lambda row: row['module']),
+            'project_imports': sorted((row for row in self.project_origins.values()
+                                      if row.get('execution_status') != 'resolution_only'), key=lambda row: row['module']),
+            'project_resolutions': sorted((row for row in self.project_origins.values()
+                                          if row.get('execution_status') == 'resolution_only'), key=lambda row: row['module']),
             'runtime_origin_metadata': sorted(self.runtime_origins.values(), key=lambda row: row['module']),
             'denials': self.denials, 'project_origins_checked_before_module_execution': True,
             'all_reads_enforced_or_attested': False, 'guard_propagated_to_exec_subprocess': False}))

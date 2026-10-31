@@ -572,3 +572,347 @@ def test_recovery_live_scheduler_change_during_data_read_is_refused_before_ack(n
 
 
 
+
+
+@pytest.fixture
+def closed_idle_case(nonstarted_case, monkeypatch):
+    """Real private metadata and canonical _cycle parser; no engine or manager."""
+    case = nonstarted_case; root = case['root']; archive = root / 'reconciliation-v02'; archive.mkdir(mode=0o700)
+    config = case['config']; config['max_cycles'] = 10000
+    config_ref = put(Path(case['config_ref']['path']), config)
+    prior = copy.deepcopy(case['profile'])
+    prior['source_descriptors'] = [config_ref if pin['path'] == config_ref['path'] else pin for pin in prior['source_descriptors']]
+    argv = prior['unit']['argv']; argv[argv.index('--config-sha256') + 1] = config_ref['sha256']
+    prior['cycle_contract'] = {'plan_schema': 'native-embedded-scoped-observation-plan/v1',
+                               'plan_operation': 'native_embedded_scoped_observation_v1'}
+    source_root = Path(prior['owner_source']['path']).parents[3]
+    route = put(source_root / 'ipfs_accelerate_py/agent_implementation_route.py', b'# original compiled route fixture\n')
+    observer = put(source_root / 'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py',
+                   b'# original compiled read-only observer fixture\n')
+    guard = put(source_root / 'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py', b'# prior resolution guard\n')
+    datasets = root.parent / 'source-datasets'
+    backend = put(datasets / 'ipfs_datasets_py/ipfs_backend_router.py', b'# real resolution-only metadata fixture\n')
+    prior['source_descriptors'].extend([route, observer, guard, backend])
+    prior_ref = put(Path(case['profile_ref']['path']), prior)
+    prior_snapshot = put(archive / 'prior-profile.json', prior)
+    old_main = dict(unit=prior['unit']['name'], pid=1000003, birth_ticks=3,
+        boot_id='explicit-prior-closed-idle-fixture-boot', invocation_id='b' * 32,
+        argv=list(prior['unit']['argv']), exe=prior['unit']['interpreter'], cwd=prior['unit']['working_directory'],
+        environment={**prior['unit']['environment'], 'INVOCATION_ID': 'b' * 32, health.ENV_PROFILE_SHA: prior_ref['sha256']})
+    old_auth = copy.deepcopy(case['recovery']); old_auth.update(profile_ref=prior_ref, max_cycles=10000)
+    original_plan = health._document(old_auth['activation_plan_ref'])
+    original_plan['main_loop_limits'] = {key: config[key] for key in ('max_cycles', 'poll_seconds', 'max_proof_bytes')}
+    old_auth['activation_plan_ref'] = put(Path(old_auth['activation_plan_ref']['path']), original_plan)
+    old_auth_ref = put(Path(case['recovery_ref']['path']), old_auth)
+    old_ack = dict(schema='agent-supervisor/scientific-nonstarted-reconciliation@1',
+        recovery_ref=old_auth_ref, hold_ref=old_auth['hold_ref'], failed_cycle_root=str(case['failed']),
+        consuming_main_identity=old_main, health_credit=False, completion_authority=False, dispatch_authority=False)
+    old_ack_ref = put(case['failed'] / 'nonstarted-reconciliation.json', old_ack)
+    capture = dict(schema='scientific-explicit-known-nonstarted-recovery-actual-capture/v1',
+        accepted=False, start_requested=True, source_leases_closed_before_start=True, hold_removed=False,
+        native_or_task_or_epoch_or_policy_reset=False, recovery_authorization_ref=old_auth_ref, opening_identity=old_main)
+    capture_ref = put(archive / 'prior-administrative-capture.json', capture)
+    failed = root / ('cycle-00000002-' + '2' * 32); failed.mkdir(mode=0o700)
+    attempt = failed / 'attempt'; (attempt / 'exports').mkdir(parents=True)
+    now = time.time(); started = now - 4; finished = now - 1
+    end_mono = time.monotonic_ns() - 10**9; start_mono = end_mono - 3 * 10**9
+    native = copy.deepcopy(case['native']); native['checked_at_epoch'] = finished - 0.1
+    task_rows = [{key: row[key] for key in ('task_cid', 'status', 'revision')} for row in native['tasks']]
+    db = case['request']['database_preimage']
+    binding = dict(schema='native-embedded-daemon-observation-binding@1', database_preimage=db,
+        observer_source=observer, task_scope=prior['task_scope'], plan_root_cid=prior['catalogue']['plan_root_cid'],
+        repository_tree_id=prior['catalogue']['repository_tree_id'],
+        source_schema='ipfs_accelerate_py/agent-supervisor/database-task-source@1')
+    plan = dict(schema=prior['cycle_contract']['plan_schema'], operation=prior['cycle_contract']['plan_operation'],
+        accelerate_root=str(source_root), task_scope=prior['task_scope'], native_metadata_cli=dict(
+            schema='native-embedded-scoped-observation-cli/v2', runtime_root=str(source_root),
+            result_path=str(attempt / 'exports/result.json'), observation_binding=binding, pre_body_guard=guard,
+            import_head_capsule_Git={'route_source': route}, project_import_plan=dict(datasets_root=str(datasets),
+                source_pins=[route, observer, guard, backend]),
+            source_sha256={pin['path']: pin['sha256'] for pin in prior['source_descriptors']}))
+    plan_ref = put(failed / 'operation-plan.json', plan)
+    request = dict(case['request'], request_id='fixture:closed-idle-cycle-2', attempt_directory=str(attempt),
+        scheduler_state_path=case['scheduler_ref']['path'], expected_scheduler_policy_sha256=health._document(old_auth['request_ref'])['expected_scheduler_policy_sha256'],
+        cpu_slots=1, memory_mb=1536, child_process_slots=8, storage_bytes=384 * 1024**2)
+    request['source_sha256'] = {pin['path']: pin['sha256'] for pin in prior['source_descriptors']}
+    request['source_sha256'][plan_ref['path']] = plan_ref['sha256']
+    request['argv'] = [prior['unit']['argv'][0], '-B', prior['driver_source']['path'],
+        '--plan', plan_ref['path'], '--plan-sha256', plan_ref['sha256']]
+    request_ref = put(failed / 'request.json', request)
+    put(failed / 'intent.json', dict(kind='genuine_scoped_idle', automatic_retry_admitted=False,
+        sequence=1, cycle_number=2, request_ref=request_ref))
+    execution_ref = put(attempt / 'execution-request.json', dict(schema='native-metadata-resource-owner-execution-request/v1',
+        request=request_ref, owner_source=prior['owner_source'], disk_reservation_id='fixture:released-reservation',
+        completion_authority=False, provider_authority=False))
+    origins = dict(schema='legal-ir-pre-execution-project-import-origins/v1',
+        project_origins_checked_before_module_execution=True, denials=[], project_imports=[
+            dict(module='ipfs_accelerate_py.agent_implementation_route', **route,
+                 execution_profile='compiled_exact_authenticated_source_bytes'),
+            dict(module='ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap', **observer,
+                 execution_profile='compiled_exact_authenticated_source_bytes'),
+            dict(module='ipfs_datasets_py.ipfs_backend_router', **backend)])
+    origins_ref = put(attempt / 'exports/origins.json', origins)
+    result = dict(schema='native-embedded-daemon-observation@1', backend='embedded', database_path=db['path'],
+        task_scope=prior['task_scope'], observer_source=observer, observer_callable='observe_embedded_database_without_dispatch',
+        ready_task_count=0, selection_idle_reason='no_scoped_ready_tasks', unchanged=True, write_count=0,
+        provider_dispatched=False, attempt_consumed=False, completion_authority=False,
+        catalogue_binding=dict(database_preimage=db, event_cursor=native['event_cursor'], task_statuses=task_rows,
+            plan_root_cid=binding['plan_root_cid'], repository_tree_id=binding['repository_tree_id'], source_schema=binding['source_schema']))
+    result_ref = put(Path(plan['native_metadata_cli']['result_path']), result)
+    native_ref = put(failed / 'native-diagnostic.json', native)
+    owner_argv = [prior['unit']['argv'][0], '-B', prior['owner_source']['path'],
+        '--request', request_ref['path'], '--expected-request-sha256', request_ref['sha256']]
+    terminal = dict(schema='legal-ir-original-native-control-terminal/v1', request_sha256=request_ref['sha256'],
+        execution_request=execution_ref, completed=True, source_READ_closed=True, original_native_compute_closed=True,
+        child_launch_attempted=True, child_reaped=True, child_returncode=0, storage_status='released',
+        cleanup_errors=[], received_signals=[], partial_or_failed_control_must_be_reconciled=False,
+        owner_pid=1000004, owner_birth='4', elapsed_seconds=2.0, absolute_resource_operation_deadline_closed=True,
+        control_effects='actor_exit_zero_independent_task_receipt_still_required',
+        task_completion_authority_granted_by_resource_owner=False,
+        database_preimage_before_grants=db, database_preimage_observed=db, database_postimage=db,
+        reservation=dict(status='released', reservation_id='fixture:released-reservation', record=dict(
+            status='released', reservation_id='fixture:released-reservation', owner_pid=1000004,
+            native_lease_id='fixture:released-native', created_at=started + 0.5, released_at=finished - 0.25),
+            resource_lease=dict(released=True, owner_pid=1000004, lease_id='fixture:released-native')),
+        sampled_process_custody_final=dict(scope='sampled_birth_bound_descendants', live_identities=[],
+            live_processes=0, rss_bytes=0, tracking_error='', observed_identities=[dict(pid=1000005, birth_ticks=5)]),
+        process_spawn_receipts=dict(schema='native-metadata-stopped-process-receipts/v1', all_recorded_original_births_stopped=True))
+    terminal_ref = put(failed / 'terminal.json', terminal); put(failed / 'owner.stdout', terminal)
+    proof = dict(schema=health.CYCLE_SCHEMA, kind='genuine_scoped_idle', sequence=1,
+        process={key: old_main[key] for key in ('pid', 'birth_ticks', 'boot_id', 'invocation_id')},
+        owner_observation=dict(pid=1000004, birth_ticks=4, boot_id=old_main['boot_id'], argv=owner_argv,
+            captured_at=started + 0.25, captured_monotonic_ns=start_mono + 250000000,
+            ancestry=[dict(pid=1000004, birth_ticks=4, parent_pid=1000003), dict(pid=1000003, birth_ticks=3, parent_pid=1)]),
+        started_at=started, finished_at=finished, started_monotonic_ns=start_mono, finished_monotonic_ns=end_mono,
+        request_ref=request_ref, execution_request_ref=execution_ref, terminal_ref=terminal_ref, result_ref=result_ref,
+        plan_ref=plan_ref, origins_ref=origins_ref, native_diagnostic_ref=native_ref)
+    proof_ref = put(failed / 'cycle-proof.json', proof)
+    cycle_hold_ref = put(failed / 'cycle-held.json', dict(schema='agent-supervisor/scientific-cycle-held@1',
+        reason='original_import_origin_unbound', automatic_retry_admitted=False, recorded_at=finished + 0.1))
+    negative = dict(schema='scientific-native-completed-idle-health-failure-independent-negative-audit/v1',
+        actual_administrative_capture=capture_ref, actual_profile_ref=prior_ref, authorization_ref=old_auth_ref,
+        negative_ack_ref=old_ack_ref, accepted_as_executor_health_or_activation=False,
+        completed_native_read_only_cycle_independently_verified=True, native_source_process_storage_closed=True,
+        task_or_provider_or_completion_effects=False, database_unchanged_during_original_cycle=True,
+        exact_original_cycle_number=2, health_sequence_attempted=1, actual_origin_rows=3, compiled_authenticated_origin_rows=2,
+        exact_unlabeled_origin=origins['project_imports'][-1], global_original_hold_ref=old_auth['hold_ref'],
+        new_cycle_hold_ref=cycle_hold_ref, cycle_proof_ref=proof_ref,
+        **{key: proof[key] for key in ('request_ref', 'execution_request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref')})
+    negative_ref = put(archive / 'closed-idle-negative.json', negative)
+    # Adopt a prospective new source generation, keeping the old profile as data.
+    profile = copy.deepcopy(prior)
+    for role in ('main_entrypoint', 'owner_source', 'driver_source'):
+        old = profile[role]; new = put(Path(old['path']), b'# explicitly adopted replacement source fixture\n')
+        profile[role] = new; profile['source_descriptors'] = [new if pin == old else pin for pin in profile['source_descriptors']]
+    new_guard = put(Path(guard['path']), b'# adopted explicit resolution-only lifecycle guard\n')
+    profile['source_descriptors'] = [new_guard if pin == guard else pin for pin in profile['source_descriptors']]
+    future_plan = copy.deepcopy(plan); future_plan['native_metadata_cli']['pre_body_guard'] = new_guard
+    future_plan_ref = put(Path(case['template']['plan_ref']['path']), future_plan)
+    template = dict(case['template'], plan_ref=future_plan_ref)
+    template_ref = put(Path(case['template_ref']['path']), template); config['idle_template_ref'] = template_ref
+    config_ref = put(Path(case['config_ref']['path']), config)
+    profile['source_descriptors'] = [config_ref if pin['path'] == config_ref['path'] else pin for pin in profile['source_descriptors']]
+    new_auth_path = archive / 'known-closed-idle-authorization.json'; argv = profile['unit']['argv']
+    index = argv.index('--known-nonstarted-recovery'); argv[index:index + 2] = ['--known-closed-idle-recovery', str(new_auth_path)]
+    argv[argv.index('--config-sha256') + 1] = config_ref['sha256']
+    profile_ref = put(Path(prior_ref['path']), profile)
+    selected = [pin for pin in profile['source_descriptors'] if Path(pin['path']).is_relative_to(source_root)
+                and Path(pin['path']).suffix == '.py']
+    inventory = dict(schema='legal-ir-scientific-source-inventory/v1', source_root=str(source_root),
+        source_commit='e' * 40, source_tree='f' * 40, file_count=len(selected), files=selected)
+    inventory_ref = put(archive / 'current-source-inventory.json', inventory)
+    commitment_ref = put(archive / 'current-source-commitment.json', dict(schema='legal-ir-scientific-source-commitment/v1',
+        source_root=str(source_root), source_commit='e' * 40, source_tree='f' * 40,
+        source_inventory=inventory_ref, runtime_activation_or_task_authority=False))
+    current = copy.deepcopy(native); current['checked_at_epoch'] = time.time()
+    value = dict(schema=executor.CLOSED_IDLE_SCHEMA, recovery_kind='known_closed_idle_health_rejection',
+        profile_ref=profile_ref, prior_profile_ref=prior_ref, prior_profile_snapshot_ref=prior_snapshot,
+        prior_authorization_ref=old_auth_ref, prior_ack_ref=old_ack_ref, prior_administrative_capture_ref=capture_ref,
+        negative_audit_ref=negative_ref, source_commitment_ref=commitment_ref,
+        scheduler_snapshot_ref=put(archive / 'scheduler.snapshot.json', case['scheduler_state']),
+        current_native_ref=put(archive / 'current-native.json', current), global_hold_ref=old_auth['hold_ref'],
+        cycle_hold_ref=cycle_hold_ref, cycle_proof_ref=proof_ref, max_cycles=10000,
+        authorization='resume_genuine_scoped_idle', recorded_at=time.time(),
+        manager_before=dict(Id=profile['unit']['name'], MainPID='0', ActiveState='failed'))
+    recovery_ref = put(new_auth_path, value); monkeypatch.setenv(executor.CLOSED_IDLE_SHA_ENV, recovery_ref['sha256'])
+    opening = dict(pid=1000006, birth_ticks=6, boot_id='explicit-next-fixture-boot', invocation_id='c' * 32)
+    monkeypatch.setattr(executor, 'require_main_process', lambda *args: opening)
+    case.update(profile=profile, profile_ref=profile_ref, config=config, config_ref=config_ref,
+        closed_value=value, closed_ref=recovery_ref, closed_cycle=failed, closed_proof=proof,
+        closed_negative=negative, closed_terminal=terminal, closed_result=result, closed_origins=origins,
+        closed_native=current, prior_closed_profile=prior, prior_closed_main=old_main,
+        closed_archive=archive, opening=opening,
+        preserved_closed_history={ref['path']: Path(ref['path']).read_bytes() for ref in
+            (old_auth_ref, old_ack_ref, old_auth['hold_ref'], cycle_hold_ref, proof_ref, origins_ref)})
+    return case
+
+
+def _closed_resume(case):
+    return executor.reconcile_known_closed_idle(case['closed_ref'], case['profile_ref'],
+        case['profile'], case['config'], case['opening'])
+
+
+def _resign_closed(case, monkeypatch):
+    case['closed_ref'] = put(Path(case['closed_ref']['path']), case['closed_value'])
+    monkeypatch.setenv(executor.CLOSED_IDLE_SHA_ENV, case['closed_ref']['sha256'])
+
+
+def _repin_closed_artifact(case, monkeypatch, key, value):
+    proof = case['closed_proof']; proof[key] = put(Path(proof[key]['path']), value)
+    if key == 'terminal_ref': put(case['closed_cycle'] / 'owner.stdout', value)
+    case['closed_negative'][key] = proof[key]
+    case['closed_value']['cycle_proof_ref'] = put(Path(case['closed_value']['cycle_proof_ref']['path']), proof)
+    case['closed_negative']['cycle_proof_ref'] = case['closed_value']['cycle_proof_ref']
+    case['closed_value']['negative_audit_ref'] = put(Path(case['closed_value']['negative_audit_ref']['path']), case['closed_negative'])
+    _resign_closed(case, monkeypatch)
+
+
+def test_closed_idle_negative_ack_uses_real_original_cycle_checks_and_preserves_history(closed_idle_case):
+    case = closed_idle_case; assert _closed_resume(case) == 2
+    ack = case['closed_cycle'] / 'closed-idle-reconciliation-v01.json'; first = ack.read_bytes()
+    assert _closed_resume(case) == 2 and ack.read_bytes() == first
+    value = json.loads(first)
+    assert value['spent_cycle_count'] == 2 and value['next_cycle_number'] == 3 and value['first_health_sequence'] == 1
+    assert all(value[key] is False for key in ('health_credit', 'completion_authority', 'dispatch_authority', 'historical_origins_relabelled'))
+    assert all(Path(path).read_bytes() == raw for path, raw in case['preserved_closed_history'].items())
+    assert not (case['closed_cycle'] / 'closed.json').exists() and not Path(case['profile']['receipt_path']).exists()
+    assert 'execution_profile' not in case['closed_origins']['project_imports'][-1]
+
+
+@pytest.mark.parametrize('field,value', [('completed', False), ('child_returncode', 1), ('storage_status', 'retained'),
+    ('source_READ_closed', False), ('original_native_compute_closed', False), ('cleanup_errors', ['unknown']),
+    ('received_signals', [15]), ('absolute_resource_operation_deadline_closed', False)],
+    ids=['not-completed', 'child-failed', 'storage-retained', 'source-open', 'native-open', 'cleanup-unknown', 'signal', 'deadline-open'])
+def test_closed_idle_refuses_incomplete_original_terminal_before_ack(closed_idle_case, monkeypatch, field, value):
+    case = closed_idle_case; case['closed_terminal'][field] = value
+    _repin_closed_artifact(case, monkeypatch, 'terminal_ref', case['closed_terminal'])
+    with pytest.raises((executor.ExecutorHold, health.ExecutorHealthError)): _closed_resume(case)
+    assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
+
+
+@pytest.mark.parametrize('field,value', [('write_count', 1), ('provider_dispatched', True), ('attempt_consumed', True),
+    ('completion_authority', True), ('ready_task_count', 1), ('unchanged', False)],
+    ids=['write', 'provider', 'coding-attempt', 'completion', 'ready', 'changed'])
+def test_closed_idle_refuses_nonquiet_or_effectful_result_before_ack(closed_idle_case, monkeypatch, field, value):
+    case = closed_idle_case; case['closed_result'][field] = value
+    _repin_closed_artifact(case, monkeypatch, 'result_ref', case['closed_result'])
+    with pytest.raises(executor.ExecutorHold, match='outcome_not_readonly'): _closed_resume(case)
+    assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
+
+
+@pytest.mark.parametrize('mutation', ['another-unlabelled', 'wrong-module', 'failed-label', 'wrong-hash'],
+    ids=['another-unlabelled', 'wrong-module', 'failed-label', 'wrong-hash'])
+def test_closed_idle_ambiguous_origins_are_not_normalized_into_health(closed_idle_case, monkeypatch, mutation):
+    case = closed_idle_case; rows = case['closed_origins']['project_imports']
+    if mutation == 'another-unlabelled': rows[0].pop('execution_profile')
+    elif mutation == 'wrong-module': rows[-1]['module'] = 'ipfs_datasets_py.other'
+    elif mutation == 'failed-label': rows[-1]['execution_profile'] = 'failed'
+    else: rows[-1]['sha256'] = 'f' * 64
+    _repin_closed_artifact(case, monkeypatch, 'origins_ref', case['closed_origins'])
+    with pytest.raises((executor.ExecutorHold, health.ExecutorHealthError)): _closed_resume(case)
+    assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
+    assert not Path(case['profile']['receipt_path']).exists()
+
+
+def test_closed_idle_database_change_is_refused_without_opening_an_engine(closed_idle_case):
+    case = closed_idle_case; db = Path(case['request']['database_preimage']['path']); db.write_bytes(b'changed-data')
+    with pytest.raises(executor.ExecutorHold, match='database_history_or_current_changed'): _closed_resume(case)
+    assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
+
+
+def test_closed_idle_current_native_revision_change_is_refused(closed_idle_case, monkeypatch):
+    case = closed_idle_case; native = case['closed_native']; native['tasks'][0]['revision'] += 1
+    case['closed_value']['current_native_ref'] = put(Path(case['closed_value']['current_native_ref']['path']), native)
+    _resign_closed(case, monkeypatch)
+    with pytest.raises(executor.ExecutorHold, match='current_tasks_changed'): _closed_resume(case)
+
+
+@pytest.mark.parametrize('family', ['first', 'second'], ids=['first', 'second'])
+def test_closed_idle_residual_native_family_prevents_ack(closed_idle_case, monkeypatch, family):
+    case = closed_idle_case
+    request = health._document(case['recovery']['request_ref']) if family == 'first' else health._document(case['closed_proof']['request_ref'])
+    state = case['scheduler_state']; state['waiters']['private-owned'] = dict(request_id=request['request_id'] + ':root')
+    put(Path(case['scheduler_ref']['path']), state)
+    with pytest.raises(executor.ExecutorHold, match='recovery_original_request_still_active'): _closed_resume(case)
+
+
+@pytest.mark.parametrize('pid', [1000003, 1000004, 1000005], ids=['main', 'owner', 'descendant'])
+def test_closed_idle_old_main_or_descendant_alive_refuses_ack(closed_idle_case, monkeypatch, pid):
+    case = closed_idle_case
+    monkeypatch.setattr(health, '_definitely_dead_identity', lambda old, current: old['pid'] != pid)
+    with pytest.raises(executor.ExecutorHold, match='prior_.*_alive'): _closed_resume(case)
+
+
+def test_closed_idle_consumed_authorization_cannot_bind_another_main(closed_idle_case):
+    case = closed_idle_case; assert _closed_resume(case) == 2
+    case['opening'] = dict(case['opening'], pid=1000007, birth_ticks=7)
+    with pytest.raises(executor.ExecutorHold, match='consumed_by_other_main'): _closed_resume(case)
+
+
+def test_closed_idle_admin_is_metadata_only_and_new_authorization_is_exclusive(closed_idle_case, monkeypatch):
+    case = closed_idle_case; target = Path(case['closed_ref']['path']); target.unlink()
+    spec = {key: value for key, value in case['closed_value'].items() if key not in ('schema', 'recorded_at', 'manager_before')}
+    spec_ref = put(case['closed_archive'] / 'authorization-spec.json', spec)
+    monkeypatch.setattr(health, '_manager', lambda unit: dict(Id=unit, MainPID='0', ActiveState='failed'))
+    monkeypatch.setattr(executor.subprocess, 'Popen', lambda *a, **k: pytest.fail('admin cannot spawn'))
+    created = executor.authorize_known_closed_idle_recovery(spec_ref, target)
+    assert health._document(created)['schema'] == executor.CLOSED_IDLE_SCHEMA
+    with pytest.raises(FileExistsError): executor.authorize_known_closed_idle_recovery(spec_ref, target)
+    assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
+    assert all(Path(path).read_bytes() == raw for path, raw in case['preserved_closed_history'].items())
+
+
+def test_closed_idle_new_unit_pin_is_required_before_any_ack(closed_idle_case, monkeypatch):
+    case = closed_idle_case; monkeypatch.delenv(executor.CLOSED_IDLE_SHA_ENV)
+    with pytest.raises(executor.ExecutorHold, match='receipt_not_unit_pinned'): _closed_resume(case)
+    assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
+
+
+def test_closed_idle_result_revision_float_cannot_equal_a_real_integer(closed_idle_case, monkeypatch):
+    case = closed_idle_case; case['closed_result']['catalogue_binding']['task_statuses'][0]['revision'] = 2.0
+    _repin_closed_artifact(case, monkeypatch, 'result_ref', case['closed_result'])
+    with pytest.raises(executor.ExecutorHold, match='catalogue_tasks_changed'): _closed_resume(case)
+
+
+def test_closed_idle_result_cursor_float_cannot_equal_a_real_integer(closed_idle_case, monkeypatch):
+    case = closed_idle_case; case['closed_result']['catalogue_binding']['event_cursor'] = 5.0
+    _repin_closed_artifact(case, monkeypatch, 'result_ref', case['closed_result'])
+    with pytest.raises(executor.ExecutorHold, match='catalogue_binding'): _closed_resume(case)
+
+
+def test_closed_idle_admin_refuses_running_unit_without_changing_old_authorization(closed_idle_case, monkeypatch):
+    case = closed_idle_case
+    spec = {key: value for key, value in case['closed_value'].items() if key not in ('schema', 'recorded_at', 'manager_before')}
+    spec_ref = put(case['closed_archive'] / 'running-authorization-spec.json', spec)
+    monkeypatch.setattr(health, '_manager', lambda unit: dict(Id=unit, MainPID='12345', ActiveState='active'))
+    target = Path(case['closed_ref']['path']); target.unlink()
+    with pytest.raises(executor.ExecutorHold, match='requires_no_main'):
+        executor.authorize_known_closed_idle_recovery(spec_ref, target)
+    assert not target.exists()
+    assert all(Path(path).read_bytes() == raw for path, raw in case['preserved_closed_history'].items())
+
+
+def test_closed_idle_resume_starts_cycle_three_sequence_one_and_retains_two_spent(closed_idle_case, monkeypatch):
+    case = closed_idle_case; stop = threading.Event(); seen = []
+    monkeypatch.setattr(executor, 'observe_native', lambda config: case['closed_native'])
+    def run(*args, **kwargs): seen.append((args[5], kwargs['cycle_number'])); stop.set()
+    monkeypatch.setattr(executor, 'run_cycle', run)
+    assert executor.serve(case['config_ref'], stop, recovery_ref=case['closed_ref']) == 0
+    assert seen == [(1, 3)] and case['config']['max_cycles'] - 2 == 9998
+    assert not (case['closed_cycle'] / 'closed.json').exists()
+    assert all(Path(path).read_bytes() == raw for path, raw in case['preserved_closed_history'].items())
+
+
+def test_closed_idle_and_nonstarted_cli_cannot_be_combined():
+    with pytest.raises(SystemExit) as stopped:
+        executor.main(['serve', '--config', '/private-not-opened.json', '--config-sha256', 'a' * 64,
+            '--known-nonstarted-recovery', '/private-not-opened-old.json', '--known-closed-idle-recovery', '/private-not-opened-new.json'])
+    assert stopped.value.code == 2
+
+
+
+@pytest.mark.parametrize('field', ['poll_seconds', 'max_proof_bytes'], ids=['poll', 'proof-bytes'])
+def test_closed_idle_original_poll_and_proof_budget_cannot_be_reset(closed_idle_case, field):
+    case = closed_idle_case; case['config'][field] += 1
+    with pytest.raises(executor.ExecutorHold, match='original_budget_changed'): _closed_resume(case)
+    assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
