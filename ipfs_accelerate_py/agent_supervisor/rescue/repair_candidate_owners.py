@@ -1284,6 +1284,9 @@ def _bootstrap_current_profile_contract(policy, frozen, anchor, config, board, c
     science = next((item for item in config["boards"] if item["id"] == "legal-ir-scientific"), None)
     if science is not None and "native_executor_binding" in science:
         seed["scientific_executor_binding"] = science["native_executor_binding"]
+    if science is not None and "native_executor_git_binding" in science:
+        need("scientific_executor_binding" in seed, "scientific Git binding requires its exact profile")
+        seed["scientific_executor_git_binding"] = science["native_executor_git_binding"]
     need(ordinary_bytes(config_path) == config_raw and descriptor(config_path) == config_pin
          and _bootstrap_config_projection(json_object(config_raw), policy, checked_policy_reference,
              anchor["owner_policy_path"]) == expected,
@@ -1340,6 +1343,12 @@ def current_profile_contract(policy, frozen, *, checked_policy_reference=None):
                 {"before": pin, "postimage_utf8": ordinary_bytes(Path(pin["path"])).decode(),
                  "mode": stat.S_IMODE(Path(pin["path"]).lstat().st_mode)}
                 for pin in [*base["units"].values(), base["config"]]]}
+        science = next((item for item in config["boards"] if item["id"] == "legal-ir-scientific"), None)
+        if science is not None and "native_executor_binding" in science:
+            seed["scientific_executor_binding"] = science["native_executor_binding"]
+        if science is not None and "native_executor_git_binding" in science:
+            need("scientific_executor_binding" in seed, "scientific Git binding requires its exact profile")
+            seed["scientific_executor_git_binding"] = science["native_executor_git_binding"]
         observed = observe_repair_upgrade(seed, command)
         return dict(base, expected_loaded_before={suffix: json_object(checked_descriptor(pin))["owner"]
                     for suffix, pin in observed["loaded_runtime"].items()})

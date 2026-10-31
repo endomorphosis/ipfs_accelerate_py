@@ -780,7 +780,200 @@ def _repair_release_liveness_identity(config: dict, release: Path, watchdog_sour
     return value
 
 
-def _repair_scientific_profile(binding: dict, release: Path) -> dict:
+SCIENTIFIC_GIT_BINDING_SCHEMA = "agent-supervisor/scientific-git-executor-binding@1"
+
+
+def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: dict, release: Path) -> None:
+    """Authenticate an explicit existing Git executor; grant no source repair authority.
+
+    The unchanged Release parser executes below. This function reads metadata,
+    hashes sources and issues fixed read-only Git commands through the existing
+    owner, reusing only the trusted original metadata parser without importing
+    the external SDK, invoking main or executing an observer.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor, json_object
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need, git_command
+    def document(ref):
+        raw = checked_descriptor(ref)
+        need(len(raw) <= 4 * 1024**2, "finite scientific Git metadata required")
+        return json_object(raw)
+    typed = document(git_binding)
+    need(set(typed) == {"schema", "profile", "source_commitment", "observer_plan"}
+         and typed["schema"] == SCIENTIFIC_GIT_BINDING_SCHEMA and typed["profile"] == binding,
+         "closed explicit scientific Git/profile binding required")
+    commitment = document(typed["source_commitment"])
+    need(set(commitment) == {"schema", "source_root", "source_commit", "source_tree", "source_inventory",
+         "original_import_Git_binding", "capsule_DATA", "source_operation_plan", "source_qualification",
+         "source_qualification_successors", "runtime_activation_or_task_authority"}
+         and commitment["schema"] == "legal-ir-scientific-source-commitment/v1"
+         and commitment["runtime_activation_or_task_authority"] is False,
+         "scientific source-only Git commitment required")
+    root = Path(commitment["source_root"])
+    head, tree = commitment["source_commit"], commitment["source_tree"]
+    need(root.is_absolute() and ".." not in root.parts and root.resolve() == root
+         and type(head) is str and re.fullmatch(r"[0-9a-f]{40}", head)
+         and type(tree) is str and re.fullmatch(r"[0-9a-f]{40}", tree),
+         "exact genuine scientific Git root/HEAD/tree required")
+    inventory = document(commitment["source_inventory"])
+    capsule = document(commitment["capsule_DATA"])
+    original = document(commitment["original_import_Git_binding"])
+    document(commitment["source_operation_plan"])
+    need(set(inventory) == {"schema", "source_root", "source_commit", "source_tree", "file_count", "source_bytes", "files"}
+         and inventory["schema"] == "legal-ir-scientific-source-inventory/v1"
+         and set(capsule) == {"schema", "source_root", "source_commit", "source_tree", "source_count", "source_bytes", "sources", "DATA_not_import_or_execution_credit"}
+         and capsule["schema"] == "legal-ir-scientific-capsule-DATA-scope/v1"
+         and capsule["DATA_not_import_or_execution_credit"] is True
+         and all(value[key] == commitment[key] for value in (inventory, capsule)
+                 for key in ("source_root", "source_commit", "source_tree")),
+         "scientific inventory/capsule generation differs")
+    def population(rows):
+        need(type(rows) is list and 0 < len(rows) <= 8192, "finite scientific source population required")
+        result = {}
+        for row in rows:
+            need(type(row) is dict and set(row) == {"path", "relative_path", "bytes", "sha256", "mode", "git_blob"},
+                 "closed scientific inventory row required")
+            rel = row["relative_path"]
+            need(type(rel) is str and rel and not Path(rel).is_absolute() and ".." not in Path(rel).parts
+                 and Path(rel).as_posix() == rel and rel not in result and row["path"] == str(root / rel)
+                 and type(row["bytes"]) is int and 0 <= row["bytes"] <= 4 * 1024**2
+                 and type(row["mode"]) is int and row["mode"] in (0o644, 0o755)
+                 and type(row["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", row["sha256"])
+                 and type(row["git_blob"]) is str and re.fullmatch(r"[0-9a-f]{40}", row["git_blob"]),
+                 "scientific inventory path/body identity differs")
+            result[rel] = row
+        return result
+    rows = population(inventory["files"]); archived = population(capsule["sources"])
+    need(type(inventory["file_count"]) is int and inventory["file_count"] == len(rows)
+         and type(inventory["source_bytes"]) is int and inventory["source_bytes"] == sum(r["bytes"] for r in rows.values())
+         and type(capsule["source_count"]) is int and capsule["source_count"] == len(archived)
+         and type(capsule["source_bytes"]) is int and capsule["source_bytes"] == sum(r["bytes"] for r in archived.values())
+         and all(rows.get(rel) == row for rel, row in archived.items()),
+         "scientific complete inventory/capsule population differs")
+    # The qualified original driver owns closed CLI2/capsule parsing below.
+    # Here the archived selection is joined to the explicit inventory only.
+    need(original.get("source_root") == str(root) and original.get("source_head") == head,
+         "scientific original capsule generation differs")
+    need(type(original.get("blobs")) is list and len(original["blobs"]) == len(archived)
+         and {row["relative_path"] for row in original["blobs"]} == set(archived)
+         and all(row == {"relative_path": rel, "bytes": archived[rel]["bytes"],
+                        "object_id": archived[rel]["git_blob"]}
+                 for row in original["blobs"] for rel in (row["relative_path"],)),
+         "scientific original capsule/inventory selection differs")
+    plan = document(typed["observer_plan"])
+    need(plan.get("accelerate_root") == str(root) and plan.get("task_scope") == profile["task_scope"],
+         "scientific observer plan/root/scope differs")
+    cli = plan["native_metadata_cli"]
+    need(cli.get("runtime_root") == str(root) and cli.get("import_head_capsule_Git") == original,
+         "scientific CLI2 source/capsule differs")
+    project = cli["project_import_plan"]; observation = cli["observation_binding"]
+    need(type(project) is dict and project.get("accelerate_root") == str(root)
+         and project.get("datasets_root") == cli["cwd"] == profile["unit"]["working_directory"]
+         and project.get("publication_root") == cli["cwd"]
+         and type(observation) is dict and observation.get("task_scope") == profile["task_scope"]
+         and all(observation.get(k) == profile["catalogue"][k] for k in ("plan_root_cid", "repository_tree_id")),
+         "scientific producer cwd/catalogue/observation scope differs")
+    roles = {"main_entrypoint": "rescue/scientific_executor.py", "health_module": "rescue/native_executor_health.py",
+             "owner_source": "rescue/original_embedded_observation_owner.py", "driver_source": "rescue/native_embedded_observation_driver.py"}
+    pins = {pin["path"]: pin for pin in profile["source_descriptors"]}
+    critical = [(profile[role], "ipfs_accelerate_py/agent_supervisor/" + rel) for role, rel in roles.items()]
+    critical += [(cli["pre_body_guard"], "ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py"),
+                 (observation["observer_source"], "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py"),
+                 (original["route_source"], "ipfs_accelerate_py/agent_implementation_route.py")]
+    def body_matches_Git(pin, row):
+        raw = checked_descriptor(pin)
+        need(hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw).hexdigest() == row["git_blob"],
+             "scientific physical source differs from its committed Git blob")
+    for pin, rel in critical:
+        row = rows.get(rel)
+        need(type(pin) is dict and row is not None and pin == {key: row[key] for key in ("path", "bytes", "sha256")}
+             and pins.get(pin["path"]) == pin and pin in project["source_pins"]
+             and cli["source_sha256"].get(pin["path"]) == pin["sha256"],
+             "scientific source role/inventory/import-plan differs")
+        body_matches_Git(pin, row)
+    for pin in profile["source_descriptors"]:
+        if Path(pin["path"]).is_relative_to(root):
+            row = rows.get(Path(pin["path"]).relative_to(root).as_posix())
+            need(row is not None and pin == {key: row[key] for key in ("path", "bytes", "sha256")},
+                 "scientific profile source snapshot differs")
+            body_matches_Git(pin, row)
+    argv = profile["unit"]["argv"]
+    need(argv.count("--config") == argv.count("--config-sha256") == 1,
+         "scientific producer service configuration required")
+    config_path = argv[argv.index("--config") + 1]; config_hash = argv[argv.index("--config-sha256") + 1]
+    need(config_path in pins and pins[config_path]["sha256"] == config_hash,
+         "scientific producer configuration source differs")
+    config = document(pins[config_path]); template = document(config["idle_template_ref"])
+    need(config["schema"] == "agent-supervisor/scientific-executor-service@1"
+         and config["profile_path"] == binding["path"]
+         and config["catalogue"].get("board_id") == "legal-ir-scientific"
+         and all(config["catalogue"].get(k) == profile["catalogue"][k] for k in
+                 ("board_namespace", "plan_root_cid", "repository_tree_id", "population_sha256"))
+         and template["schema"] == "agent-supervisor/scientific-executor-cycle-template@1"
+         and template["kind"] == "genuine_scoped_idle" and template["plan_ref"] == typed["observer_plan"],
+         "scientific profile/config/template/observer-plan chain differs")
+    request = document(template["request_ref"])
+    need(request["schema"] == "legal-ir-original-native-control-request/v1" and request["cwd"] == cli["cwd"]
+         and request["source_roots"][0] == cli["cwd"]
+         and all(request["source_sha256"].get(pin["path"]) == pin["sha256"] for pin, _ in critical),
+         "scientific original observer request source/cwd differs")
+    environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS="0",
+                       GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
+    def git(*args):
+        return git_command(root, ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull, *args],
+                           timeout=3, environment=environment)
+    def generation():
+        need(git("rev-parse", "--show-toplevel").strip() == str(root)
+             and git("rev-parse", "--verify", "HEAD").strip() == head
+             and git("rev-parse", head + "^{tree}").strip() == tree
+             and git("status", "--porcelain=v1", "-z", "--untracked-files=all") == "",
+             "scientific genuine Git root/HEAD/tree/clean state differs")
+    generation()
+    entries = git("ls-tree", "-r", "-z", "--full-tree", head)
+    need(len(entries.encode()) <= 4 * 1024**2, "finite scientific Git tree required")
+    actual = {}
+    for entry in entries.split("\0"):
+        if not entry:
+            continue
+        header, rel = entry.split("\t", 1); mode, kind, blob = header.split(" ")
+        need(kind in ("blob", "commit") and rel not in actual, "bounded scientific Git tree required")
+        actual[rel] = (kind, int(mode, 8) & 0o777, blob)
+    # The public inventory is a selected source population, not the full repo.
+    # Unselected README/docs/gitlinks grant no import or execution authority.
+    need(all(actual.get(rel) == ("blob", row["mode"], row["git_blob"]) for rel, row in rows.items()),
+         "scientific selected genuine Git inventory differs")
+    # Reuse the already qualified original metadata API at its genuine role
+    # path, after authenticating all declared physical bodies against Git. Its
+    # stdlib-only module body does not call main, import the SDK, open the DB,
+    # create a process, reserve resources or execute an observation.
+    import types
+    driver = profile["driver_source"]; driver_raw = checked_descriptor(driver)
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import ordinary_bytes
+    trusted_driver = release / "ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py"
+    need(ordinary_bytes(trusted_driver, 4 * 1024**2) == driver_raw,
+         "scientific Git parser differs from the trusted selected immutable component")
+    name = "_ipfs_repair_Git_driver_" + driver["sha256"]
+    need(name not in sys.modules, "scientific driver metadata namespace is already occupied")
+    module = types.ModuleType(name); module.__file__ = driver["path"]; module.__package__ = ""
+    sys.modules[name] = module
+    try:
+        exec(compile(driver_raw, driver["path"], "exec", dont_inherit=True), module.__dict__)
+        parsed = module.configuration(plan)
+        need(type(parsed) is dict and parsed == cli, "original scientific CLI2 metadata parser differs")
+    except RuntimeError as error:
+        raise ValueError("original scientific CLI2 metadata parser rejected plan") from error
+    finally:
+        if sys.modules.get(name) is module:
+            del sys.modules[name]
+    # Close metadata and live generation after all reads; no database is opened.
+    for ref in (binding, git_binding, typed["source_commitment"], typed["observer_plan"], commitment["source_inventory"],
+                commitment["capsule_DATA"], commitment["original_import_Git_binding"], pins[config_path],
+                config["idle_template_ref"], template["request_ref"]):
+        checked_descriptor(ref)
+    generation()
+
+
+def _repair_scientific_profile(binding: dict, release: Path, git_binding: dict | None = None) -> dict:
     """Call the existing metadata parser from its actual immutable release file."""
     import hashlib
     import types
@@ -790,14 +983,22 @@ def _repair_scientific_profile(binding: dict, release: Path) -> dict:
     roles = {"main_entrypoint": "scientific_executor.py", "health_module": "native_executor_health.py",
              "owner_source": "original_embedded_observation_owner.py",
              "driver_source": "native_embedded_observation_driver.py"}
+    if git_binding is not None:
+        _repair_scientific_git_binding(binding, git_binding, profile, release)
     for role, name in roles.items():
         pin = profile.get(role)
-        need(type(pin) is dict and pin.get("path") == str(
-            release / "ipfs_accelerate_py/agent_supervisor/rescue" / name),
+        need(type(pin) is dict and (git_binding is not None or pin.get("path") == str(
+            release / "ipfs_accelerate_py/agent_supervisor/rescue" / name)),
             "scientific profile role must use the selected immutable release")
         raw = checked_descriptor(pin)
         need(len(raw) <= 4 * 1024**2, "finite scientific Python source required")
     pin = profile["health_module"]
+    if git_binding is not None:
+        from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import descriptor
+        verifier = descriptor(release / "ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py")
+        need((verifier["bytes"], verifier["sha256"]) == (pin["bytes"], pin["sha256"]),
+             "selected immutable scientific verifier differs from the pinned producer")
+        pin = verifier
     raw = checked_descriptor(pin)
     name = "_ipfs_repair_release_health_" + hashlib.sha256(raw).hexdigest()
     need(name not in sys.modules, "scientific metadata parser namespace is already occupied")
@@ -809,16 +1010,18 @@ def _repair_scientific_profile(binding: dict, release: Path) -> dict:
         exec(compile(raw, pin["path"], "exec", dont_inherit=True), module.__dict__)
         parsed = module._profile(binding)
         need(type(parsed) is dict and parsed == profile, "canonical scientific profile parser differs")
+        if git_binding is not None:
+            _repair_scientific_git_binding(binding, git_binding, parsed, release)
         return parsed
     finally:
         if sys.modules.get(name) is module:
             del sys.modules[name]
 
 
-def _repair_scientific_configuration(config: dict, binding: dict, release: Path) -> dict:
+def _repair_scientific_configuration(config: dict, binding: dict, release: Path, git_binding: dict | None = None) -> dict:
     """Compose one explicit scientific profile without granting runtime authority."""
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
-    profile = _repair_scientific_profile(binding, release)
+    profile = _repair_scientific_profile(binding, release, git_binding)
     value = json.loads(json.dumps(config))
     boards = value.get("boards")
     need(type(boards) is list and len(boards) == 2
@@ -826,6 +1029,13 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path)
          and {board.get("id") for board in boards} == {"legal-ir", "legal-ir-scientific"},
          "the two exact existing boards are required for a scientific profile")
     board = next(board for board in boards if board["id"] == "legal-ir-scientific")
+    declared_git = board.get("native_executor_git_binding")
+    need(declared_git is None or declared_git == git_binding,
+         "existing scientific Git binding cannot be silently changed or removed")
+    if git_binding is not None:
+        need(board.get("native_executor_binding") in (None, binding),
+             "scientific Git binding cannot replace another producer profile")
+        board["native_executor_git_binding"] = json.loads(json.dumps(git_binding))
     catalogue = board.get("native_catalogue_binding")
     fields = ("board_namespace", "plan_root_cid", "repository_tree_id", "population_sha256")
     need(type(catalogue) is dict and all(profile["catalogue"].get(k) == catalogue.get(k)
@@ -865,7 +1075,7 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path)
     return value
 
 
-def prepare_existing_repair_configuration(source: Path, contract: dict, bindings: dict, *, scientific_executor_binding: dict | None = None) -> dict:
+def prepare_existing_repair_configuration(source: Path, contract: dict, bindings: dict, *, scientific_executor_binding: dict | None = None, scientific_executor_git_binding: dict | None = None) -> dict:
     """Explicit operator grant for the existing profile; never mint an epoch.
 
     The caller provides the complete finite epoch and policy. This function
@@ -899,10 +1109,10 @@ def prepare_existing_repair_configuration(source: Path, contract: dict, bindings
                 "source_commitment": commitment, "manifest": manifest}
     concrete = {**bindings, "source_snapshot": snapshot}
     return prepare_repair_upgrade(source, contract, commitment, initial_bindings=concrete,
-        scientific_executor_binding=scientific_executor_binding)
+        scientific_executor_binding=scientific_executor_binding, scientific_executor_git_binding=scientific_executor_git_binding)
 
 
-def prepare_repair_upgrade(source: Path, contract: dict, source_commitment: str, *, initial_bindings: dict | None = None, scientific_executor_binding: dict | None = None) -> dict:
+def prepare_repair_upgrade(source: Path, contract: dict, source_commitment: str, *, initial_bindings: dict | None = None, scientific_executor_binding: dict | None = None, scientific_executor_git_binding: dict | None = None) -> dict:
     """One existing profile, exact beforeimages, immutable source population.
 
     This only stages files. The separate activation owner, after the original
@@ -954,8 +1164,14 @@ def prepare_repair_upgrade(source: Path, contract: dict, source_commitment: str,
     release, contents, selected_files = _finite_repair_release(source, home, render["prior_policy"]["source_paths"])
     config["runtime_release"] = str(release)
     config = _repair_release_command_environments(config, release, source)
+    science = next((board for board in config["boards"] if board["id"] == "legal-ir-scientific"), {})
+    if scientific_executor_binding is None and science.get("native_executor_git_binding") is not None:
+        scientific_executor_binding = science.get("native_executor_binding")
+        scientific_executor_git_binding = science["native_executor_git_binding"]
+    need(scientific_executor_git_binding is None or scientific_executor_binding is not None,
+         "scientific Git binding requires its exact profile")
     if scientific_executor_binding is not None:
-        config = _repair_scientific_configuration(config, scientific_executor_binding, release)
+        config = _repair_scientific_configuration(config, scientific_executor_binding, release, scientific_executor_git_binding)
     sources = {name: descriptor(release / PACKAGE_MODULES[name] if name in PACKAGE_MODULES else
         release / "ipfs_accelerate_py/agent_supervisor/rescue" / (name + ".py")) for name in contents}
     config = _repair_release_liveness_identity(config, release, sources["fleet_watchdog"])
@@ -994,6 +1210,8 @@ def prepare_repair_upgrade(source: Path, contract: dict, source_commitment: str,
         "staged_only": True, "service_actions": 0, "legacy_history_preserved": True}
     if scientific_executor_binding is not None:
         plan["scientific_executor_binding"] = json.loads(json.dumps(scientific_executor_binding))
+    if scientific_executor_git_binding is not None:
+        plan["scientific_executor_git_binding"] = json.loads(json.dumps(scientific_executor_git_binding))
     verify_repair_upgrade(plan)
     return plan
 
@@ -1018,8 +1236,14 @@ def verify_repair_upgrade(plan: dict, *, installed: bool = False) -> None:
                      else plan["source_successor"]["prior_policy"])
     need(_repair_release_command_environments(post, Path(plan["release"]), Path(source_policy["repository_root"])) == post,
          "staged board command source environment differs")
+    science = next((board for board in post["boards"] if board["id"] == "legal-ir-scientific"), {})
+    need(science.get("native_executor_git_binding") == plan.get("scientific_executor_git_binding")
+         and (plan.get("scientific_executor_git_binding") is None or
+              science.get("native_executor_binding") == plan.get("scientific_executor_binding")),
+         "staged scientific Git/profile binding differs from the full configuration")
     if plan.get("scientific_executor_binding") is not None:
-        need(_repair_scientific_configuration(post, plan["scientific_executor_binding"], Path(plan["release"])) == post,
+        need(_repair_scientific_configuration(post, plan["scientific_executor_binding"], Path(plan["release"]),
+             plan.get("scientific_executor_git_binding")) == post,
              "staged scientific profile/probe join differs")
     for row in plan["files"]:
         path = Path(row["before"]["path"])
@@ -1051,7 +1275,9 @@ def apply_repair_upgrade(plan: dict, runner, *, deadline=None) -> dict:
         from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor
         checked_descriptor(row["before"])
         if plan.get("scientific_executor_binding") is not None:
-            _repair_scientific_profile(plan["scientific_executor_binding"], Path(plan["release"]))
+            _repair_scientific_profile(plan["scientific_executor_binding"], Path(plan["release"]),
+                plan.get("scientific_executor_git_binding"))
+        cutover_remaining(deadline)
         atomic_write(Path(row["before"]["path"]), row["postimage_utf8"].encode(), mode=row["mode"])
     verify_repair_upgrade(plan, installed=True)
     commands = []

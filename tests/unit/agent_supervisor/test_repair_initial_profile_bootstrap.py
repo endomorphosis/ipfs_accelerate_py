@@ -211,3 +211,37 @@ def test_configuration_replacement_never_returns_unprojected_bootstrap_contract(
         monkeypatch.setattr(installer,"observe_repair_upgrade",raced)
     with pytest.raises(ValueError):invoke(d)
     assert changed[0] and d["seen"]==[]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_bootstrap_reconstructs_exact_typed_science_binding_in_both_board_orders(tmp_path, monkeypatch, reverse):
+    d = bootstrap_scope(tmp_path, monkeypatch)
+    science = next(b for b in d["projection"]["boards"] if b["id"] == "legal-ir-scientific")
+    profile = write(tmp_path / "operator-profile.json", {"source_only_fixture": True}, True)
+    git = write(tmp_path / "operator-Git-binding.json", {"schema": installer.SCIENTIFIC_GIT_BINDING_SCHEMA, "profile": profile}, True)
+    science["native_executor_binding"] = profile; science["native_executor_git_binding"] = git
+    if reverse: d["projection"]["boards"].reverse()
+    d["reseal"]()
+    # Transport through the actual bootstrap is tested here. Composition cases
+    # separately exercise the complete source/Git validator; no health is faked.
+    calls = []
+    def compose(config, profile_ref, release, git_ref=None):
+        assert profile_ref == profile and git_ref == git
+        calls.append((copy.deepcopy(profile_ref), copy.deepcopy(git_ref)))
+        return config
+    monkeypatch.setattr(installer, "_repair_scientific_configuration", compose)
+    result = invoke(d); stage = d["seen"][0]
+    assert calls and stage["scientific_executor_binding"] == profile and stage["scientific_executor_git_binding"] == git
+    assert result["config"] == pin(d["configpath"])
+    assert json.loads(stage["files"][-1]["postimage_utf8"]) == d["config"]
+    counterpart = next(b for b in d["config"]["boards"] if b["id"] == "legal-ir")
+    assert counterpart["hold_files"] == ["HOLD"] and counterpart["repair_authorization_epoch"]["max_attempts"] == 3
+
+
+def test_bootstrap_rejects_orphan_typed_binding_before_readiness(tmp_path, monkeypatch):
+    d = bootstrap_scope(tmp_path, monkeypatch)
+    science = next(b for b in d["projection"]["boards"] if b["id"] == "legal-ir-scientific")
+    science["native_executor_git_binding"] = write(tmp_path / "orphan.json", {"source_only_fixture": True}, True)
+    d["reseal"]()
+    with pytest.raises(ValueError, match="requires its exact profile"): invoke(d)
+    assert d["seen"] == []

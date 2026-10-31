@@ -30,7 +30,7 @@ RECEIPT_KEYS = frozenset({'schema', 'profile_ref', 'sequence', 'identity', 'obse
 MAX_JSON = 4 * 1024**2
 MAX_SOURCE = 4 * 1024**2
 MAX_INSTALLED_TOOL = 64 * 1024**2
-MAX_DATABASE_PREIMAGE = 128 * 1024**2
+MAX_DATABASE_DATA_BYTES = 128 * 1024**2
 MAX_EPOCH_ARCHIVES = 64
 MAX_ARCHIVE_DIRECTORY_ENTRIES = 4096
 ENV_PROFILE_SHA = 'IPFS_NATIVE_EXECUTOR_PROFILE_SHA256'
@@ -80,14 +80,11 @@ def _path(value):
     _need(path.is_absolute() and str(path) == os.path.abspath(value) and not any(p.is_symlink() for p in (path, *path.parents)), 'aliased_or_relative_path')
     return path
 
-def _raw(path, maximum=MAX_JSON, *, database_preimage=False):
+def _raw(path, maximum=MAX_JSON):
     path = _path(str(path))
-    _need(type(database_preimage) is bool and (not database_preimage or maximum == MAX_DATABASE_PREIMAGE),
-          'database_preimage_bound')
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
         first = os.fstat(stream.fileno())
-        custody = (first.st_uid == os.geteuid() and not first.st_mode & 0o002 and first.st_size > 0) if database_preimage else (first.st_uid in (0, os.geteuid()) and not first.st_mode & 0o022)
-        _need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and custody and 0 <= first.st_size <= maximum, 'unsafe_or_oversized_file')
+        _need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and first.st_uid in (0, os.geteuid()) and not first.st_mode & 0o022 and 0 <= first.st_size <= maximum, 'unsafe_or_oversized_file')
         raw = stream.read(maximum + 1)
         last = os.fstat(stream.fileno())
     stamp = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
@@ -98,16 +95,42 @@ def descriptor(path, *, maximum=MAX_JSON):
     raw = _raw(path, maximum)
     return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
 
-def database_preimage_descriptor(path):
-    """Describe the physical preimage of an owned shared catalogue database.
+def database_descriptor(path):
+    """Describe bounded mutable catalogue DATA, without opening a database.
 
-    Group writes are expected for this explicit role; world writes are refused.
-    This hashes stable bytes only and establishes no database or WAL semantics.
-    Ordinary metadata, project sources and installed tools retain their policy.
+    Group-writable owner data is allowed. Control documents, project source and
+    installed tools continue using their existing readers and mode checks. The
+    streaming hash certifies one stable file observation, not a SQL snapshot.
     """
-    raw = _raw(path, MAX_DATABASE_PREIMAGE, database_preimage=True)
-    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
-
+    path = _path(str(path))
+    before = path.lstat()
+    stamp = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid,
+                       s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        first = os.fstat(fd)
+        _need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and
+              first.st_uid == os.geteuid() and not first.st_mode & 0o002 and
+              0 < first.st_size <= MAX_DATABASE_DATA_BYTES,
+              'unsafe_or_oversized_database_data')
+        _need(stamp(before) == stamp(first), 'database_data_changed_before_open')
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = os.read(fd, 64 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            _need(total <= first.st_size and total <= MAX_DATABASE_DATA_BYTES,
+                  'database_data_grew_during_read')
+            digest.update(chunk)
+        last = os.fstat(fd)
+        current = _path(str(path)).lstat()
+        _need(total == first.st_size and stamp(first) == stamp(last) == stamp(current),
+              'database_data_changed_during_read')
+        return dict(path=str(path), bytes=total, sha256=digest.hexdigest())
+    finally:
+        os.close(fd)
 
 def installed_tool_descriptor(path):
     """Describe an installed ELF interpreter, outside the project-source class.
@@ -288,10 +311,26 @@ def _embedded_idle_result(result, request, plan, origins, profile, native):
     command = plan['native_metadata_cli']
     _keys(command, {'schema', 'runtime_root', 'cwd', 'attempt_directory', 'temporary_directory',
                     'project_import_plan', 'pre_body_guard', 'result_path', 'source_sha256',
-                    'observation_binding'}, 'embedded_idle_cli_shape')
-    _need(command['schema'] == 'native-embedded-scoped-observation-cli/v1' and
+                    'observation_binding', 'import_head_capsule_Git'}, 'embedded_idle_cli_shape')
+    _need(command['schema'] == 'native-embedded-scoped-observation-cli/v2' and
           _text(command['runtime_root']) and command['runtime_root'] == plan['accelerate_root'],
           'embedded_idle_cli_contract')
+    git = command['import_head_capsule_Git']
+    _keys(git, {'blobs', 'ls_tree_tail', 'payload_bytes', 'required_relative_files', 'route_source',
+                'scope', 'selected_file_count', 'source_head', 'source_root', 'unique_blob_count'},
+          'embedded_idle_import_git_shape')
+    route = git['route_source']
+    _keys(route, {'path', 'bytes', 'sha256'}, 'embedded_idle_import_route_descriptor')
+    _need(git['source_root'] == command['runtime_root'] and type(git['source_head']) is str and
+          re.fullmatch('[0-9a-f]{40}', git['source_head']) and route in profile['source_descriptors'] and
+          route['path'] == str(Path(git['source_root']) / 'ipfs_accelerate_py/agent_implementation_route.py') and
+          request.get('source_sha256', {}).get(route['path']) == route['sha256'] and
+          type(command['source_sha256']) is dict and command['source_sha256'].get(route['path']) == route['sha256'],
+          'embedded_idle_import_source_binding')
+    _need(any(row.get('module') == 'ipfs_accelerate_py.agent_implementation_route' and
+              {key: row.get(key) for key in ('path', 'bytes', 'sha256')} == route for row in _origins(origins, profile)),
+          'embedded_idle_import_route_origin_missing')
+
     binding = command['observation_binding']
     _keys(binding, {'schema', 'database_preimage', 'task_scope', 'plan_root_cid',
                     'repository_tree_id', 'observer_source', 'source_schema'}, 'embedded_idle_plan_binding_shape')
