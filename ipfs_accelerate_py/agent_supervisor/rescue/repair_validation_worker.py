@@ -1369,6 +1369,15 @@ def validation_worker(args):
                  'maintained private tmp_path plugin lacks actual raw normal execution')
             fixtures.set_node(None)
             fixtures.deadline_enter()
+        if private_plugin is None:
+            canonical_plugin = d / 'ipfs_datasets_py/optimizers/logic_theorem_optimizer/validation_pytest.py'
+            if str(canonical_plugin) in plan['source_pins']:
+                import importlib
+                private_plugin = importlib.import_module('ipfs_datasets_py.optimizers.logic_theorem_optimizer.validation_pytest')
+                need(Path(private_plugin.__file__) == canonical_plugin
+                     and private_plugin.__spec__.origin == str(canonical_plugin)
+                     and guard.executed.get(str(canonical_plugin)) == plan['source_pins'][str(canonical_plugin)],
+                     'pinned canonical v1 tmp_path plugin lacks actual raw normal execution')
         subprocess.Popen = checked_popen
         os.mkfifo = checked_fifo
         active[0] = True

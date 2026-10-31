@@ -300,3 +300,159 @@ def test_explicit_different_Git_descriptor_is_not_silently_replaced(tmp_path, mo
     with pytest.raises(ValueError,match='explicit scientific Git binding differs'):
         installer.prepare_repair_upgrade(d['source'],contract,'source-only',scientific_executor_git_binding=wrong)
     assert calls==[] and Path(config_ref['path']).read_bytes()==json.dumps(config,sort_keys=True).encode()
+
+
+def separate_producer_fixture(tmp_path, monkeypatch, mode=0o600):
+    """Modeled two-repository metadata; no producer body is imported/executed."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owners
+    d = git_fixture(tmp_path, monkeypatch)
+    native_git = owners.git_command
+    root = tmp_path / "PW"; root.mkdir()
+    relatives = ["ipfs_accelerate_py/__init__.py", "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py"]
+    rows = {}
+    for rel in relatives:
+        path = root / rel; path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Producer source fixture: metadata only.\n")
+        path.chmod(mode)
+        body = path.read_bytes()
+        rows[rel] = {**pin(path), "relative_path": rel, "mode": mode,
+            "git_blob": hashlib.sha1(b"blob " + str(len(body)).encode() + b"\0" + body).hexdigest()}
+    d.update(producer_root=root, producer_rows=rows, producer_head="c"*40, producer_tree="d"*40,
+             producer_fault=None, producer_calls=[], producer_changes=None)
+    old_seal = d["seal"]
+    def seal():
+        old_seal()
+        inventory = {"schema":"legal-ir-scientific-source-inventory/v1", "source_root":str(root),
+            "source_commit":d["producer_head"], "source_tree":d["producer_tree"],
+            "file_count":len(rows), "source_bytes":sum(row["bytes"] for row in rows.values()), "files":list(rows.values())}
+        if d["producer_changes"] is not None:
+            d["producer_changes"](inventory)
+        d["producer_inventory"] = inventory
+        inventory_ref = write(tmp_path/"producer-inventory.json", inventory)
+        generation_ref = write(tmp_path/"producer-generation.json", {"source_only":True})
+        qualification_ref = write(tmp_path/"producer-source-qualification.json", {"modeled_source_fixture_only":True})
+        commitment = {"schema":"agent-supervisor/scientific-producer-source-commitment@1",
+            "source_root":str(root), "source_commit":d["producer_head"], "source_tree":d["producer_tree"],
+            "source_inventory":inventory_ref, "source_operation_plan":generation_ref,
+            "source_qualification":qualification_ref, "runtime_activation_or_task_authority":False}
+        d["producer_commitment"] = commitment
+        producer_ref = write(tmp_path/"producer-commitment.json", commitment)
+        profile = copy.deepcopy(d["profile"])
+        native_main = profile["main_entrypoint"]["path"]
+        main = pin(root/relatives[-1])
+        profile["main_entrypoint"] = main
+        profile["unit"]["argv"] = [main["path"] if value==native_main else value for value in profile["unit"]["argv"]]
+        profile["unit"]["environment"] = {"PYTHONPATH":str(d["root"])+":"+str(d["datasets"])}
+        profile["source_descriptors"].extend(pin(root/rel) for rel in relatives)
+        d["profile"] = profile
+        d["profile_ref"] = write(tmp_path/"Git-profile.json", profile)
+        d["binding_ref"] = write(tmp_path/"typed-binding.json", {
+            "schema":installer.SCIENTIFIC_PRODUCER_GIT_BINDING_SCHEMA, "profile":d["profile_ref"],
+            "source_commitment":d["commitment_ref"], "observer_plan":pin(tmp_path/"plan.json"),
+            "producer_source_commitment":producer_ref})
+    def git(root_arg, argv, **kwargs):
+        if root_arg != root:
+            return native_git(root_arg, argv, **kwargs)
+        assert kwargs["timeout"]==3 and kwargs["environment"]["GIT_CONFIG_GLOBAL"]=="/dev/null"
+        d["producer_calls"].append(argv)
+        args=argv[4:]
+        if args==["rev-parse","--show-toplevel"]:return (str(tmp_path/"foreign") if d["producer_fault"]=="root" else str(root))+"\n"
+        if args==["rev-parse","--verify","HEAD"]:return ("e"*40 if d["producer_fault"]=="head" else d["producer_head"])+"\n"
+        if args==["rev-parse",d["producer_head"]+"^{tree}"]:return ("e"*40 if d["producer_fault"]=="tree" else d["producer_tree"])+"\n"
+        if args==["status","--porcelain=v1","-z","--untracked-files=all"]:return "?? foreign\0" if d["producer_fault"]=="dirty" else ""
+        if args==["ls-tree","-r","-z","--full-tree",d["producer_head"]]:
+            return "".join(("100755" if row["mode"]&0o111 else "100644")+" blob "+row["git_blob"]+"\t"+rel+"\0"
+                for rel,row in rows.items() if d["producer_fault"]!="inventory" or rel!=relatives[-1])
+        raise AssertionError(args)
+    d["seal"] = seal;seal();monkeypatch.setattr(owners,"git_command",git)
+    return d
+
+
+@pytest.mark.parametrize("mode", [0o600,0o644,0o664])
+def test_separate_producer_Git_binding_preserves_native_roles_and_physical_modes(tmp_path,monkeypatch,mode):
+    d=separate_producer_fixture(tmp_path,monkeypatch,mode)
+    native=copy.deepcopy(d["plan"]);original_request=copy.deepcopy(d["request"])
+    parsed=installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+    assert parsed==d["profile"] and d["plan"]==native and d["request"]==original_request
+    assert len(d["producer_calls"])==len(d["git_calls"])==18
+    assert parsed["main_entrypoint"]["path"].startswith(str(d["producer_root"])+"/")
+    assert all(parsed[role]["path"].startswith(str(d["root"])+"/") for role in ("health_module","owner_source","driver_source"))
+    assert all(row["mode"]==mode for row in d["producer_inventory"]["files"])
+
+
+@pytest.mark.parametrize("failure", ["root","head","tree","dirty","inventory"])
+def test_separate_producer_refuses_foreign_or_uncommitted_Git_generation(tmp_path,monkeypatch,failure):
+    d=separate_producer_fixture(tmp_path,monkeypatch);d["producer_fault"]=failure
+    reason="producer selected genuine Git inventory differs" if failure=="inventory" else "producer genuine Git root/HEAD/tree/clean state differs"
+    with pytest.raises(ValueError,match=reason):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+
+
+@pytest.mark.parametrize("failure", ["schema","profile","native_commitment","producer_commitment_extra","producer_inventory_head",
+    "producer_duplicate","producer_mode","producer_hash","native_role","extra_producer","missing_parent","pythonpath","entrypoint"])
+def test_separate_producer_refuses_mixed_profile_and_source_metadata(tmp_path,monkeypatch,failure):
+    d=separate_producer_fixture(tmp_path,monkeypatch)
+    typed=json.loads(Path(d["binding_ref"]["path"]).read_bytes());profile=d["profile"]
+    if failure=="schema":typed["schema"]=installer.SCIENTIFIC_GIT_BINDING_SCHEMA;reason="closed explicit scientific Git/profile binding required"
+    elif failure=="profile":typed["profile"]={**d["profile_ref"],"sha256":"0"*64};reason="closed explicit scientific Git/profile binding required"
+    elif failure=="native_commitment":typed["source_commitment"]=typed["producer_source_commitment"];reason="scientific source-only Git commitment required"
+    elif failure=="producer_commitment_extra":
+        c={**d["producer_commitment"],"allow_external_root":True};typed["producer_source_commitment"]=write(tmp_path/"wrong-producer-commitment.json",c);reason="closed source-only producer Git commitment required"
+    elif failure=="producer_inventory_head":
+        inv={**d["producer_inventory"],"source_commit":"e"*40};c={**d["producer_commitment"],"source_inventory":write(tmp_path/"wrong-producer-inventory.json",inv)};typed["producer_source_commitment"]=write(tmp_path/"wrong-producer-commitment.json",c);reason="producer inventory generation differs"
+    elif failure=="producer_duplicate":
+        inv=copy.deepcopy(d["producer_inventory"]);inv["files"].append(copy.deepcopy(inv["files"][0]));inv["file_count"]+=1;inv["source_bytes"]+=inv["files"][0]["bytes"]
+        c={**d["producer_commitment"],"source_inventory":write(tmp_path/"wrong-producer-inventory.json",inv)};typed["producer_source_commitment"]=write(tmp_path/"wrong-producer-commitment.json",c);reason="producer inventory path/body/mode identity differs"
+    elif failure in("producer_mode","producer_hash"):
+        target=next(row for rel,row in d["producer_rows"].items() if rel.endswith("scientific_executor.py"))
+        if failure=="producer_mode":Path(target["path"]).chmod(0o640)
+        else:Path(target["path"]).write_bytes(b"# changed producer body\n")
+        reason="producer physical source/mode differs" if failure=="producer_mode" else "repair descriptor changed"
+    elif failure=="native_role":profile["owner_source"]=profile["main_entrypoint"];reason="exact separate producer entrypoint/parents and retained native roles required"
+    elif failure=="extra_producer":
+        target=d["producer_root"]/"extra.py";target.write_text("# unrelated\n");profile["source_descriptors"].append(pin(target));reason="exact separate producer entrypoint/parents and retained native roles required"
+    elif failure=="missing_parent":profile["source_descriptors"].remove(pin(d["producer_root"]/"ipfs_accelerate_py/__init__.py"));reason="exact separate producer entrypoint/parents and retained native roles required"
+    elif failure=="pythonpath":profile["unit"]["environment"]["PYTHONPATH"]=str(d["producer_root"])+":"+str(d["datasets"]);reason="separate producer must preserve native-only Python search roots and exact entrypoint"
+    elif failure=="entrypoint":profile["unit"]["argv"][1]=d["roles"]["main_entrypoint"]["path"];reason="separate producer must preserve native-only Python search roots and exact entrypoint"
+    if failure in("native_role","extra_producer","missing_parent","pythonpath","entrypoint"):
+        typed["profile"]=write(Path(d["profile_ref"]["path"]),profile);d["profile_ref"]=typed["profile"]
+    d["binding_ref"]=write(Path(d["binding_ref"]["path"]),typed)
+    with pytest.raises(ValueError,match=reason):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+
+
+def test_separate_producer_masked_live_body_cannot_replace_committed_blob(tmp_path,monkeypatch):
+    d=separate_producer_fixture(tmp_path,monkeypatch)
+    rel="ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py"
+    row=d["producer_rows"][rel];path=Path(row["path"]);path.write_text("# assume-unchanged cannot authorize this body\n")
+    row.update(pin(path));d["seal"]()
+    with pytest.raises(ValueError,match="producer physical source/mode differs from its committed Git blob"):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+
+
+def test_separate_producer_configuration_preserves_native_scope_and_engineering_board(tmp_path,monkeypatch):
+    d=separate_producer_fixture(tmp_path,monkeypatch);before=copy.deepcopy(d["config"])
+    actual=installer._repair_scientific_configuration(d["config"],d["profile_ref"],d["release"],d["binding_ref"])
+    engineering=next(board for board in actual["boards"] if board["id"]=="legal-ir")
+    science=next(board for board in actual["boards"] if board["id"]=="legal-ir-scientific")
+    assert engineering==next(board for board in before["boards"] if board["id"]=="legal-ir")
+    assert science["native_executor_git_binding"]==d["binding_ref"] and science["native_executor_binding"]==d["profile_ref"]
+    assert d["plan"]["accelerate_root"]==str(d["root"])
+    assert d["profile"]["unit"]["environment"]["PYTHONPATH"]==str(d["root"])+":"+str(d["datasets"])
+    assert d["config"]==before
+
+
+def test_separate_producer_drift_during_native_read_is_refused_before_return(tmp_path,monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owners
+    d=separate_producer_fixture(tmp_path,monkeypatch);original=owners.git_command;changed=[]
+    def observed(root,argv,**kwargs):
+        if root==d["root"] and argv[4:]==["ls-tree","-r","-z","--full-tree",d["head"]] and not changed:
+            Path(d["profile"]["main_entrypoint"]["path"]).write_text("# producer drift after initial producer Git read\n")
+            changed.append(True)
+        return original(root,argv,**kwargs)
+    monkeypatch.setattr(owners,"git_command",observed)
+    with pytest.raises(ValueError,match="repair descriptor changed"):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+    assert changed==[True]
