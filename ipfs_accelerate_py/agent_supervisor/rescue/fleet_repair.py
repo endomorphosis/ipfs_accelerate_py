@@ -33,10 +33,16 @@ from .fleet_watchdog import (
 from .fleet_watchdog import repair_hold_paths as hold_paths
 from .recovery_policy import recovery_denial
 from .systemd_heartbeat import SystemdHeartbeat
+from .repair_authorization import repair_job_directory, require_current_authorization
 
 _SERVICE_HEARTBEAT = None
 CANDIDATE_PENDING = frozenset({"candidate_ready", "validation_pending", "adoption_pending",
                                "candidate_pending", "adopted_pending_probe"})
+
+def _repair_job_path(config: dict[str, Any], board: dict[str, Any]) -> Path:
+    require_current_authorization(config, board)
+    return repair_job_directory(Path(config["state_dir"]), board) / "job.json"
+
 
 def _heartbeat() -> SystemdHeartbeat:
     return _SERVICE_HEARTBEAT or SystemdHeartbeat.from_environment()
@@ -54,7 +60,7 @@ def cancel_waiting_repair_job(state_root: Path, board: dict[str, Any], *,
     if hold_paths(board):
         return {"status": "operator_hold"}
     unit = repair_job_unit({"repair_worker": {"job_unit": repair_unit}}) if repair_unit else repair_job_unit({})
-    path = Path(state_root) / "repairs" / board["id"] / "job.json"
+    path = repair_job_directory(Path(state_root), board) / "job.json"
     with lock(path.parent / "queue.lock") as acquired:
         if not acquired:
             return {"status": "queue_busy"}
@@ -194,7 +200,8 @@ def _repair_limits(config: dict[str, Any]) -> dict[str, int | None]:
         limit = board.get("max_repair_attempts")
         if "max_repair_attempts" in board and (type(limit) is not int or limit < 1):
             raise ValueError(f"board {board['id']}: max_repair_attempts must be a positive integer")
-        limits[board["id"]] = limit
+        epoch = require_current_authorization(config, board)
+        limits[board["id"]] = min(limit, epoch.value["max_attempts"]) if epoch else limit
     return limits
 
 
@@ -351,7 +358,7 @@ def _recovery_denial(config: dict[str, Any], board: dict[str, Any],
     """
     state = read_json(Path(config["state_dir"]) / board["id"] / "state.json")
     sample = state.get("observation")
-    job = read_json(Path(config["state_dir"]) / "repairs" / board["id"] / "job.json")
+    job = read_json(_repair_job_path(config, board))
     incident = job.get("latest_incident")
     cached = incident.get("observation") if isinstance(incident, dict) else {}
     return (recovery_denial(board, sample if isinstance(sample, dict) else {}, allow_infrastructure=True)
@@ -402,7 +409,7 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command,
             continue
         if observation_only(board) or _recovery_denial(config, board):
             continue
-        path = root / "repairs" / board["id"] / "job.json"
+        path = _repair_job_path(config, board)
         job = read_json(path)
         eligible_status = job.get("status")
         retired_recheck = retired_job_sha256 is not None
@@ -690,13 +697,19 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
                 or not infrastructure_repair_allowed(board, observation, time.time())):
             return {"status": "policy_wait", "board_id": board_id,
                     "reason": "infrastructure_repair_not_authorized"}
-    directory = Path(config["state_dir"]) / "repairs" / board_id
+    epoch = require_current_authorization(config, board, incident=incident)
+    directory = repair_job_directory(Path(config["state_dir"]), board)
     with lock(directory / "queue.lock") as acquired:
         if not acquired:
             return {"status": "queue_busy", "board_id": board_id}
         if infrastructure_policy(board) is not None and hold_paths(board):
             return {"status": "operator_hold", "board_id": board_id}
         prior = read_json(directory / "job.json")
+        if epoch is not None:
+            if prior:
+                require_current_authorization(config, board, job=prior)
+            else:
+                prior["repair_authorization_sha256"] = epoch.commitment
         # A frozen attempt remains owned by its validation/adoption path.
         if prior.get("status") in CANDIDATE_PENDING:
             return {"status": prior["status"], "board_id": board_id,
@@ -1169,12 +1182,11 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
 
 def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] | None:
     limits = _repair_limits(config)
-    root = Path(config["state_dir"]) / "repairs"
     candidates = []
     for board in config["boards"]:
         if observation_only(board) or _recovery_denial(config, board):
             continue
-        path = root / board["id"] / "job.json"
+        path = _repair_job_path(config, board)
         job = read_json(path)
         if job.get("status") not in {"queued", "running"}:
             continue
@@ -1206,7 +1218,7 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
     limits = _repair_limits(config)
     waiting, held, escalated, candidates = [], [], [], []
     for board in config["boards"]:
-        job = read_json(Path(config["state_dir"]) / "repairs" / board["id"] / "job.json")
+        job = read_json(_repair_job_path(config, board))
         if job.get("status") in CANDIDATE_PENDING:
             candidates.append({"board_id": board["id"], "status": job["status"],
                                "attempts": job.get("attempts"),
@@ -1494,9 +1506,8 @@ def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
 
 
 def _iter_repair_jobs(config: dict[str, Any]):
-    root = Path(config["state_dir"]) / "repairs"
     for board in config.get("boards") or []:
-        job = read_json(root / board["id"] / "job.json")
+        job = read_json(_repair_job_path(config, board))
         if job:
             yield board, job
 
@@ -1568,7 +1579,7 @@ def next_pending_candidate(config: dict[str, Any], now: float):
     for board in config["boards"]:
         if observation_only(board) or hold_paths(board) or _recovery_denial(config, board):
             continue
-        path = Path(config["state_dir"]) / "repairs" / board["id"] / "job.json"
+        path = _repair_job_path(config, board)
         job = read_json(path)
         binding = job.get("candidate_runtime")
         if (job.get("status") not in CANDIDATE_PENDING or not isinstance(binding, dict)
@@ -1747,6 +1758,19 @@ def resume_pending_candidate(config: dict[str, Any], board: dict[str, Any], path
         return {"status": "candidate_recovery_wait", "board_id": board["id"]}
     if not _retired_reconciliation_unit_closed(config, command):
         return {"status": "candidate_owner_liveness_unknown", "board_id": board["id"]}
+    if job["status"] == "adoption_pending":
+        from .repair_candidate_owners import request_deferred_activation
+        request_deferred_activation(config, board, path, command)
+        from .repair_candidate_runtime import _json, _checked
+        bootstrap_pin = job.get("candidate_runtime", {}).get("bootstrap_result")
+        if bootstrap_pin:
+            deferred_pin = _json(_checked(bootstrap_pin)).get("deferred_adoption")
+            if deferred_pin:
+                deferred = _json(_checked(deferred_pin))
+                if not Path(deferred["activation_path"]).exists():
+                    return {"status": "adoption_pending", "board_id": board["id"],
+                            "reason": "original_external_activation_pending_or_unknown",
+                            "coding_attempts_incremented": False}
     if job["status"] == "adopted_pending_probe":
         return _verify_adopted_candidate(config, board, path, job["repair_unit_token"])
     if not all(key in config["repair_worker"] for key in ("candidate_policy", "candidate_runtime")):
@@ -1787,6 +1811,9 @@ def resume_pending_candidate(config: dict[str, Any], board: dict[str, Any], path
 
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
     limits = _repair_limits(config)
+    if path != _repair_job_path(config, board):
+        raise ValueError("repair job path differs from the configured finite epoch")
+    require_current_authorization(config, board, job=read_json(path))
     if board["id"] not in limits:
         raise ValueError("repair board is not authorized in fleet configuration")
     configured = next(item for item in config["boards"] if item["id"] == board["id"])
@@ -2126,6 +2153,11 @@ def main(argv: list[str] | None = None) -> int:
         while not stop.is_set():
             try:
                 job_unit = repair_job_unit(config)
+                from .repair_candidate_owners import resume_source_publication
+                for configured_board in config["boards"]:
+                    pending_path = repair_job_directory(Path(config["state_dir"]), configured_board) / "job.json"
+                    if pending_path.exists():
+                        resume_source_publication(config, configured_board, pending_path)
                 reconciled = reconcile_queued_jobs(config, time.time())
                 if reconciled:
                     print(json.dumps({"queue_reconciliation": reconciled}), flush=True)
