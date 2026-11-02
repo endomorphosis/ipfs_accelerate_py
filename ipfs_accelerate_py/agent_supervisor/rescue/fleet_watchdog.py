@@ -123,12 +123,36 @@ def infrastructure_classification(observation: dict[str, Any], board: dict[str, 
                 or any(type(v) is not int or v < 0 for v in counts.values())):
             sample.update(health="unknown")
             return sample, "native_catalogue_probe_invalid"
+        executor_verified = False
+        if report.get("activation_state") == "active":
+            # An active flag or process heartbeat is insufficient. Recheck the
+            # configured original cycle and live executor independently here.
+            executor_ref = board.get("native_executor_binding")
+            if executor_ref is not None:
+                try:
+                    from .native_executor_health import verify_bound_executor
+                    verification = verify_bound_executor(executor_ref, report, now=now)
+                except (ImportError, OSError, ValueError, TypeError, KeyError):
+                    verification = {"verified": False, "reason": "executor_verifier_unavailable"}
+                executor_verified = verification.get("verified") is True
+                if executor_verified:
+                    report = dict(report, executor_verification=verification)
+                    sample["details"] = dict(details, native_catalogue=report)
+            if not executor_verified:
+                sample.update(health="unknown")
+                return sample, "native_catalogue_probe_invalid"
         for stall in ("native_catalogue_provider_outcome_unknown", "native_catalogue_outcome_unknown",
                       "native_catalogue_attempt_budget_exhausted",
                       "native_catalogue_expected_blocked", "native_catalogue_activation_missing"):
-            if stall in reasons:
+            if stall in reasons and not (executor_verified and stall == "native_catalogue_activation_missing"):
                 sample.update(health="blocked")
                 return sample, stall
+        if executor_verified:
+            if any(status != "completed" and count for status, count in counts.items()):
+                sample.update(health="blocked")
+                return sample, "native_catalogue_expected_blocked"
+            sample.update(health="healthy")
+            return sample, "none"
         if report.get("activation_state") != "active":
             sample.update(health="blocked")
             return sample, "native_catalogue_activation_missing"

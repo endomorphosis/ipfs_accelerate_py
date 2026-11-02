@@ -1,0 +1,28 @@
+{
+  "datasets_root": "/home/barberb/lift_coding/external/ipfs_datasets",
+  "manual_metadata_only": true,
+  "native_or_manager_or_provider_authority": false,
+  "public_source_descriptors": [
+    {
+      "bytes": 52644,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/scripts/ops/legal_ir/run_owned_validation.py",
+      "sha256": "7cdbec1093c0b2a4d10f77c8053332f0d0439ed39150cf2498fd32eff8897e7e"
+    },
+    {
+      "bytes": 10375,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py",
+      "sha256": "42e9f07d0d458177079269d9f495f0b70512180c1adc2f7fe0bfdb05518a12f9"
+    },
+    {
+      "bytes": 68562,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py",
+      "sha256": "c3dd27930d44f4464e098af56aed33033f6cacaf26e2a4ed77f2ce9cb5b903ea"
+    },
+    {
+      "bytes": 60620,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/validation_run_resources.py",
+      "sha256": "2c816dbb443f0874a3d58f1e7d24572cd72806438da35634c0fc8d6cba246045"
+    }
+  ],
+  "schema": "current-control-renderer-bootstrap-manual-inputs/v1"
+}

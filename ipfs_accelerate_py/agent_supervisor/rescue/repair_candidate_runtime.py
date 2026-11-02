@@ -23,6 +23,7 @@ import time
 from typing import Any, Mapping
 
 from . import repair_candidate as candidate
+from .repair_authorization import repair_job_directory, require_current_authorization
 from ..merge.checkout_lock import (
     acquire_checkout_mutation_lease, checkout_lock_metadata,
     checkout_mutation_lock_path, release_checkout_mutation_lease,
@@ -167,13 +168,13 @@ class RuntimePolicy:
     adoption_owner: OwnerCommand
     bounds: dict[str, int]
     checkout_timeout_seconds: int
+    validation_admission_retry: dict[str, Any] | None = None
 
 
 def parse_runtime_policy(worker: Mapping[str, Any], policy: candidate.CandidatePolicy) -> RuntimePolicy:
     value = worker.get("candidate_runtime")
-    _need(type(value) is dict and set(value) == {
-        "schema", "source_descriptors", "validation_owner", "adoption_owner",
-        "resource_bounds", "checkout_timeout_seconds"} and value["schema"] == SCHEMA,
+    fields = {"schema", "source_descriptors", "validation_owner", "adoption_owner", "resource_bounds", "checkout_timeout_seconds"}
+    _need(type(value) is dict and set(value) in (fields, fields | {"validation_admission_retry"}) and value["schema"] == SCHEMA,
         "original candidate runtime owners are not configured")
     refs = value["source_descriptors"]
     _need(type(refs) is list and len(refs) == len(policy.source_paths)
@@ -186,8 +187,10 @@ def parse_runtime_policy(worker: Mapping[str, Any], policy: candidate.CandidateP
     _need(type(bounds) is dict and set(bounds) == {
         "memory_max_bytes", "cpu_quota_percent", "tasks_max", "runtime_max_seconds"},
         "closed existing job-unit bounds required")
-    caps = {"memory_max_bytes": 16 * 1024 ** 3, "cpu_quota_percent": 100,
-            "tasks_max": 64, "runtime_max_seconds": 2400}
+    # Physical parent limits must accommodate unchanged native proof headroom.
+    # These caps grant no extra native CPU, memory, process slots or repair attempts.
+    caps = {"memory_max_bytes": 32 * 1024 ** 3, "cpu_quota_percent": 100,
+            "tasks_max": 512, "runtime_max_seconds": 2400}
     for name, maximum in caps.items():
         _integer(bounds[name], maximum, name)
     validation, adoption = (_owner(value[k], stage) for k, stage in
@@ -196,8 +199,23 @@ def parse_runtime_policy(worker: Mapping[str, Any], policy: candidate.CandidateP
     effective_deadline = min(worker_deadline, bounds["runtime_max_seconds"])
     _need(all(command.timeout_seconds * 2 + 60 <= effective_deadline for command in (validation, adoption)),
           "original job deadline cannot accommodate owner plus verifier and cleanup")
+    retry = None
+    if "validation_admission_retry" in value:
+        from .repair_candidate_owners import checked_validation_admission_retry
+        retry = checked_validation_admission_retry(value["validation_admission_retry"])
+        argv = validation.argv
+        _need(argv.count("--policy") == argv.count("--policy-sha256") == 1, "validation retry requires an original public owner policy")
+        selected = argv[argv.index("--policy") + 1]
+        policies = [ref for ref in validation.source_descriptors if ref["path"] == selected]
+        _need(len(policies) == 1 and policies[0]["sha256"] == argv[argv.index("--policy-sha256") + 1],
+              "validation retry owner policy is unpinned")
+        owner_policy = _json(_checked(policies[0]))
+        _need(owner_policy["validation"].get("validation_admission_retry") == retry
+              and "external_fixture_profile" in owner_policy["validation"]
+              and validation.timeout_seconds >= retry["source_probe_timeout_seconds"] + owner_policy["validation"]["timeout_seconds"] + 60,
+              "validation retry owner/runtime authority or original deadline differs")
     return RuntimePolicy(tuple(refs), validation, adoption, dict(bounds),
-                         _integer(value["checkout_timeout_seconds"], 30, "checkout wait"))
+                         _integer(value["checkout_timeout_seconds"], 30, "checkout wait"), retry)
 
 
 def candidate_runtime_preflight(config: Mapping[str, Any]) -> str | None:
@@ -285,6 +303,64 @@ def _unit_snapshot(unit: str, bounds: Mapping[str, int], runner) -> dict[str, An
             "active_enter_monotonic_usec": int(entered)}
 
 
+
+NEGATIVE_VALIDATION_SCHEMA = "agent-supervisor/isolated-repair-candidate-negative-validation@1"
+
+
+def _checked_negative_observation(value, *, binding, freeze_sha256,
+                                  source_commitment, original_returncode):
+    """Check a pinned original observer's fully closed negative disposition.
+
+    The immutable original proof may truthfully retain storage_closed=False.
+    Only the separate original read-only observer can join a later genuine
+    public disposition. Neither a return code nor a rewritten flag is closure.
+    """
+    _need(type(value) is dict and set(value) == {"schema", "negative_validation", "closure_observation"}
+          and value["schema"] == "agent-supervisor/verified-negative-validation@1",
+          "closed original negative observer result required")
+    pin = value["negative_validation"]
+    negative = _json(_checked(pin))
+    _need(not Path(pin["path"]).lstat().st_mode & 0o222,
+          "original negative validation proof is not immutable")
+    _need(negative.get("schema") == NEGATIVE_VALIDATION_SCHEMA
+          and negative.get("passed") is False and negative.get("semantic_negative") is True
+          and negative.get("negative_profile") in {"trusted_pytest_call_failure", "changed_candidate_source_syntax_error"}
+          and type(original_returncode) is int and original_returncode != 0
+          and type(negative.get("original_owner_returncode")) is int
+          and negative["original_owner_returncode"] == original_returncode
+          and negative.get("binding") == binding
+          and negative.get("freeze_sha256") == freeze_sha256
+          and negative.get("source_commitment") == source_commitment,
+          "negative validation belongs to another original frozen attempt")
+    _need(all(negative.get(k) is True for k in ("source_closed", "native_closed", "processes_closed"))
+          and type(negative.get("storage_closed")) is bool and negative.get("cleanup_errors") == [],
+          "original negative source/native/process custody is incomplete")
+    identity = negative.get("original_owner_identity")
+    _need(type(identity) is dict and set(identity) == {"pid", "birth"}
+          and type(identity["pid"]) is int and identity["pid"] > 0
+          and type(identity["birth"]) is str and identity["birth"].isdecimal(),
+          "negative validation original PID/birth required")
+    for key in ("reservation_id", "native_lease_id"):
+        _need(type(negative.get(key)) is str and _TOKEN.fullmatch(negative[key]) is not None,
+              "negative validation original resource identity required")
+    for key in ("request", "original_failure_terminal", "original_runner_wait", "trusted_semantic_report"):
+        _checked(negative[key])
+    closed = value["closure_observation"]
+    joins = ("negative_profile", "freeze_sha256", "source_commitment", "binding", "request", "original_owner_returncode",
+             "original_owner_identity", "reservation_id", "native_lease_id")
+    _need(type(closed) is dict
+          and closed.get("schema") == "agent-supervisor/negative-validation-closure-observation@1"
+          and closed.get("negative_validation") == pin
+          and all(closed.get(k) == negative[k] for k in joins)
+          and all(closed.get(k) is True for k in ("source_closed", "native_closed", "processes_closed", "storage_closed"))
+          and closed.get("cleanup_errors") == []
+          and type(closed.get("storage_disposition")) is dict and bool(closed["storage_disposition"])
+          and type(closed.get("observed_at")) in (int, float)
+          and 0 < closed["observed_at"] < float("inf"),
+          "original read-only observer did not prove this exact failed claim fully closed")
+    return negative
+
+
 class CandidateRuntime:
     """Concrete authority adapter held inside one original repair-job invocation."""
     def __init__(self, config: dict[str, Any], board: dict[str, Any], job_path: Path,
@@ -299,7 +375,7 @@ class CandidateRuntime:
         self.runtime_policy = parse_runtime_policy(config["repair_worker"], self.policy)
         _need(self.policy.state_root == Path(config["state_dir"]), "protected fleet state differs")
         _need(type(token) is str and _TOKEN.fullmatch(token) is not None, "exact attempt token required")
-        _need(job_path == self.policy.state_root / "repairs" / board["id"] / "job.json",
+        _need(job_path == repair_job_directory(self.policy.state_root, board) / "job.json",
               "job does not belong to the original queue")
         self.config_ref = _pin(Path(config["_config_path"]))
         self.job = self._job()
@@ -322,6 +398,7 @@ class CandidateRuntime:
 
     def _job(self, *, execution: bool = True) -> dict[str, Any]:
         job = _json(_read(self.job_path))
+        require_current_authorization(self.config, self.board, job=job)
         _need(job.get("board_id") == self.board["id"] and job.get("repair_unit_token") == self.token
               and job.get("status") in {"running", *PENDING}, "current original job/token was replaced")
         _need(os.environ.get("IPFS_TASKBOARD_REPAIR_BOARD_ID") == self.board["id"]
@@ -429,25 +506,331 @@ class CandidateRuntime:
             _need(acquired, "original repair queue lock busy")
             job = self._job(execution=False)  # Retaining a closeout is allowed during an operator hold.
             job.update(status=stage, candidate_runtime={"receipt": ref,
-                "candidate_metadata": str(self.session.metadata_root) if self.session else "",
+                "candidate_metadata": str(self.session.metadata_root) if self.session else getattr(self, "retained_candidate_metadata", ""),
                 "attempt_token": self.token, "attempt_number": self.attempt_number})
             self.fleet.write_json(self.job_path, job)
         return value
 
+
+    def _closed_negative_validation(self, command, invocation, terminal):
+        """Read-only authentication after a genuine nonzero owner terminal.
+
+        A positive command with a refused verifier never enters this path.
+        Missing or ambiguous evidence stays pending without owner replay.
+        """
+        code = terminal.get("command_returncode")
+        if type(code) is not int or code == 0 or terminal.get("verifier_returncode") is not None:
+            return None
+        epoch = require_current_authorization(self.config, self.board, job=self._job())
+        if epoch is None or self._remaining_seconds() < command.timeout_seconds + 30:
+            return None
+        values = {"{candidate_root}": str(self.session.candidate_root),
+            "{freeze_path}": str(self.session.metadata_root / "candidate-ready.json"),
+            "{receipt_path}": str(invocation / "receipt.json"),
+            "{source_commitment}": self.session.freeze["source_commitment"],
+            "{validation_path}": str(self.session.metadata_root / "adoption-pending.json"),
+            "{invocation_root}": str(invocation)}
+        original_argv = [values.get(v, v) for v in command.argv]
+        original_verify = [values.get(v, v) for v in command.verify_argv]
+        intent = _json(_read(invocation / "intent.json"))
+        _need(intent.get("schema") == SCHEMA and intent.get("stage") == "validate"
+              and intent.get("argv") == original_argv and intent.get("verify_argv") == original_verify
+              and intent.get("owner_source_descriptors") == list(command.source_descriptors)
+              and intent.get("runtime_policy_sha256") == candidate.digest(self.config["repair_worker"]["candidate_runtime"])
+              and intent.get("attempt_token") == self.token
+              and type(intent.get("attempt_number")) is int and intent["attempt_number"] == self.attempt_number
+              and intent.get("freeze_sha256") == self.session.freeze["freeze_sha256"]
+              and intent.get("source_commitment") == self.session.freeze["source_commitment"],
+              "negative observer is not bound to the exact original owner invocation")
+        for pin in command.source_descriptors:
+            _checked(pin)
+        _need(original_verify.count("verify-validation") == 1
+              and "verify-negative-validation" not in original_verify,
+              "one explicit maintained negative-verifier action required")
+        argv = ["verify-negative-validation" if v == "verify-validation" else v for v in original_verify]
+        self.authority.require_current("validate", self.session.binding)
+        observed = self.command_runner(argv, cwd=self.policy.repository_root,
+            timeout_seconds=command.timeout_seconds)
+        witness = {"schema": "agent-supervisor/negative-validation-observer-wait@1", "argv": argv,
+            "returncode": observed.returncode, "stdout": observed.stdout, "stderr": observed.stderr,
+            "original_terminal": _pin(invocation / "terminal.json"),
+            "original_intent": _pin(invocation / "intent.json"),
+            "owner_source_descriptors": list(command.source_descriptors)}
+        self.counter += 1
+        witness_pin = _new(self.directory / f"negative-observer-{self.counter:04d}.json", witness)
+        if type(observed.returncode) is not int or observed.returncode != 0:
+            return None
+        self.authority.require_current("validate", self.session.binding)
+        for pin in command.source_descriptors:
+            _checked(pin)
+        value = _json(observed.stdout.encode())
+        negative = _checked_negative_observation(value, binding=self.session.binding,
+            freeze_sha256=self.session.freeze["freeze_sha256"],
+            source_commitment=self.session.freeze["source_commitment"], original_returncode=code)
+        _need(Path(value["negative_validation"]["path"]).parent == invocation,
+              "negative proof is outside its original owner invocation")
+        self.known_negative_validation = (value, witness_pin, negative)
+        return negative
+
+    def _negative_failure_transition(self, job, bootstrap_ref):
+        """One closed spent attempt, same epoch and original cumulative cap."""
+        _need(self.checkout_lease_closed and self.provider_closed,
+              "original checkout/provider must close before a failed attempt can requeue")
+        epoch = require_current_authorization(self.config, self.board, job=job)
+        _need(epoch is not None and job["attempts"] == self.attempt_number
+              and job["repair_unit_token"] == self.token,
+              "known negative cannot mint an epoch, reset attempts or replace the original token")
+        value, observation_pin, negative = self.known_negative_validation
+        observation = _json(_checked(observation_pin))
+        _need(observation["returncode"] == 0 and _json(observation["stdout"].encode()) == value,
+              "original read-only verifier observation changed")
+        _checked_negative_observation(value, binding=negative["binding"],
+            freeze_sha256=negative["freeze_sha256"], source_commitment=negative["source_commitment"],
+            original_returncode=negative["original_owner_returncode"])
+        history = job.get("candidate_validation_failures", [])
+        _need(type(history) is list and len(history) < min(self.attempt_number, 3)
+              and all(type(r) is dict and type(r.get("attempt_number")) is int
+                      and 0 < r["attempt_number"] < self.attempt_number for r in history)
+              and len({r["attempt_number"] for r in history}) == len(history),
+              "failed-attempt history is unknown, forked or exceeds the original spent cap")
+        failure = {"schema": "agent-supervisor/known-closed-negative-repair-attempt@1",
+            "attempt_number": self.attempt_number, "attempt_token": self.token,
+            "repair_authorization_sha256": epoch.commitment,
+            "negative_validation": value["negative_validation"], "original_observer_wait": observation_pin,
+            "closed_bootstrap": bootstrap_ref, "candidate_metadata": str(self.session.metadata_root),
+            "freeze_sha256": negative["freeze_sha256"], "source_commitment": negative["source_commitment"],
+            "coding_attempts_incremented": False, "completion_authority": False}
+        job["candidate_validation_failures"] = [*history, failure]
+        now = time.time()
+        due = job.get("next_attempt_at", 0)
+        _need(type(due) in (int, float) and 0 <= due < float("inf"), "original repair cooldown is invalid")
+        job.update(status="queued", returncode=negative["original_owner_returncode"], finished_at=now,
+            candidate_failure_reason="known_closed_negative_validation", next_attempt_at=max(due, now + 300))
+        limit = self.fleet._repair_limits(self.config)[self.board["id"]]
+        _need(type(limit) is int and 0 < limit <= epoch.value["max_attempts"] <= 3,
+              "known negative cannot widen the original finite repair cap")
+        self.fleet._escalate_repair_budget(job, limit, now)
+        self.negative_requeue_status = job["status"]
+        return job
+
+    def _validation_admission_context(self, index, previous):
+        profile = self.runtime_policy.validation_admission_retry
+        _need(profile is not None and type(index) is int and 0 <= index <= 2,
+              "bounded validation admission retry context required")
+        epoch = require_current_authorization(self.config, self.board, job=self._job())
+        _need(epoch is not None, "validation admission retry requires the existing finite epoch")
+        return {"schema": "agent-supervisor/validation-admission-retry-context@1",
+            "index": index, "previous": previous, "profile": profile,
+            "epoch_sha256": epoch.commitment, "binding": self.session.binding,
+            "freeze_sha256": self.session.freeze["freeze_sha256"],
+            "source_commitment": self.session.freeze["source_commitment"],
+            "attempt_token": self.token, "attempt_number": self.attempt_number,
+            "runtime_policy_sha256": candidate.digest(self.config["repair_worker"]["candidate_runtime"])}
+
+    def _validation_admission_owner_policy(self, command):
+        argv = command.argv
+        _need(argv.count("--policy") == argv.count("--policy-sha256") == 1,
+              "validation admission retry requires one original public policy")
+        path, sha = argv[argv.index("--policy") + 1], argv[argv.index("--policy-sha256") + 1]
+        refs = [ref for ref in command.source_descriptors if ref["path"] == path]
+        _need(len(refs) == 1 and refs[0]["sha256"] == sha, "validation admission policy is not source-pinned")
+        policy = _json(_checked(refs[0]))
+        _need(policy["validation"].get("validation_admission_retry") == self.runtime_policy.validation_admission_retry,
+              "validation admission owner/runtime profiles differ")
+        return policy
+
+    def _validation_admission_observation(self, command, invocation, terminal, *, create, require_absent=True):
+        from .repair_candidate_owners import (SOURCE_ADMISSION_VERIFIED_SCHEMA, SOURCE_ADMISSION_DEFER_SCHEMA,
+            require_validation_unstarted)
+        code = terminal.get("command_returncode")
+        if type(code) is not int or code != 75 or terminal.get("verifier_returncode") is not None:
+            return None
+        wait_ref = terminal.get("original_owner_wait")
+        if wait_ref is None:
+            return None
+        wait = _json(_checked(wait_ref)); intent_ref = _pin(invocation / "intent.json")
+        intent = _json(_checked(intent_ref))
+        _need(all(not Path(ref["path"]).lstat().st_mode & 0o222 for ref in
+              (wait_ref, intent_ref, _pin(invocation / "terminal.json"))),
+              "original validation admission history must be immutable")
+        values = {"{candidate_root}": str(self.session.candidate_root),
+            "{freeze_path}": str(self.session.metadata_root / "candidate-ready.json"),
+            "{receipt_path}": str(invocation / "receipt.json"),
+            "{source_commitment}": self.session.freeze["source_commitment"],
+            "{validation_path}": str(self.session.metadata_root / "adoption-pending.json"),
+            "{invocation_root}": str(invocation)}
+        expected_argv = [values.get(value, value) for value in command.argv]
+        expected_verify = [values.get(value, value) for value in command.verify_argv]
+        _need(intent.get("schema") == SCHEMA and intent.get("stage") == "validate"
+              and intent.get("argv") == expected_argv and intent.get("verify_argv") == expected_verify
+              and intent.get("owner_source_descriptors") == list(command.source_descriptors)
+              and intent.get("runtime_policy_sha256") == candidate.digest(self.config["repair_worker"]["candidate_runtime"])
+              and intent.get("attempt_token") == self.token and type(intent.get("attempt_number")) is int
+              and intent["attempt_number"] == self.attempt_number
+              and intent.get("freeze_sha256") == self.session.freeze["freeze_sha256"]
+              and intent.get("source_commitment") == self.session.freeze["source_commitment"],
+              "validation source-admission intent differs from its configured original command")
+        for source in command.source_descriptors:
+            _checked(source)
+        _need(wait.get("schema") == "agent-supervisor/validation-owner-wait@1"
+              and wait.get("argv") == expected_argv and wait.get("owning_command_timeout_seconds") == command.timeout_seconds
+              and wait.get("provider_started") is False and wait.get("coding_attempts_incremented") is False
+              and wait["intent"] == intent_ref and wait["actual_Popen_returned"] is True
+              and wait["actual_process_waited"] is True and type(wait["actual_process_returncode"]) is int
+              and wait["actual_process_returncode"] == 75 and type(wait["returncode"]) is int and wait["returncode"] == 75,
+              "validation admission defer lacks the genuine original wait")
+        _need(all(type(wait[key]) in (int, float) and 0 < wait[key] < float("inf") for key in
+              ("command_started_monotonic", "command_finished_monotonic"))
+              and wait["command_finished_monotonic"] >= wait["command_started_monotonic"],
+              "validation admission owning-command clock is invalid")
+        _checked(wait["engine_source"])
+        _need(wait["engine_source"] in self.runtime_policy.sources,
+              "validation admission wait used an unpinned active engine")
+        summary = _json(wait["stdout"].encode())
+        _need(summary["schema"] == "agent-supervisor/validation-source-admission-return@1",
+              "nonzero validation command is not an original source-admission defer")
+        deferred_ref = summary["defer"]; deferred = _json(_checked(deferred_ref))
+        _need(Path(deferred_ref["path"]) == invocation / "source-admission-deferred.json"
+              and not Path(deferred_ref["path"]).lstat().st_mode & 0o222
+              and deferred["schema"] == SOURCE_ADMISSION_DEFER_SCHEMA
+              and deferred["owner"] == wait["runner_identity"] and deferred["original_intent"] == intent_ref,
+              "validation admission source proof belongs to another original process")
+        policy = self._validation_admission_owner_policy(command)
+        if require_absent:
+            _need(deferred["unstarted_paths"] == require_validation_unstarted(policy, self.session.freeze, invocation),
+                  "a D execution plan, request or attempt already exists")
+        record_path = invocation / "source-admission-observation.json"
+        verify = intent["verify_argv"]
+        _need(verify.count("verify-validation") == 1, "one explicit validation admission observer is required")
+        observer_argv = ["verify-validation-admission" if item == "verify-validation" else item for item in verify]
+        if not record_path.exists():
+            if not create or not require_absent or self._remaining_seconds() < command.timeout_seconds + 30:
+                return None
+            _need(self.command_runner is run_command,
+                  "validation admission observer requires the original actual process runner")
+            self.authority.require_current("validate", self.session.binding)
+            observed = self.command_runner(observer_argv, cwd=self.policy.repository_root,
+                timeout_seconds=command.timeout_seconds)
+            if type(observed.returncode) is not int or observed.returncode != 0:
+                return None
+            self.authority.require_current("validate", self.session.binding)
+            value = _json(observed.stdout.encode())
+            now = time.time()
+            _new(record_path, {"schema": "agent-supervisor/validation-admission-observation@1",
+                "observer_argv": observer_argv, "observer_returncode": 0, "observer": value,
+                "intent": intent_ref, "terminal": _pin(invocation / "terminal.json"),
+                "original_owner_wait": wait_ref, "observed_at": now,
+                "eligible_after": now + self.runtime_policy.validation_admission_retry["cooldown_seconds"],
+                "coding_attempts_incremented": False, "provider_started": False})
+        ref = _pin(record_path); value = _json(_checked(ref)); observed = value["observer"]
+        _need(not record_path.lstat().st_mode & 0o222
+              and value["schema"] == "agent-supervisor/validation-admission-observation@1"
+              and value["observer_argv"] == observer_argv
+              and value["intent"] == intent_ref and value["terminal"] == _pin(invocation / "terminal.json")
+              and value["original_owner_wait"] == wait_ref and type(value["observer_returncode"]) is int
+              and value["observer_returncode"] == 0 and value["coding_attempts_incremented"] is False
+              and value["provider_started"] is False
+              and observed["schema"] == SOURCE_ADMISSION_VERIFIED_SCHEMA and observed["defer"] == deferred_ref
+              and observed["source_admission"] == deferred and observed["read_only"] is True
+              and type(observed["D_owner_calls"]) is int and observed["D_owner_calls"] == 0
+              and observed["zero_D_calls_scope"] == "public_validation_CLI_and_validation_compute_or_storage_allocation_only"
+              and type(observed["original_source_lease_calls"]) is int and observed["original_source_lease_calls"] == 0
+              and observed["resource_recovery_performed"] is False
+              and observed["coding_attempts_incremented"] is False,
+              "validation admission readonly observation changed")
+        for key in ("observed_at", "eligible_after"):
+            _need(type(value[key]) in (int, float) and 0 < value[key] < float("inf"),
+                  "finite validation admission cooldown required")
+        _need(value["eligible_after"] == value["observed_at"] + 60,
+              "validation admission cooldown was reset or widened")
+        return ref, value
+
+    def _validation_invocation(self, *, create_observation=True):
+        """Select one of three immutable slots; never repeat an unknown slot."""
+        base = self.session.metadata_root
+        names = ["original-validate-invocation", "original-validate-source-admission-retry-01",
+                 "original-validate-source-admission-retry-02"]
+        command = self.runtime_policy.validation_owner
+        previous = None
+        for index, name in enumerate(names):
+            invocation = base / name
+            context = self._validation_admission_context(index, previous)
+            if not invocation.exists():
+                _need(not any((base / following).exists() for following in names[index + 1:]),
+                      "validation admission retry history has a gap or fork")
+                if index and time.time() < previous["eligible_after"]:
+                    self.validation_admission_wait = {"status": "backoff", "eligible_after": previous["eligible_after"],
+                        "next_slot": index, "prior_observation": previous["observation"], "coding_attempts_incremented": False}
+                    return None
+                self.validation_admission_selected_context = context
+                return invocation
+            intent_path, terminal_path = invocation / "intent.json", invocation / "terminal.json"
+            if not intent_path.exists() or not terminal_path.exists():
+                self.validation_admission_wait = {"status": "unknown_original_invocation", "invocation": str(invocation)}
+                return None  # An uncertain original owner operation is never replayed.
+            intent = _json(_read(intent_path)); terminal = _json(_read(terminal_path))
+            _need(not intent_path.lstat().st_mode & 0o222 and not terminal_path.lstat().st_mode & 0o222
+                  and intent.get("validation_admission_retry") == context,
+                  "validation admission retry chain/epoch/candidate changed")
+            selected_at = intent.get("validation_admission_invocation_started_at")
+            _need(type(selected_at) in (int, float) and 0 < selected_at < float("inf")
+                  and (not index or selected_at >= previous["eligible_after"]),
+                  "validation admission retry started before its immutable cooldown")
+            self.validation_admission_selected_context = context
+            if terminal.get("command_returncode") != 75:
+                _need(not any((base / following).exists() for following in names[index + 1:]),
+                      "non-source-deferred validation has an orphan retry successor")
+                return invocation
+            has_successor = any((base / following).exists() for following in names[index + 1:])
+            observation = self._validation_admission_observation(command, invocation, terminal,
+                create=create_observation and not has_successor, require_absent=not has_successor)
+            if observation is None:
+                return None
+            ref, value = observation
+            if index == 2:
+                self.validation_admission_wait = {"status": "finite_retry_exhausted", "additional_slots_spent": 2,
+                    "last_observation": ref, "coding_attempts_incremented": False}
+                return None  # Two additional slots are spent; no budget is replenished.
+            previous = {"invocation": str(invocation), "intent": _pin(intent_path),
+                "terminal": _pin(terminal_path), "observation": ref,
+                "eligible_after": value["eligible_after"]}
+        return None
+
+    def _validation_command_wait(self, argv, invocation, timeout):
+        from .repair_candidate_owners import original_runner_wait
+        _need(self.command_runner is run_command,
+              "validation admission retry requires the original actual process runner")
+        started = time.monotonic()
+        completed, witness = original_runner_wait({"source_descriptors": list(self.runtime_policy.sources)},
+            argv, self.policy.repository_root, timeout)
+        ref = _new(invocation / "original-owner-wait.json", {"schema": "agent-supervisor/validation-owner-wait@1",
+            **witness, "intent": _pin(invocation / "intent.json"), "argv": argv,
+            "owning_command_timeout_seconds": timeout, "command_started_monotonic": started,
+            "command_finished_monotonic": time.monotonic(),
+            "returncode": completed.returncode, "stdout": completed.stdout, "stderr": completed.stderr,
+            "completed_at": time.time(), "provider_started": False, "coding_attempts_incremented": False})
+        return completed, ref
+
+
     def _owner_command(self, stage: str) -> dict[str, Any] | None:
         command = self.runtime_policy.validation_owner if stage == "validate" else self.runtime_policy.adoption_owner
         self.authority.require_current(stage, self.session.binding)
-        invocation = self.session.metadata_root / ("original-" + stage + "-invocation")
+        retry = stage == "validate" and getattr(self.runtime_policy, "validation_admission_retry", None) is not None
+        invocation = self._validation_invocation() if retry else self.session.metadata_root / ("original-" + stage + "-invocation")
+        if invocation is None:
+            return None
         if invocation.exists():
             # Never repeat an owner operation after an ambiguous or interrupted write.
             terminal = invocation / "terminal.json"
             if not terminal.exists():
                 return None
             previous = _json(_read(terminal))
-            if (type(previous.get("command_returncode")) is not int
-                    or type(previous.get("verifier_returncode")) is not int
-                    or previous["command_returncode"] != 0 or previous["verifier_returncode"] != 0):
+            if type(previous.get("command_returncode")) is not int:
                 return None
+            if previous["command_returncode"] != 0:
+                return self._closed_negative_validation(command, invocation, previous) if stage == "validate" else None
+            if type(previous.get("verifier_returncode")) is not int or previous["verifier_returncode"] != 0:
+                return None  # A refused positive verifier never becomes a negative result.
         else:
             if self._remaining_seconds() < command.timeout_seconds * 2 + 30:
                 return None  # A later original unit resumes this stage, without recoding.
@@ -461,18 +844,30 @@ class CandidateRuntime:
                 "{invocation_root}": str(invocation)}
             argv = [values.get(v, v) for v in command.argv]
             verify = [values.get(v, v) for v in command.verify_argv]
-            _new(invocation / "intent.json", {"schema": SCHEMA, "stage": stage,
+            intent = {"schema": SCHEMA, "stage": stage,
                 "argv": argv, "verify_argv": verify, "freeze_sha256": self.session.freeze["freeze_sha256"],
                 "source_commitment": self.session.freeze["source_commitment"],
                 "owner_source_descriptors": list(command.source_descriptors),
                 "runtime_policy_sha256": candidate.digest(self.config["repair_worker"]["candidate_runtime"]),
-                "attempt_token": self.token, "attempt_number": self.attempt_number})
-            result = self.command_runner(argv, cwd=self.policy.repository_root,
-                timeout_seconds=command.timeout_seconds)
+                "attempt_token": self.token, "attempt_number": self.attempt_number}
+            if retry:
+                intent["validation_admission_retry"] = self.validation_admission_selected_context
+                intent["validation_admission_invocation_started_at"] = time.time()
+            _new(invocation / "intent.json", intent)
+            owner_wait = None
+            if retry:
+                result, owner_wait = self._validation_command_wait(argv, invocation, command.timeout_seconds)
+            else:
+                result = self.command_runner(argv, cwd=self.policy.repository_root, timeout_seconds=command.timeout_seconds)
             if result.returncode != 0:
-                _new(invocation / "terminal.json", {"command_returncode": result.returncode,
-                    "verifier_returncode": None})
-                return None
+                terminal = {"command_returncode": result.returncode, "verifier_returncode": None}
+                if retry:
+                    terminal["original_owner_wait"] = owner_wait
+                _new(invocation / "terminal.json", terminal)
+                if retry and type(result.returncode) is int and result.returncode == 75:
+                    self._validation_admission_observation(command, invocation, terminal, create=True)
+                    return None
+                return self._closed_negative_validation(command, invocation, terminal) if stage == "validate" else None
             self.authority.require_current(stage, self.session.binding)
             # The configured source-pinned original verifier, not an agent's passed flag,
             # authenticates its own original native/source/process/storage closeout.
@@ -485,6 +880,14 @@ class CandidateRuntime:
             self.authority.require_current(stage, self.session.binding)
         receipt_path = invocation / "receipt.json"
         receipt = _json(_read(receipt_path))
+        if stage == "adopt":
+            from .repair_candidate_owners import DEFERRED_SCHEMA, consume_deferred_adoption
+            if receipt.get("schema") == DEFERRED_SCHEMA:
+                self.deferred_adoption = _pin(receipt_path)
+                resolved = consume_deferred_adoption(receipt, invocation)
+                if resolved is None:
+                    return None
+                receipt, receipt_path = resolved
         original = Path(receipt.get("original_receipt_reference", ""))
         _need(original.is_absolute() and invocation in original.parents,
               "original closeout must be inside the fresh parent-owned owner invocation")
@@ -512,7 +915,11 @@ class CandidateRuntime:
         _need(metadata == self.policy.state_root / "repair-candidates" / self.board["id"] / self.token,
               "prior validation belongs to a different original attempt")
         self.authority.require_current("resume", binding)
-        invocation = metadata / "original-validate-invocation"
+        if getattr(self.runtime_policy, "validation_admission_retry", None) is not None:
+            invocation = self._validation_invocation(create_observation=False)
+            _need(invocation is not None, "no closed authorized validation invocation is available")
+        else:
+            invocation = metadata / "original-validate-invocation"
         intent = _json(_read(invocation / "intent.json"))
         terminal = _json(_read(invocation / "terminal.json"))
         _need(type(terminal.get("command_returncode")) is int
@@ -665,13 +1072,21 @@ class CandidateRuntime:
             self._stage("validation_pending", freeze_sha256=self.session.freeze["freeze_sha256"])
             receipt = self._owner_command("validate")
             if receipt is None:
+                admission = getattr(self, "validation_admission_wait", None)
+                if admission is not None:
+                    return self._stage("validation_pending", reason="validation_source_admission_" + admission["status"],
+                        validation_admission_retry=admission)
                 return self._stage("validation_pending", reason="original_validation_pending_or_unknown")
+            if receipt.get("schema") == NEGATIVE_VALIDATION_SCHEMA:
+                return self._stage("validation_pending", reason="known_negative_waiting_original_checkout_closeout",
+                    known_negative_validation=self.known_negative_validation[1])
             candidate.record_validation(self.session, receipt)
         if self.session.stage == "adoption_pending":
             self._stage("adoption_pending", validation_sha256=candidate.digest(self.session.validation))
             receipt = self._owner_command("adopt")
             if receipt is None:
-                return self._stage("adoption_pending", reason="original_adoption_pending_or_unknown")
+                return self._stage("adoption_pending", reason="original_adoption_pending_or_unknown",
+                    **({"deferred_adoption": self.deferred_adoption} if hasattr(self, "deferred_adoption") else {}))
             candidate.record_adoption(self.session, receipt)
         return self._stage(self.session.stage, fresh_observer_probe_required=True)
 
@@ -723,6 +1138,36 @@ class CandidateRuntime:
             return {"stage": "adopted_pending_probe", "fresh_observer_probe_required": True,
                     "attempt_token": self.token, "coding_attempts_incremented": False,
                     "completion_authority": False}
+        bootstrap_pin = self.job.get("candidate_runtime", {}).get("bootstrap_result")
+        if self.job["status"] == "adoption_pending" and bootstrap_pin:
+            bootstrap = _json(_checked(bootstrap_pin))
+            pending_pin = bootstrap.get("deferred_adoption")
+            if pending_pin:
+                from .repair_candidate_owners import consume_deferred_adoption
+                pending = _json(_checked(pending_pin))
+                _need(bootstrap.get("original_checkout_lease_closed") is True
+                      and bootstrap.get("provider_known_closed") is True,
+                      "prior original deferred bootstrap is not closed")
+                self.provider_closed = True
+                self.deferred_prior_bootstrap = bootstrap_pin
+                self.retained_candidate_metadata = str(self.policy.state_root / "repair-candidates" / self.board["id"] / self.token)
+                resolved = consume_deferred_adoption(pending, Path(pending_pin["path"]).parent)
+                if resolved is None:
+                    return self._stage("adoption_pending", reason="external_actual_activation_pending",
+                        deferred_adoption=pending_pin)
+                receipt, receipt_path = resolved
+                self.provider_closed = True
+                self.accepted["adopt"] = (receipt, _pin(receipt_path))
+                self.deferred_prior_bootstrap = bootstrap_pin
+                self.retained_candidate_metadata = str(self.policy.state_root / "repair-candidates" / self.board["id"] / self.token)
+                links = self.job.get("repair_source_successors", [])
+                _need(links, "actual source successor has not been authenticated/published")
+                value = candidate.observe_verified_deferred_adoption(policy=self.policy,
+                    board_id=self.board["id"], attempt_id=self.token, attempt_number=self.attempt_number,
+                    authority=self.authority, deferred_receipt=pending, activation_receipt=receipt,
+                    source_successor=_json(_checked(links[-1])))
+                return self._stage(value["stage"], deferred_adoption=pending_pin,
+                    source_successor=links[-1], fresh_observer_probe_required=True)
         _need(hasattr(candidate, "resume_candidate"), "original candidate dead-owner recovery is unavailable")
         # No provider runs here. Original helper authenticates retained closure,
         # and the live resource guard separately requires this new cgroup empty.
@@ -738,12 +1183,12 @@ class CandidateRuntime:
         """Publish the final descriptor only after the original lease actually closed."""
         _need(self.checkout_lease_closed, "cannot publish a positive original checkout closeout")
         prior = None
-        if self.session is None and result["stage"] == "adopted_pending_probe":
-            prior_ref = self._job(execution=False)["candidate_runtime"]["bootstrap_result"]
+        if self.session is None and (result["stage"] == "adopted_pending_probe" or hasattr(self, "deferred_prior_bootstrap")):
+            prior_ref = getattr(self, "deferred_prior_bootstrap", None) or self._job(execution=False)["candidate_runtime"]["bootstrap_result"]
             prior = _json(_checked(prior_ref))
             _need(prior.get("attempt_token") == self.token
                   and type(prior.get("attempts")) is int and prior["attempts"] == self.attempt_number
-                  and prior.get("stage") == "adopted_pending_probe"
+                   and prior.get("stage") in {"adoption_pending", "adopted_pending_probe"}
                   and prior.get("original_checkout_lease_closed") is True
                   and prior.get("provider_known_closed") is True,
                   "prior adopted bootstrap closeout is not authenticated")
@@ -767,6 +1212,8 @@ class CandidateRuntime:
                   "original candidate identity changed before final closeout")
             state["bootstrap_result"] = ref
             job["candidate_runtime"] = state
+            if hasattr(self, "known_negative_validation"):
+                job = self._negative_failure_transition(job, ref)
             self.fleet.write_json(self.job_path, job)
         return ref
 
@@ -787,7 +1234,7 @@ def run_service_candidate(config: dict[str, Any], job_path: Path, token: str,
             else:
                 result = runtime.resume()
         ref = runtime.publish_closed_bootstrap(result)
-        return {"schema": SCHEMA, "status": result["stage"], "receipt": ref,
+        return {"schema": SCHEMA, "status": getattr(runtime, "negative_requeue_status", result["stage"]), "receipt": ref,
                 "attempt_token": token, "coding_attempts_incremented": False}
     except (OSError, ValueError, KeyError, RuntimeError) as error:
         if runtime is not None:

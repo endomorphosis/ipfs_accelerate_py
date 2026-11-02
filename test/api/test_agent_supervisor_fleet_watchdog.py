@@ -2763,3 +2763,43 @@ def test_infrastructure_missing_checkout_does_not_run_commands_or_charge(tmp_pat
     assert observed["next_action_at"] == 500 and observed["last_progress_at"] == 10
     assert budget.read_bytes() == original_budget
     assert not (tmp_path / "missing-checkout").exists()
+
+
+@pytest.mark.parametrize("configured,verified", [(False, False), (True, False), (True, True)])
+def test_active_catalogue_requires_independent_configured_executor_proof(tmp_path, monkeypatch, configured, verified):
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    board = _infrastructure_board(tmp_path)
+    profile = {"path": "/private/operator/executor.json", "bytes": 1, "sha256": "a" * 64}
+    if configured:
+        board["native_executor_binding"] = profile
+    sample = _catalogue_sample(reason="native_catalogue_expected_blocked")
+    sample["details"]["native_catalogue"].update(activation_state="active", executor_health="healthy",
+        executor_verification={"verified": True})
+    called = []
+    def independent(ref, native, *, now):
+        called.append(ref)
+        return {"verified": verified, "scope": "genuine_scoped_idle", "reason": "fixture_join"}
+    monkeypatch.setattr(health, "verify_bound_executor", independent)
+    previous = {"health": "unknown", "attempts": 3, "ensure_attempts": 2, "next_action_at": 500,
+        "last_progress_at": 10, "incident_since": 20}
+    state = fleet.assess(sample, previous, board, 100)
+    assert len(called) == int(configured)
+    assert state["health"] == ("blocked" if configured and verified else "unknown")
+    assert state["stall_class"] == ("native_catalogue_expected_blocked" if configured and verified else "native_catalogue_probe_invalid")
+    assert state["attempts"] == 3 and state["ensure_attempts"] == 2 and state["next_action_at"] == 500
+    assert state["last_progress_at"] == 10 and state["observation"]["complete"] is False
+    assert fleet.select_action(state, board, 1000) == ""
+
+
+@pytest.mark.parametrize("reason", ["native_catalogue_provider_outcome_unknown", "native_catalogue_outcome_unknown",
+    "native_catalogue_attempt_budget_exhausted"])
+def test_verified_executor_does_not_settle_native_unknown_or_exhausted_receipts(tmp_path, monkeypatch, reason):
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    board = _infrastructure_board(tmp_path)
+    board["native_executor_binding"] = {"path": "/private/executor.json", "bytes": 1, "sha256": "a" * 64}
+    sample = _catalogue_sample(reason=reason)
+    sample["details"]["native_catalogue"].update(activation_state="active", executor_health="healthy")
+    monkeypatch.setattr(health, "verify_bound_executor", lambda *a, **k: {"verified": True, "scope": "native_execution"})
+    state = fleet.assess(sample, {}, board, 100)
+    assert state["health"] == "blocked" and state["stall_class"] == reason
+    assert state["observation"]["complete"] is False and fleet.select_action(state, board, 1000) == ""

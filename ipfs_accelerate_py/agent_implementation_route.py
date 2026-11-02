@@ -18,6 +18,7 @@ import json
 import os
 import re
 import secrets
+import selectors
 import shutil
 import stat as stat_module
 import struct
@@ -110,6 +111,7 @@ _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
     ".agent-control-plane-manifest.json"
 )
 _AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 4 * 1024 * 1024
+_AGENT_CONTROL_PLANE_GIT_TIMEOUT_SECONDS = 30
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES = 120 * 1024 * 1024
@@ -7614,13 +7616,10 @@ def _agent_manifest_json(raw: bytes) -> dict[str, object]:
     return value
 
 
-def _agent_git_output(
-    root: Path,
+def _agent_git_command_environment(
     arguments: Sequence[str],
-    *,
-    maximum_bytes: int = _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES,
-) -> bytes:
-    """Run one bounded, non-interactive Git identity/object query."""
+) -> tuple[list[str], dict[str, str]]:
+    """Use the same non-interactive, hook-free Git policy for every query."""
 
     git_environment = {
         name: value
@@ -7639,24 +7638,39 @@ def _agent_git_output(
             "LANG": "C",
         }
     )
+    return (
+        [
+            "git",
+            "-c",
+            "core.quotepath=false",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            f"core.hooksPath={os.devnull}",
+            *arguments,
+        ],
+        git_environment,
+    )
+
+
+def _agent_git_output(
+    root: Path,
+    arguments: Sequence[str],
+    *,
+    maximum_bytes: int = _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES,
+) -> bytes:
+    """Run one bounded, non-interactive Git identity/object query."""
+
+    command, git_environment = _agent_git_command_environment(arguments)
     try:
         completed = subprocess.run(
-            [
-                "git",
-                "-c",
-                "core.quotepath=false",
-                "-c",
-                "core.fsmonitor=false",
-                "-c",
-                f"core.hooksPath={os.devnull}",
-                *arguments,
-            ],
+            command,
             cwd=root,
             env=git_environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=30,
+            timeout=_AGENT_CONTROL_PLANE_GIT_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -7772,29 +7786,121 @@ def _agent_control_plane_head_payloads(
         raise ValueError("accepted control-plane manifest is oversized")
     payloads: dict[str, bytes] = {}
     payload_bytes = 0
-    for relative, object_id in sorted(blobs.items()):
-        size_raw = _agent_git_output(
-            root,
-            ("cat-file", "-s", object_id),
-            maximum_bytes=64,
+    command, git_environment = _agent_git_command_environment(("cat-file", "--batch"))
+    process: subprocess.Popen[bytes] | None = None
+    deadline = time.monotonic() + _AGENT_CONTROL_PLANE_GIT_TIMEOUT_SECONDS
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=root,
+            env=git_environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            bufsize=0,
         )
-        try:
-            size = int(size_raw.strip())
-        except ValueError as exc:
-            raise ValueError("accepted control-plane Git blob size is invalid") from exc
-        if not 0 <= size <= _AGENT_CONTROL_PLANE_MAX_FILE_BYTES:
-            raise ValueError("accepted control-plane Git blob is oversized")
-        payload_bytes += size
-        if payload_bytes > _AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES:
-            raise ValueError("accepted control-plane source payload is oversized")
-        payload = _agent_git_output(
-            root,
-            ("cat-file", "blob", object_id),
-            maximum_bytes=_AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
-        )
-        if len(payload) != size:
-            raise ValueError("accepted control-plane Git blob changed")
-        payloads[relative] = payload
+        assert process.stdin is not None and process.stdout is not None
+        input_fd = process.stdin.fileno()
+        output_fd = process.stdout.fileno()
+        os.set_blocking(input_fd, False)
+        os.set_blocking(output_fd, False)
+        with selectors.DefaultSelector() as input_ready, selectors.DefaultSelector() as output_ready:
+            input_ready.register(input_fd, selectors.EVENT_WRITE)
+            output_ready.register(output_fd, selectors.EVENT_READ)
+
+            def wait_ready(selector: selectors.BaseSelector) -> None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(remaining):
+                    raise ValueError("accepted control-plane Git batch timed out")
+
+            def write_request(request: bytes) -> None:
+                pending = memoryview(request)
+                while pending:
+                    wait_ready(input_ready)
+                    try:
+                        written = os.write(input_fd, pending)
+                    except BlockingIOError:
+                        continue
+                    if written <= 0:
+                        raise ValueError("accepted control-plane Git batch input closed")
+                    pending = pending[written:]
+
+            def read_chunk(limit: int) -> bytes:
+                while True:
+                    wait_ready(output_ready)
+                    try:
+                        return os.read(output_fd, min(limit, 64 * 1024))
+                    except BlockingIOError:
+                        continue
+
+            buffered = bytearray()
+
+            def read_header() -> bytes:
+                while b"\n" not in buffered:
+                    if len(buffered) >= 128:
+                        raise ValueError("accepted control-plane Git batch header is invalid")
+                    chunk = read_chunk(128 - len(buffered))
+                    if not chunk:
+                        raise ValueError("accepted control-plane Git batch header is truncated")
+                    buffered.extend(chunk)
+                end = buffered.index(b"\n") + 1
+                result = bytes(buffered[:end])
+                del buffered[:end]
+                return result
+
+            def read_exact(size: int) -> bytes:
+                result = bytearray(buffered[:size])
+                del buffered[:len(result)]
+                while len(result) < size:
+                    chunk = read_chunk(size - len(result))
+                    if not chunk:
+                        raise ValueError("accepted control-plane Git batch payload is truncated")
+                    result.extend(chunk)
+                return bytes(result)
+
+            for relative, object_id in sorted(blobs.items()):
+                # One outstanding request avoids a pipe-size-dependent deadlock;
+                # both directions remain nonblocking under the same deadline.
+                write_request(object_id.encode("ascii") + b"\n")
+                header = read_header()
+                fields = re.fullmatch(rb"([0-9a-f]{40}) blob (0|[1-9][0-9]*)\n", header)
+                if fields is None or fields[1].decode("ascii") != object_id:
+                    raise ValueError("accepted control-plane Git batch object header is invalid")
+                size = int(fields[2])
+                if size > _AGENT_CONTROL_PLANE_MAX_FILE_BYTES:
+                    raise ValueError("accepted control-plane Git blob is oversized")
+                payload_bytes += size
+                if payload_bytes > _AGENT_CONTROL_PLANE_MAX_ARCHIVE_PAYLOAD_BYTES:
+                    raise ValueError("accepted control-plane source payload is oversized")
+                payload = read_exact(size)
+                if read_exact(1) != b"\n":
+                    raise ValueError("accepted control-plane Git batch separator is invalid")
+                framed = f"blob {size}\0".encode("ascii") + payload
+                if hashlib.sha1(framed).hexdigest() != object_id:
+                    raise ValueError("accepted control-plane Git batch blob identity differs")
+                payloads[relative] = payload
+            input_ready.unregister(input_fd)
+            process.stdin.close()
+            if buffered or read_chunk(1):
+                raise ValueError("accepted control-plane Git batch has extra output")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("accepted control-plane Git batch timed out")
+        if process.wait(timeout=remaining) != 0:
+            raise ValueError("accepted control-plane Git batch query failed")
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError("accepted control-plane Git batch query failed") from exc
+    finally:
+        if process is not None:
+            try:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+            finally:
+                for stream in (process.stdin, process.stdout):
+                    if stream is not None:
+                        stream.close()
     return payloads
 
 

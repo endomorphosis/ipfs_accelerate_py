@@ -474,3 +474,49 @@ def test_current_administrative_unknown_retains_provider_invocation_knowledge(ca
     result = observe(catalogue)
     assert result["details"]["native_catalogue"]["provider_outcome_knowledge"] == "unknown_observed"
     assert result["details"]["native_catalogue"]["external_outcome_knowledge"] == "unknown_observed"
+
+
+def test_absent_executor_profile_never_reads_health_evidence(catalogue, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    monkeypatch.setattr(health, "verify_bound_executor", lambda *a, **k: pytest.fail("legacy observer read executor evidence"))
+    report = observe(catalogue)
+    native = report["details"]["native_catalogue"]
+    assert native["activation_state"] == "not_activated"
+    assert native["executor_health"] == "not_established"
+    assert "executor_verification" not in native
+    assert "native_catalogue_activation_missing" in report["reason_codes"]
+
+
+@pytest.mark.parametrize("verified", [False, True])
+def test_opt_in_executor_join_preserves_native_unknown_and_task_counts(catalogue, monkeypatch, verified):
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    profile = {"path": "/private/operator/executor.json", "bytes": 10, "sha256": "a" * 64}
+    seen = []
+    def independent(ref, native, *, now):
+        assert native["fresh_read"] and native["database_and_wal_metadata_unchanged"]
+        seen.append((ref, native["counts"], now))
+        return {"verified": verified, "scope": "genuine_scoped_idle", "reason": "fixture_join"}
+    monkeypatch.setattr(health, "verify_bound_executor", independent)
+    report = observe(catalogue, executor_profile_ref=profile)
+    native = report["details"]["native_catalogue"]
+    assert len(seen) == 1 and seen[0][0] == profile and seen[0][1] == {"blocked": 2}
+    assert native["executor_verification"]["verified"] is verified
+    assert native["activation_state"] == ("active" if verified else "not_activated")
+    assert native["executor_health"] == ("healthy" if verified else "not_established")
+    assert ("native_catalogue_activation_missing" in report["reason_codes"]) is not verified
+    assert "native_catalogue_provider_outcome_unknown" in report["reason_codes"]
+    assert "native_catalogue_attempt_budget_exhausted" in report["reason_codes"]
+    assert report["complete"] is report["completion_candidate"] is report["busy"] is False
+    assert report["health"] == "blocked"
+    assert native["counts"] == {"blocked": 2} and native["completion_authority"] is False
+
+
+@pytest.mark.parametrize("selected", [["--executor-profile", "/missing/profile"],
+    ["--executor-profile-bytes", "1"], ["--executor-profile-sha256", "a" * 64]])
+def test_executor_cli_requires_complete_descriptor_before_native_read(monkeypatch, selected):
+    monkeypatch.setattr(probe, "observe_native_catalogue", lambda *a, **k: pytest.fail("partial health binding reached native read"))
+    with pytest.raises(SystemExit) as error:
+        probe.main(["--board", "legal-ir-scientific", "--database", "/missing/db", "--population", "/missing/pop",
+            "--namespace", NAMESPACE, "--plan-root-cid", ROOT, "--repository-tree-id", TREE,
+            "--population-sha256", "a" * 64, *selected])
+    assert error.value.code == 2
