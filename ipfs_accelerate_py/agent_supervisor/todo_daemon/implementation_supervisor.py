@@ -379,6 +379,37 @@ def _control_plane_probe_root(repository_root: Path) -> Path:
     return installed
 
 
+def _resolved_launch_script(path: object) -> Path | None:
+    text = str(path or "").strip()
+    if not text or text in {"-m", "-c"}:
+        return None
+    try:
+        return Path(text).resolve()
+    except OSError:
+        return None
+
+
+def _original_python_launch_matching_argv() -> list[str] | None:
+    """Return the process command when it is the program that imported us.
+
+    A campaign wrapper keeps its own ``_run`` arguments in ``sys.argv``.
+    Replaying those arguments under the native supervisor module makes the
+    reloaded process exit before it can adopt the new source.
+    """
+
+    original = list(getattr(sys, "orig_argv", ()))
+    if len(original) < 2 or not sys.argv:
+        return None
+    tail = list(sys.argv[1:])
+    if tail and original[-len(tail):] != tail:
+        return None
+    running = _resolved_launch_script(sys.argv[0])
+    launched = _resolved_launch_script(original[1])
+    if running is None or launched is None or running != launched:
+        return None
+    return original
+
+
 def _captured_supervisor_reload_arguments(config) -> tuple[str, ...] | None:
     """Capture recognized Python launches without losing flags or the wrapper.
 
@@ -7372,16 +7403,29 @@ class PortalImplementationSupervisor:
         supervisor_script_path = self.config.supervisor_script_path
         if captured is not None:
             arguments = list(captured)
-        elif supervisor_script_path is not None:
-            script_path = Path(supervisor_script_path)
-            if not script_path.is_absolute():
-                script_path = self.config.repo_root / script_path
-            arguments = [
-                sys.executable,
-                str(script_path.resolve()),
-                *sys.argv[1:],
-            ]
         else:
+            running_launch = _original_python_launch_matching_argv()
+            configured_script = None
+            if supervisor_script_path is not None:
+                configured_script = Path(supervisor_script_path)
+                if not configured_script.is_absolute():
+                    configured_script = self.config.repo_root / configured_script
+                configured_script = configured_script.resolve()
+            running_script = _resolved_launch_script(sys.argv[0] if sys.argv else "")
+            if (
+                running_launch is not None
+                and (configured_script is None or running_script != configured_script)
+            ):
+                arguments = [sys.executable, *running_launch[1:]]
+            elif configured_script is not None:
+                arguments = [
+                    sys.executable,
+                    str(configured_script),
+                    *sys.argv[1:],
+                ]
+            else:
+                arguments = None
+        if arguments is None:
             module_name = (
                 __spec__.name
                 if __spec__ is not None and __spec__.name

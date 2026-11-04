@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -119,3 +120,49 @@ def test_projection_heartbeat_grace_stays_fail_closed_without_a_worker(
     )
     assert stuck is True
     assert reason == "heartbeat stale for active task PCSM-061"
+
+
+def test_control_plane_reload_reexecs_the_running_wrapper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wrapper = tmp_path / "run_complaint_improvement_supervisor.py"
+    wrapper.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    native = tmp_path / "implementation_supervisor.py"
+    native.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    outer = _supervisor(tmp_path)
+    outer.config.supervisor_script_path = native
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(wrapper), "_run", "--repo-root", str(tmp_path)],
+    )
+    monkeypatch.setattr(
+        sys,
+        "orig_argv",
+        [sys.executable, str(wrapper), "_run", "--repo-root", str(tmp_path)],
+    )
+    calls: list[list[str]] = []
+
+    class ExecRequested(Exception):
+        pass
+
+    def fake_execv(_executable: str, arguments: list[str]) -> None:
+        calls.append(list(arguments))
+        raise ExecRequested
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor.os.execv",
+        fake_execv,
+    )
+
+    with pytest.raises(ExecRequested):
+        outer._reload_for_control_plane_update()
+
+    assert calls == [[
+        sys.executable,
+        str(wrapper),
+        "_run",
+        "--repo-root",
+        str(tmp_path),
+    ]]
