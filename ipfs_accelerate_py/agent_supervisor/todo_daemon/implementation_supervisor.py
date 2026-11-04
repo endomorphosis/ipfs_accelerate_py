@@ -136,6 +136,7 @@ from .production_provider_cli import (
 from .implementation_daemon import (
     DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
     DEFAULT_TRACKS,
+    automatic_retry_rearm_enabled,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
@@ -12092,6 +12093,13 @@ class PortalImplementationSupervisor:
             current = PortalTaskState.load(self.config.state_path)
             if self._attempt_budget_exhaustion_status(current) != current_blocker:
                 return SupervisorLoopDecision.keep_running()
+            # Selection inside the child is the normal place that rearms a
+            # validation-exhausted frontier. This maintenance pass can stop
+            # that child before selection runs. Apply the same once-per-revision
+            # rearm first. It changes counters only when validation-failure
+            # evidence exists and this recovery revision has not been used.
+            if self._rearm_validation_exhausted_frontier(current):
+                return SupervisorLoopDecision.keep_running()
             guard = self._database_authority_terminal_guard(state=current, child=_child)
             protected = self._implementation_protected_maintenance_guard()
             fields = {"selection_blocker": current_blocker,
@@ -12112,6 +12120,54 @@ class PortalImplementationSupervisor:
                 detail={"active_task_id": result.get("active_task_id") or ""},
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _rearm_validation_exhausted_frontier(
+        self,
+        state: PortalTaskState,
+    ) -> list[dict[str, Any]]:
+        """Rearm ready tasks exhausted on validation before this pass stops.
+
+        Uses the daemon's validation rearm. Each ready task gets one new
+        budget for a recovery revision and for a digest of its declared
+        outputs. Tasks that lack validation-failure evidence stay exhausted.
+        Attempt counters are not edited here.
+        """
+
+        if not automatic_retry_rearm_enabled():
+            return []
+        ready = {
+            str(task_id).strip()
+            for task_id in (state.ready_task_ids or [])
+            if str(task_id).strip()
+        }
+        if not ready:
+            return []
+        try:
+            daemon = self._build_worktree_reconciliation_daemon()
+            tasks = list(daemon._load_tasks())
+            statuses = {
+                task.task_id: "ready" if task.task_id in ready else "waiting"
+                for task in tasks
+            }
+            revision = daemon._retry_budget_repair_runtime_revision()
+            return list(daemon._rearm_attempt_limited_obsoleted_validation_tasks(
+                state,
+                tasks,
+                statuses,
+                recovery_revision=revision,
+            ))
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            try:
+                self._record_event(
+                    "validation_exhausted_frontier_rearm_failed",
+                    {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:500],
+                    },
+                )
+            except (OSError, RuntimeError, ValueError, TypeError):
+                pass
+            return []
 
     def repair_main_checkout_merge_state(self) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""

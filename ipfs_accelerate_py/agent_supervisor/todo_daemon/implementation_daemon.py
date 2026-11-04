@@ -3062,7 +3062,7 @@ STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
     "ipfs_accelerate_py.agent_supervisor.ordinary-stale-proposal-replay-rearm@1"
 )
 VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION = (
-    "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@2"
+    "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@3"
 )
 RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "todo_daemon/implementation_daemon.py",
@@ -12449,6 +12449,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             returncode = 0
         return returncode != 0
 
+    def _validation_obsolescence_output_digest(self, task: PortalTask) -> str:
+        """Hash declared outputs so a real repair can earn one new budget.
+
+        Missing and present files stay distinct. The same bytes keep the same
+        digest, so a restart cannot mint another paid attempt.
+        """
+
+        digest = hashlib.sha256()
+        root = Path(self.repo_root)
+        for relative in task_declared_output_paths(task):
+            digest.update(relative.encode("utf-8"))
+            digest.update(b"\0")
+            path = root / relative
+            try:
+                payload = path.read_bytes()
+            except OSError:
+                digest.update(b"missing")
+            else:
+                digest.update(b"present")
+                digest.update(payload)
+            digest.update(b"\0")
+        return "sha256:" + digest.hexdigest()
+
     def _rearm_attempt_limited_obsoleted_validation_tasks(
         self,
         state: PortalTaskState,
@@ -12459,11 +12482,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> list[dict[str, Any]]:
         """Rearm ordinary tasks exhausted on validation after control-plane fixes.
 
-        When a provider burns its attempt budget solely on validation failures
-        and the recovery runtime revision later advances (gate/daemon fix),
+        When a provider burns its attempt budget solely on validation failures,
         grant one full attempt-budget reset so the supervisor can self-unblock
-        without operator counter surgery. Each recovery revision rearms a
-        canonical task at most once.
+        without operator counter surgery. The same canonical task is rearmed
+        once per recovery revision and once per digest of its declared outputs.
+        A later real repair of those outputs earns one new budget. Repeating
+        the same bytes does not.
         """
 
         if not automatic_retry_rearm_enabled():
@@ -12504,6 +12528,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
                 "recovery_revision": revision,
                 "canonical_task_cid": identity.canonical_task_cid,
+                "output_digest": self._validation_obsolescence_output_digest(task),
             }
             fingerprint = "sha256:" + hashlib.sha256(
                 json.dumps(

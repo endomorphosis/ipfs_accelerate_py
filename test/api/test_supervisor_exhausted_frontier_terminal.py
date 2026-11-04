@@ -330,3 +330,90 @@ def test_current_board_frontier_change_defers_without_consuming_recovery(scope, 
     assert supervisor._attempt_budget_exhaustion_status(state) == {}
     assert not getattr(supervisor, "_exhausted_frontier_release_outcomes", {})
     assert daemon.PortalTaskState.load(supervisor.config.state_path).implementation_attempts_by_cid == state.implementation_attempts_by_cid
+
+
+def _write_validation_failure_events(supervisor, state) -> None:
+    events = supervisor.config.state_dir / "portal_events.jsonl"
+    lines = []
+    for task_id, identity in state.task_identities.items():
+        lines.append(json.dumps({
+            "type": "implementation_finished",
+            "task_id": task_id,
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "canonical_task_key": identity["canonical_task_key"],
+            "returncode": 78,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "reason": "declared_validation_failed",
+            },
+            "merge_result": {"merged": False, "attempted": False},
+        }))
+    events.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_validation_exhausted_frontier_rearms_once_instead_of_stopping(scope, monkeypatch):
+    supervisor, state = scope
+    monkeypatch.setenv(daemon.AUTOMATIC_RETRY_REARM_ENV, "1")
+    _write_validation_failure_events(supervisor, state)
+    with child_for(supervisor) as (loop, child):
+        decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        assert decision.action == "continue"
+        rearmed = daemon.PortalTaskState.load(supervisor.config.state_path)
+        assert rearmed.implementation_attempts == {}
+        assert rearmed.implementation_attempts_by_cid == {}
+        assert set(rearmed.validation_obsolescence_rearm_receipts) == {
+            identity["canonical_task_cid"] for identity in state.task_identities.values()
+        }
+        assert all(len(receipts) == 1 for receipts in rearmed.validation_obsolescence_rearm_receipts.values())
+        time.sleep(1.15)
+        again = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        assert again.action == "continue"
+        persisted = daemon.PortalTaskState.load(supervisor.config.state_path)
+        assert persisted.validation_obsolescence_rearm_receipts == rearmed.validation_obsolescence_rearm_receipts
+        assert persisted.implementation_attempts_by_cid == {}
+
+
+def test_same_outputs_do_not_rearm_twice_and_a_repair_does(scope, monkeypatch):
+    supervisor, state = scope
+    monkeypatch.setenv(daemon.AUTOMATIC_RETRY_REARM_ENV, "1")
+    _write_validation_failure_events(supervisor, state)
+    with child_for(supervisor) as (loop, child):
+        assert supervisor._supervisor_loop_watchdog_decision(loop, child, {}).action == "continue"
+        spent = daemon.PortalTaskState.load(supervisor.config.state_path)
+        spent.implementation_attempts = dict(state.implementation_attempts)
+        spent.implementation_attempts_by_cid = dict(state.implementation_attempts_by_cid)
+        spent.selection_idle_reason = state.selection_idle_reason
+        spent.save(supervisor.config.state_path)
+        time.sleep(1.15)
+        held = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        assert held.action == "stop"
+        assert held.reason == "task_attempt_budget_exhausted"
+        for task_id in state.ready_task_ids:
+            (supervisor.config.repo_root / f"result{task_id[-1]}.json").write_text(
+                '{"repaired": true}\n', encoding="utf-8")
+        time.sleep(1.15)
+        released = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        assert released.action == "continue"
+        persisted = daemon.PortalTaskState.load(supervisor.config.state_path)
+        assert persisted.implementation_attempts_by_cid == {}
+        assert all(
+            len(receipts) == 2
+            for receipts in persisted.validation_obsolescence_rearm_receipts.values()
+        )
+
+
+def test_disabled_rearm_still_stops_a_validation_exhausted_frontier(scope, monkeypatch):
+    supervisor, state = scope
+    monkeypatch.setenv(daemon.AUTOMATIC_RETRY_REARM_ENV, "0")
+    _write_validation_failure_events(supervisor, state)
+    with child_for(supervisor) as (loop, child):
+        decision = supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        assert decision.action == "stop"
+        assert decision.reason == "task_attempt_budget_exhausted"
+    persisted = daemon.PortalTaskState.load(supervisor.config.state_path)
+    assert persisted.implementation_attempts == state.implementation_attempts
+    assert persisted.implementation_attempts_by_cid == state.implementation_attempts_by_cid
+    assert persisted.validation_obsolescence_rearm_receipts == {}
