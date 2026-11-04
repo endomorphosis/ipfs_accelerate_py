@@ -267,6 +267,25 @@ class CampaignProgressWatchdog:
         eligible.sort()
         return [key for _, key in eligible]
 
+    def _stale_observing_incident_keys(self, incidents: Mapping[str, Any], now: int) -> list[str]:
+        """Oldest observing incidents whose confirmation interval has elapsed.
+
+        A recent confirmation is still waiting for its second observation.
+        An in-flight or uncertain recovery is never eligible here.
+        """
+
+        eligible = []
+        interval = self.policy.confirmation_interval_ms
+        for key, entry in incidents.items():
+            if not isinstance(entry, dict) or entry.get("phase") != "observing":
+                continue
+            last = entry.get("last_confirmation_ms")
+            if type(last) is not int or last < 0 or now < last + interval:
+                continue
+            eligible.append((last, key))
+        eligible.sort()
+        return [key for _, key in eligible]
+
     def _run_locked(self, before, now):
         state = self._load()
         grace_key = _digest([before["progress_token"], before["owner_token"]])
@@ -286,10 +305,17 @@ class CampaignProgressWatchdog:
         if key not in incidents:
             if len(incidents) >= self.policy.max_incidents:
                 # A finished incident whose recovery budget is spent cannot
-                # record a later stall. Drop only those, oldest first, so an
-                # observing, in-flight, uncertain, or still-retryable incident
-                # keeps its ledger entry.
+                # record a later stall. Drop only those, oldest first.
                 for old in self._spent_finished_incident_keys(incidents):
+                    if len(incidents) < self.policy.max_incidents:
+                        break
+                    del incidents[old]
+            if len(incidents) >= self.policy.max_incidents:
+                # A one-confirmation observation is stale once its interval
+                # has elapsed. Drop only those when spent incidents did not
+                # free a slot. Recent observing, in-flight, uncertain, and
+                # still-retryable incidents keep their entries.
+                for old in self._stale_observing_incident_keys(incidents, now):
                     if len(incidents) < self.policy.max_incidents:
                         break
                     del incidents[old]

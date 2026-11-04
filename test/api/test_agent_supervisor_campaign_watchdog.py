@@ -68,6 +68,51 @@ def test_spent_finished_incidents_make_room_for_a_new_stall(campaign):
     assert all(entry["phase"] == "finished" and entry["attempts"] == 1 for entry in incidents.values())
 
 
+def test_stale_observing_incident_makes_room_for_a_new_stall(campaign):
+    policy = CampaignProgressWatchdogPolicy(max_incidents=1, confirmation_count=2, max_recovery_attempts=1, cooldown_ms=0)
+    assert campaign.watchdog(policy=policy).run_once()["status"] == "confirming"
+    campaign.now += policy.confirmation_interval_ms
+    campaign.value["progress_token"] = "later-stall"
+    opened = campaign.watchdog(policy=policy).run_once()
+    assert opened["status"] == "confirming" and opened["reason"] == "failure_confirmation_pending"
+    assert campaign.calls == []
+    incidents = json.loads(campaign.watchdog(policy=policy).state_path.read_bytes())["incidents"]
+    assert set(incidents) == {_incident_key("later-stall")}
+    assert next(iter(incidents.values()))["phase"] == "observing"
+
+
+def test_spent_finished_incident_is_evicted_before_a_stale_observation(campaign):
+    policy = CampaignProgressWatchdogPolicy(max_incidents=2, confirmation_count=2, max_recovery_attempts=1, cooldown_ms=0)
+    assert campaign.watchdog(policy=policy).run_once()["status"] == "confirming"
+    campaign.now += policy.confirmation_interval_ms
+    assert campaign.watchdog(policy=policy).run_once()["reason"] == "recovery_not_yet_healthy"
+    campaign.value["progress_token"] = "still-observing"
+    assert campaign.watchdog(policy=policy).run_once()["status"] == "confirming"
+    campaign.now += policy.confirmation_interval_ms
+    campaign.value["progress_token"] = "needs-a-slot"
+    opened = campaign.watchdog(policy=policy).run_once()
+    assert opened["status"] == "confirming" and len(campaign.calls) == 1
+    incidents = json.loads(campaign.watchdog(policy=policy).state_path.read_bytes())["incidents"]
+    assert set(incidents) == {_incident_key("still-observing"), _incident_key("needs-a-slot")}
+
+
+def test_aged_uncertain_incident_is_not_evicted_to_store_a_new_stall(campaign):
+    def recover(context):
+        campaign.calls.append(context)
+        return RecoveryActionObservation(True, ("old_lane_fenced",), {"healthy": True}, partial=True)
+    campaign.recover = recover
+    campaign.value = observation(progress_token="uncertain-stall")
+    policy = CampaignProgressWatchdogPolicy(max_incidents=1, confirmation_count=1, max_recovery_attempts=2, cooldown_ms=0)
+    assert campaign.watchdog(policy=policy).run_once()["status"] == "error"
+    campaign.now += policy.confirmation_interval_ms
+    campaign.value["progress_token"] = "after-uncertain"
+    held = campaign.watchdog(policy=policy).run_once()
+    assert held["reason"] == "incident_storage_bound" and len(campaign.calls) == 1
+    stored = json.loads(campaign.watchdog(policy=policy).state_path.read_bytes())["incidents"]
+    assert set(stored) == {_incident_key("uncertain-stall")}
+    assert next(iter(stored.values()))["phase"] == "uncertain"
+
+
 def test_observing_incident_is_not_evicted_to_store_a_new_stall(campaign):
     policy = CampaignProgressWatchdogPolicy(max_incidents=1, confirmation_count=2, max_recovery_attempts=1, cooldown_ms=0)
     assert campaign.watchdog(policy=policy).run_once()["status"] == "confirming"
