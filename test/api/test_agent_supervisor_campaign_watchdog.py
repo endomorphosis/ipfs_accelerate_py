@@ -47,6 +47,67 @@ def campaign(tmp_path):
     return Campaign()
 
 
+def _incident_key(progress_token):
+    from ipfs_accelerate_py.agent_supervisor.rescue.campaign_watchdog import _digest
+    return _digest(["TASK-1", "synthetic-task-cid", 1, progress_token])
+
+
+def test_spent_finished_incidents_make_room_for_a_new_stall(campaign):
+    policy = CampaignProgressWatchdogPolicy(max_incidents=2, confirmation_count=1, max_recovery_attempts=1, cooldown_ms=0)
+    assert campaign.watchdog(policy=policy).run_once()["reason"] == "recovery_not_yet_healthy"
+    campaign.value["progress_token"] = "native-progress-2"
+    campaign.now += 1
+    assert campaign.watchdog(policy=policy).run_once()["reason"] == "recovery_not_yet_healthy"
+    campaign.value["progress_token"] = "native-progress-3"
+    campaign.now += 1
+    result = campaign.watchdog(policy=policy).run_once()
+    assert result["reason"] == "recovery_not_yet_healthy" and result["recovery_attempts"] == 1
+    assert len(campaign.calls) == 3
+    incidents = json.loads(campaign.watchdog(policy=policy).state_path.read_bytes())["incidents"]
+    assert set(incidents) == {_incident_key("native-progress-2"), _incident_key("native-progress-3")}
+    assert all(entry["phase"] == "finished" and entry["attempts"] == 1 for entry in incidents.values())
+
+
+def test_observing_incident_is_not_evicted_to_store_a_new_stall(campaign):
+    policy = CampaignProgressWatchdogPolicy(max_incidents=1, confirmation_count=2, max_recovery_attempts=1, cooldown_ms=0)
+    assert campaign.watchdog(policy=policy).run_once()["status"] == "confirming"
+    campaign.value["progress_token"] = "unrelated-stall"
+    refused = campaign.watchdog(policy=policy).run_once()
+    assert refused["status"] == "exhausted" and refused["reason"] == "incident_storage_bound"
+    assert campaign.calls == []
+    incidents = json.loads(campaign.watchdog(policy=policy).state_path.read_bytes())["incidents"]
+    assert set(incidents) == {_incident_key("native-progress-1")}
+    assert next(iter(incidents.values()))["phase"] == "observing"
+
+
+def test_finished_incident_with_recovery_budget_left_is_not_evicted(campaign):
+    policy = CampaignProgressWatchdogPolicy(max_incidents=1, confirmation_count=1, max_recovery_attempts=2, cooldown_ms=0)
+    assert campaign.watchdog(policy=policy).run_once()["recovery_attempts"] == 1
+    campaign.value["progress_token"] = "unrelated-stall"
+    blocked = campaign.watchdog(policy=policy).run_once()
+    assert blocked["reason"] == "incident_storage_bound" and len(campaign.calls) == 1
+    campaign.value["progress_token"] = "native-progress-1"
+    campaign.now += 1
+    assert campaign.watchdog(policy=policy).run_once()["recovery_attempts"] == 2
+    assert len(campaign.calls) == 2
+
+
+def test_uncertain_incident_is_not_evicted_to_store_a_new_stall(campaign):
+    def recover(context):
+        campaign.calls.append(context)
+        return RecoveryActionObservation(True, ("old_lane_fenced",), {"healthy": True}, partial=True)
+    campaign.recover = recover
+    campaign.value = observation(progress_token="uncertain-stall")
+    policy = CampaignProgressWatchdogPolicy(max_incidents=1, confirmation_count=1, max_recovery_attempts=2, cooldown_ms=0)
+    assert campaign.watchdog(policy=policy).run_once()["status"] == "error"
+    campaign.value["progress_token"] = "after-uncertain"
+    held = campaign.watchdog(policy=policy).run_once()
+    assert held["reason"] == "incident_storage_bound" and len(campaign.calls) == 1
+    stored = json.loads(campaign.watchdog(policy=policy).state_path.read_bytes())["incidents"]
+    assert set(stored) == {_incident_key("uncertain-stall")}
+    assert next(iter(stored.values()))["phase"] == "uncertain"
+
+
 def test_verified_complete_creates_no_incident_or_action(campaign, tmp_path):
     campaign.value = observation(status="complete", healthy=True, completion_verified=True,
         pending_task_ids=[], active_task_id="", active_task_cid="", attempt=0)

@@ -250,6 +250,23 @@ class CampaignProgressWatchdog:
             expected_terminal_cid=expected_terminal_cid,
             action_observation=action_observation, verify_effects=verify_effects)
 
+    def _spent_finished_incident_keys(self, incidents: Mapping[str, Any]) -> list[str]:
+        """Oldest finished incidents that have used their recovery budget."""
+
+        eligible = []
+        for key, entry in incidents.items():
+            if not isinstance(entry, dict) or entry.get("phase") != "finished":
+                continue
+            attempts = entry.get("attempts")
+            last = entry.get("last_attempt_ms")
+            if type(attempts) is not int or type(last) is not int or attempts < 0 or last < 0:
+                continue
+            if attempts < self.policy.max_recovery_attempts:
+                continue
+            eligible.append((last, key))
+        eligible.sort()
+        return [key for _, key in eligible]
+
     def _run_locked(self, before, now):
         state = self._load()
         grace_key = _digest([before["progress_token"], before["owner_token"]])
@@ -267,6 +284,15 @@ class CampaignProgressWatchdog:
         key = _digest([before["active_task_id"], before["active_task_cid"], before["attempt"], before["progress_token"]])
         incidents = state["incidents"]
         if key not in incidents:
+            if len(incidents) >= self.policy.max_incidents:
+                # A finished incident whose recovery budget is spent cannot
+                # record a later stall. Drop only those, oldest first, so an
+                # observing, in-flight, uncertain, or still-retryable incident
+                # keeps its ledger entry.
+                for old in self._spent_finished_incident_keys(incidents):
+                    if len(incidents) < self.policy.max_incidents:
+                        break
+                    del incidents[old]
             if len(incidents) >= self.policy.max_incidents:
                 return self._result("exhausted", "incident_storage_bound")
             incidents[key] = {"confirmations": 0, "confirmation_owner": before["owner_token"], "last_confirmation_ms": 0,
