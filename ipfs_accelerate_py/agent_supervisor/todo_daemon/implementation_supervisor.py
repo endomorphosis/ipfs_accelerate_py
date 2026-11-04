@@ -21607,6 +21607,15 @@ class PortalImplementationSupervisor:
             for item in descendant_processes(daemon_pid)
         )
 
+    def _active_implementation_worker_alive(self) -> bool:
+        # Rescue clears implementation_in_progress before the provider or
+        # validation process exits. A quiet heartbeat is not a stall while
+        # this daemon still owns one of those descendants.
+        return bool(
+            self._active_agent_worker_processes()
+            or self._active_validation_subprocess_exists()
+        )
+
     def is_stuck(
         self,
         state: PortalTaskState,
@@ -21631,6 +21640,8 @@ class PortalImplementationSupervisor:
         progress_age = self._age_seconds(state.last_progress_at, now_ts)
         stale = self.config.stale_seconds
         if state.active_task_id and heartbeat_age > stale:
+            if self._active_implementation_worker_alive():
+                return False, ""
             return True, f"heartbeat stale for active task {state.active_task_id}"
         if (
             state.active_task_id
@@ -21641,6 +21652,8 @@ class PortalImplementationSupervisor:
         if ignore_progress_until_ts is not None and now_ts < ignore_progress_until_ts:
             return False, ""
         if state.active_task_id and state.ready_count > 0 and progress_age > stale:
+            if self._active_implementation_worker_alive():
+                return False, ""
             return True, f"no progress on active task {state.active_task_id}"
         if (
             state.active_task_id
