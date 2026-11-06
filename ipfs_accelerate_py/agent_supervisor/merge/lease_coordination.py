@@ -1989,6 +1989,10 @@ class LeaseCoordinator:
                 "SELECT bundle_json FROM tasks WHERE task_cid=?",
                 (canonical_task_cid,),
             ).fetchone()
+            from ..task_sources.execution_packet_admission import execution_packet_required_bundle, ExecutionPacketAdmissionError
+            packet_required = execution_packet_required_bundle(bundle)
+            if previous_task is not None and execution_packet_required_bundle(json.loads(str(previous_task["bundle_json"]))) and not packet_required:
+                raise ExecutionPacketAdmissionError("packet_bundle_requirement_cannot_be_removed")
             registration_complete = self._connection.execute(
                 "SELECT 1 FROM task_dependency_repair_state WHERE task_cid=?",
                 (canonical_task_cid,),
@@ -2812,6 +2816,12 @@ class LeaseCoordinator:
                         eligible is not None and candidate_cid not in eligible
                     ):
                         continue
+                    from ..task_sources.execution_packet_admission import execution_packet_required_bundle, ExecutionPacketAdmissionError
+                    try:
+                        if execution_packet_required_bundle(json.loads(str(task["bundle_json"]))):
+                            continue
+                    except ExecutionPacketAdmissionError:
+                        continue
                     # Discovery order is only a scheduling hint. Re-evaluate
                     # dependency receipts in this transaction so a dynamic
                     # worker can never claim a stale or blocked plan entry.
@@ -2913,6 +2923,9 @@ class LeaseCoordinator:
     ) -> LeaseGrant:
         """Accept one claim inside a caller-owned immediate transaction."""
 
+        from ..task_sources.execution_packet_admission import execution_packet_required_bundle, ExecutionPacketAdmissionError
+        if execution_packet_required_bundle(json.loads(str(task["bundle_json"]))):
+            raise ExecutionPacketAdmissionError("packet_legacy_bundle_has_no_native_owner_bridge")
         task_cid = str(task["task_cid"])
         self._expire(connection, task_cid, now)
         active = connection.execute(

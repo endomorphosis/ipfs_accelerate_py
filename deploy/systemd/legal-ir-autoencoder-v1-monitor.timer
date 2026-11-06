@@ -1,0 +1,12 @@
+[Unit]
+Description=Monitor the LegalIR implementation supervisor every minute
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5
+Persistent=true
+Unit=legal-ir-autoencoder-v1-monitor.service
+
+[Install]
+WantedBy=timers.target

@@ -1170,3 +1170,238 @@ def test_observe_board_reports_extra_gate_without_heal_overlay(board, monkeypatc
     assert "extra_gate_recursion_sealed_package" in result["reason_codes"]
     assert result["details"]["extra_gate"]["live_owner_unit"] == "pctdd-g9-quack-owner.service"
     assert result["details"]["extra_gate"]["heal_overlay"] is False
+
+
+def _scoped_database_native_status(config):
+    """Keep owner/snapshot evidence coherent while varying the selected scope."""
+    native = _database_native_status(config)
+    tasks = [
+        {"task_cid": "cid:task-a", "task_alias": "PCPR-096", "goal_cid": "goal:a",
+         "plan_cid": "plan:native", "status": "completed", "revision": 3},
+        {"task_cid": "cid:task-b", "task_alias": "PCPR-097", "goal_cid": "goal:b",
+         "plan_cid": "plan:native", "status": "completed", "revision": 4},
+    ]
+    native["tasks"] = tasks
+    native["control"].update(
+        task_count=2, goal_count=2, tasks_json=json.dumps(tasks),
+        goals_json=json.dumps([
+            {"goal_cid": "goal:a", "status": "completed"},
+            {"goal_cid": "goal:b", "status": "completed"},
+        ]),
+    )
+    native["completion_snapshot"]["completion_projection"].update(
+        task_states=[{key: row[key] for key in ("task_cid", "status", "revision")}
+                     for row in tasks],
+        completion_receipts=[{"task_cid": row["task_cid"],
+                              "receipt_cid": "receipt:" + row["task_alias"]}
+                             for row in tasks],
+    )
+    native.update(completion_authority=True, complete=True)
+    config["native_population"] = {
+        "task_cids": ["cid:task-a", "cid:task-b"],
+        "goal_cids": ["goal:a", "goal:b"],
+    }
+    return native
+
+
+def _assert_scoped_native_unavailable(result):
+    assert result["details"]["authenticated_task_observation"] is False
+    assert result["details"]["native_completion_authority"] is False
+    assert result["details"]["progress_source"] == "unavailable"
+    assert result["details"]["task_counts"] == {}
+    assert result["complete"] is False
+    assert result["completion_candidate"] is False
+    assert "native_database_status_not_admitted" in result["reason_codes"]
+
+
+@pytest.mark.parametrize("reverse_selection", [False, True])
+def test_operator_selected_native_population_accepts_exact_sets(
+    board, monkeypatch, reverse_selection,
+):
+    config, _, _ = board
+    native = _scoped_database_native_status(config)
+    if reverse_selection:
+        for values in config["native_population"].values():
+            values.reverse()
+    selected = json.loads(json.dumps(config["native_population"]))
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+
+    result = probe.observe_board(config, now=1000)
+
+    assert result["details"]["authenticated_task_observation"] is True
+    assert result["details"]["progress_source"] == "native_operator_status"
+    assert result["details"]["task_counts"] == {"completed": 2}
+    assert result["details"]["completion_receipt_count"] == 2
+    assert result["details"]["unsettled_goal_count"] == 0
+    assert result["details"]["native_completion_authority"] is True
+    assert result["complete"] is True
+    assert config["native_population"] == selected
+
+
+@pytest.mark.parametrize("family", ["tasks", "goals"])
+@pytest.mark.parametrize("change", ["missing", "extra", "substituted", "duplicate"])
+def test_selected_native_population_rejects_coherent_but_wrong_membership(
+    board, monkeypatch, family, change,
+):
+    config, _, _ = board
+    native = _scoped_database_native_status(config)
+    if family == "tasks":
+        rows = native["tasks"]
+        if change == "missing":
+            rows.pop()
+        elif change == "extra":
+            rows.append({**rows[-1], "task_cid": "cid:task-c", "task_alias": "PCPR-098"})
+        elif change == "substituted":
+            rows[-1]["task_cid"] = "cid:foreign-task"
+        else:
+            rows[-1]["task_cid"] = rows[0]["task_cid"]
+        # Keep the response internally consistent. The operator-selected set
+        # must reject a different legitimate-looking owner population itself.
+        native["control"].update(task_count=len(rows), tasks_json=json.dumps(rows))
+        native["completion_snapshot"]["completion_projection"]["task_states"] = [
+            {key: row[key] for key in ("task_cid", "status", "revision")} for row in rows
+        ]
+        native["completion_snapshot"]["completion_projection"]["completion_receipts"] = [
+            {"task_cid": row["task_cid"], "receipt_cid": "receipt:" + row["task_alias"]}
+            for row in rows
+        ]
+    else:
+        rows = json.loads(native["control"]["goals_json"])
+        if change == "missing":
+            rows.pop()
+        elif change == "extra":
+            rows.append({"goal_cid": "goal:c", "status": "completed"})
+        elif change == "substituted":
+            rows[-1]["goal_cid"] = "goal:foreign"
+        else:
+            rows[-1]["goal_cid"] = rows[0]["goal_cid"]
+        native["control"].update(goal_count=len(rows), goals_json=json.dumps(rows))
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+
+    _assert_scoped_native_unavailable(probe.observe_board(config, now=1000))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("schema", "foreign/status@1"), ("schema", None),
+    ("authoritative_task_observation", 1),
+    ("authoritative_task_observation", "true"),
+    ("authoritative_task_observation", False),
+])
+def test_selected_native_population_requires_native_schema_and_boolean_admission(
+    board, monkeypatch, field, value,
+):
+    config, _, _ = board
+    native = _scoped_database_native_status(config)
+    native[field] = value
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+
+    _assert_scoped_native_unavailable(probe.observe_board(config, now=1000))
+
+
+@pytest.mark.parametrize("field", ["completion_authority", "complete"])
+@pytest.mark.parametrize("value", [1, "true", None])
+def test_admitted_scoped_native_completion_flags_require_exact_booleans(
+    board, monkeypatch, field, value,
+):
+    config, _, _ = board
+    native = _scoped_database_native_status(config)
+    native[field] = value
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+
+    result = probe.observe_board(config, now=1000)
+
+    assert result["details"]["authenticated_task_observation"] is True
+    assert result["details"]["task_counts"] == {"completed": 2}
+    assert result["complete"] is False
+    if field == "completion_authority":
+        assert result["details"]["native_completion_authority"] is False
+
+
+@pytest.mark.parametrize("projection_complete", [False, True])
+def test_rejected_scoped_native_cannot_fall_back_to_daemon_or_cached_progress(
+    board, monkeypatch, projection_complete,
+):
+    config, _, lane = board
+    native = _scoped_database_native_status(config)
+    native["tasks"][0]["task_cid"] = "cid:foreign"
+    native["completion_snapshot"]["completion_projection"]["task_states"][0]["task_cid"] = "cid:foreign"
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+    cached = {"heartbeat_at": 1000, "projection_complete": projection_complete,
+              "task_count": 1, "task_statuses": {"CACHED-1": "completed"},
+              "ready_count": 1, "eligible_ready_count": 1, "event_cursor": 11}
+    path = lane / "pcpr_lane_0_task_state.json"
+    _write(path, cached)
+    first = probe.observe_board(config, now=1000)
+    _assert_scoped_native_unavailable(first)
+
+    cached.update(task_count=2, task_statuses={"CACHED-1": "completed", "CACHED-2": "completed"},
+                  event_cursor=99, ready_count=2, eligible_ready_count=2)
+    native["control"]["event_watermark"] = 900
+    _write(path, cached)
+    second = probe.observe_board(config, now=1000)
+    _assert_scoped_native_unavailable(second)
+    assert second["progress_token"] == first["progress_token"]
+
+
+def test_legacy_native_observation_without_population_selection_is_preserved(board, monkeypatch):
+    config, _, _ = board
+    native = _scoped_database_native_status(config)
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+    selected = probe.observe_board(config, now=1000)
+    del config["native_population"]
+
+    legacy = probe.observe_board(config, now=1000)
+
+    for key in ("complete", "completion_candidate", "health", "progress_token"):
+        assert legacy[key] == selected[key]
+    for key in ("authenticated_task_observation", "native_completion_authority",
+                "progress_source", "task_counts", "task_count"):
+        assert legacy["details"][key] == selected["details"][key]
+    assert legacy["details"]["authenticated_task_observation"] is True
+    assert legacy["complete"] is True
+
+
+@pytest.mark.parametrize("population", [
+    None, False, [], {},
+    {"task_cids": ["cid:task-a"]},
+    {"goal_cids": ["goal:a"]},
+    {"task_cids": ["cid:task-a"], "goal_cids": ["goal:a"], "extra": True},
+    {"task_cids": [], "goal_cids": ["goal:a"]},
+    {"task_cids": ["cid:task-a"], "goal_cids": []},
+    {"task_cids": "cid:task-a", "goal_cids": ["goal:a"]},
+    {"task_cids": ["cid:task-a"], "goal_cids": "goal:a"},
+    {"task_cids": ["cid:task-a", "cid:task-a"], "goal_cids": ["goal:a"]},
+    {"task_cids": ["cid:task-a"], "goal_cids": ["goal:a", "goal:a"]},
+    {"task_cids": [True], "goal_cids": ["goal:a"]},
+    {"task_cids": ["cid:task-a"], "goal_cids": [1]},
+    {"task_cids": [" "], "goal_cids": ["goal:a"]},
+    {"task_cids": ["cid:task-a"], "goal_cids": ["x" * 257]},
+    {"task_cids": ["task:" + str(i) for i in range(513)], "goal_cids": ["goal:a"]},
+], ids=["null", "boolean", "array", "empty", "missing-goals", "missing-tasks", "extra-key",
+        "empty-tasks", "empty-goals", "task-string", "goal-string", "duplicate-tasks",
+        "duplicate-goals", "boolean-task", "non-string-goal", "blank-task", "long-goal",
+        "too-many-tasks"])
+def test_malformed_operator_population_is_rejected_without_legacy_fallback(
+    board, monkeypatch, population,
+):
+    config, _, _ = board
+    native = _scoped_database_native_status(config)
+    config["native_population"] = population
+    with pytest.raises(ValueError, match="native_population"):
+        probe.native_population(config)
+    monkeypatch.setattr(probe, "_status_command", lambda _: (native, ""))
+
+    _assert_scoped_native_unavailable(probe.observe_board(config, now=1000))
+
+
+@pytest.mark.parametrize("size", [1, 512])
+def test_operator_population_cardinality_bound_includes_endpoints(size):
+    population = {"task_cids": ["task:" + str(i) for i in range(size)],
+                  "goal_cids": ["goal:" + str(i) for i in range(size)]}
+    selected = json.loads(json.dumps(population))
+
+    task_cids, goal_cids = probe.native_population({"native_population": population})
+
+    assert task_cids == set(selected["task_cids"])
+    assert goal_cids == set(selected["goal_cids"])
+    assert population == selected

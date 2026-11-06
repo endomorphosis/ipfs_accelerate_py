@@ -26,7 +26,6 @@ from pathlib import Path
 import re
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 from typing import Any, Mapping
@@ -364,56 +363,76 @@ def _ancestor(root: Path, older: str, newer: str) -> bool:
     return result.returncode == 0
 
 
-def _github_run_failures(repo: str, root: Path, branch: str | None = None) -> list[dict[str, Any]]:
-    argv = ["gh", "run", "list", "--repo", repo]
-    if branch:
-        argv.extend(["--branch", branch])
-    argv.extend(["--json", "databaseId,conclusion,status", "--limit", "8"])
+def _github_actions_billing_locked(repo: str, candidate: str, root: Path) -> bool:
+    """Diagnose a hold from bounded exact-commit GitHub Actions annotations.
+
+    This is denial-only evidence. It never supplies merge permission. Push
+    check-runs need not name a pull request; the caller separately rechecks
+    the exact PR head, required checks, base and review state before merging.
+    First-page limits deliberately permit false negatives and generic holds.
+    """
+    if (not isinstance(repo, str)
+            or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) is None
+            or not isinstance(candidate, str) or _OID.fullmatch(candidate) is None):
+        return False
+
+    def api(endpoint: str, maximum_bytes: int) -> Any:
+        raw = _run(["gh", "api", "--hostname", "github.com", "--method", "GET", endpoint],
+                   root, timeout=15)
+        if not isinstance(raw, str) or len(raw.encode("utf-8")) > maximum_bytes:
+            raise ValueError("GitHub billing observation exceeds its response bound")
+        return json.loads(raw)
+
     try:
-        payload = json.loads(_run(argv, root) or "[]")
-    except (PublicationHold, json.JSONDecodeError, TypeError, ValueError):
-        return []
-    if not isinstance(payload, list):
-        return []
-    return [row for row in payload if isinstance(row, dict)]
-
-
-def _runs_show_billing_lock(repo: str, runs: list[dict[str, Any]], root: Path) -> bool:
-    for run in runs:
-        if run.get("conclusion") != "failure":
-            continue
-        ident = run.get("databaseId")
-        if ident is None:
-            continue
-        try:
-            text = _run(["gh", "run", "view", str(ident), "--repo", repo], root)
-        except PublicationHold:
-            continue
-        lowered = text.lower()
-        if "billing issue" in lowered or "account is locked due to a billing issue" in lowered:
-            return True
-    return False
-
-
-def _github_actions_billing_locked(repo: str, branch: str, root: Path) -> bool:
-    """Hosted checks cannot start while the GitHub Actions account is locked."""
-    branch_runs = _github_run_failures(repo, root, branch)
-    if _runs_show_billing_lock(repo, branch_runs, root):
-        return True
-    # A newly pushed publication branch has no runs yet while the account is
-    # already locked. Repo-wide recent failures carry the same billing text.
-    if not branch_runs:
-        return _runs_show_billing_lock(repo, _github_run_failures(repo, root), root)
-    return False
-
-
-def _run_local_required_checks(root: Path) -> None:
-    """Same offline documentation-gates GitHub requires on ``main``."""
-    script = str(root / "scripts/docs/run_documentation_gates.py")
-    try:
-        _run([sys.executable, script], root, timeout=180)
-    except PublicationHold as exc:
-        raise PublicationHold(f"local required checks failed: {exc}") from None
+        payload = api(f"repos/{repo}/commits/{candidate}/check-runs?per_page=8&filter=latest", 256 * 1024)
+        if not isinstance(payload, dict):
+            return False
+        runs, total = payload.get("check_runs"), payload.get("total_count")
+        if (not isinstance(runs, list) or len(runs) > 8 or type(total) is not int
+                or total < len(runs) or total > 10000):
+            return False
+        eligible: list[tuple[int, int]] = []
+        seen: set[int] = set()
+        for run in runs:
+            if not isinstance(run, dict):
+                return False
+            ident, app, output = run.get("id"), run.get("app"), run.get("output")
+            if (type(ident) is not int or ident <= 0 or ident in seen
+                    or run.get("head_sha") != candidate or not isinstance(app, dict)
+                    or type(app.get("id")) is not int or app["id"] <= 0
+                    or not isinstance(app.get("slug"), str) or not app["slug"]
+                    or len(app["slug"]) > 100 or not isinstance(output, dict)):
+                return False
+            seen.add(ident)
+            count = output.get("annotations_count")
+            status, conclusion = run.get("status"), run.get("conclusion")
+            if (type(count) is not int or not 0 <= count <= 10000
+                    or not isinstance(status, str) or len(status) > 32
+                    or (conclusion is not None and (not isinstance(conclusion, str) or len(conclusion) > 32))):
+                return False
+            if (app["id"] == 15368 and app["slug"] == "github-actions"
+                    and status == "completed" and conclusion == "failure" and count):
+                eligible.append((ident, count))
+        found = False
+        for ident, count in eligible[:3]:
+            if count > 8:
+                return False
+            annotations = api(f"repos/{repo}/check-runs/{ident}/annotations?per_page=8&page=1", 64 * 1024)
+            if not isinstance(annotations, list) or len(annotations) != count:
+                return False
+            for annotation in annotations:
+                if not isinstance(annotation, dict):
+                    return False
+                level, message = annotation.get("annotation_level"), annotation.get("message")
+                if (not isinstance(level, str) or level not in {"failure", "warning", "notice"}
+                        or not isinstance(message, str) or not message or len(message) > 4096):
+                    return False
+                if (level == "failure" and message ==
+                        "The job was not started because your account is locked due to a billing issue."):
+                    found = True
+        return found
+    except (PublicationHold, TypeError, ValueError, RecursionError):
+        return False
 
 
 def _publication_pull_requests(repo: str, branch: str, root: Path, *, state: str) -> list[dict[str, Any]]:
@@ -483,36 +502,13 @@ def _merged_publication_pull_request(
     return _exact_candidate_pr(associated, candidate)
 
 
-def _admin_merge_billing_locked_pr(
-    repo: str, number: str, pr: Mapping[str, Any], candidate: str, root: Path,
-) -> None:
-    identity = json.loads(_run([
-        "gh", "pr", "view", number, "--repo", repo, "--json",
-        "number,state,isDraft,baseRefName,headRefOid,mergeable,reviewDecision",
-    ], root))
-    if not isinstance(identity, dict) or any((
-        identity.get("number") != pr["number"], identity.get("state") != "OPEN",
-        identity.get("isDraft") is not False, identity.get("baseRefName") != "main",
-        identity.get("headRefOid") != candidate, identity.get("mergeable") != "MERGEABLE",
-        identity.get("reviewDecision") not in ("", "APPROVED"),
-    )):
-        raise PublicationHold(
-            "publication PR is not ready at the exact validated head; required checks or reviews may be blocked"
-        )
-    _run_local_required_checks(root)
-    # Hosted required checks cannot start. Local documentation-gates on this
-    # exact candidate are the substitute; --admin is only this billing outage.
-    _run(["gh", "pr", "merge", number, "--repo", repo, "--merge", "--admin",
-          "--match-head-commit", candidate], root)
-
-
 def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> None:
     """Publish only a review branch; GitHub performs the normal PR merge.
 
     An account's successful direct push can bypass branch rules. Hosted
-    required checks remain the default. When GitHub Actions cannot start
-    because the account is billing-locked, run those same gates locally on
-    this candidate and merge with admin only for that outage.
+    required checks and reviews must succeed for this exact candidate. An
+    Actions billing lock is a retryable hold; local validation never replaces
+    required hosted checks or authorizes a branch-protection bypass.
 
     A MERGED pull request at this exact candidate is already published;
     opening a second PR would loop on hosted checks forever.
@@ -565,9 +561,8 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
             raise PublicationHold("publication PR is not ready at the exact validated head; required checks or reviews may be blocked")
 
     if created:
-        if _github_actions_billing_locked(repo, branch, root):
-            _admin_merge_billing_locked_pr(repo, number, pr, candidate, root)
-            return
+        if _github_actions_billing_locked(repo, candidate, root):
+            raise PublicationHold("GitHub Actions account is locked due to a billing issue; retain the PR for retry")
         raise PublicationHold("publication pull request created; awaiting required GitHub checks and reviews")
 
     try:
@@ -582,9 +577,9 @@ def _merge_reviewed_pull_request(root: Path, remote: str, candidate: str) -> Non
               "--match-head-commit", candidate], root)
         return
     except PublicationHold:
-        if not _github_actions_billing_locked(repo, branch, root):
-            raise
-    _admin_merge_billing_locked_pr(repo, number, pr, candidate, root)
+        if _github_actions_billing_locked(repo, candidate, root):
+            raise PublicationHold("GitHub Actions account is locked due to a billing issue; retain the PR for retry") from None
+        raise
 
 
 def publish_completed_board(manifest: Mapping[str, Any], state_dir: str | Path) -> dict[str, Any]:

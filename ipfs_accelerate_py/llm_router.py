@@ -5080,7 +5080,10 @@ def _clean_mistral_vibe_output(text: str) -> str:
 
 
 def _clean_grok_cli_output(text: str) -> str:
-    return _clean_codex_output(text)
+    # Grok's native JSON/stream transports already extract response text.
+    # Its contents may be literal edit hunks, HTML, entities, or comparisons;
+    # display-oriented tag stripping/unescaping would silently corrupt them.
+    return (text or "").strip()
 
 
 def _grok_cli_command() -> str:
@@ -8370,7 +8373,7 @@ def _grok_request_requirements(path: Path, model: str, *, zero_temperature: bool
 
 
 def _grok_requirements_allow_zero(path: Path, model: str) -> None:
-    """Preserve zero-temperature callers through the current requirements parser."""
+    """Keep named-session requirements checks on the shared policy validator."""
     _grok_request_requirements(path, model, zero_temperature=True)
 
 
@@ -8493,6 +8496,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             named_request = kwargs.pop("grok_named_session_request", None)
             named_base_parts = None
             if named_request is not None:
+                if _grok_output_token_budget(dict(kwargs)) is not None:
+                    raise ValueError("Named Grok output token budgets require a qualified pinned owner cap")
                 from .cli_runtime.grok_named_session import validate_preparation_option
                 validate_preparation_option("grok_cli", named_request, kwargs)
                 if (not structured_cli or "temperature" not in kwargs
@@ -8526,8 +8531,15 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             response_format = kwargs.pop("response_format", None)
             stream_progress = kwargs.pop("grok_stream_progress", False)
             progress_callback = kwargs.pop("grok_progress_callback", None)
+            explicit_frame_budget = "grok_stream_max_frame_bytes" in kwargs
+            frame_budget = kwargs.pop("grok_stream_max_frame_bytes", None)
             if type(stream_progress) is not bool:
                 raise ValueError("grok_stream_progress requires a boolean")
+            if explicit_frame_budget:
+                from .cli_runtime.grok_stream_capture import validate_max_frame_bytes
+                validate_max_frame_bytes(frame_budget)
+                if not stream_progress:
+                    raise ValueError("grok_stream_max_frame_bytes requires streaming mode")
             if progress_callback is not None and (not stream_progress or not callable(progress_callback)):
                 raise ValueError("grok_progress_callback requires streaming mode and a callable")
             if stream_progress and (not structured_cli or response_format is not None):
@@ -8738,7 +8750,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         cmd.extend(["--resume", resume_session_id])
                         env = named_lifetime.environment
                         timeout = named_lifetime.headless_timeout(timeout)
-                    elif temperature_supplied:
+                    elif temperature_supplied or output_token_budget is not None:
                         env = sampling_scope.enter_context(_grok_zero_temperature_environment(
                             env, model=model, command=cmd, zero_temperature=temperature_supplied,
                             output_token_budget=output_token_budget))
@@ -8748,7 +8760,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                             from .cli_runtime.grok_invocation_observation import begin_native_grok_dispatch
                             observation_dispatch_token = begin_native_grok_dispatch()
                             proc = capture_grok_stream(cmd, env=env, timeout=timeout,
-                                progress_callback=progress_callback)
+                                progress_callback=progress_callback,
+                                **({"max_frame_bytes": frame_budget} if explicit_frame_budget else {}))
                             stream_observation = proc.progress
                             if proc.timed_out:
                                 raise subprocess.TimeoutExpired(cmd, timeout,
@@ -13578,6 +13591,8 @@ def generate_text(
 
     named_request = kwargs.get("grok_named_session_request")
     if named_request is not None:
+        if _grok_output_token_budget(dict(kwargs)) is not None:
+            raise ValueError("Named Grok output token budgets require a qualified pinned owner cap")
         from .cli_runtime.grok_named_session import validate_public_dispatch
         validate_public_dispatch(provider=provider, model=model_name,
             request=kwargs["grok_named_session_request"], options=kwargs,

@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import stat
 import threading
 import uuid
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -26,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Final
 
 from .duckdb_state import DuckDBConnection, exclusive_file_lock, open_duckdb_connection
@@ -227,6 +230,83 @@ def checksum_sql(sql_text: str) -> str:
     return f"sha256:{digest}"
 
 
+_BOUND_SQL_LOCK = threading.Lock()
+_BOUND_SQL_RESOURCES: tuple[Path, tuple[tuple[str, str], ...], Mapping[str, str]] | None = None
+_BOUND_SQL_MAX_FILE_BYTES: Final = 1024 * 1024
+_BOUND_SQL_MAX_TOTAL_BYTES: Final = 4 * 1024 * 1024
+
+
+def bind_bundled_sql_resources(
+    directory: Path, expected_sha256: Mapping[str, str]
+) -> None:
+    """Bind verified UTF-8 SQL snapshots once, without package fallback.
+
+    Hashes are lowercase SHA256 hex digests of the exact file bytes. Repeating
+    the same directory/hash binding is harmless; a different binding is refused.
+    """
+
+    global _BOUND_SQL_RESOURCES
+    if not isinstance(directory, Path) or not directory.is_absolute():
+        raise MigrationCatalogError("bound SQL directory must be an absolute Path")
+    if not isinstance(expected_sha256, Mapping) or not 1 <= len(expected_sha256) <= 32:
+        raise MigrationCatalogError("bound SQL resources must contain 1..32 files")
+    hashes = dict(expected_sha256)
+    for name, digest in hashes.items():
+        if not isinstance(name, str) or SQL_FILENAME_RE.fullmatch(name) is None:
+            raise MigrationCatalogError("bound SQL filename is invalid")
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise MigrationCatalogError("bound SQL SHA256 is invalid")
+    identity = tuple(sorted(hashes.items()))
+    with _BOUND_SQL_LOCK:
+        if _BOUND_SQL_RESOURCES is not None:
+            if _BOUND_SQL_RESOURCES[:2] == (directory, identity):
+                return
+            raise MigrationCatalogError("bundled SQL resources are already bound")
+        texts: dict[str, str] = {}
+        total = 0
+        try:
+            directory_stat = directory.lstat()
+            if not stat.S_ISDIR(directory_stat.st_mode) or directory.resolve(strict=True) != directory:
+                raise MigrationCatalogError("bound SQL directory must be regular and nonsymlink")
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            directory_fd = os.open(directory, flags)
+            try:
+                opened = os.fstat(directory_fd)
+                if (opened.st_dev, opened.st_ino) != (directory_stat.st_dev, directory_stat.st_ino):
+                    raise MigrationCatalogError("bound SQL directory changed while opening")
+                for name, digest in identity:
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
+                    with os.fdopen(fd, "rb") as source:
+                        before = os.fstat(source.fileno())
+                        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+                            raise MigrationCatalogError("bound SQL file must be regular and unaliased")
+                        if before.st_size > _BOUND_SQL_MAX_FILE_BYTES:
+                            raise MigrationCatalogError("bound SQL file exceeds 1 MiB")
+                        raw = source.read(_BOUND_SQL_MAX_FILE_BYTES + 1)
+                        after = os.fstat(source.fileno())
+                    endpoint = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                    def snapshot(value: os.stat_result) -> tuple[int, ...]:
+                        return (value.st_dev, value.st_ino, value.st_mode, value.st_nlink,
+                                value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+                    if snapshot(before) != snapshot(after) or snapshot(before) != snapshot(endpoint):
+                        raise MigrationCatalogError("bound SQL file changed while reading")
+                    if len(raw) > _BOUND_SQL_MAX_FILE_BYTES or len(raw) != before.st_size:
+                        raise MigrationCatalogError("bound SQL file exceeds 1 MiB or changed size")
+                    total += len(raw)
+                    if total > _BOUND_SQL_MAX_TOTAL_BYTES:
+                        raise MigrationCatalogError("bound SQL resources exceed 4 MiB")
+                    if hashlib.sha256(raw).hexdigest() != digest:
+                        raise MigrationCatalogError(f"bound SQL checksum mismatch: {name}")
+                    texts[name] = raw.decode("utf-8")
+            finally:
+                os.close(directory_fd)
+        except MigrationCatalogError:
+            raise
+        except (OSError, UnicodeError) as exc:
+            raise MigrationCatalogError("bound SQL resources are unreadable") from exc
+        _BOUND_SQL_RESOURCES = (directory, identity, MappingProxyType(texts))
+
+
 def _package_sql_directory() -> Path:
     """Return the legacy filesystem view for explicit-path compatibility."""
 
@@ -236,6 +316,8 @@ def _package_sql_directory() -> Path:
 def _package_sql_resources() -> Any:
     """Return the bundled SQL traversable from this module's package loader."""
 
+    if _BOUND_SQL_RESOURCES is not None:
+        return _BOUND_SQL_RESOURCES[0]
     try:
         root = resources.files(__package__).joinpath(SQL_DIRECTORY_NAME)
         if not root.is_dir():
@@ -255,6 +337,11 @@ def read_bundled_sql_text(filename: str) -> str:
     name = str(filename)
     if Path(name).name != name or SQL_FILENAME_RE.fullmatch(name) is None:
         raise MigrationCatalogError("bundled control-plane SQL filename is invalid")
+    if _BOUND_SQL_RESOURCES is not None:
+        try:
+            return _BOUND_SQL_RESOURCES[2][name]
+        except KeyError as exc:
+            raise MigrationCatalogError(f"bound control-plane SQL is missing: {name}") from exc
     resource = _package_sql_resources().joinpath(name)
     try:
         if not resource.is_file():
@@ -654,20 +741,23 @@ class MigrationCatalog:
 
         if directory is None:
             root = _package_sql_resources()
-            try:
-                package_entries = tuple(
-                    sorted(root.iterdir(), key=lambda item: item.name)
-                )
-                sql_entries = tuple(
-                    entry
-                    for entry in package_entries
-                    if entry.is_file() and entry.name.endswith(".sql")
-                )
-            except (OSError, TypeError) as exc:
-                raise MigrationCatalogError(
-                    "bundled control-plane SQL cannot be enumerated"
-                ) from exc
-            names = {entry.name for entry in sql_entries}
+            if _BOUND_SQL_RESOURCES is not None:
+                names = set(_BOUND_SQL_RESOURCES[2])
+            else:
+                try:
+                    package_entries = tuple(
+                        sorted(root.iterdir(), key=lambda item: item.name)
+                    )
+                    sql_entries = tuple(
+                        entry
+                        for entry in package_entries
+                        if entry.is_file() and entry.name.endswith(".sql")
+                    )
+                except (OSError, TypeError) as exc:
+                    raise MigrationCatalogError(
+                        "bundled control-plane SQL cannot be enumerated"
+                    ) from exc
+                names = {entry.name for entry in sql_entries}
             missing = sorted(set(REQUIRED_PACKAGE_SQL_FILENAMES) - names)
             if missing:
                 raise MigrationCatalogError(
@@ -1690,6 +1780,7 @@ __all__ = [
     "OUTCOME_REFUSED",
     "REQUIRED_PACKAGE_SQL_FILENAMES",
     "SQL_DIRECTORY_NAME",
+    "bind_bundled_sql_resources",
     "checksum_sql",
     "compute_schema_fingerprint",
     "default_application_version",

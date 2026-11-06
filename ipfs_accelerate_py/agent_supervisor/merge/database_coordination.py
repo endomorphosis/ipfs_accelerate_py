@@ -1993,7 +1993,7 @@ class DatabaseCoordinator:
             self._begin(connection)
             try:
                 existing = connection.execute(
-                    "SELECT task_cid FROM coordination_tasks WHERE task_cid = ?",
+                    "SELECT task_cid, body_json FROM coordination_tasks WHERE task_cid = ?",
                     [cid],
                 ).fetchone()
                 if existing is None:
@@ -2020,6 +2020,14 @@ class DatabaseCoordinator:
                             """,
                             [cid, dep],
                         )
+                if existing is not None:
+                    from ..task_sources.execution_packet_admission import execution_packet_required
+                    old_body = json.loads(str(_row_get(_row_mapping(existing), "body_json", "1", default="{}")))
+                    if execution_packet_required(payload) and not execution_packet_required(old_body):
+                        # Only the non-indexed opt-in marker is upgraded. Existing
+                        # projection fields and ordinary legacy registration stay intact.
+                        old_body["execution_packet_required"] = True
+                        connection.execute("UPDATE coordination_tasks SET body_json=? WHERE task_cid=?", [_canonical_json(old_body), cid])
                 # Already registered: do not UPDATE/DELETE/re-INSERT. DuckDB 1.5
                 # can FATAL on unique-index maintenance for those writes.
                 self._commit_if_idle(connection)
@@ -6703,6 +6711,7 @@ class DatabaseCoordinator:
         idempotency_key: str = "",
         body: Mapping[str, Any] | None = None,
         now_ms: int | None = None,
+        execution_packet_authority: Any = None,
     ) -> TaskClaim:
         """Claim a task and create its task attempt in one transaction."""
 
@@ -6728,6 +6737,8 @@ class DatabaseCoordinator:
                 ).fetchone()
                 if task_row is None:
                     raise KeyError(f"unknown task CID: {cid}")
+                from ..task_sources.execution_packet_admission import require_coordination_packet
+                require_coordination_packet(connection, cid, execution_packet_authority)
                 completion_row = connection.execute(
                     "SELECT status FROM task_completions WHERE task_cid = ?",
                     [cid],
@@ -6968,6 +6979,7 @@ class DatabaseCoordinator:
         exclude_task_cids: Iterable[str] = (),
         now_ms: int | None = None,
         accept_task_cid: Callable[[str], bool] | None = None,
+        execution_packet_authority: Any = None,
     ) -> TaskClaim | None:
         """Fair-schedule: claim the oldest ready unclaimed task.
 
@@ -7014,6 +7026,11 @@ class DatabaseCoordinator:
                     if not cid or cid in excluded:
                         continue
                     if accept_task_cid is not None and not accept_task_cid(cid):
+                        continue
+                    from ..task_sources.execution_packet_admission import require_coordination_packet, ExecutionPacketAdmissionError
+                    try:
+                        require_coordination_packet(connection, cid, execution_packet_authority)
+                    except ExecutionPacketAdmissionError:
                         continue
                     scope_key = exclusive_scope_key(
                         lease_kind=LeaseKind.TASK, scope=cid, task_cid=cid

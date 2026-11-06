@@ -22,8 +22,10 @@ from .grok_stream_usage import GrokUsageEventObserver, validate_grok_usage_event
 LEGACY_SCHEMA = "native-grok-stream-progress@1"
 SCHEMA = "native-grok-stream-progress@2"
 MAX_FRAME_BYTES = 256 * 1024
+MAX_EXPLICIT_FRAME_BYTES = 8 * 1024 * 1024
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 CALLBACK_INTERVAL_SECONDS = 5.0
+TERMINAL_DRAIN_SECONDS = 3.0
 _MAX_COUNT = (1 << 63) - 1
 _EVENTS = ("text", "thought", "tool_call", "tool_call_update", "usage", "plan",
            "available_commands", "end", "error", "max_turns_reached", "auto_compact", "unknown")
@@ -146,13 +148,25 @@ def _nonfinite(_value):
     raise ValueError("nonfinite JSON number")
 
 
+def validate_max_frame_bytes(value: object) -> int:
+    """Validate a caller-selected bounded frame budget before process launch.
+
+    Ordinary text calls retain MAX_FRAME_BYTES. Image readers may explicitly
+    account for verified image payload bytes without disabling overflow checks.
+    """
+    if type(value) is not int or not 1 <= value <= MAX_EXPLICIT_FRAME_BYTES:
+        raise ValueError("Grok frame bound must be an integer from 1 through 8 MiB")
+    return value
+
+
 class GrokStreamParser:
     """Incremental LF parser. Snapshots contain counts/times, never model data."""
 
     def __init__(self, *, max_frame_bytes: int = MAX_FRAME_BYTES, max_text_bytes: int = MAX_TEXT_BYTES):
         if any(type(n) is not int or n < 1 for n in (max_frame_bytes, max_text_bytes)):
             raise ValueError("positive stream bounds required")
-        if max_frame_bytes > MAX_FRAME_BYTES or max_text_bytes > MAX_TEXT_BYTES:
+        validate_max_frame_bytes(max_frame_bytes)
+        if max_text_bytes > MAX_TEXT_BYTES:
             raise ValueError("stream bounds cannot exceed supported limits")
         self._max_frame = max_frame_bytes
         self._max_text = max_text_bytes
@@ -357,13 +371,27 @@ class GrokStreamResult:
     response_text: str = field(repr=False)
 
 
+def _terminal_drain_allowed(parser: GrokStreamParser, timeout: float) -> bool:
+    """Permit only OS/pipe cleanup of a complete response observed on time."""
+    state = parser.snapshot()
+    return bool(state["final_event_type"] == "end" and state["final_reason_code"] == "end_turn"
+                and state["final_event_seconds"] is not None and state["final_event_seconds"] < timeout
+                and state["retained_text_bytes"] > 0 and not state["stream_tainted"]
+                and not state["text_truncated"] and not parser._pending.strip()
+                and not parser._discard_line and state["returncode"] in (None, 0))
+
+
 def capture_grok_stream(command: Sequence[str], *, env: Mapping[str, str] | None,
                         timeout: float, cwd: str | os.PathLike | None = None,
-                        progress_callback: Callable[[dict], None] | None = None) -> GrokStreamResult:
-    """Drain both pipes under one deadline; kill/reap only this owned child.
+                        progress_callback: Callable[[dict], None] | None = None,
+                        max_frame_bytes: int = MAX_FRAME_BYTES) -> GrokStreamResult:
+    """Keep the model deadline; bound terminal-only OS/pipe cleanup separately.
 
     Descendant custody belongs to the calling runtime. An inherited descendant
-    pipe cannot extend this deadline or become a successful partial response.
+    pipe cannot extend the finite cleanup bound or authorize a partial response.
+    Only a clean completed end_turn observed before the model deadline permits
+    at most min(3 seconds, timeout) extra for natural exit and both pipe EOFs.
+    It does not admit late model output, another turn, or a new invocation.
     Callback exceptions are diagnostic failures; cancellation still propagates
     through owned-child cleanup. Stream event origin is not authenticated.
     """
@@ -371,9 +399,10 @@ def capture_grok_stream(command: Sequence[str], *, env: Mapping[str, str] | None
         raise ValueError("positive finite Grok stream timeout required")
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("Grok progress callback must be callable")
-    parser = GrokStreamParser()
+    parser = GrokStreamParser(max_frame_bytes=validate_max_frame_bytes(max_frame_bytes))
     started = time.monotonic()
     deadline = started + timeout
+    terminal_deadline = deadline + min(TERMINAL_DRAIN_SECONDS, timeout)
     last_callback = -CALLBACK_INTERVAL_SECONDS
     process = None
     selector = selectors.DefaultSelector()
@@ -417,12 +446,17 @@ def capture_grok_stream(command: Sequence[str], *, env: Mapping[str, str] | None
         callback()
         while True:
             code = observe_exit()
-            if code is not None and not selector.get_map():
-                break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                parser.timeout(process_running=code is None, elapsed_seconds=elapsed())
-                reap_direct()
+                # The terminal must already have been observed before the
+                # original deadline. Neither late output nor process exit can
+                # bypass that boundary, including when both pipes just closed.
+                remaining = terminal_deadline - time.monotonic() if _terminal_drain_allowed(parser, timeout) else 0
+                if remaining <= 0:
+                    parser.timeout(process_running=code is None, elapsed_seconds=elapsed())
+                    reap_direct()
+                    break
+            if code is not None and not selector.get_map():
                 break
             for key, _mask in selector.select(min(0.1, remaining)):
                 try:

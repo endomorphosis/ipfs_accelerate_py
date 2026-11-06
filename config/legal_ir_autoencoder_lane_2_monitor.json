@@ -1,0 +1,19 @@
+{
+  "service": "legal-ir-autoencoder-v1-lane-2.service",
+  "state_dir": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/state/lane-2",
+  "state_prefix": "lirae_lane_2",
+  "board_namespace": "legal-ir-autoencoder-v1",
+  "native_state_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/state/lane-2/lirae_lane_2_task_state.json",
+  "checkpoint_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/state/lane-2/lirae_lane_2_task_state.event-driven-checkpoint.json",
+  "event_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/state/lane-2/lirae_lane_2_events.jsonl",
+  "health_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/state/lane-2/lirae_lane_2_service_health.json",
+  "actions_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/state/lane-2/lirae_lane_2_service_recovery.jsonl",
+  "startup_grace_seconds": 300,
+  "progress_timeout_seconds": 3900,
+  "restart_cooldown_seconds": 600,
+  "max_restarts_per_hour": 4,
+  "implement": true,
+  "repo_root": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1",
+  "task_shard_count": 4,
+  "task_shard_index": 2
+}

@@ -1,0 +1,39 @@
+{
+  "profile_ref": {
+    "bytes": 124064,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-programme-review-20261022-05/comprehensive-plan-review-v01/supervisor-dispatch-integration-v01/unblock-work-v01/executor-watchdog-v01/scientific-activation-candidate-v01/scientific-managed-executor-proof-v03/runtime-metadata-v01/scientific-profile-v03.json",
+    "sha256": "1adefd8d5f9e71fc6ded92359f5e8dfede91931da45a357d658931ea86558da3"
+  },
+  "schema": "typed-scientific-qualified-actual-reference-map/v1",
+  "scope": "Authentic immutable H CLI3 metadata and physical-source joins; only Git observations modeled in the test. No native, manager, DB, task, provider or service authority.",
+  "seed_observer_plan_ref": {
+    "bytes": 597514,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-programme-review-20261022-05/comprehensive-plan-review-v01/supervisor-dispatch-integration-v01/unblock-work-v01/executor-watchdog-v01/scientific-activation-candidate-v01/scientific-managed-executor-proof-v03/cold-reuse-restricted-v02/operation-plan.json",
+    "sha256": "3611eca3caeed0981fa73062d7655fd8369abb28920882552308024204024a9d"
+  },
+  "source_commit": "da9286b2484985357b063d42ea08d4e782489264",
+  "source_commitment_ref": {
+    "bytes": 4532,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-programme-review-20261022-05/comprehensive-plan-review-v01/supervisor-dispatch-integration-v01/unblock-work-v01/executor-watchdog-v01/scientific-activation-candidate-v01/scientific-managed-executor-proof-v03/source-metadata-H-v01/source-commitment.json",
+    "sha256": "d8a6f22ff537ca2280eabcc89a74927c4c374f605028a2652e1bc536b6b4e3ed"
+  },
+  "source_inventory_ref": {
+    "bytes": 1323524,
+    "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-programme-review-20261022-05/comprehensive-plan-review-v01/supervisor-dispatch-integration-v01/unblock-work-v01/executor-watchdog-v01/scientific-activation-candidate-v01/scientific-managed-executor-proof-v03/source-metadata-H-v01/source_inventory.json",
+    "sha256": "35c3ce0d4c6c949f4171f7e4f57173462196325d071c949ec19b04e84e3380b4"
+  },
+  "source_root": "/home/barberb/lift_coding/.worktrees/legal-ir-scientific-capsule-reuse-20261031",
+  "source_tree": "512ee522db0084d11e5d72a56226064e2faccdc8",
+  "trusted_metadata_component_sources": {
+    "driver_source": {
+      "bytes": 28162,
+      "path": "/home/barberb/lift_coding/.worktrees/legal-ir-scientific-capsule-reuse-20261031/ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py",
+      "sha256": "2e9ba7653bbc0939bb41f1fbbdd14f5f0e9a51fd78577dbbb5aa044fc14e3ea6"
+    },
+    "health_module": {
+      "bytes": 57074,
+      "path": "/home/barberb/lift_coding/.worktrees/legal-ir-scientific-capsule-reuse-20261031/ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py",
+      "sha256": "ac208c6a1aac4b168e17b198f3bc0c94109f2724aa524538c38f6dbc583335df"
+    }
+  }
+}

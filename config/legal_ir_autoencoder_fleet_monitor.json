@@ -1,0 +1,26 @@
+{
+  "board_namespace": "legal-ir-autoencoder-v1",
+  "lanes": [
+    {
+      "lane_id": "lane-0",
+      "config": "/home/barberb/lift_coding/external/ipfs_accelerate/config/legal_ir_autoencoder_lane_0_monitor.json"
+    },
+    {
+      "lane_id": "lane-1",
+      "config": "/home/barberb/lift_coding/external/ipfs_accelerate/config/legal_ir_autoencoder_lane_1_monitor.json"
+    },
+    {
+      "lane_id": "lane-2",
+      "config": "/home/barberb/lift_coding/external/ipfs_accelerate/config/legal_ir_autoencoder_lane_2_monitor.json"
+    },
+    {
+      "lane_id": "lane-3",
+      "config": "/home/barberb/lift_coding/external/ipfs_accelerate/config/legal_ir_autoencoder_lane_3_monitor.json"
+    }
+  ],
+  "health_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/fleet-health.json",
+  "actions_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/fleet-events.jsonl",
+  "merge_queue_dir": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/merge-queue",
+  "merge_stale_seconds": 1800,
+  "repeated_error_threshold": 3
+}

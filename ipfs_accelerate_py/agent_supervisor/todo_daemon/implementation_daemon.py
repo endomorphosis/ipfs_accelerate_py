@@ -3064,6 +3064,10 @@ STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
 VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION = (
     "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@3"
 )
+# Caller evidence acquisition only; no retry, provider, runtime or model budget changes.
+VALIDATION_REARM_FLOOR_MAX_JOURNAL_FILES = 64
+VALIDATION_REARM_FLOOR_MAX_JOURNAL_BYTES = 32 * 1024 * 1024
+
 RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "todo_daemon/implementation_daemon.py",
     "objectives/backlog_refinery.py",
@@ -5880,6 +5884,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Preserve daemon grammar while consuming one canonical source row."""
 
         body = dict(task.body)
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        packet_required = execution_packet_required(body)
         provenance = body.get("provenance")
         metadata: dict[str, str] = {
             str(key).strip().lower().replace("_", " "): cls._task_source_metadata_text(
@@ -5888,6 +5894,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for key, value in body.items()
             if str(key).strip()
         }
+        if packet_required:
+            metadata["execution packet required"] = "true"
         if isinstance(provenance, Mapping):
             for key, value in provenance.items():
                 metadata.setdefault(
@@ -11518,6 +11526,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self,
         state: PortalTaskState,
         task: PortalTask,
+        *,
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> int | None:
         """Recover one exact revision/attempt from its durable signed latch."""
 
@@ -11531,10 +11541,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             attempt=current,
             task_revision_cid=revision,
         )
+        history_arguments = ({} if verified_lifecycle_events is None else
+            {"verified_lifecycle_events": verified_lifecycle_events})
         event_latch = self._protected_attempt_event_latch(
             task_id=task.task_id,
             attempt=current,
             task_revision_cid=revision,
+            **history_arguments,
         )
         if not state_latched and event_latch is None:
             return None
@@ -11557,6 +11570,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 current,
                 task_revision_cid=revision,
                 board_namespace=expected_namespace,
+                **history_arguments,
             )
         ):
             return None
@@ -11657,6 +11671,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 for canonical_task_cid in sorted(canonical_task_cids)
             }
+            superseded_validation_rearms = {
+                canonical_task_cid: state.validation_obsolescence_rearm_receipts.pop(canonical_task_cid)
+                for canonical_task_cid in sorted(canonical_task_cids)
+                if canonical_task_cid in state.validation_obsolescence_rearm_receipts
+            }
             for canonical_task_cid in canonical_task_cids:
                 queue_changed = (
                     self.task_queue.reset_retry_state(canonical_task_cid)
@@ -11670,6 +11689,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "failure_kind": failure_kind,
                     "previous_display_attempt_count": previous_display_count,
                     "previous_canonical_attempt_counts": previous_cid_counts,
+                    "superseded_validation_obsolescence_rearm_receipts": superseded_validation_rearms,
                 }
             )
 
@@ -12480,14 +12500,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         recovery_revision: str,
     ) -> list[dict[str, Any]]:
-        """Rearm ordinary tasks exhausted on validation after control-plane fixes.
+        """Keep ordinary consumed attempts spent across runtime revisions.
 
-        When a provider burns its attempt budget solely on validation failures,
-        grant one full attempt-budget reset so the supervisor can self-unblock
-        without operator counter surgery. The same canonical task is rearmed
-        once per recovery revision and once per digest of its declared outputs.
-        A later real repair of those outputs earns one new budget. Repeating
-        the same bytes does not.
+        A source revision and failed validation do not establish that the
+        failure was an infrastructure defect, or that the revision fixed it.
+        In particular, timeout/output-observability changes cannot authorize
+        another provider budget for the same canonical task. Historical
+        obsolescence receipts remain readable, but this compatibility entry
+        point no longer manufactures a reset from those two observations.
+
+        Completed, board-bound retry repairs retain their separate durable
+        authority in _reset_attempt_budgets_for_completed_retry_repairs.
+        Generated repair and stale-proposal recovery keep their own gates.
+        """
+
+        # Preserve the existing closed policy validation even though this
+        # source-hash-only recovery path cannot authorize a counter change.
+        automatic_retry_rearm_enabled()
+        return []
+
+    def _rearm_declared_output_validation_exhausted_tasks(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Grant one budget when declared outputs change after validation failure.
+
+        This is separate from _rearm_attempt_limited_obsoleted_validation_tasks.
+        A source revision alone does not reset spent attempts. The supervisor
+        calls this method only after validation-failure evidence exists. The
+        same canonical task is granted once per recovery revision and once per
+        digest of its declared outputs. Repeating those bytes does not earn
+        another budget. The receipt records output_digest so a later attempt
+        floor treats the grant as authorized budget instead of a source-only
+        receipt that must be spent again.
         """
 
         if not automatic_retry_rearm_enabled():
@@ -12524,11 +12573,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if not self._task_has_validation_command_failure_evidence(task):
                 continue
             identity = identities[task.task_id]
+            output_digest = self._validation_obsolescence_output_digest(task)
             fingerprint_payload = {
                 "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
                 "recovery_revision": revision,
                 "canonical_task_cid": identity.canonical_task_cid,
-                "output_digest": self._validation_obsolescence_output_digest(task),
+                "output_digest": output_digest,
             }
             fingerprint = "sha256:" + hashlib.sha256(
                 json.dumps(
@@ -12570,6 +12620,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "previous_display_attempt_counts": previous_display_counts,
                     "previous_canonical_attempt_count": previous_canonical_count,
                     "recovery_revision": revision,
+                    "output_digest": output_digest,
                     "rearm_fingerprint": fingerprint,
                 }
             )
@@ -12589,6 +12640,160 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             },
         )
         return rearmed
+
+    def _restore_consumed_validation_rearm_attempt_floors(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        exempt_task_ids: Iterable[str] = (),
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
+    ) -> None:
+        """Recover a minimum spent count from exact, bounded native history.
+
+        Historical source-only rearms may already have lowered the maps.
+        This restores only an authenticated lower bound, not a reconstructed
+        lifetime total or a relabelled historical local attempt. It never
+        changes an active attempt or supersedes a completed repair reset.
+        """
+
+        if (state.implementation_in_progress or state.active_task_id
+                or state.active_task_cid or state.active_phase):
+            return
+        exempt = set(exempt_task_ids)
+        by_cid: dict[str, list[PortalTask]] = {}
+        required: dict[str, set[str]] = {}
+        for task in tasks:
+            cid = self._canonical_ref(task)
+            if (task.task_id in exempt
+                    or resolved_statuses.get(task.task_id) != "ready"
+                    or is_retry_budget_repair_task(task)):
+                continue
+            receipts = state.validation_obsolescence_rearm_receipts.get(cid, [])
+            if (type(receipts) is not list or any(type(item) is not str or not item
+                    for item in receipts) or len(receipts) != len(set(receipts))):
+                raise CursorReplayError("validation attempt floor has invalid rearm receipts")
+            if not receipts:
+                continue
+            current = self._task_attempt_count(state, task)
+            if current >= self.max_task_attempts:
+                continue
+            by_cid.setdefault(cid, []).append(task)
+            required[cid] = set(receipts)
+        if not required:
+            return
+
+        # The existing replay owner performs this caller preflight before
+        # manifest/body reads and before its normal verified cache can return.
+        events = (verified_lifecycle_events if verified_lifecycle_events is not None else
+            self._iter_merge_lifecycle_events(
+                maximum_evidence_files=VALIDATION_REARM_FLOOR_MAX_JOURNAL_FILES,
+                maximum_evidence_bytes=VALIDATION_REARM_FLOOR_MAX_JOURNAL_BYTES,
+            ))
+
+        matches: dict[str, dict[str, tuple[int, int]]] = {cid: {} for cid in required}
+        completed_reset: dict[str, int] = {}
+        for event in events:
+            sequence = event.get("sequence")
+            if type(sequence) is not int or sequence <= 0:
+                raise CursorReplayError("validation attempt floor history has invalid sequence")
+            if event.get("type") == "ordinary_task_validation_obsolescence_rearmed":
+                items = event.get("rearmed")
+                if type(items) is not list or any(type(item) is not dict for item in items):
+                    raise CursorReplayError("validation attempt floor has malformed rearm history")
+                for item in items:
+                    cid = item.get("canonical_task_cid")
+                    if type(cid) is not str or cid not in required:
+                        continue
+                    fingerprint = item.get("rearm_fingerprint")
+                    if type(fingerprint) is not str or fingerprint not in required[cid]:
+                        continue
+                    revision = event.get("recovery_revision")
+                    legacy_payload = {
+                        "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
+                        "recovery_revision": revision,
+                        "canonical_task_cid": cid,
+                    }
+                    expected = "sha256:" + hashlib.sha256(json.dumps(
+                        legacy_payload, sort_keys=True, separators=(",", ":"),
+                    ).encode("utf-8")).hexdigest()
+                    output_digest = item.get("output_digest")
+                    digest_expected = ""
+                    if type(output_digest) is str and output_digest.startswith("sha256:"):
+                        digest_expected = "sha256:" + hashlib.sha256(json.dumps(
+                            {**legacy_payload, "output_digest": output_digest},
+                            sort_keys=True, separators=(",", ":"),
+                        ).encode("utf-8")).hexdigest()
+                    # A declared-output rearm is authorized new budget. It must
+                    # not be replayed as a source-only receipt that restores
+                    # the spent count, and a legacy fingerprint mismatch still
+                    # fails closed.
+                    authorized_output_rearm = bool(digest_expected) and fingerprint == digest_expected
+                    count = item.get("previous_attempt_count")
+                    canonical = item.get("previous_canonical_attempt_count")
+                    display = item.get("previous_display_attempt_counts")
+                    if (event.get("schema") != VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION
+                            or type(revision) is not str or not revision
+                            or item.get("recovery_revision") != revision
+                            or (fingerprint != expected and not authorized_output_rearm)
+                            or fingerprint in matches[cid]
+                            or type(count) is not int or count <= 0
+                            or type(canonical) is not int or not 0 <= canonical <= count
+                            or type(display) is not dict or not display
+                            or type(item.get("task_id")) is not str or not item.get("task_id")
+                            or any(type(key) is not str or not key for key in display)
+                            or item.get("task_id") not in display
+                            or any(type(value) is not int or not 0 <= value <= count for value in display.values())
+                            or max([canonical, *display.values()]) != count):
+                        raise CursorReplayError("validation attempt floor rearm witness is invalid")
+                    matches[cid][fingerprint] = (sequence, 0 if authorized_output_rearm else count)
+            elif event.get("type") == "task_retry_budget_reset":
+                resets = event.get("resets")
+                if type(resets) is not list or any(type(reset) is not dict for reset in resets):
+                    raise CursorReplayError("validation attempt floor has malformed completed repair history")
+                for reset in resets:
+                    source_id = reset.get("source_task_id")
+                    for cid, aliases in by_cid.items():
+                        task = next((task for task in aliases if task.task_id == source_id), None)
+                        previous_counts = reset.get("previous_canonical_attempt_counts")
+                        if task is None or type(previous_counts) is not dict or cid not in previous_counts:
+                            continue
+                        scope = self._retry_no_change_pre_dispatch_scope(task, state)
+                        if (scope is not None and scope.get("kind") == "retry_budget_released_source"
+                                and scope.get("repair_task_id") == reset.get("repair_task_id")):
+                            display_count = reset.get("previous_display_attempt_count")
+                            if (type(display_count) is not int or display_count < 0
+                                    or any(type(count) is not int or count < 0 for count in previous_counts.values())
+                                    or scope.get("failure_kind") != reset.get("failure_kind")):
+                                raise CursorReplayError("validation attempt floor completed repair witness is invalid")
+                            completed_reset[cid] = sequence
+
+        restored = []
+        for cid, fingerprints in required.items():
+            if not fingerprints.issubset(matches[cid]):
+                raise CursorReplayError("validation attempt floor is missing a matching rearm fingerprint")
+            floor = max((matches[cid][fingerprint][1] for fingerprint in fingerprints
+                         if matches[cid][fingerprint][0] > completed_reset.get(cid, 0)), default=0)
+            current = max(self._task_attempt_count(state, task) for task in by_cid[cid])
+            if floor <= current:
+                continue
+            restored.append({"canonical_task_cid": cid,
+                "task_ids": [task.task_id for task in by_cid[cid]],
+                "previous_current_count": current, "minimum_consumed_attempts": floor,
+                "historical_local_ordinals_relabelled": False,
+                "lifetime_total_reconstructed": False})
+        if restored:
+            # Authenticate every candidate before changing any projection.
+            for item in restored:
+                state.implementation_attempts_by_cid[item["canonical_task_cid"]] = item["minimum_consumed_attempts"]
+                for task_id in item["task_ids"]:
+                    state.implementation_attempts[task_id] = item["minimum_consumed_attempts"]
+            state.save(self.state_path)
+            self._record_event("ordinary_task_validation_attempt_floor_restored", {
+                "restored": restored, "new_attempt_authority": False,
+                "attempt_refunded": False, "completion_authority": False,
+            })
 
     def _partition_tasks_at_attempt_limit(
         self,
@@ -12612,16 +12817,58 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and bool(getattr(state, "implementation_in_progress", False))
         ):
             exempt.add(active_id)
+        legacy_cids = {
+            self._canonical_ref(task) for task in tasks
+            if task.task_id not in exempt and not is_retry_budget_repair_task(task)
+            and resolved_statuses.get(task.task_id) == "ready"
+            and self._task_attempt_count(state, task) < self.max_task_attempts
+            and self._canonical_ref(task) in state.validation_obsolescence_rearm_receipts
+            and (type(state.validation_obsolescence_rearm_receipts[self._canonical_ref(task)]) is not list
+                 or bool(state.validation_obsolescence_rearm_receipts[self._canonical_ref(task)]))
+        }
+        evidence_refused_cids: set[str] = set()
+        evidence_refusal = ""
+        verified_events = None
+        quiescent = not (state.implementation_in_progress or state.active_task_id
+                         or state.active_task_cid or state.active_phase)
+        if legacy_cids and quiescent:
+            try:
+                verified_events = self._iter_merge_lifecycle_events(
+                    maximum_evidence_files=VALIDATION_REARM_FLOOR_MAX_JOURNAL_FILES,
+                    maximum_evidence_bytes=VALIDATION_REARM_FLOOR_MAX_JOURNAL_BYTES,
+                )
+            except CursorReplayError as exc:
+                evidence_refused_cids = set(legacy_cids)
+                evidence_refusal = str(exc)
+        # Protected same-attempt recovery is an exemption before any floor
+        # mutation. A refused legacy CID must never fall through to repairing
+        # _iter_events; a verified one reuses these exact strict replay rows.
+        for task in tasks:
+            cid = self._canonical_ref(task)
+            if cid in evidence_refused_cids:
+                continue
+            history_arguments = ({} if cid not in legacy_cids or verified_events is None else
+                {"verified_lifecycle_events": verified_events})
+            if self._durable_protected_recovery_attempt(state, task, **history_arguments) is not None:
+                exempt.add(task.task_id)
+        if not evidence_refused_cids:
+            try:
+                self._restore_consumed_validation_rearm_attempt_floors(
+                    state, tasks, resolved_statuses, exempt_task_ids=exempt,
+                    verified_lifecycle_events=verified_events,
+                )
+            except CursorReplayError as exc:
+                evidence_refused_cids = set(legacy_cids)
+                evidence_refusal = str(exc)
         selectable: list[PortalTask] = []
         limited: list[dict[str, Any]] = []
         for task in tasks:
             attempt_count = self._task_attempt_count(state, task)
-            if self._durable_protected_recovery_attempt(state, task) is not None:
-                exempt.add(task.task_id)
+            evidence_refused = self._canonical_ref(task) in evidence_refused_cids
             if (
                 task.task_id not in exempt
                 and resolved_statuses.get(task.task_id) == "ready"
-                and attempt_count >= self.max_task_attempts
+                and (attempt_count >= self.max_task_attempts or evidence_refused)
             ):
                 identity = self._identity_for_task(task)
                 limited.append(
@@ -12630,6 +12877,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "canonical_task_key": identity.canonical_task_key,
                         "canonical_task_cid": identity.canonical_task_cid,
                         "attempt_count": attempt_count,
+                        **({"reason": "validation_rearm_floor_evidence_unverified",
+                            "evidence_error": evidence_refusal,
+                            "new_attempt_authority": False} if evidence_refused else {}),
                     }
                 )
                 continue
@@ -12659,6 +12909,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         task_revision_cid: str = "",
         board_namespace: str = "",
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> bool:
         """Return whether a durable finish exists for this exact revision."""
 
@@ -12673,7 +12924,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or not namespace
         ):
             return False
-        for event in self._iter_events():
+        for event in (self._iter_events() if verified_lifecycle_events is None else verified_lifecycle_events):
             if str(event.get("type") or "") != "implementation_finished":
                 continue
             if str(event.get("task_id") or "") != task_id:
@@ -12762,6 +13013,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task_id: str,
         attempt: int,
         task_revision_cid: str,
+        verified_lifecycle_events: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         """Recover an immutable latch from the append-only event journal."""
 
@@ -12778,7 +13030,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "provider_attempt_store",
             "provider_attempt_store_identity",
         )
-        for event in reversed(tuple(self._iter_events())):
+        for event in reversed(tuple((self._iter_events() if verified_lifecycle_events is None else verified_lifecycle_events))):
             if (
                 event.get("type") != "protected_implementation_attempt_latched"
                 or event.get("task_id") != task_id
@@ -18927,7 +19179,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             if not remaining_ready:
                 attempt_limit_idle_reason = (
-                    "all_selectable_ready_tasks_reached_max_task_attempts"
+                    "all_selectable_ready_tasks_blocked_on_attempt_accounting_evidence"
+                    if any(item.get("reason") == "validation_rearm_floor_evidence_unverified"
+                           for item in attempt_limited_tasks)
+                    else "all_selectable_ready_tasks_reached_max_task_attempts"
                 )
             self._record_event(
                 "task_attempt_limit_backpressure",
@@ -21544,6 +21799,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation path stays free of hard import failures at module load.
         """
 
+        from ..task_sources.execution_packet_admission import execution_packet_required_metadata
+        if execution_packet_required_metadata(task.metadata):
+            return {"skip_provider": True, "provider_authorized": False,
+                    "disposition": "defer_capability", "reason_code": "execution_packet_metadata_has_no_provider_authority",
+                    "receipt_cid": "", "event": {"task_id": task.task_id, "attempt": int(attempt)}}
         try:
             from .pre_implementation_provider_gate import (
                 evaluate_provider_gate,
@@ -31244,7 +31504,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "commit_result": commit_result,
                 "implementation_commit": candidate_commit,
                 "merge_result": merge_result,
-                "validation_result": validation_result,
+                "validation_result": (
+                    self._detach_in_process_proposal_validation(
+                        validation_result
+                    )
+                ),
                 "protected_path_violation": protected_path_violation,
                 "recovery_key": recovery_key,
             }
@@ -40215,6 +40479,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "pruned_seeded_context": pruned_seeded_context,
             evidence_field: dict(evidence),
         }
+        # Administrative recovery daemons need not have registered a dispatch
+        # cache. A checkpoint always carries its actual canonical task context.
+        identity = self._identity_for_task(task)
+        result.update(canonical_task_cid=identity.canonical_task_cid,
+                      canonical_task_key=identity.canonical_task_key,
+                      board_namespace=identity.board_namespace)
         if retain_on_failure:
             result["retained"] = worktree_path.exists()
             if not preserved_commit:
@@ -50107,7 +50377,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "returncode": int(completed.returncode),
             "output": output,
         }
-        if sys.platform != "linux":
+        if sys.platform == "linux":
+            # Expose the original report only after the native subreaper and
+            # process-group stream checks above have actually returned.
+            result["validation_process_custody"] = {
+                "schema": "native-validation-process-custody/v1", "supported": True,
+                **report,
+            }
+        else:
             result["validation_process_custody"] = {"supported": False, "scope": "direct_process_only"}
         if launcher_receipt is not None:
             result["validation_python_launcher"] = {
@@ -55069,10 +55346,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
         if not callable(has_pending):
             return False
-        if not (
-            has_pending(self._canonical_ref(task))
-            or has_pending(task.task_id)
-        ):
+        if not has_pending(self._canonical_ref(task)):
             return False
         queued_commits = {
             str(item.get("implementation_commit") or "")
@@ -63131,7 +63405,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._events_cache_data = data
         return data
 
-    def _iter_merge_lifecycle_events(self) -> list[dict[str, Any]]:
+    def _iter_merge_lifecycle_events(
+        self,
+        *,
+        maximum_evidence_files: int | None = None,
+        maximum_evidence_bytes: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Strictly replay the retained active and rotated lifecycle history.
 
         General supervisor events predate the float-free control-contract
@@ -63140,7 +63419,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         hash-chain, and physical-file invariants while preserving those JSON
         values.  The first retained sequence may be greater than one after
         archive eviction; only gaps *inside* the retained window are invalid.
+
+        Optional caller budgets bound physical acquisition before either
+        manifest rebuilding or cache reuse. Existing callers remain unchanged.
         """
+
+        if maximum_evidence_files is not None or maximum_evidence_bytes is not None:
+            if (type(maximum_evidence_files) is not int or maximum_evidence_files <= 0
+                    or type(maximum_evidence_bytes) is not int or maximum_evidence_bytes <= 0):
+                raise CursorReplayError("merge lifecycle caller evidence budget is invalid")
+            try:
+                evidence_sources = event_log_sources((self.events_path,), include_rotated=True)
+                if not evidence_sources:
+                    raise CursorReplayError("merge lifecycle caller evidence file budget exceeded or missing")
+                # Include the existing owner manifest in the caller's total
+                # acquisition budget; it is an input when already present.
+                evidence_sources = list(evidence_sources)
+                manifest_path = self.events_path.with_name(self.events_path.name + ".manifest.json")
+                if manifest_path.exists() or manifest_path.is_symlink():
+                    evidence_sources.append(manifest_path)
+                if len(evidence_sources) > maximum_evidence_files:
+                    raise CursorReplayError("merge lifecycle caller evidence file budget exceeded or missing")
+                total_bytes = 0
+                physical_sources: set[tuple[int, int]] = set()
+                for source in evidence_sources:
+                    witness = source.lstat()
+                    physical = (witness.st_dev, witness.st_ino)
+                    if (not stat_module.S_ISREG(witness.st_mode)
+                            or witness.st_nlink != 1 or witness.st_uid != os.getuid()
+                            or source.resolve().parent != self.events_path.resolve().parent
+                            or physical in physical_sources):
+                        raise CursorReplayError("merge lifecycle caller evidence physical source is invalid")
+                    physical_sources.add(physical)
+                    total_bytes += witness.st_size
+                if total_bytes > maximum_evidence_bytes:
+                    raise CursorReplayError("merge lifecycle caller evidence byte budget exceeded")
+            except OSError as exc:
+                raise CursorReplayError("merge lifecycle caller evidence is unavailable") from exc
 
         try:
             manifest = event_log_manifest(self.events_path)
@@ -69694,7 +70009,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         all_tasks: Sequence[PortalTask] | None = None,
         downstream_unlock_by_task: Mapping[str, int] | None = None,
     ) -> PortalTask | None:
-        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        from ..task_sources.execution_packet_admission import execution_packet_required_metadata
+        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"
+                 and not execution_packet_required_metadata(task.metadata)]
         if self.manual_completion_authority_revalidation_only:
             ready = [
                 task
@@ -74680,6 +74997,7 @@ class DatabaseImplementationDaemon:
             repository_tree_id=repository_tree_id,
             plan_root_cid=plan_root_cid,
         )
+        from ..task_sources.execution_packet_admission import execution_packet_required
         registered: list[str] = []
         for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
             deps = tuple(str(dep) for dep in task.dependencies)
@@ -74691,6 +75009,7 @@ class DatabaseImplementationDaemon:
                     "task_alias": task.task_alias,
                     "status": task.status,
                     "priority": task.priority,
+                    **({"execution_packet_required": True} if execution_packet_required(task.body) else {}),
                 },
             )
             registered.append(task.task_cid)
@@ -74707,8 +75026,12 @@ class DatabaseImplementationDaemon:
         ready = self.task_source.ready_tasks(
             limit=TASK_SOURCE_QUERY_LIMIT, **self._positive_claim_selection(),
         )
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        self._required_execution_packet_tasks = set()
         registered: list[str] = []
         for task in ready.tasks:
+            if execution_packet_required(task.body):
+                self._required_execution_packet_tasks.add(task.task_cid)
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
                 continue
@@ -74737,7 +75060,8 @@ class DatabaseImplementationDaemon:
                 task_cid=task.task_cid,
                 task_id=task.task_alias or task.task_cid,
                 dependency_task_cids=tuple(live_deps),
-                body={"task_alias": task.task_alias, "status": task.status},
+                body={"task_alias": task.task_alias, "status": task.status,
+                      **({"execution_packet_required": True} if execution_packet_required(task.body) else {})},
             )
             readiness = self.coordinator.claimability(task.task_cid)
             if str(readiness.get("completion_status") or "") == "failed":
@@ -75917,6 +76241,8 @@ class DatabaseImplementationDaemon:
         excluded.update(self._automatic_claim_exclusions())
         parked_goals: set[str] = set()
 
+        packet_denials: dict[str, str] = {}
+
         def accept_task_cid(task_cid: str) -> bool:
             record = self.task_source.get(task_cid)
             self._shutdown_boundary()
@@ -75927,6 +76253,13 @@ class DatabaseImplementationDaemon:
             if self._task_goal_is_inconclusive(record):
                 parked_goals.add(task_cid)
                 return False
+            from ..task_sources.execution_packet_admission import execution_packet_required, NativeExecutionPacketAuthority, ExecutionPacketAdmissionError
+            if execution_packet_required(getattr(record, "body", {})) and self._typed_quack_authority_binding is None:
+                try:
+                    NativeExecutionPacketAuthority(self.task_source.intent).require(task_cid, phase="claim")
+                except (ExecutionPacketAdmissionError, AttributeError) as exc:
+                    packet_denials[task_cid] = str(exc)
+                    return False
             return str(record.status or "").strip().lower() in _DATABASE_CONTROL_READY_STATUSES
 
         self._shutdown_boundary()
@@ -75935,12 +76268,17 @@ class DatabaseImplementationDaemon:
         )
         if claim is None:
             self._shutdown_boundary()
+            packet_options = {}
+            if self._typed_quack_authority_binding is None and getattr(self, "_required_execution_packet_tasks", set()):
+                from ..task_sources.execution_packet_admission import NativeExecutionPacketAuthority
+                packet_options["execution_packet_authority"] = NativeExecutionPacketAuthority(self.task_source.intent)
             claim = self.coordinator.claim_ready_task(
                 owner_session_id=self.owner_session_id,
                 lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
                 exclude_task_cids=excluded,
                 now_ms=self._now_ms(),
                 accept_task_cid=accept_task_cid,
+                **packet_options,
             )
         if claim is None:
             parked_reader = getattr(self.task_source, "parked_ready_task_cids", None)
@@ -75955,6 +76293,12 @@ class DatabaseImplementationDaemon:
                     "formalized": False,
                     "reason": "goals_inconclusive",
                     "task_cids": sorted(parked_goals),
+                }
+            if packet_denials:
+                self._last_claim_withdrawal = {
+                    **self._last_claim_withdrawal, "admitted": False, "claim_state": "not_claimed", "formalized": False,
+                    "reason": self._last_claim_withdrawal.get("reason", "execution_packet_not_admitted"),
+                    "execution_packet_denials": dict(sorted(packet_denials.items())),
                 }
             return None
         task = self.task_source.get(claim.task_cid)
@@ -76383,6 +76727,8 @@ class DatabaseImplementationDaemon:
             [owner],
         ).fetchall()
         attempts = [self._attempt_from_row(row) for row in rows]
+        if not attempts:
+            return []
         from .unresolved_interruption import continuation_admitted
 
         attempts = [item for item in attempts if not continuation_admitted(self, item)]
@@ -76836,6 +77182,12 @@ class DatabaseImplementationDaemon:
                            task_cid=attempt.task_cid, body=receipt)
 
     def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        current_packet_task = self.task_source.get(attempt.task_cid)
+        if current_packet_task is not None and execution_packet_required(getattr(current_packet_task, "body", {})):
+            # V1 is read/test metadata only; no signed local profile can turn
+            # that into model/provider authority, including injected callbacks.
+            raise DatabaseImplementationAuthorityError("execution packet metadata v1 has no provider authority")
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
 
@@ -79502,6 +79854,15 @@ class DatabaseImplementationDaemon:
                     return observed
             raise
 
+    def run_native_metadata_validation(self, *, task_cid: str, expected_revision: int) -> dict[str, Any]:
+        """Run one signed execution-only metadata plan without provider authority."""
+        from .native_metadata_execution import execute_native_metadata_validation
+        with self._lock:
+            self.open()
+            return execute_native_metadata_validation(
+                self, task_cid=task_cid, expected_revision=expected_revision,
+            )
+
     def run_once(self) -> dict[str, Any]:
         """Preserve unsettled attempts while required completion evidence is absent."""
         from .completion_deferral import (
@@ -79928,6 +80289,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Exact native owner client scope for the inherited bootstrap")
     parser.add_argument("--task-context-bundle-artifact", default="")
     parser.add_argument("--task-context-bundle-sha256", default="")
+    parser.add_argument("--native-metadata-execution-task-cid", default="",
+                        help="Exact signed execution-only manual metadata task; requires --once --implement and an explicit single-owner slice")
+    parser.add_argument("--native-metadata-execution-task-revision", type=int, default=0,
+                        help="Expected canonical ready revision for that metadata task")
     parser.add_argument("--once", action="store_true", help="Run one backlog pass and exit")
     parser.add_argument("--interval", type=float, default=300.0, help="Seconds between backlog passes")
     parser.add_argument(
@@ -80450,6 +80815,16 @@ def main(argv: list[str] | None = None) -> None:
     # never when a model-hosting parent imports this module. Startup can wait
     # inside owner RPC or portal construction before the first live heartbeat;
     # retain its child stack without relaxing the lifecycle health deadline.
+    if args.native_metadata_execution_task_cid:
+        if not (args.once and args.implement and args.task_source_kind == "duckdb"
+                and args.authority_mode in {"embedded", "embedded_exclusive"}
+                and args.max_task_attempts == 1
+                and args.native_metadata_execution_task_revision > 0
+                and args.execution_slice_task_cid == [args.native_metadata_execution_task_cid]
+                and args.state_owner_bootstrap_fd == -1):
+            raise ValueError("native metadata execution requires an exact bounded single-owner invocation")
+    elif args.native_metadata_execution_task_revision:
+        raise ValueError("native metadata revision requires its exact task CID")
     native_startup_watchdog = args.state_owner_bootstrap_fd != -1
     startup_watchdog = None
     try:
@@ -80506,6 +80881,15 @@ def main(argv: list[str] | None = None) -> None:
                 if program is not None
                 else str(getattr(args, "task_source_kind", "") or "duckdb")
             )
+            metadata_source_kwargs = {}
+            if args.native_metadata_execution_task_cid:
+                from ..task_sources.database_task_source import DatabaseTaskSource
+                metadata_source_kwargs = {
+                    "task_source": DatabaseTaskSource(Path(database_path),
+                        owner_id="native-metadata-executor:" + str(args.owner_session_id),
+                        install_schema=False),
+                    "close_task_source": True,
+                }
             daemon: Any = DatabaseImplementationDaemon(
                 database_path=Path(database_path),
                 coordination_path=getattr(args, "coordination_path", None),
@@ -80532,6 +80916,7 @@ def main(argv: list[str] | None = None) -> None:
                 task_shard_index=args.task_shard_index,
                 strict_task_sharding=args.strict_task_sharding,
                 **owner_bootstrap,
+                **metadata_source_kwargs,
             )
             from ..runtime.native_dispatch_drain import from_native_admission
             if native_startup_watchdog:
@@ -80540,15 +80925,16 @@ def main(argv: list[str] | None = None) -> None:
                 admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
                 repo_root=REPO_ROOT,
             )
-            bind_database_portal_execution_from_args(
-                daemon,
-                args,
-                repo_root=REPO_ROOT,
-                portal_daemon_class=PortalImplementationDaemon,
-                configured_board_live_admission=(
-                    _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
-                ),
-            )
+            if not args.native_metadata_execution_task_cid:
+                bind_database_portal_execution_from_args(
+                    daemon,
+                    args,
+                    repo_root=REPO_ROOT,
+                    portal_daemon_class=PortalImplementationDaemon,
+                    configured_board_live_admission=(
+                        _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
+                    ),
+                )
             if native_startup_watchdog:
                 logger.info("Native owner startup stage: portal execution bound")
         else:
@@ -80695,6 +81081,13 @@ def main(argv: list[str] | None = None) -> None:
                 if use_database_daemon and owner_bootstrap and not args.implement:
                     from .native_owner_bootstrap import observe_typed_database_without_dispatch
                     result = observe_typed_database_without_dispatch(daemon)
+                elif args.native_metadata_execution_task_cid:
+                    result = daemon.run_native_metadata_validation(
+                        task_cid=args.native_metadata_execution_task_cid,
+                        expected_revision=args.native_metadata_execution_task_revision,
+                    )
+                    if result.get("passed") is not True:
+                        raise RuntimeError("native metadata execution failed; manual acceptance remains closed")
                 else:
                     result = daemon.run_once()
                 if use_database_daemon:

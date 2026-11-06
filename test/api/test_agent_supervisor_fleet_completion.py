@@ -363,8 +363,66 @@ def test_timeout_kills_descendants_even_when_they_redirect_output(tmp_path):
         pytest.fail("timed-out command left a live descendant")
 
 
+BILLING_MESSAGE = "The job was not started because your account is locked due to a billing issue."
+CHECK_RUN_ENDPOINT = "repos/owner/repo/commits/" + "a" * 40 + "/check-runs?per_page=8&filter=latest"
+ANNOTATION_ENDPOINT = "repos/owner/repo/check-runs/9/annotations?per_page=8&page=1"
+
+
+def billing_check_run(candidate="a" * 40, **patch):
+    return {
+        "id": 9, "head_sha": candidate, "app": {"id": 15368, "slug": "github-actions"},
+        "status": "completed", "conclusion": "failure", "output": {"annotations_count": 1},
+        **patch,
+    }
+
+
+def billing_annotation(**patch):
+    return {"annotation_level": "failure", "message": BILLING_MESSAGE, **patch}
+
+
+def assert_no_billing_bypass(calls):
+    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+    assert not any("--admin" in argv or "--auto" in argv for argv in calls)
+    assert not any(str(arg).endswith("run_documentation_gates.py") for argv in calls for arg in argv)
+    assert not any(argv[:2] == ["gh", "run"] for argv in calls)
+
+
+def billing_api(monkeypatch, *, runs=None, annotations=None, raw_runs=None,
+                raw_annotations=None, unavailable=None):
+    """Only the two bounded candidate-specific REST reads are allowed."""
+    calls = []
+    rows = [billing_check_run()] if runs is None else runs
+    payload = {"total_count": len(rows), "check_runs": rows}
+
+    def run(argv, root, timeout=300, **kwargs):
+        calls.append(list(argv))
+        assert argv[:7] == ["gh", "api", "--hostname", "github.com", "--method", "GET", argv[-1]]
+        assert len(argv) == 7
+        assert timeout == 15
+        assert not kwargs
+        endpoint = argv[-1]
+        if endpoint == CHECK_RUN_ENDPOINT:
+            if unavailable == "runs":
+                raise fleet.PublicationHold("check-runs unavailable")
+            return raw_runs if raw_runs is not None else json.dumps(payload)
+        if endpoint.startswith("repos/owner/repo/check-runs/") and endpoint.endswith("/annotations?per_page=8&page=1"):
+            ident = endpoint.split("/")[4]
+            assert ident in {str(row.get("id")) for row in rows if isinstance(row, dict)}
+            if unavailable == "annotations":
+                raise fleet.PublicationHold("annotations unavailable")
+            if raw_annotations is not None:
+                return raw_annotations
+            if isinstance(annotations, dict):
+                return json.dumps(annotations[int(ident)])
+            return json.dumps([billing_annotation()] if annotations is None else annotations)
+        raise AssertionError(f"unexpected or unbounded billing evidence read: {argv!r}")
+
+    monkeypatch.setattr(fleet, "_run", run)
+    return calls
+
+
 def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, listed=True,
-              billing_locked=False, local_gates_fail=False, merged=False, merged_head=None,
+              billing_locked=False, merged=False, merged_head=None,
               listed_after_create=None, commit_pulls=None):
     candidate = "a" * 40
     calls = []
@@ -395,21 +453,21 @@ def github_pr(monkeypatch, *, patch=None, checks_fail=False, second_patch=None, 
             return json.dumps({**ready, **(patch or {}), **(second_patch or {} if views == 2 else {})})
         if argv[:3] == ["gh", "pr", "checks"] and checks_fail:
             raise fleet.PublicationHold("hosted check unavailable due to billing")
-        if argv[:2] == ["gh", "api"] and "/pulls" in str(argv[2] if len(argv) > 2 else ""):
-            return json.dumps(commit_pulls if commit_pulls is not None else [])
-        if argv[:3] == ["gh", "run", "list"]:
-            if billing_locked:
-                return json.dumps([{"databaseId": 9, "conclusion": "failure", "status": "completed"}])
-            return "[]"
-        if argv[:3] == ["gh", "run", "view"] and billing_locked:
-            return "The job was not started because your account is locked due to a billing issue."
-        if argv[:3] == ["gh", "run", "rerun"] and billing_locked:
-            raise fleet.PublicationHold("HTTP 403: billing")
-        if any(str(arg).endswith("run_documentation_gates.py") for arg in argv):
-            if local_gates_fail:
-                raise fleet.PublicationHold("command failed with exit code 1")
-            return "OK: documentation-gates aligned"
-        return ""
+        if argv[:2] == ["gh", "api"]:
+            endpoint = argv[-1]
+            if "/pulls" in endpoint:
+                return json.dumps(commit_pulls if commit_pulls is not None else [])
+            if endpoint == f"repos/owner/repo/commits/{candidate}/check-runs?per_page=8&filter=latest":
+                return json.dumps({"total_count": int(billing_locked), "check_runs": [
+                    billing_check_run(candidate),
+                ] if billing_locked else []})
+            if endpoint == "repos/owner/repo/check-runs/9/annotations?per_page=8&page=1":
+                return json.dumps([billing_annotation()])
+        if argv[:3] in (["gh", "pr", "checks"], ["gh", "pr", "merge"]):
+            return ""
+        if argv[:2] == ["git", "push"]:
+            return ""
+        raise AssertionError(f"unexpected publication command: {argv!r}")
 
     monkeypatch.setattr(fleet, "_run", run)
     return candidate, calls
@@ -448,24 +506,22 @@ def test_failed_or_unavailable_hosted_checks_hold_despite_local_validation(tmp_p
     assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
 
 
-def test_github_actions_billing_lock_merges_after_local_required_checks(tmp_path, monkeypatch):
+def test_github_actions_billing_lock_holds_without_local_required_check_substitute(tmp_path, monkeypatch):
     candidate, calls = github_pr(
         monkeypatch, patch={"mergeStateStatus": "BLOCKED"}, billing_locked=True,
     )
-    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
-    assert any(str(arg).endswith("run_documentation_gates.py") for argv in calls for arg in argv)
-    assert calls[-1] == ["gh", "pr", "merge", "7", "--repo", "owner/repo", "--merge", "--admin",
-                         "--match-head-commit", candidate]
-
-
-def test_github_actions_billing_lock_holds_when_local_checks_fail(tmp_path, monkeypatch):
-    candidate, calls = github_pr(
-        monkeypatch, patch={"mergeStateStatus": "BLOCKED"}, billing_locked=True,
-        local_gates_fail=True,
-    )
-    with pytest.raises(fleet.PublicationHold, match="local required checks failed"):
+    with pytest.raises(fleet.PublicationHold, match="^GitHub Actions account is locked due to a billing issue; retain the PR for retry$"):
         fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
-    assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
+    assert_no_billing_bypass(calls)
+    assert any("/commits/" + candidate + "/check-runs?" in argv[-1] for argv in calls)
+
+
+def test_billing_lock_after_failed_hosted_checks_never_runs_local_substitute(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch, checks_fail=True, billing_locked=True)
+    with pytest.raises(fleet.PublicationHold, match="^GitHub Actions account is locked due to a billing issue; retain the PR for retry$"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert ["gh", "pr", "checks", "7", "--repo", "owner/repo", "--required"] in calls
+    assert_no_billing_bypass(calls)
 
 
 def test_pr_head_movement_during_checks_refuses_merge(tmp_path, monkeypatch):
@@ -513,15 +569,14 @@ def test_merged_publication_pr_with_moved_head_holds(tmp_path, monkeypatch):
     assert not any(argv[:3] == ["gh", "pr", "merge"] for argv in calls)
 
 
-def test_new_pr_billing_lock_merges_after_local_required_checks(tmp_path, monkeypatch):
+def test_new_pr_billing_lock_holds_without_local_required_check_substitute(tmp_path, monkeypatch):
     candidate, calls = github_pr(
         monkeypatch, listed=False, listed_after_create=True, billing_locked=True,
     )
-    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    with pytest.raises(fleet.PublicationHold, match="^GitHub Actions account is locked due to a billing issue; retain the PR for retry$"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
     assert any(argv[:3] == ["gh", "pr", "create"] for argv in calls)
-    assert any(str(arg).endswith("run_documentation_gates.py") for argv in calls for arg in argv)
-    assert calls[-1] == ["gh", "pr", "merge", "7", "--repo", "owner/repo", "--merge", "--admin",
-                         "--match-head-commit", candidate]
+    assert_no_billing_bypass(calls)
 
 
 def test_pending_pr_retry_reuses_validated_commit_and_checkout(tmp_path, monkeypatch):
@@ -574,3 +629,177 @@ def test_pending_pr_retry_refuses_changed_retained_candidate(tmp_path, monkeypat
     second = fleet.publish_completed_board(config, tmp_path / "state")
     assert second["status"] == "held"
     assert len(calls) == 1
+
+
+def test_exact_candidate_actions_failure_annotation_is_only_billing_evidence(tmp_path, monkeypatch):
+    calls = billing_api(monkeypatch)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is True
+    assert [argv[-1] for argv in calls] == [CHECK_RUN_ENDPOINT, ANNOTATION_ENDPOINT]
+
+
+@pytest.mark.parametrize("patch", [
+    {"head_sha": "b" * 40, "pull_requests": [{"number": 99}]},
+    {"head_sha": None}, {"id": True}, {"id": 0}, {"id": "9"},
+    {"app": {"id": 15368, "slug": "other-app"}},
+    {"app": {"id": 7, "slug": "github-actions"}},
+    {"app": {"id": True, "slug": "github-actions"}},
+    {"app": {"name": "GitHub Actions"}}, {"app": None},
+    {"status": "queued"}, {"conclusion": "success"},
+    {"output": {"annotations_count": 0, "summary": BILLING_MESSAGE}},
+    {"output": {"annotations_count": True}}, {"output": {"annotations_count": -1}},
+    {"output": {"annotations_count": 9}}, {"output": None},
+])
+def test_unrelated_or_ineligible_run_cannot_establish_billing_lock(tmp_path, monkeypatch, patch):
+    calls = billing_api(monkeypatch, runs=[billing_check_run(**patch)])
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert [argv[-1] for argv in calls] == [CHECK_RUN_ENDPOINT]
+
+
+@pytest.mark.parametrize("pull_requests", [[], [{"number": 99}]])
+def test_same_commit_push_run_does_not_need_pr_association(tmp_path, monkeypatch, pull_requests):
+    calls = billing_api(monkeypatch, runs=[billing_check_run(pull_requests=pull_requests)])
+    # This is commit-scoped outage diagnosis, never a grant to merge either PR.
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is True
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("raw_runs", [
+    "null", "[]", "{", "{}", '{"total_count":true,"check_runs":[]}',
+    '{"total_count":0,"check_runs":[{}]}',
+    '{"total_count":1,"check_runs":{}}',
+    json.dumps({"total_count": 1, "check_runs": [billing_check_run()], "padding": "é" * (128 * 1024)}, ensure_ascii=False),
+])
+def test_malformed_or_oversized_check_run_payload_cannot_diagnose_billing(tmp_path, monkeypatch, raw_runs):
+    calls = billing_api(monkeypatch, raw_runs=raw_runs)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert [argv[-1] for argv in calls] == [CHECK_RUN_ENDPOINT]
+
+
+@pytest.mark.parametrize("annotations", [
+    [], [billing_annotation(), billing_annotation()], [None],
+    [billing_annotation(annotation_level="warning")],
+    [billing_annotation(annotation_level="notice")],
+    [billing_annotation(annotation_level=True)], [billing_annotation(annotation_level="fatal")],
+    [billing_annotation(message="billing issue")],
+    [billing_annotation(message="Earlier run: " + BILLING_MESSAGE)],
+    [billing_annotation(message=BILLING_MESSAGE + " This is a test fixture.")],
+    [billing_annotation(message=True)], [billing_annotation(message="")],
+    [billing_annotation(message="x" * 4097)],
+])
+def test_unverified_or_nonliteral_annotations_do_not_establish_billing_lock(tmp_path, monkeypatch, annotations):
+    calls = billing_api(monkeypatch, annotations=annotations)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("raw_annotations", [
+    "null", "{}", "{",
+    json.dumps([billing_annotation(padding="é" * (32 * 1024))], ensure_ascii=False),
+])
+def test_malformed_or_oversized_annotation_body_does_not_establish_billing_lock(tmp_path, monkeypatch, raw_annotations):
+    calls = billing_api(monkeypatch, raw_annotations=raw_annotations)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("unavailable,expected_calls", [("runs", 1), ("annotations", 2)])
+def test_unavailable_candidate_billing_evidence_is_not_inferred(tmp_path, monkeypatch, unavailable, expected_calls):
+    calls = billing_api(monkeypatch, unavailable=unavailable)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert len(calls) == expected_calls
+
+
+def test_oversized_or_duplicate_run_listing_stops_before_annotations(tmp_path, monkeypatch):
+    runs = [billing_check_run(id=ident) for ident in range(1, 10)]
+    calls = billing_api(monkeypatch, runs=runs)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert len(calls) == 1
+    calls = billing_api(monkeypatch, runs=[billing_check_run(), billing_check_run()])
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert len(calls) == 1
+
+
+def test_billing_annotation_reads_are_capped_without_pagination_or_broad_fallback(tmp_path, monkeypatch):
+    runs = [billing_check_run(id=ident) for ident in range(1, 9)]
+    annotations = {ident: [billing_annotation(message="ordinary check failure")] for ident in range(1, 9)}
+    annotations[4] = [billing_annotation()]
+    calls = billing_api(monkeypatch, runs=runs, annotations=annotations)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert [argv[-1] for argv in calls] == [CHECK_RUN_ENDPOINT] + [
+        f"repos/owner/repo/check-runs/{ident}/annotations?per_page=8&page=1" for ident in range(1, 4)
+    ]
+
+
+def test_eight_declared_annotations_remain_bounded_and_can_diagnose(tmp_path, monkeypatch):
+    annotations = [billing_annotation(message="ordinary check failure") for _ in range(7)] + [billing_annotation()]
+    calls = billing_api(monkeypatch, runs=[billing_check_run(output={"annotations_count": 8})], annotations=annotations)
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is True
+    assert len(calls) == 2
+
+
+def test_successful_hosted_checks_do_not_consult_billing_or_local_substitutes(tmp_path, monkeypatch):
+    candidate, calls = github_pr(monkeypatch, billing_locked=True)
+    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert not any("check-runs" in argv[-1] for argv in calls)
+    assert not any("--admin" in argv for argv in calls)
+    assert calls[-1] == ["gh", "pr", "merge", "7", "--repo", "owner/repo", "--merge", "--match-head-commit", candidate]
+
+
+def test_restored_hosted_checks_retry_the_same_candidate_with_normal_merge(tmp_path, monkeypatch):
+    candidate, first = github_pr(monkeypatch, checks_fail=True, billing_locked=True)
+    with pytest.raises(fleet.PublicationHold, match="^GitHub Actions account is locked due to a billing issue; retain the PR for retry$"):
+        fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", candidate)
+    assert_no_billing_bypass(first)
+    same_candidate, retry = github_pr(monkeypatch, billing_locked=True)
+    assert same_candidate == candidate
+    fleet._merge_reviewed_pull_request(tmp_path, "https://github.com/owner/repo.git", same_candidate)
+    assert ["gh", "pr", "checks", "7", "--repo", "owner/repo", "--required"] in retry
+    assert retry[-1] == ["gh", "pr", "merge", "7", "--repo", "owner/repo", "--merge", "--match-head-commit", candidate]
+    assert not any("check-runs" in argv[-1] or "--admin" in argv for argv in retry)
+
+
+@pytest.mark.parametrize("repo,candidate", [
+    ("other/owner/repo", "a" * 40), ("owner/repo?head=old", "a" * 40),
+    ("https://github.com/owner/repo", "a" * 40), (None, "a" * 40),
+    ("owner/repo", "a" * 39), ("owner/repo", "b" * 41),
+    ("owner/repo", None), ("owner/repo", True),
+])
+def test_invalid_billing_scope_is_rejected_before_any_api_read(tmp_path, monkeypatch, repo, candidate):
+    calls = billing_api(monkeypatch)
+    assert fleet._github_actions_billing_locked(repo, candidate, tmp_path) is False
+    assert calls == []
+
+
+def test_empty_candidate_run_listing_never_reads_repo_wide_stale_billing_evidence(tmp_path, monkeypatch):
+    calls = billing_api(monkeypatch, runs=[])
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    # The closed fake forbids run-list, logs, other commits, repos or pagination.
+    assert [argv[-1] for argv in calls] == [CHECK_RUN_ENDPOINT]
+
+
+def test_untrusted_run_urls_cannot_redirect_annotation_read(tmp_path, monkeypatch):
+    run = billing_check_run(
+        details_url="https://attacker.invalid/unrelated-billing",
+        output={"annotations_count": 1, "annotations_url": "https://api.github.com/repos/other/repo/check-runs/4/annotations"},
+    )
+    calls = billing_api(monkeypatch, runs=[run])
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is True
+    assert [argv[-1] for argv in calls] == [CHECK_RUN_ENDPOINT, ANNOTATION_ENDPOINT]
+
+
+def test_malformed_later_annotation_does_not_leave_early_billing_diagnosis(tmp_path, monkeypatch):
+    calls = billing_api(
+        monkeypatch, runs=[billing_check_run(output={"annotations_count": 2})],
+        annotations=[billing_annotation(), billing_annotation(message=True)],
+    )
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert len(calls) == 2
+
+
+def test_malformed_later_queried_run_does_not_leave_early_billing_diagnosis(tmp_path, monkeypatch):
+    calls = billing_api(
+        monkeypatch, runs=[billing_check_run(id=9), billing_check_run(id=10)],
+        annotations={9: [billing_annotation()], 10: [billing_annotation(annotation_level=True)]},
+    )
+    assert fleet._github_actions_billing_locked("owner/repo", "a" * 40, tmp_path) is False
+    assert len(calls) == 3

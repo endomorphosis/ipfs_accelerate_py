@@ -4,12 +4,19 @@
 SPAR inserts its checkout at sys.path[0], which hides PYTHONPATH. This
 launcher keeps the overlay first so clause auto-heal can load without
 amending the sealed git HEAD.
+
+Explicit SAWM --sealed-runtime mode keeps the sealed package and provider
+policy first. Only quack-start replaces the two schema compatibility modules;
+client commands retain the complete sealed package.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
+import stat
 import sys
 from pathlib import Path
 
@@ -218,6 +225,56 @@ PIN_ONLY_EXTRA_GATE_MODULES = (
 )
 
 
+SAWM_SCHEMA_COMPATIBILITY_MODULES = (
+    PIN_ONLY_EXTRA_GATE_MODULES[0],
+    (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+        "ipfs_accelerate_py.agent_supervisor.task_sources",
+    ),
+)
+
+
+SAWM_SQL_RESOURCES = frozenset((
+    "0001_control_plane.sql",
+    "0002_causal_event_federation_core.sql",
+    "0003_state_server_restart_identity.sql",
+    "0004_hash_observations.sql",
+    "0005_tasks_index_repair.sql",
+))
+
+
+def _sawm_runtime_manifest(overlay: str, expected_sha256: str) -> dict:
+    """Read the closed compatibility declaration before importing package code."""
+    path = Path(overlay) / "sawm-runtime-manifest.json"
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 65536:
+            raise ValueError("bounded regular SAWM runtime manifest required")
+        raw = os.read(descriptor, 65537)
+        after = os.fstat(descriptor)
+        if (len(raw) != before.st_size or
+                (before.st_size, before.st_mtime_ns, before.st_ctime_ns) !=
+                (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+            raise ValueError("SAWM runtime manifest changed during read")
+    finally:
+        os.close(descriptor)
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError("SAWM runtime manifest SHA256 differs from the external pin")
+    manifest = json.loads(raw.decode("utf-8"))
+    if (type(manifest) is not dict or set(manifest) - {"schema", "sql_resources", "files"}
+            or manifest.get("schema") != "sawm/schema-compatibility-runtime@1"):
+        raise ValueError("unsupported SAWM runtime manifest schema")
+    resources = manifest.get("sql_resources")
+    if (type(resources) is not dict or set(resources) != SAWM_SQL_RESOURCES
+            or any(type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None
+                   for value in resources.values())
+            or ("files" in manifest and type(manifest["files"]) is not dict)):
+        raise ValueError("exact SAWM SQL resource commitments required")
+    return manifest
+
+
 def install_supervisor_heal_overlay(
     overlay: str,
     modules: tuple[tuple[str, str, str], ...] | None = None,
@@ -279,11 +336,30 @@ def _is_sawm_source(source_root: str, args: list[str]) -> bool:
     )
 
 
+def _sawm_schema_start(args: list[str]) -> bool:
+    """Recognize exact start argv; leave all other parsing to sealed SAWM."""
+    operator_args = args[1:]
+    while operator_args:
+        if operator_args[0] == "--config":
+            if len(operator_args) < 2 or operator_args[1].startswith("-"):
+                return False
+            operator_args = operator_args[2:]
+        elif operator_args[0].startswith("--config="):
+            if not operator_args[0].partition("=")[2]:
+                return False
+            operator_args = operator_args[1:]
+        else:
+            break
+    return operator_args == ["quack-start"]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     overlay = os.environ.get("IPFS_ACCELERATE_SUPERVISOR_OVERLAY", "")
     source_root = os.environ.get("IPFS_ACCELERATE_SEALED_SOURCE_ROOT", "")
     pin_only = False
+    sealed_runtime = False
+    runtime_manifest_sha256 = None
     while args:
         if args[0] == "--overlay":
             overlay = args[1]
@@ -297,6 +373,16 @@ def main(argv: list[str] | None = None) -> int:
             pin_only = True
             args = args[1:]
             continue
+        if args[0] == "--sealed-runtime":
+            sealed_runtime = True
+            args = args[1:]
+            continue
+        if args[0] == "--runtime-manifest-sha256":
+            if len(args) < 2:
+                raise SystemExit("--runtime-manifest-sha256 requires a digest")
+            runtime_manifest_sha256 = args[1]
+            args = args[2:]
+            continue
         if args[0] == "--":
             args = args[1:]
             break
@@ -304,16 +390,53 @@ def main(argv: list[str] | None = None) -> int:
     if not overlay or not source_root or not args:
         raise SystemExit(
             "usage: sealed_board_supervisor_launch.py "
-            "--overlay DIR --source-root DIR [--pin-only] -- script.py [args...]"
+            "--overlay DIR --source-root DIR [--pin-only | --sealed-runtime "
+            "--runtime-manifest-sha256 SHA256] -- script.py [args...]"
         )
+    if sealed_runtime:
+        if pin_only:
+            raise SystemExit("--sealed-runtime cannot be combined with --pin-only")
+        if (not isinstance(runtime_manifest_sha256, str)
+                or re.fullmatch(r"[0-9a-f]{64}", runtime_manifest_sha256) is None):
+            raise SystemExit("--sealed-runtime requires --runtime-manifest-sha256 lowercase SHA256")
+        root = Path(source_root).resolve()
+        source_root = str(root)
+        overlay = _abspath(overlay)
+        script = Path(args[0])
+        script = script.resolve() if script.is_absolute() else (root / script).resolve()
+        expected = root / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+        if script != expected or not _is_sawm_source(source_root, args):
+            raise SystemExit("--sealed-runtime requires the sealed SAWM operator")
+        try:
+            runtime_manifest = _sawm_runtime_manifest(overlay, runtime_manifest_sha256)
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise SystemExit("invalid SAWM runtime manifest: " + str(exc)) from exc
+    elif runtime_manifest_sha256 is not None:
+        raise SystemExit("--runtime-manifest-sha256 requires --sealed-runtime")
     os.chdir(source_root)
     nested = Path(source_root) / "external" / "ipfs_accelerate"
-    if pin_only:
-        if nested.is_dir():
-            sys.path.insert(0, str(nested.resolve()))
-        if source_root not in sys.path:
-            sys.path.insert(0, source_root)
-        install_supervisor_heal_overlay(overlay, PIN_ONLY_EXTRA_GATE_MODULES)
+    if pin_only or sealed_runtime:
+        if sealed_runtime:
+            roots = [str(Path(source_root).resolve()), str(Path(source_root).resolve() / "scripts")]
+            if nested.is_dir():
+                roots.append(str(nested.resolve()))
+            sys.path = [*roots, *(item for item in sys.path if item not in roots)]
+            prefer_sealed_scripts(source_root)
+            if _sawm_schema_start(args):
+                install_supervisor_heal_overlay(overlay, SAWM_SCHEMA_COMPATIBILITY_MODULES[:1])
+                migrations = sys.modules[SAWM_SCHEMA_COMPATIBILITY_MODULES[0][0]]
+                migrations.bind_bundled_sql_resources(
+                    Path(overlay) / "ipfs_accelerate_py/agent_supervisor/task_sources/sql",
+                    runtime_manifest["sql_resources"],
+                )
+                install_supervisor_heal_overlay(overlay, SAWM_SCHEMA_COMPATIBILITY_MODULES[1:])
+                pin_sealed_sawm_observation_runtime(source_root)
+        else:
+            if nested.is_dir():
+                sys.path.insert(0, str(nested.resolve()))
+            if source_root not in sys.path:
+                sys.path.insert(0, source_root)
+            install_supervisor_heal_overlay(overlay, PIN_ONLY_EXTRA_GATE_MODULES)
         script = Path(args[0])
         if not script.is_absolute():
             script = Path(source_root) / script

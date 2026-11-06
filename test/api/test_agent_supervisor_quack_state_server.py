@@ -2428,3 +2428,73 @@ def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:
             state_dir=tmp_path / "state",
             secret_handle="raw-not-a-handle",
         )
+
+
+@pytest.mark.parametrize("body,expected", [
+    ({"blocked_reason": "quack_transport_unavailable: socket closed"}, "false_terminal_blocked_supervisor_bug"),
+    ({"blocked_reason": "waiting for definition", "history": [{"reason": "quack_transport_unavailable"}]}, None),
+    ({"description": "quack_transport_unavailable"}, None),
+    ({"blocked_reason": "waiting for definition", "completion_receipt": {"operation": "quack_transport_unavailable"}}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "completion_receipt": {
+        "failure_kind": "administrative_operator_stop_outcome_unknown", "automatic_retry_admitted": False}}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "custody_observation": {"callback_outcome": "unknown"}}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "automatic_retry_admitted": False}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"spent_native_ordinal": 2, "max_task_attempts": 2}}, None),
+    ({"blocked_reason": "typed_portal_deferral_budget_exhausted"}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "details": {"retained_attempt_settlement_required": True}}, None),
+    ({"blocked_reason": "implementation_protected_path_mutated"}, None),
+    ({"blocked_reason": "local_validation_pending_native_admission"}, "local_validation_pending_native_admission"),
+    ({"blocked_reason": "quack_transport_unavailable", "history": [{"provider_outcome": "unknown"}]}, "false_terminal_blocked_supervisor_bug"),
+    ({"blocked_reason": "quack_transport_unavailable", "retained_execution_outcomes": [{
+        "completion_receipt": {"automatic_retry_admitted": False}}]}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "provider_outcome": " UNKNOWN "}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "callback_outcome": "UNKNOWN"}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "provider_effect_state": "UNKNOWN"}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "callback_state": "STARTED_OUTCOME_UNKNOWN"}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "provider_outcome": False}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "provider_outcome": "ambiguous_pending"}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": 2}}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_history": {"max_attempts": 2, "attempts": 2}}, None),
+    ({"blocked_reason": "quack_transport_unavailable", "provider_outcome": " SUCCEEDED "}, "false_terminal_blocked_supervisor_bug"),
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempt_number": -1}}, None),  # negative-attempt_number
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "native_attempt_number": -1}}, None),  # negative-native_attempt_number
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "spent_native_ordinal": -1}}, None),  # negative-spent_native_ordinal
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts_used": -1}}, None),  # negative-attempts_used
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": -1}}, None),  # negative-attempts
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_history": {"attempts": -1}}, None),  # negative-counter-without-maximum
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": 0}}, "false_terminal_blocked_supervisor_bug"),  # zero-unspent-counter
+    ({"blocked_reason": "quack_transport_unavailable", "attempt_budget": {"max_attempts": 2, "attempts": 1}}, "false_terminal_blocked_supervisor_bug"),  # positive-unspent-counter
+    ("{invalid body", None),
+])
+def test_false_terminal_owner_candidate_cannot_override_current_denials(monkeypatch, body, expected):
+    from copy import deepcopy
+    from types import SimpleNamespace
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+    before = deepcopy(body)
+    calls = []
+    queries = []
+    class Connection:
+        def execute(self, sql, *_args):
+            queries.append(sql)
+            return self
+        def fetchall(self):
+            encoded = body if isinstance(body, str) else json.dumps(body)
+            return [("task:authored", "FIXTURE-1", "blocked", 4, encoded, "")]
+    class Repository:
+        def __init__(self, **_kwargs):
+            pass
+        def cas_task_status(self, **kwargs):
+            calls.append(kwargs)
+    monkeypatch.setattr(intent_repository, "IntentRepository", Repository)
+    # Even a positive local candidate cannot override native UNKNOWN/custody.
+    monkeypatch.setattr(quack_state_server_module, "candidate_receipt_admits_owner_rearm", lambda *_args: True)
+    owner = SimpleNamespace(_connection=Connection(),
+        _identity=SimpleNamespace(server_id="fixture-owner", process_birth_id="fixture-birth"),
+        _log=lambda _message: None)
+    QuackStateServer._unstall_false_terminal_blocked(owner)
+    assert len(calls) == (0 if expected is None else 1)
+    if expected is not None:
+        assert calls[0]["receipt"]["operation"] == expected
+        assert calls[0]["receipt"]["completion_authority"] is False
+    assert len(queries) == 1
+    assert body == before

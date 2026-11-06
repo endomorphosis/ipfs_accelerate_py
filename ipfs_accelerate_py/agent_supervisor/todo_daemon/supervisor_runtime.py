@@ -9,6 +9,7 @@ import json
 import math
 import os
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -40,6 +41,15 @@ SUPERVISED_CHILD_IDENTITY_PATH_ENV = (
 SUPERVISED_CHILD_OWNER_SCOPE_ENV = (
     "IPFS_ACCELERATE_SUPERVISED_CHILD_OWNER_SCOPE"
 )
+
+
+SUPERVISED_CHILD_LOG_MARKER_MODE_ENV = (
+    "IPFS_ACCELERATE_AGENT_SUPERVISOR_LOG_MARKER_MODE"
+)
+SUPERVISED_CHILD_LOG_MARKER_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.supervised-child-log-marker@1"
+)
+SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES = 4096
 
 
 @dataclass
@@ -1802,6 +1812,187 @@ def _write_bytes_atomic(path: Path, content: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _supervised_child_log_marker_mode(spec: SupervisedChildSpec) -> str:
+    mode = spec.env.get(
+        SUPERVISED_CHILD_LOG_MARKER_MODE_ENV,
+        os.environ.get(SUPERVISED_CHILD_LOG_MARKER_MODE_ENV, "symlink"),
+    )
+    if mode not in ("symlink", "regular-json"):
+        raise RuntimeError("invalid supervised child log marker mode")
+    if mode == "regular-json" and spec.latest_log_path is None:
+        raise RuntimeError("regular child log marker requires a latest-log path")
+    return mode
+
+
+def _open_child_log_directory(path: Path, *, create: bool = False) -> int:
+    """Open a directory without traversing symlinks, including ancestors."""
+
+    absolute = path.absolute()
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptor = os.open(absolute.anchor, flags)
+    try:
+        for component in absolute.parts[1:]:
+            if component in ("", ".", ".."):
+                raise RuntimeError("invalid supervised child log directory")
+            try:
+                child_descriptor = os.open(component, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                try:
+                    os.mkdir(component, 0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+                child_descriptor = os.open(component, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child_descriptor
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _child_log_marker_basename(value: Any) -> str:
+    if (not isinstance(value, str) or value in ("", ".", "..")
+            or Path(value).name != value or "/" in value or "\\" in value
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)):
+        raise RuntimeError("invalid supervised child log basename")
+    return value
+
+
+def _regular_child_log_paths(spec: SupervisedChildSpec) -> tuple[Path, Path]:
+    marker = spec.resolve(spec.latest_log_path).absolute()
+    log = spec.resolve(spec.log_path).absolute()
+    _child_log_marker_basename(marker.name)
+    _child_log_marker_basename(log.name)
+    if marker.parent != log.parent or marker.name == log.name:
+        raise RuntimeError("regular child log marker must share its distinct log directory")
+    return marker, log
+
+
+def _open_regular_child_run_log(spec: SupervisedChildSpec) -> Any:
+    marker, log = _regular_child_log_paths(spec)
+    directory = _open_child_log_directory(marker.parent)
+    descriptor = None
+    try:
+        descriptor = os.open(
+            log.name, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW
+            | os.O_CLOEXEC | os.O_NONBLOCK, 0o600, dir_fd=directory,
+        )
+        metadata = os.fstat(descriptor)
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid()
+                or metadata.st_nlink != 1 or stat.S_IMODE(metadata.st_mode) & 0o022):
+            raise RuntimeError("untrusted supervised child run log")
+        handle = os.fdopen(descriptor, "ab")
+        descriptor = None
+        return handle
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(directory)
+
+
+def _write_regular_child_log_marker(spec: SupervisedChildSpec) -> None:
+    marker, log = _regular_child_log_paths(spec)
+    payload = {
+        "schema": SUPERVISED_CHILD_LOG_MARKER_SCHEMA,
+        "command_id": _supervised_child_content_identity({"command": list(spec.command)}),
+        "log_basename": log.name,
+    }
+    content = (json.dumps(payload, sort_keys=True) + "\n").encode("utf-8")
+    if len(content) > SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES:
+        raise RuntimeError("supervised child log marker is too large")
+    directory = _open_child_log_directory(marker.parent)
+    temporary = f".{marker.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    try:
+        try:
+            existing = os.stat(marker.name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None and (
+                existing.st_uid != os.geteuid() or existing.st_nlink != 1
+                or not (stat.S_ISREG(existing.st_mode) or stat.S_ISLNK(existing.st_mode))):
+            raise RuntimeError("untrusted existing supervised child log marker")
+        descriptor = os.open(
+            temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600, dir_fd=directory,
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, marker.name, src_dir_fd=directory, dst_dir_fd=directory)
+        os.fsync(directory)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
+        os.close(directory)
+
+
+def _read_regular_child_log_marker(spec: SupervisedChildSpec) -> Path:
+    """Resolve bounded, owned regular-file provenance; never fall back on adoption."""
+
+    marker, _new_log = _regular_child_log_paths(spec)
+    try:
+        directory = _open_child_log_directory(marker.parent)
+    except OSError as error:
+        raise RuntimeError("invalid supervised child regular log directory") from error
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+    try:
+        descriptor = os.open(marker.name, flags, dir_fd=directory)
+        try:
+            before = os.fstat(descriptor)
+            if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.geteuid()
+                    or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o600
+                    or before.st_size > SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES):
+                raise RuntimeError("untrusted supervised child log marker")
+            raw = os.read(descriptor, SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES + 1)
+            after = os.fstat(descriptor)
+            current = os.stat(marker.name, dir_fd=directory, follow_symlinks=False)
+            signature = lambda item: (item.st_dev, item.st_ino, item.st_size,
+                                      item.st_mtime_ns, item.st_ctime_ns)
+            if (len(raw) > SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES
+                    or signature(before) != signature(after)
+                    or signature(after) != signature(current)):
+                raise RuntimeError("supervised child log marker changed during read")
+        finally:
+            os.close(descriptor)
+        def closed_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result = dict(pairs)
+            if len(result) != len(pairs):
+                raise ValueError("duplicate child log marker field")
+            return result
+        payload = json.loads(raw.decode("utf-8"), object_pairs_hook=closed_pairs)
+        if (not isinstance(payload, dict)
+                or set(payload) != {"schema", "command_id", "log_basename"}
+                or payload["schema"] != SUPERVISED_CHILD_LOG_MARKER_SCHEMA
+                or payload["command_id"] != _supervised_child_content_identity(
+                    {"command": list(spec.command)})):
+            raise RuntimeError("foreign supervised child log marker")
+        name = _child_log_marker_basename(payload["log_basename"])
+        if name == marker.name:
+            raise RuntimeError("supervised child log marker points to itself")
+        descriptor = os.open(name, flags, dir_fd=directory)
+        try:
+            target = os.fstat(descriptor)
+            current_target = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            if (not stat.S_ISREG(target.st_mode) or target.st_uid != os.geteuid()
+                    or target.st_nlink != 1 or stat.S_IMODE(target.st_mode) & 0o022
+                    or not stat.S_ISREG(current_target.st_mode)
+                    or (target.st_dev, target.st_ino) != (current_target.st_dev, current_target.st_ino)):
+                raise RuntimeError("untrusted supervised child run log")
+        finally:
+            os.close(descriptor)
+        return marker.parent / name
+    except (OSError, UnicodeError, ValueError, TypeError) as error:
+        raise RuntimeError("invalid supervised child regular log marker") from error
+    finally:
+        os.close(directory)
+
+
 def load_supervised_child_identity(
     path: Path,
 ) -> SupervisedChildIdentity | None:
@@ -1928,6 +2119,7 @@ def _prepare_marker_path(path: Path, *, remove_existing_file: bool) -> Optional[
 def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     """Launch a supervisor-owned child process and write its marker files."""
 
+    log_marker_mode = _supervised_child_log_marker_mode(spec)
     log_path = spec.resolve(spec.log_path)
     child_pid_path = spec.resolve(spec.child_pid_path)
     identity_path = _configured_child_identity_path(spec)
@@ -1941,7 +2133,12 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             "identity-protected child requires a dedicated process session"
         )
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    if log_marker_mode == "regular-json":
+        _regular_child_log_paths(spec)
+        directory = _open_child_log_directory(log_path.parent, create=True)
+        os.close(directory)
+    else:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
     child_pid_path.parent.mkdir(parents=True, exist_ok=True)
     _prepare_marker_path(log_path, remove_existing_file=False)
     _prepare_marker_path(child_pid_path, remove_existing_file=False)
@@ -1951,7 +2148,11 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             raise RuntimeError(
                 "supervised child identity marker was not reconciled"
             )
-    if latest_log_path is not None:
+    if log_marker_mode == "regular-json":
+        _write_regular_child_log_marker(spec)
+        # Watch the actual child output, never the regular JSON pointer's mtime.
+        latest_log_path = log_path
+    elif latest_log_path is not None:
         latest_log_path.parent.mkdir(parents=True, exist_ok=True)
         _prepare_marker_path(latest_log_path, remove_existing_file=True)
         latest_log_path.symlink_to(log_path.name)
@@ -1959,7 +2160,10 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     env = {key: str(value) for key, value in spec.env.items()}
     env.pop(SUPERVISED_CHILD_IDENTITY_PATH_ENV, None)
     env.pop(SUPERVISED_CHILD_OWNER_SCOPE_ENV, None)
-    out_handle = log_path.open("ab")
+    out_handle = (
+        _open_regular_child_run_log(spec)
+        if log_marker_mode == "regular-json" else log_path.open("ab")
+    )
     handoff = None
     executable_fd = None
     process = None
@@ -2115,6 +2319,7 @@ def _supervised_child_identity_session_quiesced(
 def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     """Return a live matching child from the PID marker instead of launching a duplicate."""
 
+    log_marker_mode = _supervised_child_log_marker_mode(spec)
     child_pid_path = spec.resolve(spec.child_pid_path)
     identity_path = _configured_child_identity_path(spec)
     owner_scope = _configured_child_owner_scope(spec)
@@ -2127,12 +2332,17 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             "identity-protected child requires a dedicated process session"
         )
     pid = read_pid_file(child_pid_path)
+    adopted_regular_log: Path | None = None
     identity: SupervisedChildIdentity | None = None
     if identity_path is not None and owner_scope is not None and (
         not pid or not pid_alive(pid)
     ):
         identity_exists = identity_path.exists() or identity_path.is_symlink()
         if identity_exists:
+            # Orphan recovery may rewrite PID/identity markers below. In the
+            # opt-in mode, establish log provenance before those effects too.
+            if log_marker_mode == "regular-json":
+                adopted_regular_log = _read_regular_child_log_marker(spec)
             identity = load_supervised_child_identity(identity_path)
             if identity is None:
                 raise RuntimeError(
@@ -2187,6 +2397,9 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
         process_args(pid), spec.command
     ):
         return None
+    # Resolve record provenance before identity migration or any duplicate launch.
+    if log_marker_mode == "regular-json" and adopted_regular_log is None:
+        adopted_regular_log = _read_regular_child_log_marker(spec)
     if identity_path is not None and owner_scope is not None:
         identity = load_supervised_child_identity(identity_path)
         process_argv = read_process_command_argv(int(pid))
@@ -2232,7 +2445,10 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             raise RuntimeError("supervised child birth changed during admission")
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
     log_path = spec.resolve(spec.log_path)
-    if latest_log_path is not None:
+    if log_marker_mode == "regular-json":
+        log_path = adopted_regular_log
+        latest_log_path = log_path
+    elif latest_log_path is not None:
         try:
             # A supervisor restart creates a fresh run id, but an adopted
             # daemon continues writing the log selected by its original

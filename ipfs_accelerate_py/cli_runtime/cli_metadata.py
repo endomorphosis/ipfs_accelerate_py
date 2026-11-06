@@ -171,7 +171,11 @@ def set_last_cli_observation(provider: str, payload: Mapping[str, Any]) -> None:
     key = str(provider or "").strip().lower().replace("-", "_")
     if not key:
         return
-    clean = sanitize_session_metadata(payload)
+    ordinary = dict(payload)
+    # Validate this closed object separately; generic metadata stringification
+    # must never traverse an invalid optional accounting payload.
+    ordinary.pop("native_grok_prompt_accounting", None)
+    clean = sanitize_session_metadata(ordinary)
     # The final runner receipt needs the closed transport snapshot intact;
     # generic session metadata deliberately stringifies arbitrary nested data.
     # Preserve this one validated protocol object only in the last observation.
@@ -181,6 +185,13 @@ def set_last_cli_observation(provider: str, payload: Mapping[str, Any]) -> None:
             clean["native_grok_progress"] = validate_grok_stream_progress(payload["native_grok_progress"])
         except (TypeError, ValueError):
             clean.pop("native_grok_progress", None)
+    if "native_grok_prompt_accounting" in payload:
+        try:
+            from .grok_prompt_accounting import validate_grok_prompt_accounting
+            clean["native_grok_prompt_accounting"] = validate_grok_prompt_accounting(
+                payload["native_grok_prompt_accounting"])
+        except Exception:
+            clean.pop("native_grok_prompt_accounting", None)
     with _LOCK:
         _LAST[key] = dict(clean)
     _TLS.provider = key
@@ -195,9 +206,18 @@ def get_last_cli_observation(provider: str = "") -> dict[str, Any]:
         return {}
     tls_provider = str(getattr(_TLS, "provider", "") or "")
     if tls_provider == key and isinstance(getattr(_TLS, "payload", None), dict):
-        return dict(_TLS.payload)
-    with _LOCK:
-        return dict(_LAST.get(key) or {})
+        result = dict(_TLS.payload)
+    else:
+        with _LOCK:
+            result = dict(_LAST.get(key) or {})
+    if "native_grok_prompt_accounting" in result:
+        try:
+            from .grok_prompt_accounting import validate_grok_prompt_accounting
+            result["native_grok_prompt_accounting"] = validate_grok_prompt_accounting(
+                result["native_grok_prompt_accounting"])
+        except Exception:
+            result.pop("native_grok_prompt_accounting", None)
+    return result
 
 
 def extract_cli_assistant_text(stdout: str, *, max_chars: int = 8192) -> str:

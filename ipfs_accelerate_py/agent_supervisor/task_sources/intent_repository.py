@@ -3005,29 +3005,38 @@ class IntentRepository:
             raise IntentRepositoryNotOpenError("intent repository is not open")
 
     @contextmanager
-    def read_session(self) -> Iterator[IntentRepository]:
+    def read_session(self, *, read_only: bool = False) -> Iterator[IntentRepository]:
         """Reuse one read connection within this thread's bounded observation.
 
-        Nested sessions borrow the outer connection; different threads never
-        share it. This is connection reuse, not a transaction or a frozen
-        snapshot. Callers retain native admission and final drift checks.
-        Repository writes in the session thread are refused before any SQL.
-        The outer context owns physical close, including when close() marks
-        the repository closed while an observation is still unwinding.
+        The default preserves the existing logical read-session API. Explicit
+        read_only=True opens a physical read-only embedded handle and refuses a
+        borrowed writer/Quack connection. Nested default calls may reuse that
+        stronger outer handle. This remains connection reuse, not a frozen SQL
+        snapshot; callers retain native admission and drift checks.
         """
         self._require_open()
+        if type(read_only) is not bool:
+            raise TypeError("read_session read_only must be a boolean")
+        if read_only and (self._bound_connection is not None or self._quack_transport):
+            raise IntentRepositoryError("physical read-only session requires an unbound embedded repository")
         if getattr(self._read_session_state, "connection", None) is not None:
+            if read_only and getattr(self._read_session_state, "read_only", False) is not True:
+                raise IntentRepositoryError("physical read-only session cannot borrow a legacy writer-mode connection")
             yield self
             return
-        connection = open_duckdb_connection(self._open_target)
+        if read_only:
+            connection = open_duckdb_connection(self._open_target, read_only=True, prefer_quack=False)
+        else:
+            connection = open_duckdb_connection(self._open_target)
         try:
             self._require_open()
             self._read_session_state.connection = connection
+            self._read_session_state.read_only = read_only
             yield self
         finally:
-            # Clear before close so an exceptional close cannot leave a stale
-            # adapter installed for a later observation in the same thread.
+            # Clear both before close, including an exceptional body or close.
             self._read_session_state.connection = None
+            self._read_session_state.read_only = False
             connection.close()
 
     @contextmanager
@@ -4205,6 +4214,18 @@ class IntentRepository:
             # Its pending checks survive all ordinary task upserts; universal
             # admission and legacy task behavior are unchanged.
             previous_body = _decode_json(existing[2], noun="task body") if existing else {}
+            from .execution_packet_admission import (
+                execution_packet_required, preserve_execution_packet_requirement,
+                authority_spec_cid, task_record_on, require_execution_packet_on,
+                DISPATCH_STATUSES, ExecutionPacketAdmissionError,
+            )
+            try:
+                preserve_execution_packet_requirement(previous_body, body_map)
+                packet_guarded = execution_packet_required(previous_body) or execution_packet_required(body_map)
+            except ExecutionPacketAdmissionError as exc:
+                raise IntentRepositoryConflictError(str(exc)) from exc
+            previous_packet_record = task_record_on(connection, tcid) if packet_guarded and existing else None
+            previous_packet_spec = authority_spec_cid(previous_packet_record) if previous_packet_record else None
             if "local_planning_contract" in previous_body or "local_planning_contract" in body_map:
                 from ..runtime.local_planning_admission import guard_local_task_update
 
@@ -4344,6 +4365,17 @@ class IntentRepository:
                     else (dict(item) if isinstance(item, Mapping) else item)
                     for item in validations
                 ]
+            if packet_guarded:
+                packet_record = task_record_on(connection, tcid)
+                event_body["execution_packet_previous_spec_cid"] = previous_packet_spec
+                event_body["execution_packet_spec_cid"] = authority_spec_cid(packet_record)
+                event_body["execution_packet_previous_plan_cid"] = previous_packet_record["plan_cid"] if previous_packet_record else None
+                event_body["execution_packet_plan_cid"] = packet_record["plan_cid"]
+                if status_text in DISPATCH_STATUSES:
+                    try:
+                        require_execution_packet_on(connection, tcid, record=packet_record)
+                    except ExecutionPacketAdmissionError as exc:
+                        raise IntentRepositoryConflictError(str(exc)) from exc
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_UPSERTED,
@@ -4514,7 +4546,20 @@ class IntentRepository:
             contract = body.get("local_planning_contract")
             if contract is not None and list(dependencies) != contract["payload"]["dependencies"]:
                 raise IntentRepositoryIntegrityError("local pending dependencies are immutable")
+            from .execution_packet_admission import (
+                execution_packet_required, task_record_on, require_execution_packet_on,
+                DISPATCH_STATUSES, ExecutionPacketAdmissionError, authority_spec_cid,
+            )
+            packet_guarded = execution_packet_required(body)
+            previous_packet_spec = authority_spec_cid(task_record_on(connection, tcid)) if packet_guarded else None
             self._set_dependencies_on(connection, tcid, dependencies)
+            if packet_guarded:
+                current = task_record_on(connection, tcid)
+                if current["status"] in DISPATCH_STATUSES:
+                    try:
+                        require_execution_packet_on(connection, tcid, record=current)
+                    except ExecutionPacketAdmissionError as exc:
+                        raise IntentRepositoryConflictError(str(exc)) from exc
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_DEPENDENCIES_SET,
@@ -4527,6 +4572,8 @@ class IntentRepository:
                         for item in dependencies
                     ],
                     "revision": int(row[0]),
+                    **({"execution_packet_previous_spec_cid": previous_packet_spec,
+                        "execution_packet_spec_cid": authority_spec_cid(current)} if packet_guarded else {}),
                 },
             )
 
@@ -5065,6 +5112,19 @@ class IntentRepository:
                     raise IntentRepositoryIntegrityError("database claim has no owning goal")
                 if str(goal[0]) == "analysis_inconclusive":
                     raise IntentRepositoryConflictError("database claim goal is analysis_inconclusive")
+            from .execution_packet_admission import (
+                execution_packet_required, require_execution_packet_on,
+                task_record_on, DISPATCH_STATUSES, ExecutionPacketAdmissionError,
+            )
+            packet_record = None
+            try:
+                if status_text in DISPATCH_STATUSES and execution_packet_required(
+                    _decode_json(task_row[5], noun="task body")
+                ):
+                    packet_record = task_record_on(connection, resolved_cid)
+                    require_execution_packet_on(connection, resolved_cid, record=packet_record)
+            except ExecutionPacketAdmissionError as exc:
+                raise IntentRepositoryConflictError(str(exc)) from exc
             if previous_status == status_text:
                 return IntentReceipt(
                     event_id="",
@@ -5130,6 +5190,12 @@ class IntentRepository:
                 # Completion evidence must retain the exact supplied receipt.
                 body_map["completion_receipt"] = receipt_map if completing else retained
                 _apply_task_receipt_auxiliary_fields(body_map, receipt_map)
+            if packet_record is not None:
+                packet_record["body"] = body_map
+                try:
+                    require_execution_packet_on(connection, resolved_cid, record=packet_record)
+                except ExecutionPacketAdmissionError as exc:
+                    raise IntentRepositoryConflictError(str(exc)) from exc
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
