@@ -47,6 +47,87 @@ def inputs(tmp_path, monkeypatch):
     return source, inventory, board_root, home
 
 
+def _unit_conditions(unit):
+    """Extract real systemd predicates for read-only condition evaluation."""
+    section = ""
+    conditions = []
+    for line in unit.splitlines():
+        if line.startswith("["):
+            section = line
+        elif section == "[Unit]" and line.startswith("Condition"):
+            conditions.append(line)
+    return conditions
+
+
+@pytest.mark.parametrize("suffix,module,mode", [("watchdog", "fleet_watchdog", ["--apply"]),
+                                                 ("repair", "fleet_repair", ["run"])])
+def test_generic_units_require_only_selected_immutable_runtime_and_config(tmp_path, suffix, module, mode):
+    release = tmp_path / "runtime %n with spaces"
+    source = tmp_path / "mutable %u checkout"
+    config = tmp_path / "configuration %i.json"
+    unit = installer.generic_service_unit(sys.executable, source, release, config, suffix, module, mode).decode()
+    assert _unit_conditions(unit) == [
+        "ConditionPathIsDirectory=" + installer.unit_directory(str(release)),
+        "ConditionFileNotEmpty=" + installer.unit_directory(str(release / "ipfs_accelerate_py/agent_supervisor/rescue" / (module + ".py"))),
+        "ConditionFileNotEmpty=" + installer.unit_directory(str(config)),
+    ]
+    assert all(str(source) not in line and str(source).replace("%", "%%") not in line
+               for line in _unit_conditions(unit))
+    assert "runtime %%n with spaces" in unit and "configuration %%i.json" in unit
+    assert "Restart=always" in unit and "KillMode=control-group" in unit
+
+
+@pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="systemd is unavailable")
+@pytest.mark.parametrize("missing", ["release", "module", "empty_module", "module_directory",
+                                      "config", "empty_config", "config_directory"])
+def test_systemd_conditions_refuse_unusable_runtime_without_starting_service(tmp_path, missing):
+    release = tmp_path / "runtime"
+    selected = release / "ipfs_accelerate_py/agent_supervisor/rescue/fleet_watchdog.py"
+    selected.parent.mkdir(parents=True)
+    selected.write_text("# selected immutable runtime\n")
+    config = tmp_path / "fleet.json"
+    config.write_text("{}")
+    unit = installer.generic_service_unit(sys.executable, tmp_path / "absent-source", release,
+                                         config, "watchdog", "fleet_watchdog", ["--apply"]).decode()
+    command = ["systemd-analyze", "condition", *_unit_conditions(unit)]
+    ready = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, timeout=15)
+    assert ready.returncode == 0, ready.stderr
+    if missing == "release":
+        shutil.rmtree(release)
+    else:
+        target = selected if "module" in missing else config
+        if missing.startswith("empty_"):
+            target.write_text("")
+        else:
+            target.unlink()
+            if missing.endswith("_directory"):
+                target.mkdir()
+    blocked = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, timeout=15)
+    assert blocked.returncode != 0
+    # Only systemd's read-only predicate evaluator ran; no unit was installed,
+    # started, stopped or restarted to prove this prerequisite failure.
+
+
+@pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="systemd is unavailable")
+def test_released_unit_remains_runnable_after_mutable_source_deletion(inputs):
+    source, inventory, board_root, home = inputs
+    result = installer.install(source, inventory, board_root, enable=False)
+    unit = (home / ".config/systemd/user/ipfs-taskboard-watchdog.service").read_text()
+    release = Path(result["release"])
+    shutil.rmtree(source)
+    conditions = subprocess.run(["systemd-analyze", "condition", *_unit_conditions(unit)],
+                               cwd=board_root, capture_output=True, text=True, timeout=15)
+    assert conditions.returncode == 0, conditions.stderr
+    command = [sys.executable, "-P", "-m", "ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog",
+               "--apply", "--config", result["config"]]
+    loaded = subprocess.run(command, cwd=release,
+        env={**os.environ, "PYTHONPATH": str(source) + ":" + str(release), "PYTHONDONTWRITEBYTECODE": "1"},
+        capture_output=True, text=True, timeout=15)
+    assert loaded.returncode == 0, loaded.stderr
+    assert str(release) in loaded.stdout
+    assert not source.exists()
+
+
 def test_installed_release_contains_route_validator_and_binds_without_source(tmp_path):
     source = SCRIPT.parents[3]
     release, contents = installer._enrollment_runtime(source, tmp_path / "staged-home")
@@ -92,6 +173,10 @@ def test_install_uses_safe_python_path_and_separate_native_ensure_unit(inputs):
     assert "KillMode=process" in native
     assert "TimeoutStartSec=360" in native
     assert "native.py" in native
+    assert _unit_conditions(native) == [
+        "ConditionPathIsDirectory=" + installer.unit_directory(str(board_root)),
+        "ConditionFileNotEmpty=" + installer.unit_directory(str(board_root / "board.json")),
+    ]
     assert result["ensure_services"] == ["ipfs-taskboard-spar-ensure.service"]
 
 
@@ -216,6 +301,7 @@ def test_existing_service_ensure_stays_direct(inputs):
     config = json.loads(Path(result["config"]).read_text())
     assert config["boards"][0]["ensure"]["argv"] == argv
     assert result["ensure_services"] == []
+    assert not (_home / ".config/systemd/user/ipfs-taskboard-spar-ensure.service").exists()
 
 
 def test_job_can_stage_upgrade_without_restarting_its_dispatcher(inputs, monkeypatch):
@@ -607,3 +693,96 @@ def test_legal_ir_profile_cli_plans_without_entering_global_install_or_enrollmen
     assert installer.main() == 0
     assert calls == [{"profile": "legal-ir", "dry_run": True, "enable": True}]
     assert json.loads(capsys.readouterr().out) == {"profile": "legal-ir"}
+
+
+
+def test_installed_policy_and_runtime_assets_cold_import_from_release_only(tmp_path):
+    """Normal advertised runtime imports must work without an SDK checkout overlay."""
+    source = SCRIPT.parents[3]
+    release, contents = installer._enrollment_runtime(source, tmp_path / "cold-home")
+    installer._materialize_enrollment_release(release, contents, source)
+    expected = {name: installer.PACKAGE_MODULES.get(name,
+        "ipfs_accelerate_py/agent_supervisor/rescue/" + name + ".py") for name in contents}
+    for relative in installer.PACKAGE_MODULES.values():
+        assert (release / relative).read_bytes() == (source / relative).read_bytes()
+    code = r'''
+import hashlib, importlib, inspect, json, sys
+from pathlib import Path
+release, source, scratch = map(Path, sys.argv[1:4])
+expected = json.loads(sys.argv[4])
+assert not any(n == "ipfs_accelerate_py" or n.startswith("ipfs_accelerate_py.") for n in sys.modules)
+sys.path.insert(0, str(release))
+loaded = {}
+for name, relative in expected.items():
+    fullname = (name if name.startswith("ipfs_accelerate_py.") else
+        "ipfs_accelerate_py.agent_implementation_route" if name == "agent_implementation_route" else
+        "ipfs_accelerate_py.agent_supervisor.rescue." + name)
+    module = importlib.import_module(fullname)
+    assert Path(module.__file__) == release / relative
+    loaded[fullname] = module
+watch = loaded["ipfs_accelerate_py.agent_supervisor.rescue.fleet_watchdog"]
+repair = loaded["ipfs_accelerate_py.agent_supervisor.rescue.fleet_repair"]
+policy = loaded["ipfs_accelerate_py.agent_supervisor.rescue.recovery_policy"]
+candidate = loaded["ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate"]
+assert repair.infrastructure_classification is watch.infrastructure_classification
+assert repair.recovery_denial is watch.recovery_denial is policy.recovery_denial
+assert candidate.CheckoutMutationLease.__module__ == "ipfs_accelerate_py.agent_supervisor.merge.checkout_lock"
+assert candidate.WorktreeLifecycleStore.__module__ == "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle"
+assert candidate.run_command.__module__ == "ipfs_accelerate_py.agent_supervisor.todo_daemon.engine"
+for name in ("merge", "proof", "todo_daemon", "control", "validation"):
+    package = sys.modules["ipfs_accelerate_py.agent_supervisor." + name]
+    assert package.__spec__.origin == package.__file__
+    assert Path(package.__file__).read_bytes() == (source / "ipfs_accelerate_py/agent_supervisor" / name / "__init__.py").read_bytes()
+board = {"max_repair_attempts": 3, "recovery_policy": {"profile": "infrastructure-only/v1",
+    "repairable_stalls": ["probe_failed"], "max_actions_per_window": 3,
+    "window_seconds": 86400, "circuit_breaker_seconds": 3600}}
+assert policy.recovery_denial(board, {}) == "infrastructure_only_recovery"
+assert policy.recovery_denial(board, {}, allow_infrastructure=True) == ""
+assert watch.infrastructure_policy(board) == board["recovery_policy"]
+assert not (release / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").exists()
+argv = repair.llm_router_repair_argv({"cwd": str(source), "argv": ["codex", "exec"]}, scratch / "prompt.txt", scratch / "last.json")
+primary = json.loads(argv[argv.index("--primary-command-json") + 1])
+assert Path(primary[2]) == (source / "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py").resolve()
+assert primary[:2] == [sys.executable, "-P"]
+missing = scratch / "missing-engine"; missing.mkdir()
+assert repair._launch_preflight({"cwd": str(missing), "argv": ["codex", "exec"]}) == "repair_adapter_unavailable"
+try:
+    repair._physical_grok_adapter({"cwd": "relative-source"})
+except ValueError:
+    pass
+else:
+    raise AssertionError("relative repair source accepted")
+assert not any(n in ("duckdb", "_duckdb") or n.startswith(("torch", "transformers")) for n in sys.modules)
+print(json.dumps({"normal_modules": len(loaded), "all_sources_inside_release": True}))
+'''
+    environment = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", code,
+        str(release), str(source), str(tmp_path), json.dumps(expected)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"normal_modules": len(contents), "all_sources_inside_release": True}
+
+
+def test_auxiliary_source_changes_select_a_new_immutable_runtime_generation(tmp_path):
+    """A changed dependency cannot silently reuse the previous release digest."""
+    source = SCRIPT.parents[3]
+    _release, contents = installer._enrollment_runtime(source, tmp_path / "unused-home")
+    snapshot = tmp_path / "selected-source"
+    for name, body in contents.items():
+        relative = installer.PACKAGE_MODULES.get(name,
+            "ipfs_accelerate_py/agent_supervisor/rescue/" + name + ".py")
+        path = snapshot / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+    old_release, old_contents = installer._enrollment_runtime(snapshot, tmp_path / "home")
+    installer._materialize_enrollment_release(old_release, old_contents, snapshot)
+    relative = "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py"
+    old_body = (old_release / relative).read_bytes()
+    with (snapshot / relative).open("ab") as stream:
+        stream.write(b"\n# Different immutable dependency generation.\n")
+    new_release, new_contents = installer._enrollment_runtime(snapshot, tmp_path / "home")
+    assert new_release != old_release
+    installer._materialize_enrollment_release(new_release, new_contents, snapshot)
+    assert (old_release / relative).read_bytes() == old_body
+    assert (new_release / relative).read_bytes() != old_body
+

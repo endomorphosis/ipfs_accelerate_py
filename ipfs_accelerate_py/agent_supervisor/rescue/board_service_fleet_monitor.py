@@ -73,6 +73,19 @@ def load_config(path: Path) -> dict[str, Any]:
                 target = Path(entry["path"])
                 entry["path"] = os.path.abspath(target if target.is_absolute() else base / target)
         config["prerequisite_diagnostics"] = attachment
+    # Keep optional liveness diagnostics separate from lane repair policy.
+    liveness = config.get("watchdog_liveness")
+    if type(liveness) is dict:
+        liveness = dict(liveness)
+        if type(liveness.get("status_path")) is str:
+            try:
+                target = Path(liveness["status_path"]).expanduser()
+                liveness["status_path"] = os.path.abspath(target if target.is_absolute() else base / target)
+            except (OSError, ValueError, RuntimeError):
+                # An optional invalid home/path must not hide sibling lanes.
+                # Keep its original spelling for the diagnostic refusal.
+                pass
+        config["watchdog_liveness"] = liveness
     for key, default in {
         "error_window_seconds": 900, "repeated_error_threshold": 3,
         "merge_stale_seconds": 3600, "max_merge_receipts": 1024,
@@ -336,6 +349,253 @@ def prerequisite_diagnostics(config: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _read_watchdog_liveness_report(path: str) -> tuple[dict[str, Any], str | None]:
+    """Use the existing bounded ordinary-file reader with strict JSON fields."""
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate watchdog report field")
+            result[key] = value
+        return result
+
+    def nonfinite(_value):
+        raise ValueError("nonfinite watchdog report value")
+
+    try:
+        with lane_monitor._open_regular(path) as stream:
+            raw = stream.read(lane_monitor._MAX_JSON_BYTES + 1)
+        if len(raw) > lane_monitor._MAX_JSON_BYTES:
+            raise ValueError("watchdog report exceeds monitor size limit")
+        value = json.loads(raw, object_pairs_hook=pairs, parse_constant=nonfinite)
+        if type(value) is not dict:
+            raise ValueError("expected watchdog report object")
+        return value, None
+    except FileNotFoundError:
+        return {}, "missing"
+    except (OSError, ValueError, RecursionError) as exc:
+        return {}, str(exc)
+
+
+def _watchdog_liveness_incident(result, binding, identity, kernel_identity):
+    if result["attention_required"]:
+        # Stable consecutive-incident identity, not a task CID or repair grant.
+        safe_binding = binding if type(binding) is dict else {}
+        def safe_text(key, limit):
+            value = safe_binding.get(key)
+            return value[:limit] if type(value) is str else ""
+
+        signature = {"service": safe_text("service", 208),
+                     "deployment_id": safe_text("deployment_id", 128),
+                     "source_sha256": safe_text("source_sha256", 64),
+                     "service_identity": identity, "process_identity": kernel_identity,
+                     "status": result["status"],
+                     "reason_codes": result["reason_codes"]}
+        result["incident_id"] = "watchdog-liveness:" + hashlib.sha256(
+            json.dumps(signature, sort_keys=True).encode()).hexdigest()
+    return result
+
+
+def watchdog_liveness_diagnostics(config: dict[str, Any], now: float, *,
+                                  deadline_monotonic: float | None = None) -> dict[str, Any]:
+    """Observe one declared watchdog generation, without authorizing recovery.
+
+    The producer's profile is a declaration, not an attestation of imported
+    bytes. Sequential unit, kernel-process and report observations must agree.
+    This attachment must never alter lane health: existing fleet consumers use
+    aggregate health as an infrastructure-repair trigger.
+    """
+    result = {
+        "configured": "watchdog_liveness" in config, "available": False,
+        "status": "unavailable", "attention_required": True,
+        "action_authority": False, "restart_eligible": False,
+        "completion_authority": False, "identity_verified": False,
+        "source_binding": "declared_profile_only",
+        "consistency_scope": "sequential_identity_and_report_observations",
+        "reason_codes": [], "incident_id": None,
+    }
+    if not result["configured"]:
+        result.update(status="not_configured", attention_required=False)
+        return result
+    identity = None
+    kernel_identity = None
+    binding = config.get("watchdog_liveness")
+
+    def require_budget(seconds):
+        if deadline_monotonic is not None:
+            current = time.monotonic()
+            if (type(deadline_monotonic) not in (int, float)
+                    or not math.isfinite(deadline_monotonic)
+                    or not math.isfinite(current)
+                    or current + seconds > deadline_monotonic):
+                raise ValueError("observation_budget_exhausted")
+
+    try:
+        required = {"schema", "service", "status_path", "deployment_id", "source_sha256",
+                    "stale_after_seconds", "startup_grace_seconds"}
+        if (type(binding) is not dict or not required <= set(binding)
+                or set(binding) - required - {"operator_hold"}
+                or binding["schema"] != "agent-supervisor/watchdog-liveness-binding@1"
+                or type(binding["service"]) is not str
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@:-]{0,199}\.service", binding["service"]) is None
+                or type(binding["status_path"]) is not str or "\0" in binding["status_path"]
+                or not Path(binding["status_path"]).is_absolute()
+                or type(binding["deployment_id"]) is not str
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", binding["deployment_id"]) is None
+                or type(binding["source_sha256"]) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", binding["source_sha256"]) is None
+                or type(binding.get("operator_hold", False)) is not bool):
+            raise ValueError("invalid_binding")
+        frozen_binding = dict(binding)
+        for key, minimum in (("stale_after_seconds", 0), ("startup_grace_seconds", -1)):
+            value = binding[key]
+            if (type(value) not in (int, float) or not math.isfinite(value)
+                    or value <= minimum or (key == "startup_grace_seconds" and value < 0)):
+                raise ValueError("invalid_binding")
+        if type(now) not in (int, float) or not math.isfinite(now) or now <= 0:
+            raise ValueError("invalid_clock")
+        result["service"] = binding["service"]
+        if binding.get("operator_hold", False):
+            result.update(available=True, status="held", attention_required=False,
+                          reason_codes=["operator_hold"])
+            return result
+        # Existing exact-unit queries have a 15s timeout. Reserve both queries
+        # plus five seconds for local observations; slow lanes take priority.
+        require_budget(35)
+        opening_unit = lane_monitor.systemd_show(binding["service"])
+        identity = lane_monitor._service_identity(opening_unit)
+        if identity is None:
+            raise ValueError("service_identity_unavailable")
+        result["service_identity"] = {"state": identity[0], "pid": identity[1],
+                                      "birth_monotonic_us": identity[2]}
+        if identity[0] != "active":
+            result.update(available=True, status="inactive", attention_required=True,
+                          reason_codes=["service_not_active"])
+            return _watchdog_liveness_incident(result, binding, identity, kernel_identity)
+        if identity[1] <= 0:
+            raise ValueError("service_identity_unavailable")
+        monotonic_now = time.monotonic()
+        service_age = monotonic_now - identity[2] / 1_000_000
+        if not math.isfinite(service_age) or service_age < 0:
+            raise ValueError("service_birth_unverified")
+
+        def process_identity(snapshot):
+            if (type(snapshot) is not dict
+                    or any(type(snapshot.get(k)) is not int or snapshot[k] <= 0
+                           for k in ("pid", "birth_ticks"))
+                    or snapshot["pid"] != identity[1]
+                    or type(snapshot.get("boot_id")) is not str
+                    or re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+                                    snapshot["boot_id"]) is None):
+                raise ValueError("process_identity_unavailable")
+            return {k: snapshot[k] for k in ("pid", "birth_ticks", "boot_id")}
+
+        opening_process = process_identity(lane_monitor._process_snapshot(identity[1]))
+        kernel_identity = dict(opening_process)
+        report, report_error = _read_watchdog_liveness_report(binding["status_path"])
+        # Preserve a detached opening observation even when a test/adapter reuses
+        # mutable objects; nonfinite values are not report evidence.
+        frozen_report = json.dumps(report, sort_keys=True, allow_nan=False)
+        closing_report, closing_error = _read_watchdog_liveness_report(binding["status_path"])
+        if (report_error != closing_error
+                or frozen_report != json.dumps(closing_report, sort_keys=True, allow_nan=False)):
+            raise ValueError("report_changed")
+        closing_process = process_identity(lane_monitor._process_snapshot(identity[1]))
+        require_budget(20)
+        closing_identity = lane_monitor._service_identity(lane_monitor.systemd_show(binding["service"]))
+        if opening_process != closing_process or identity != closing_identity:
+            raise ValueError("service_generation_changed")
+        if config.get("watchdog_liveness") != frozen_binding:
+            raise ValueError("binding_changed")
+        # Lane checks can precede this attachment by many seconds. A closing
+        # wall clock avoids calling a legitimately newer cycle report "future".
+        closing_now = time.time()
+        closing_monotonic = time.monotonic()
+        if (type(closing_now) not in (int, float) or not math.isfinite(closing_now)
+                or closing_now < now or not math.isfinite(closing_monotonic)
+                or closing_monotonic < monotonic_now):
+            raise ValueError("clock_changed")
+        service_age = closing_monotonic - identity[2] / 1_000_000
+        result["checked_at_epoch"] = closing_now
+        result["service_age_seconds"] = service_age
+        if report_error:
+            if report_error == "missing" and service_age < binding["startup_grace_seconds"]:
+                result.update(available=True, status="starting", attention_required=False,
+                              reason_codes=["awaiting_first_report"])
+                return result
+            raise ValueError("report_unavailable")
+        if (type(report) is not dict or report.get("schema") != "agent-supervisor/fleet-watchdog@1"
+                or type(report.get("apply")) is not bool or type(report.get("boards")) is not dict):
+            raise ValueError("report_invalid")
+        declaration = report.get("liveness")
+        if type(declaration) is not dict:
+            raise ValueError("producer_identity_unbound")
+        if declaration.get("available") is not True:
+            raise ValueError("producer_identity_unavailable")
+        if (set(declaration) != {"schema", "available", "process", "profile",
+                                "source_binding", "action_authority"}
+                or declaration.get("schema") != "agent-supervisor/watchdog-liveness@1"
+                or declaration.get("source_binding") != "declared_profile_only"
+                or declaration.get("action_authority") is not False
+                or type(declaration.get("process")) is not dict
+                or set(declaration["process"]) != {"pid", "birth_ticks", "boot_id"}
+                or process_identity(declaration["process"]) != opening_process
+                or type(declaration.get("profile")) is not dict
+                or set(declaration["profile"]) != {"deployment_id", "source_sha256"}
+                or declaration["profile"] != {k: binding[k] for k in ("deployment_id", "source_sha256")}):
+            raise ValueError("producer_generation_mismatch")
+        observed = report.get("observed_at")
+        if (type(observed) not in (int, float) or not math.isfinite(observed)
+                or observed <= 0 or observed > closing_now):
+            raise ValueError("report_timestamp_invalid")
+        age = closing_now - observed
+        if age > service_age:
+            raise ValueError("report_predates_service")
+        stale = age > binding["stale_after_seconds"]
+        result.update(available=True, status="stale" if stale else "healthy",
+                      attention_required=stale, identity_verified=True,
+                      declared_profile_matches=True, report_age_seconds=age,
+                      reason_codes=["watchdog_report_stale"] if stale else [])
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, RecursionError) as exc:
+        reason = str(exc)
+        if re.fullmatch(r"[a-z_]{1,64}", reason) is None:
+            reason = "observation_unavailable"
+        result.update(available=False, status="unavailable", attention_required=True,
+                      identity_verified=False, reason_codes=[reason],
+                      error=f"{type(exc).__name__}: {exc}"[:512])
+    return _watchdog_liveness_incident(result, binding, identity, kernel_identity)
+
+
+def _attach_watchdog_liveness(config: dict[str, Any], summary: dict[str, Any], now: float, *,
+                              deadline_monotonic: float | None = None) -> None:
+    """Publish a separate deduplicated diagnostic, preserving action feedback."""
+    try:
+        attachment = watchdog_liveness_diagnostics(config, now, deadline_monotonic=deadline_monotonic)
+    except Exception as exc:
+        attachment = {"configured": True, "available": False, "status": "unavailable",
+                      "attention_required": True, "action_authority": False,
+                      "restart_eligible": False, "completion_authority": False,
+                      "reason_codes": ["diagnostic_error"], "incident_id": None,
+                      "error": f"{type(exc).__name__}: {exc}"[:512]}
+    summary["watchdog_liveness"] = attachment
+    previous, error = lane_monitor._read_json(config["health_path"])
+    old = previous.get("watchdog_liveness", {}) if not error else {}
+    old_id = old.get("incident_id") if type(old) is dict else None
+    new_id = attachment.get("incident_id")
+    if new_id != old_id and (new_id is not None or old_id is not None):
+        try:
+            lane_monitor._append_action(config["actions_path"], {
+                "at_epoch": now, "action": "watchdog_liveness_observed",
+                "status": attachment["status"], "incident_id": new_id,
+                "previous_incident_id": old_id, "action_authority": False,
+                "restart_eligible": False,
+            })
+        except (OSError, ValueError) as exc:
+            # Optional diagnostic logging must not create a lane-health repair
+            # trigger in consumers which do not understand this attachment.
+            attachment["incident_log_error"] = f"{type(exc).__name__}: {exc}"[:512]
+
+
 def monitor_fleet(config: dict[str, Any], *, apply: bool = False) -> dict[str, Any]:
     Path(config["lock_path"]).parent.mkdir(parents=True, exist_ok=True)
     with lane_monitor._open_regular(config["lock_path"], append=True) as lock:
@@ -372,6 +632,9 @@ def _observe_lane(lane: dict[str, Any], config: dict[str, Any], now: float, appl
 
 
 def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
+    # The optional observation must leave time to publish inside the existing
+    # 90s oneshot. An absent binding adds no clock or watchdog I/O.
+    liveness_deadline = time.monotonic() + 80 if "watchdog_liveness" in config else None
     now = time.time()
     issues = []
     # Separate lane locks, health files, and restart budgets make these calls
@@ -403,6 +666,8 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
         if not attachment["available"]:
             issues.append({"code": "prerequisite_diagnostics_unavailable", "error": attachment["error"]})
             summary.update(healthy=False, status="attention_required")
+    if "watchdog_liveness" in config:
+        _attach_watchdog_liveness(config, summary, now, deadline_monotonic=liveness_deadline)
     try:
         lane_monitor._append_action(config["actions_path"], {"at_epoch": now, "action": "fleet_observed",
             "apply": apply, "healthy": summary["healthy"], "issue_codes": sorted({issue["code"] for issue in issues}),

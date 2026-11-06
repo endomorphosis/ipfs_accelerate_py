@@ -260,14 +260,17 @@ def test_dangling_hold_fences_watchdog_and_queue(queue):
     config, board, path, _ = queue
     hold = path.parent / "HOLD"
     hold.symlink_to(path.parent / "missing-operator-evidence")
-    board["hold_files"] = [str(hold)]
-    sample = observation(health="healthy")
-    cache(config, sample)
-    assert repair.next_job(config, 30000) is None
-    assert repair.queue_status(config, 30000)["held"][0]["board_id"] == "pctdd"
-    assert repair.reconcile_queued_jobs(config, 2000, runner=lambda *a, **kw: pytest.fail("held recheck")) == []
-    assert repair.run_job(config, board, path)["status"] == "operator_hold"
-    assert repair.verify_job_recovery(board, {}, sample, path.parent)["reason"] == "operator_hold"
-    state = tick_board(board, Path(config["state_dir"]), apply=True,
-                       runner=lambda *a, **kw: probe(sample), now=2000)
-    assert state["health"] == "operator_hold" and state["holds"] == [str(hold)]
+    try:
+        board["hold_files"] = [str(hold)]
+        sample = observation(health="healthy")
+        cache(config, sample)
+        assert repair.next_job(config, 30000) is None
+        assert repair.queue_status(config, 30000)["held"][0]["board_id"] == "pctdd"
+        assert repair.reconcile_queued_jobs(config, 2000, runner=lambda *a, **kw: pytest.fail("held recheck")) == []
+        assert repair.run_job(config, board, path)["status"] == "operator_hold"
+        assert repair.verify_job_recovery(board, {}, sample, path.parent)["reason"] == "operator_hold"
+        state = tick_board(board, Path(config["state_dir"]), apply=True,
+                           runner=lambda *a, **kw: probe(sample), now=2000)
+        assert state["health"] == "operator_hold" and state["holds"] == [str(hold)]
+    finally:
+        hold.unlink()  # Remove only this test-owned alias after the assertions.

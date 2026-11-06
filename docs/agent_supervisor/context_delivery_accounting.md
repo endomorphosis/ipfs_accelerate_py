@@ -31,6 +31,16 @@ contract does not qualify cache-write disjointness. Repeated cumulative snapshot
 of one Codex session select a consistent latest observation rather than being
 summed; conflicting or regressed snapshots withhold complete counts.
 
+Grok's final-envelope scope covers the prompt and completed subagents; it
+excludes compaction and other side-model calls. The separate
+`native_prompt_accounting` receipt preserves bounded per-model diagnostics and
+exact reported cost ticks without adding them to final usage. The existing
+retained-native-usage reconciler publishes this explicit coverage, while
+primary/auxiliary request counts and whole-invocation usage remain unknown.
+An explicit complete prompt-ledger flag does not establish auxiliary coverage
+or a complete bill. Model identities in these diagnostic rows are hashed,
+and truncated, missing, invalid, and conflicting counters stay explicit.
+
 `source_view_retrieval` joins the existing owner observation by the exact UTF-8
 invocation-ID hash. Prepared source bytes, bytes from successful owner sends,
 candidate pages and discovery pages retain separate count scopes. These are

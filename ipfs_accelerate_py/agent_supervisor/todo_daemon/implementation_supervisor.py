@@ -137,6 +137,7 @@ from .production_provider_cli import (
 from .implementation_daemon import (
     DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
     DEFAULT_TRACKS,
+    automatic_retry_rearm_enabled,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
@@ -378,6 +379,37 @@ def _control_plane_probe_root(repository_root: Path) -> Path:
             or any(row["available"] for row in target["sources"])):
         return Path(repository_root).resolve()
     return installed
+
+
+def _resolved_launch_script(path: object) -> Path | None:
+    text = str(path or "").strip()
+    if not text or text in {"-m", "-c"}:
+        return None
+    try:
+        return Path(text).resolve()
+    except OSError:
+        return None
+
+
+def _original_python_launch_matching_argv() -> list[str] | None:
+    """Return the process command when it is the program that imported us.
+
+    A campaign wrapper keeps its own ``_run`` arguments in ``sys.argv``.
+    Replaying those arguments under the native supervisor module makes the
+    reloaded process exit before it can adopt the new source.
+    """
+
+    original = list(getattr(sys, "orig_argv", ()))
+    if len(original) < 2 or not sys.argv:
+        return None
+    tail = list(sys.argv[1:])
+    if tail and original[-len(tail):] != tail:
+        return None
+    running = _resolved_launch_script(sys.argv[0])
+    launched = _resolved_launch_script(original[1])
+    if running is None or launched is None or running != launched:
+        return None
+    return original
 
 
 def _captured_supervisor_reload_arguments(config) -> tuple[str, ...] | None:
@@ -7373,16 +7405,29 @@ class PortalImplementationSupervisor:
         supervisor_script_path = self.config.supervisor_script_path
         if captured is not None:
             arguments = list(captured)
-        elif supervisor_script_path is not None:
-            script_path = Path(supervisor_script_path)
-            if not script_path.is_absolute():
-                script_path = self.config.repo_root / script_path
-            arguments = [
-                sys.executable,
-                str(script_path.resolve()),
-                *sys.argv[1:],
-            ]
         else:
+            running_launch = _original_python_launch_matching_argv()
+            configured_script = None
+            if supervisor_script_path is not None:
+                configured_script = Path(supervisor_script_path)
+                if not configured_script.is_absolute():
+                    configured_script = self.config.repo_root / configured_script
+                configured_script = configured_script.resolve()
+            running_script = _resolved_launch_script(sys.argv[0] if sys.argv else "")
+            if (
+                running_launch is not None
+                and (configured_script is None or running_script != configured_script)
+            ):
+                arguments = [sys.executable, *running_launch[1:]]
+            elif configured_script is not None:
+                arguments = [
+                    sys.executable,
+                    str(configured_script),
+                    *sys.argv[1:],
+                ]
+            else:
+                arguments = None
+        if arguments is None:
             module_name = (
                 __spec__.name
                 if __spec__ is not None and __spec__.name
@@ -11192,11 +11237,18 @@ class PortalImplementationSupervisor:
             }
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
+        # Reconciliation and guardrail release above get the first opportunity
+        # to recover existing work. Exhausted paid attempts are then an explicit
+        # blocker, not an indefinitely healthy idle lane or a restart request.
+        attempt_budget_blocker = self._attempt_budget_exhaustion_status(
+            PortalTaskState.load(self.config.state_path)
+        )
         update_maintenance_phase("supervisor_check_event")
         self._record_event(
             "supervisor_check",
             {
-                "stuck": False,
+                "stuck": bool(attempt_budget_blocker),
+                "selection_blocker": attempt_budget_blocker,
                 "active_task_id": state.active_task_id,
                 "completed_count": state.completed_count,
                 "worktree_reconciliation_candidate_count": int(
@@ -11278,7 +11330,9 @@ class PortalImplementationSupervisor:
             },
         )
         return {
-            "stuck": False,
+            "stuck": bool(attempt_budget_blocker),
+            "selection_blocker": attempt_budget_blocker,
+            "reason": "task_attempt_budget_exhausted" if attempt_budget_blocker else "",
             "active_task_id": state.active_task_id,
             "completed_count": state.completed_count,
             "retry_budget_count": len(retry_budget_findings),
@@ -11327,6 +11381,8 @@ class PortalImplementationSupervisor:
 
         def request_stop(signum: int, _frame: object) -> None:
             nonlocal stop_signal
+            if stop_signal is not None:
+                return
             stop_signal = signum
             raise SystemExit(128 + signum)
 
@@ -11401,18 +11457,34 @@ class PortalImplementationSupervisor:
         self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
+            loop_config = self.build_supervisor_loop_config()
+            if self.config.max_restarts > 0:
+                # The outer recovery loop is part of the same supervisor
+                # lifetime. A new shared loop must inherit the remaining
+                # allowance rather than mint another full restart budget.
+                remaining_restarts = max(0, self.config.max_restarts - self.restart_count)
+                if remaining_restarts == 0:
+                    self._record_event("supervisor_restart_budget_exhausted", {
+                        "restart_count": self.restart_count,
+                        "max_restarts": self.config.max_restarts,
+                        "attempt_budget_consumed": False,
+                        "provider_invocation_consumed": False,
+                    })
+                    return
+                loop_config = replace(loop_config, max_restarts=remaining_restarts)
             loop = self.shared_supervisor_loop_class(
-                self.build_supervisor_loop_config(),
+                loop_config,
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
             )
             loop.stale_heartbeat_hook = self._supervisor_loop_watchdog_decision
             result = loop.run()
-            self.restart_count = result.restart_count
+            self.restart_count += result.restart_count
             self._worktree_worker_phase = ""
             self._last_worktree_worker_seen_monotonic = None
             result_payload = {
                 "status": result.status,
-                "restart_count": result.restart_count,
+                "restart_count": self.restart_count,
+                "loop_restart_count": result.restart_count,
                 "last_exit_code": result.last_exit_code,
                 "last_recycle_reason": result.last_recycle_reason,
                 "last_run_id": result.last_run_id,
@@ -11430,9 +11502,22 @@ class PortalImplementationSupervisor:
                 self._reload_for_control_plane_update()
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
                 return
+            if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
+                terminal = {**result_payload, "max_restarts": self.config.max_restarts,
+                            "attempt_budget_consumed": False,
+                            "provider_invocation_consumed": False}
+                self._record_event("supervisor_restart_budget_exhausted", terminal)
+                loop._safe_write_status(
+                    "max_restarts_reached", run_id=result.last_run_id,
+                    log_path=result.last_log_path, last_exit_code=result.last_exit_code,
+                    extra={"restart_count": self.restart_count,
+                           "restart_budget_exhausted": True,
+                           "max_restarts": self.config.max_restarts},
+                )
+                return
 
             self._publish_unavailable_child_recovery(
-                run_id=result.last_run_id, restart_count=result.restart_count)
+                run_id=result.last_run_id, restart_count=self.restart_count)
 
             if (
                 result.status == "typed_child_blocker"
@@ -11643,6 +11728,141 @@ class PortalImplementationSupervisor:
             status_extra_fields=dict(proof_rollout_status_fields),
         )
 
+    def _attempt_budget_exhaustion_status(
+        self, state: PortalTaskState,
+    ) -> dict[str, Any]:
+        """Describe a fully spent legacy frontier without authorizing retries."""
+
+        if (
+            self._database_authority_enabled()
+            or self.config.max_task_attempts <= 0
+            or state.active_task_id
+            or state.implementation_in_progress
+            or state.active_phase
+            or state.selection_idle_reason
+            != "all_selectable_ready_tasks_reached_max_task_attempts"
+            or state.selectable_ready_count
+            or state.selectable_ready_task_ids
+            or state.eligible_ready_count
+            or state.eligible_ready_task_ids
+            or not state.ready_task_ids
+            or state.ready_count != len(state.ready_task_ids)
+            or len(set(state.ready_task_ids)) != len(state.ready_task_ids)
+        ):
+            return {}
+        # A successful candidate callback can complete a board card before the
+        # next daemon pass refreshes its projection. Never stop on that stale
+        # ready list, or on a newly held/blocked card.
+        try:
+            tasks = {task.task_id: task for task in parse_task_file(
+                self.config.todo_path, self.config.task_prefix
+            )}
+            source_sha256 = hashlib.sha256(self.config.todo_path.read_bytes()).hexdigest()
+        except (OSError, ValueError):
+            return {}
+        # Dependency and hold metadata do not all participate in a task CID.
+        # Recompute the simple board frontier as a freshness check, never as
+        # dispatch authority. Any disagreement leaves Native free to refresh.
+        from .implementation_daemon import dependency_satisfied_references
+        satisfied = dependency_satisfied_references(list(tasks.values()),
+            completed_task_ids=[task.task_id for task in tasks.values() if task.status == "completed"],
+            assumed_completed_references=self.config.assumed_completed_task_ids)
+        ready_now = {task.task_id for task in tasks.values()
+            if str(task.status).lower() in {"todo", "ready", "pending"}
+            and all(reference in satisfied for reference in task.depends_on)
+            and not any(str(value).strip().lower() in {"1", "true", "yes"}
+                        for key, value in task.metadata.items()
+                        if str(key).lower().replace("_", " ").strip() == "manual hold")}
+        if ready_now != set(state.ready_task_ids):
+            return {}
+        limited = []
+        for task_id in sorted(set(state.ready_task_ids)):
+            task = tasks.get(task_id)
+            identity = state.task_identities.get(task_id, {})
+            if not isinstance(identity, Mapping):
+                return {}
+            cid = str(identity.get("canonical_task_cid") or "")
+            count = state.implementation_attempts_by_cid.get(cid)
+            if (task is None or str(task.status).lower() not in {"todo", "ready", "pending"}
+                    or state.task_statuses.get(task_id) != "ready" or not cid
+                    or task.canonical_task_cid != cid
+                    or task.canonical_task_key != identity.get("canonical_task_key")
+                    or type(count) is not int or count < self.config.max_task_attempts):
+                return {}
+            limited.append({"task_id": task_id, "canonical_task_cid": cid,
+                            "attempt_count": count})
+        return {"reason": "task_attempt_budget_exhausted", "limited_tasks": limited,
+                "max_task_attempts": self.config.max_task_attempts,
+                "task_source_sha256": source_sha256,
+                "attempt_budget_consumed": False, "provider_invocation_consumed": False,
+                "completion_authority": False, "operator_successor_required": True}
+
+    def _refresh_exhausted_frontier_release_requirements(
+        self, blocker: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Try an explicitly configured evidence producer once per incident.
+
+        No refill, task generation, paid rearm or completion callback is
+        authorized here. Produced artifacts still undergo normal independent
+        reconciliation, and a failure cannot turn into an idle retry loop.
+        """
+        command = str(self.config.objective_goal_completion_artifact_refresh_command or "").strip()
+        if (not self.config.objective_reconcile_goal_completion or not command
+                or not (self.config.objective_goal_completion_gate_path
+                        or self.config.objective_goal_completion_evidence_path)):
+            return {"attempted": False, "reason": "not_configured"}
+        timeout = self.config.objective_goal_completion_artifact_refresh_timeout_seconds
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout) or timeout <= 0):
+            return {"attempted": False, "status": "failed", "reason": "invalid_refresh_timeout"}
+        # A producer may touch board trivia. That must not mint another
+        # producer allowance for the same canonical frontier and config.
+        stable_frontier = {key: value for key, value in blocker.items()
+                           if key != "task_source_sha256"}
+        incident = hashlib.sha256(json.dumps({"blocker": stable_frontier, "command": command,
+            "gate_path": str(self.config.objective_goal_completion_gate_path or ""),
+            "evidence_path": str(self.config.objective_goal_completion_evidence_path or ""),
+            "objective_path": str(self.config.objective_path or "")}, sort_keys=True).encode()).hexdigest()
+        outcomes = getattr(self, "_exhausted_frontier_release_outcomes", None)
+        if outcomes is None:
+            outcomes = self._exhausted_frontier_release_outcomes = {}
+        if incident in outcomes:
+            return {**outcomes[incident], "replayed": True}
+        lease, guard = self._acquire_implementation_maintenance_lease()
+        if lease is None:
+            return {"attempted": False, "reason": str(guard.get("reason") or "maintenance_blocked"),
+                    "blocked": True}
+        # Consume this in-process incident intent before launching argv. A
+        # partial write or producer timeout must not launch it again.
+        outcome = {"attempted": True, "incident": incident, "status": "started",
+                   "completion_authority": False, "attempt_budget_consumed": False,
+                   "provider_invocation_consumed": False}
+        outcomes[incident] = outcome
+        daemon_pid = self._read_managed_daemon_pid()
+        update_release_phase, finish_release = self._begin_supervisor_maintenance_heartbeat(
+            "release_requirements", daemon_pid=daemon_pid,
+            daemon_process_birth=read_process_birth(daemon_pid) if daemon_pid else None)
+        try:
+            self._held_implementation_maintenance_lease = lease
+            outcome["producer"] = self._refresh_objective_goal_completion_artifacts()
+            update_release_phase("release_requirements_reconciliation")
+            from ..objectives.objective_daemon import default_objective_path
+            objective = self.config.objective_path or default_objective_path(self.config.repo_root)
+            if not objective.is_absolute():
+                objective = self.config.repo_root / objective
+            outcome["reconciliation"] = self._reconcile_objective_goal_completion_artifacts(
+                objective_path=objective)
+            outcome["status"] = ("reconciled" if outcome["reconciliation"].get("attempted") is True
+                                 else "unavailable")
+        except (ObjectiveCompletionArtifactRefreshError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            outcome.update(status="failed", error_type=type(exc).__name__, error=str(exc)[:1000])
+        finally:
+            finish_release("failed" if outcome["status"] == "failed" else "completed")
+            self._held_implementation_maintenance_lease = None
+            self._release_implementation_maintenance_lease(lease)
+        self._record_event("exhausted_frontier_release_requirements_checked", outcome)
+        return dict(outcome)
+
     def _supervisor_loop_watchdog_decision(
         self,
         _loop: SupervisorLoop,
@@ -11664,6 +11884,7 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.keep_running()
 
         state = PortalTaskState.load(self.config.state_path)
+        initial_attempt_budget_blocker = self._attempt_budget_exhaustion_status(state)
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
         database_authority = self._database_authority_enabled()
         readiness: dict[str, Any] | None = None
@@ -11998,12 +12219,98 @@ class PortalImplementationSupervisor:
                 "main_checkout_merge_state_repaired",
                 detail=main_checkout_repair,
             )
+        attempt_budget_blocker = result.get("selection_blocker")
+        if attempt_budget_blocker:
+            # A final task start, candidate completion, source edit or budget
+            # transition wins over the earlier diagnosis. No projection or
+            # attempt counter is rewritten to obtain terminal authority.
+            current = PortalTaskState.load(self.config.state_path)
+            current_blocker = self._attempt_budget_exhaustion_status(current)
+            if (not initial_attempt_budget_blocker
+                    or current_blocker != initial_attempt_budget_blocker
+                    or attempt_budget_blocker != current_blocker):
+                return SupervisorLoopDecision.keep_running()
+            release_requirements = self._refresh_exhausted_frontier_release_requirements(current_blocker)
+            if release_requirements.get("blocked"):
+                return SupervisorLoopDecision.keep_running()
+            current = PortalTaskState.load(self.config.state_path)
+            if self._attempt_budget_exhaustion_status(current) != current_blocker:
+                return SupervisorLoopDecision.keep_running()
+            # Selection inside the child is the normal place that rearms a
+            # validation-exhausted frontier. This maintenance pass can stop
+            # that child before selection runs. Apply the digest-gated rearm
+            # first. It changes counters only when validation-failure evidence
+            # exists and this declared-output digest has not been used.
+            if self._rearm_validation_exhausted_frontier(current):
+                return SupervisorLoopDecision.keep_running()
+            guard = self._database_authority_terminal_guard(state=current, child=_child)
+            protected = self._implementation_protected_maintenance_guard()
+            fields = {"selection_blocker": current_blocker,
+                      "release_requirements": release_requirements,
+                      "attempt_budget_terminal_pending": not (
+                          guard.get("safe") is True and not protected.get("blocked")),
+                      "attempt_budget_terminal_guard": guard}
+            self._set_loop_status_fields(_loop, fields)
+            if guard.get("safe") is not True or protected.get("blocked"):
+                return SupervisorLoopDecision.keep_running()
+            self._record_event("task_attempt_budget_exhausted", fields)
+            return SupervisorLoopDecision.stop(
+                "task_attempt_budget_exhausted", status="task_attempt_budget_exhausted"
+            )
         if result.get("stuck"):
             return SupervisorLoopDecision.recycle(
                 str(result.get("reason") or "stuck_progress"),
                 detail={"active_task_id": result.get("active_task_id") or ""},
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _rearm_validation_exhausted_frontier(
+        self,
+        state: PortalTaskState,
+    ) -> list[dict[str, Any]]:
+        """Rearm ready tasks exhausted on validation before this pass stops.
+
+        Uses the daemon's validation rearm. Each ready task gets one new
+        budget for a recovery revision and for a digest of its declared
+        outputs. Tasks that lack validation-failure evidence stay exhausted.
+        Attempt counters are not edited here.
+        """
+
+        if not automatic_retry_rearm_enabled():
+            return []
+        ready = {
+            str(task_id).strip()
+            for task_id in (state.ready_task_ids or [])
+            if str(task_id).strip()
+        }
+        if not ready:
+            return []
+        try:
+            daemon = self._build_worktree_reconciliation_daemon()
+            tasks = list(daemon._load_tasks())
+            statuses = {
+                task.task_id: "ready" if task.task_id in ready else "waiting"
+                for task in tasks
+            }
+            revision = daemon._retry_budget_repair_runtime_revision()
+            return list(daemon._rearm_declared_output_validation_exhausted_tasks(
+                state,
+                tasks,
+                statuses,
+                recovery_revision=revision,
+            ))
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            try:
+                self._record_event(
+                    "validation_exhausted_frontier_rearm_failed",
+                    {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:500],
+                    },
+                )
+            except (OSError, RuntimeError, ValueError, TypeError):
+                pass
+            return []
 
     def repair_main_checkout_merge_state(self) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""
@@ -14792,6 +15099,14 @@ class PortalImplementationSupervisor:
             str, dict[str, Any]
         ] = {}
 
+        def load_reconciliation_context() -> None:
+            nonlocal reconciliation_daemon, reconciliation_tasks_by_id
+            nonlocal reconciliation_task_ids_by_branch, reconciliation_outcome_keys, reconciliation_provenance_by_branch
+            if reconciliation_daemon is None:
+                reconciliation_daemon = self._build_worktree_reconciliation_daemon()
+                (reconciliation_tasks_by_id, reconciliation_task_ids_by_branch,
+                    reconciliation_outcome_keys, reconciliation_provenance_by_branch) = self._reconciliation_task_context(reconciliation_daemon)
+
         def candidate_main_status(
             branch: str,
             head: str,
@@ -14878,7 +15193,7 @@ class PortalImplementationSupervisor:
                 classification = str(cached_entry.get("classification") or "")
                 payload = dict(cached_entry.get("payload") or {})
                 if classification == "skip":
-                    if payload.get("reason") == "dirty_worktree":
+                    if payload.get("reason") in {"dirty_worktree", "already_merged_cleanup_pass"}:
                         pass
                     else:
                         skipped.append({**payload, "cached": True})
@@ -14957,21 +15272,50 @@ class PortalImplementationSupervisor:
             branch_merged = self._git_ref_is_ancestor(repo_root, branch, target_ref)
             head_merged = bool(head) and self._git_ref_is_ancestor(repo_root, head, target_ref)
             if branch_merged or head_merged:
-                skip = {**detail, "reason": "already_merged_cleanup_pass"}
-                skipped.append(skip)
-                self._store_worktree_scan_cache_entry(
-                    scan_cache,
-                    phase="reconciliation",
-                    path=path_resolved,
-                    branch=branch,
-                    head=head,
-                    target_signature=target_signature,
-                    classification="skip",
-                    payload=skip,
-                )
-                continue
+                # An integrated Git object is not a task completion receipt.
+                # Keep completed/unknown legacy lanes on their normal cleanup
+                # path; only current pending aliases can request fresh proof.
+                try:
+                    hints = {} if self._database_authority_enabled() else {
+                        task.task_id: task for task in parse_task_file(self.config.todo_path, self.config.task_prefix)}
+                except (OSError, ValueError, UnicodeError):
+                    hints = {}
+                matches = self._integrated_candidate_task_matches(branch, hints)
+                if any(normalize_status(task.status) != "completed" for task in matches):
+                    load_reconciliation_context()
+                    matches = self._integrated_candidate_task_matches(branch, reconciliation_tasks_by_id)
+                    self._remember_pending_integrated_candidate(path=path_resolved, branch=branch, head=head, tasks=matches)
+                    current = matches[0] if len(matches) == 1 else None
+                    mapped = reconciliation_task_ids_by_branch.get(branch)
+                    binding = (self._pending_integrated_candidate_binding(
+                        daemon=reconciliation_daemon, path=path, branch=branch, head=head, task=current,
+                        provenance=reconciliation_provenance_by_branch.get(branch))
+                        if current is not None and normalize_status(current.status) in {"todo", "ready", "needed", "pending"}
+                            and (not mapped or mapped == current.task_id)
+                        else {"ready": False, "reason": "integrated_candidate_task_ambiguous_or_not_pending"})
+                    if not binding.get("ready"):
+                        processed.append({**detail, "merged": False, "merge_result": {
+                            "attempted": False, "merged": False, "reason": binding["reason"],
+                            "provider_dispatched": False, "attempt_consumed": False}})
+                        continue
+                    detail["integrated_pending_candidate"] = binding
+                else:
+                    skip = {**detail, "reason": "already_merged_cleanup_pass"}
+                    skipped.append(skip)
+                    self._store_worktree_scan_cache_entry(scan_cache, phase="reconciliation",
+                        path=path_resolved, branch=branch, head=head, target_signature=target_signature,
+                        classification="skip", payload=skip)
+                    continue
             dirty = self._git_status_short(path) if path.exists() else []
             if dirty:
+                if detail.get("integrated_pending_candidate"):
+                    # The reviewed immutable HEAD cannot authorize a new
+                    # rescue commit containing unreviewed working-tree data.
+                    processed.append({**detail, "merged": False, "merge_result": {
+                        "attempted": False, "merged": False,
+                        "reason": "integrated_candidate_workspace_dirty",
+                        "provider_dispatched": False, "attempt_consumed": False}})
+                    continue
                 rescue_result = self._rescue_dirty_worktree(
                     path,
                     branch=branch,
@@ -15100,16 +15444,7 @@ class PortalImplementationSupervisor:
                         continue
                     preflight_resolver_escalated = True
 
-            if reconciliation_daemon is None:
-                reconciliation_daemon = self._build_worktree_reconciliation_daemon()
-                (
-                    reconciliation_tasks_by_id,
-                    reconciliation_task_ids_by_branch,
-                    reconciliation_outcome_keys,
-                    reconciliation_provenance_by_branch,
-                ) = self._reconciliation_task_context(
-                    reconciliation_daemon
-                )
+            load_reconciliation_context()
             current_task = self._current_reconciliation_task(
                 branch=branch,
                 rescued_from_branch=str(
@@ -15171,18 +15506,15 @@ class PortalImplementationSupervisor:
                 task_identity = reconciliation_daemon._identity_for_task(
                     current_task
                 )
-                baseline_ref = self._git_merge_base(
-                    repo_root,
-                    target_ref,
-                    head or branch,
-                )
+                integrated_binding = detail.get("integrated_pending_candidate") or {}
+                baseline_ref = str(integrated_binding.get("baseline_ref") or "") or self._git_merge_base(repo_root, target_ref, head or branch)
                 recovery_key = (
                     self._worktree_reconciliation_recovery_key(
                         task_cid=task_identity.canonical_task_cid,
                         baseline_ref=baseline_ref,
                         candidate_commit=head,
                         target_commit=target_signature,
-                        mode="pre_merge",
+                        mode="integrated_pending" if integrated_binding else "pre_merge",
                     )
                     if baseline_ref and head
                     else ""
@@ -15254,6 +15586,11 @@ class PortalImplementationSupervisor:
                 merge_result = dict(
                     recovery_result.get("merge_result") or {}
                 )
+                if integrated_binding:
+                    retained = self._pending_integrated_candidates[str(path_resolved)]
+                    update = merge_result.get("todo_update_result")
+                    retained["completed_by_callback"] = bool(merge_result.get("merged") is True
+                        and isinstance(update, Mapping) and reconciliation_daemon._todo_completion_is_durable(update))
                 cleanup_result = self._reconciliation_cleanup_result(
                     merge_result
                 )
@@ -16328,6 +16665,118 @@ class PortalImplementationSupervisor:
             task_shard_index=self.config.task_shard_index,
             strict_task_sharding=self.config.strict_task_sharding,
         )
+
+    @staticmethod
+    def _integrated_candidate_task_matches(
+        branch: str, tasks_by_id: Mapping[str, PortalTask],
+    ) -> list[PortalTask]:
+        """Resolve named task aliases without choosing between ambiguous names."""
+        return [task for task_id, task in tasks_by_id.items() if re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(task_id)}(?![A-Za-z0-9])", branch, re.IGNORECASE)]
+
+    def _remember_pending_integrated_candidate(
+        self, *, path: Path, branch: str, head: str, tasks: Sequence[PortalTask],
+    ) -> None:
+        # This in-memory observation grants only retention, never completion or
+        # deletion. Cache files cannot hydrate its callback-verification bit.
+        retained = getattr(self, "_pending_integrated_candidates", None)
+        if retained is None:
+            retained = self._pending_integrated_candidates = {}
+        retained[str(path)] = {"branch": branch, "head": head,
+            "task_cids": {task.task_id: task.canonical_task_cid for task in tasks},
+            "completed_by_callback": False}
+
+    def _pending_integrated_candidate_binding(
+        self, *, daemon: PortalImplementationDaemon, path: Path, branch: str,
+        head: str, task: PortalTask, provenance: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Review an immutable nonempty proposal before any validator repair."""
+        def refused(reason: str) -> dict[str, Any]:
+            return {"ready": False, "reason": reason}
+        try:
+            root = self.config.worktree_root
+            if (root is None or root.resolve(strict=True) != root
+                    or path.resolve(strict=True) != path or not path.is_relative_to(root)
+                    or path == root):
+                return refused("integrated_candidate_workspace_unconfined")
+            for directory in (root, path):
+                info = directory.lstat()
+                if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o002:
+                    return refused("integrated_candidate_workspace_unowned")
+            marker = (path / ".git").lstat()
+            if not stat.S_ISREG(marker.st_mode) or marker.st_uid != os.getuid() or marker.st_nlink != 1 or marker.st_mode & 0o002:
+                return refused("integrated_candidate_git_marker_unowned")
+            common = []
+            for repo in (self.config.repo_root, path):
+                observed = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=repo,
+                    text=True, capture_output=True, check=False)
+                if observed.returncode or not observed.stdout.strip():
+                    return refused("integrated_candidate_repository_unproved")
+                common.append((repo / observed.stdout.strip()).resolve(strict=True))
+            if (common[0] != common[1] or self._git_current_branch(path) != branch
+                    or self._git_ref_commit(path, "HEAD") != head
+                    or self._git_ref_commit(self.config.repo_root, branch) != head):
+                return refused("integrated_candidate_identity_changed")
+            identity = daemon._identity_for_task(task)
+            if provenance is not None:
+                expected = {"task_id": task.task_id, "canonical_task_cid": identity.canonical_task_cid,
+                    "canonical_task_key": identity.canonical_task_key, "board_namespace": identity.board_namespace,
+                    "worktree_path": str(path)}
+                if (any(str(provenance.get(key) or "") != value for key, value in expected.items())
+                        or str(provenance.get("branch") or "").removeprefix("refs/heads/") != branch):
+                    return refused("integrated_candidate_provenance_mismatch")
+                baseline = str(provenance.get("baseline_ref") or "")
+                source = "exact_native_start"
+            else:
+                parents = self._git_commit_parents(self.config.repo_root, head)
+                if len(parents) != 1:
+                    return refused("integrated_candidate_baseline_ambiguous")
+                baseline, source = parents[0], "single_parent_candidate"
+            if (not baseline or self._git_ref_commit(self.config.repo_root, baseline) != baseline
+                    or baseline == head or not self._git_ref_is_ancestor(self.config.repo_root, baseline, head)):
+                return refused("integrated_candidate_baseline_unproved")
+            changed = subprocess.run(["git", "diff", "--no-renames", "--name-only", "-z", baseline, head, "--"],
+                cwd=self.config.repo_root, capture_output=True, check=False)
+            if changed.returncode:
+                return refused("integrated_candidate_delta_unavailable")
+            paths = tuple(part.decode("utf-8") for part in changed.stdout.split(b"\0") if part)
+            allowed = daemon._proposal_scope_paths(task, include_ast_companions=False)
+            if not paths:
+                return refused("integrated_candidate_delta_empty")
+            if (not allowed or any(not any(daemon._path_matches_prefix(relative, prefix) for prefix in allowed)
+                    or daemon._overlaps_implementation_protected_path(relative) for relative in paths)):
+                return refused("integrated_candidate_delta_outside_task_scope")
+            return {"ready": True, "baseline_ref": baseline, "baseline_source": source,
+                "task_cid": identity.canonical_task_cid, "changed_paths": list(paths)}
+        except TimeoutError:
+            raise
+        except (OSError, RuntimeError, UnicodeError, ValueError, TypeError, AttributeError):
+            return refused("integrated_candidate_observation_unavailable")
+
+    def _pending_integrated_cleanup_retention(
+        self, *, path: Path, branch: str, head: str,
+    ) -> dict[str, Any] | None:
+        retained = getattr(self, "_pending_integrated_candidates", {})
+        binding = retained.get(str(path))
+        if not isinstance(binding, Mapping):
+            return None
+        result = {"path": str(path), "branch": branch,
+            "reason": "pending_integrated_candidate_retained"}
+        try:
+            tasks = {task.task_id: task for task in parse_task_file(self.config.todo_path, self.config.task_prefix)}
+            expected = binding["task_cids"]
+            if (not binding.get("completed_by_callback") or not expected
+                    or path.resolve(strict=True) != path or binding["branch"] != branch or binding["head"] != head
+                    or self._git_ref_commit(path, "HEAD") != head
+                    or self._git_ref_commit(self.config.repo_root, branch) != head
+                    or any(task_id not in tasks or tasks[task_id].canonical_task_cid != cid
+                        or normalize_status(tasks[task_id].status) != "completed" for task_id, cid in expected.items())):
+                return result
+        except TimeoutError:
+            raise
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            return result
+        return None
 
     @staticmethod
     def _worktree_reconciliation_recovery_key(
@@ -17862,6 +18311,10 @@ class PortalImplementationSupervisor:
 
             branch = str(record.get("branch") or "").removeprefix("refs/heads/")
             head = str(record.get("HEAD") or "")
+            retention = self._pending_integrated_cleanup_retention(path=path_resolved, branch=branch, head=head)
+            if retention is not None:
+                skipped.append(retention)
+                continue
             cached_entry = self._worktree_scan_cache_entry(
                 scan_cache,
                 phase="cleanup",
@@ -17966,6 +18419,12 @@ class PortalImplementationSupervisor:
                     )
                     continue
 
+            # Dirt/submodule observations can be slow. A recognized pending
+            # candidate still needs its exact callback/CID/ref at deletion.
+            retention = self._pending_integrated_cleanup_retention(path=path_resolved, branch=branch, head=head)
+            if retention is not None:
+                skipped.append(retention)
+                continue
             remove = subprocess.run(
                 ["git", "worktree", "remove", "--force", str(path)],
                 cwd=repo_root,
@@ -17978,6 +18437,7 @@ class PortalImplementationSupervisor:
                 remove.returncode == 0
                 and self._worktree_branch_can_delete_after_merge(branch)
                 and branch_merged
+                and self._git_ref_commit(repo_root, branch) == head
             ):
                 delete = subprocess.run(
                     ["git", "branch", "-D", branch],
@@ -17993,6 +18453,8 @@ class PortalImplementationSupervisor:
                     "stdout": delete.stdout[-4000:],
                     "stderr": delete.stderr[-4000:],
                 }
+            if remove.returncode == 0:
+                getattr(self, "_pending_integrated_candidates", {}).pop(str(path_resolved), None)
             removed.append(
                 {
                     "path": str(path),
@@ -20817,6 +21279,19 @@ class PortalImplementationSupervisor:
         """Autonomously clean a retained generated-output transaction."""
 
         if not self._retained_generated_checkout_lease():
+            existing = read_checkout_mutation_lease(checkout_mutation_lock_path(self.config.repo_root))
+            if (existing is not None
+                    and existing.metadata.get("protected_recovery_required") is True
+                    and existing.metadata.get("protected_recovery_owner") == "implementation_daemon"):
+                # Owner-tagged journals are a union, not interchangeable guard
+                # schemas. Let Native validate/settle its own exact journal
+                # before supervisor snapshots or worktree maintenance run.
+                native = self._build_worktree_reconciliation_daemon()
+                recovery = native.reconcile_protected_checkout_recovery()
+                recovered = recovery.get("checkout_mutation_lease_recovered") is True
+                return {"attempted": True, "recovered": recovered,
+                        "retained_lease": not recovered, "native_checkout_recovery": recovery,
+                        "reason": str(recovery.get("reason") or "native_checkout_recovery_required")}
             adoption = self._adopt_supervisor_protected_recovery()
             if adoption.get("required") and adoption.get("blocked"):
                 return {
@@ -21263,6 +21738,15 @@ class PortalImplementationSupervisor:
             return False
         return active_validation_subprocess_exists(daemon_pid)
 
+    def _active_implementation_worker_alive(self) -> bool:
+        # Rescue clears implementation_in_progress before the provider or
+        # validation process exits. A quiet heartbeat is not a stall while
+        # this daemon still owns one of those descendants.
+        return bool(
+            self._active_agent_worker_processes()
+            or self._active_validation_subprocess_exists()
+        )
+
     def is_stuck(
         self,
         state: PortalTaskState,
@@ -21287,6 +21771,8 @@ class PortalImplementationSupervisor:
         progress_age = self._age_seconds(state.last_progress_at, now_ts)
         stale = self.config.stale_seconds
         if state.active_task_id and heartbeat_age > stale:
+            if self._active_implementation_worker_alive():
+                return False, ""
             return True, f"heartbeat stale for active task {state.active_task_id}"
         if (
             state.active_task_id
@@ -21297,6 +21783,8 @@ class PortalImplementationSupervisor:
         if ignore_progress_until_ts is not None and now_ts < ignore_progress_until_ts:
             return False, ""
         if state.active_task_id and state.ready_count > 0 and progress_age > stale:
+            if self._active_implementation_worker_alive():
+                return False, ""
             return True, f"no progress on active task {state.active_task_id}"
         if (
             state.active_task_id

@@ -572,6 +572,7 @@ def _retention_health(config: dict[str, Any], evidence: dict[str, Any]) -> dict[
     reasons = {
         "retained_attempt_settlement_wait": "Retained attempt settlement is unavailable; preserve its owner and attempts",
         "native_owner_retention_required": "Configured policy requires retaining the native owner",
+        "infrastructure_only_recovery": "Infrastructure diagnosis cannot restart the native owner",
         "invalid_owner_retention_policy": "Owner-retention policy is invalid; restart is refused",
     }
     return {"healthy": False, "restart_eligible": False, "status": denial,
@@ -579,8 +580,10 @@ def _retention_health(config: dict[str, Any], evidence: dict[str, Any]) -> dict[
             "owner_retention_required": owner_retention_required(config),
             "potential_repair_recommended": True,
             "repair_recommendation": (
-                "Review the invalid owner-retention configuration"
+                "Review the invalid recovery policy configuration"
                 if denial == "invalid_owner_retention_policy" else
+                "Use the bounded infrastructure repair path; native restart authority is separate"
+                if denial == "infrastructure_only_recovery" else
                 "Review retained attempt custody through its authorized native owner; preserve attempt budgets"
             ),
             "repair_authorized": False, "completion_authority": False}
@@ -618,6 +621,14 @@ def evaluate_health(config: dict[str, Any], service: dict[str, Any], evidence: d
         native_status_at >= now - config["heartbeat_timeout_seconds"]
         and (age is None or native_status_at >= now - age - 1)
     )
+    # Empty counts from a failed task-source read do not prove an empty board.
+    # A live inactive worker cannot repair missing/invalid authority by restart;
+    # keep genuine active-worker liveness and deadline checks independent.
+    source_reason = evidence.get("selection_idle_reason")
+    if (main_pid > 0 and not evidence.get("active") and isinstance(source_reason, str)
+            and (source_reason in {"todo_read_failed", "task_source_invalid"}
+                 or source_reason.startswith("task_source_read_failed:"))):
+        return decision("task_source_unavailable", "Native task source is unavailable: " + source_reason[:128])
     recovery = evidence.get("native_recovery") or {}
     if recovery.get("expired") is True:
         if recovery.get("quiescent") is True:

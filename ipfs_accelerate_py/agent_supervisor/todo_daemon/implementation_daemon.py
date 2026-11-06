@@ -3062,7 +3062,7 @@ STALE_PROPOSAL_REPLAY_REARM_POLICY_REVISION = (
     "ipfs_accelerate_py.agent_supervisor.ordinary-stale-proposal-replay-rearm@1"
 )
 VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION = (
-    "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@2"
+    "ipfs_accelerate_py.agent_supervisor.validation-obsolescence-rearm@3"
 )
 # Caller evidence acquisition only; no retry, provider, runtime or model budget changes.
 VALIDATION_REARM_FLOOR_MAX_JOURNAL_FILES = 64
@@ -5884,6 +5884,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         """Preserve daemon grammar while consuming one canonical source row."""
 
         body = dict(task.body)
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        packet_required = execution_packet_required(body)
         provenance = body.get("provenance")
         metadata: dict[str, str] = {
             str(key).strip().lower().replace("_", " "): cls._task_source_metadata_text(
@@ -5892,6 +5894,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for key, value in body.items()
             if str(key).strip()
         }
+        if packet_required:
+            metadata["execution packet required"] = "true"
         if isinstance(provenance, Mapping):
             for key, value in provenance.items():
                 metadata.setdefault(
@@ -11054,6 +11058,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             return result
 
+        settlement = self.reconcile_protected_checkout_recovery()
+        if settlement.get("required") and not settlement.get("checkout_mutation_lease_recovered"):
+            return {"reconciled": False, "blocked": True,
+                    "reason": "protected_completion_journal_settlement_required", "settlement": settlement}
         state = PortalTaskState.load(self.state_path)
         lifecycle_preflight = self._reconcile_quiesced_worktree_lifecycle(
             state,
@@ -12461,6 +12469,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             returncode = 0
         return returncode != 0
 
+    def _validation_obsolescence_output_digest(self, task: PortalTask) -> str:
+        """Hash declared outputs so a real repair can earn one new budget.
+
+        Missing and present files stay distinct. The same bytes keep the same
+        digest, so a restart cannot mint another paid attempt.
+        """
+
+        digest = hashlib.sha256()
+        root = Path(self.repo_root)
+        for relative in task_declared_output_paths(task):
+            digest.update(relative.encode("utf-8"))
+            digest.update(b"\0")
+            path = root / relative
+            try:
+                payload = path.read_bytes()
+            except OSError:
+                digest.update(b"missing")
+            else:
+                digest.update(b"present")
+                digest.update(payload)
+            digest.update(b"\0")
+        return "sha256:" + digest.hexdigest()
+
     def _rearm_attempt_limited_obsoleted_validation_tasks(
         self,
         state: PortalTaskState,
@@ -12487,6 +12518,128 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # source-hash-only recovery path cannot authorize a counter change.
         automatic_retry_rearm_enabled()
         return []
+
+    def _rearm_declared_output_validation_exhausted_tasks(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+        resolved_statuses: Mapping[str, str],
+        *,
+        recovery_revision: str,
+    ) -> list[dict[str, Any]]:
+        """Grant one budget when declared outputs change after validation failure.
+
+        This is separate from _rearm_attempt_limited_obsoleted_validation_tasks.
+        A source revision alone does not reset spent attempts. The supervisor
+        calls this method only after validation-failure evidence exists. The
+        same canonical task is granted once per recovery revision and once per
+        digest of its declared outputs. Repeating those bytes does not earn
+        another budget. The receipt records output_digest so a later attempt
+        floor treats the grant as authorized budget instead of a source-only
+        receipt that must be spent again.
+        """
+
+        if not automatic_retry_rearm_enabled():
+            return []
+        revision = str(recovery_revision or "").strip()
+        if self.max_task_attempts <= 0 or not revision:
+            return []
+        active_task_id = (
+            str(state.active_task_id or "").strip()
+            if state.implementation_in_progress
+            else ""
+        )
+        identities = {
+            task.task_id: self._identity_for_task(task) for task in tasks
+        }
+        aliases_by_cid: dict[str, list[str]] = {}
+        for task_id, identity in identities.items():
+            aliases_by_cid.setdefault(
+                identity.canonical_task_cid, []
+            ).append(task_id)
+
+        rearmed: list[dict[str, Any]] = []
+        queue_changed = False
+        for task in tasks:
+            if (
+                task.task_id == active_task_id
+                or resolved_statuses.get(task.task_id) != "ready"
+                or is_retry_budget_repair_task(task)
+            ):
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+            if not self._task_has_validation_command_failure_evidence(task):
+                continue
+            identity = identities[task.task_id]
+            output_digest = self._validation_obsolescence_output_digest(task)
+            fingerprint_payload = {
+                "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "output_digest": output_digest,
+            }
+            fingerprint = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            prior = state.validation_obsolescence_rearm_receipts.setdefault(
+                identity.canonical_task_cid,
+                [],
+            )
+            if fingerprint in prior:
+                continue
+            previous_display_counts = {
+                alias: int(state.implementation_attempts.pop(alias, 0) or 0)
+                for alias in aliases_by_cid.get(
+                    identity.canonical_task_cid,
+                    [task.task_id],
+                )
+            }
+            previous_canonical_count = int(
+                state.implementation_attempts_by_cid.pop(
+                    identity.canonical_task_cid,
+                    0,
+                )
+                or 0
+            )
+            queue_changed = (
+                self.task_queue.reset_retry_state(identity.canonical_task_cid)
+                or queue_changed
+            )
+            prior.append(fingerprint)
+            rearmed.append(
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "previous_attempt_count": attempt_count,
+                    "previous_display_attempt_counts": previous_display_counts,
+                    "previous_canonical_attempt_count": previous_canonical_count,
+                    "recovery_revision": revision,
+                    "output_digest": output_digest,
+                    "rearm_fingerprint": fingerprint,
+                }
+            )
+        if not rearmed:
+            return []
+        state.last_progress_at = utc_now()
+        state.save(self.state_path)
+        if queue_changed:
+            self.task_queue.save()
+        self._record_event(
+            "ordinary_task_validation_obsolescence_rearmed",
+            {
+                "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
+                "recovery_revision": revision,
+                "rearmed_count": len(rearmed),
+                "rearmed": rearmed,
+            },
+        )
+        return rearmed
 
     def _restore_consumed_validation_rearm_attempt_floors(
         self,
@@ -12557,18 +12710,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     if type(fingerprint) is not str or fingerprint not in required[cid]:
                         continue
                     revision = event.get("recovery_revision")
-                    expected = "sha256:" + hashlib.sha256(json.dumps({
+                    legacy_payload = {
                         "schema": VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION,
                         "recovery_revision": revision,
                         "canonical_task_cid": cid,
-                    }, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+                    }
+                    expected = "sha256:" + hashlib.sha256(json.dumps(
+                        legacy_payload, sort_keys=True, separators=(",", ":"),
+                    ).encode("utf-8")).hexdigest()
+                    output_digest = item.get("output_digest")
+                    digest_expected = ""
+                    if type(output_digest) is str and output_digest.startswith("sha256:"):
+                        digest_expected = "sha256:" + hashlib.sha256(json.dumps(
+                            {**legacy_payload, "output_digest": output_digest},
+                            sort_keys=True, separators=(",", ":"),
+                        ).encode("utf-8")).hexdigest()
+                    # A declared-output rearm is authorized new budget. It must
+                    # not be replayed as a source-only receipt that restores
+                    # the spent count, and a legacy fingerprint mismatch still
+                    # fails closed.
+                    authorized_output_rearm = bool(digest_expected) and fingerprint == digest_expected
                     count = item.get("previous_attempt_count")
                     canonical = item.get("previous_canonical_attempt_count")
                     display = item.get("previous_display_attempt_counts")
                     if (event.get("schema") != VALIDATION_OBSOLESCENCE_REARM_POLICY_REVISION
                             or type(revision) is not str or not revision
                             or item.get("recovery_revision") != revision
-                            or fingerprint != expected or fingerprint in matches[cid]
+                            or (fingerprint != expected and not authorized_output_rearm)
+                            or fingerprint in matches[cid]
                             or type(count) is not int or count <= 0
                             or type(canonical) is not int or not 0 <= canonical <= count
                             or type(display) is not dict or not display
@@ -12578,7 +12747,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             or any(type(value) is not int or not 0 <= value <= count for value in display.values())
                             or max([canonical, *display.values()]) != count):
                         raise CursorReplayError("validation attempt floor rearm witness is invalid")
-                    matches[cid][fingerprint] = (sequence, count)
+                    matches[cid][fingerprint] = (sequence, 0 if authorized_output_rearm else count)
             elif event.get("type") == "task_retry_budget_reset":
                 resets = event.get("resets")
                 if type(resets) is not list or any(type(reset) is not dict for reset in resets):
@@ -21630,6 +21799,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation path stays free of hard import failures at module load.
         """
 
+        from ..task_sources.execution_packet_admission import execution_packet_required_metadata
+        if execution_packet_required_metadata(task.metadata):
+            return {"skip_provider": True, "provider_authorized": False,
+                    "disposition": "defer_capability", "reason_code": "execution_packet_metadata_has_no_provider_authority",
+                    "receipt_cid": "", "event": {"task_id": task.task_id, "attempt": int(attempt)}}
         try:
             from .pre_implementation_provider_gate import (
                 evaluate_provider_gate,
@@ -47676,12 +47850,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ]
         except (OSError, TypeError, ValueError):
             pass
+        review_input = dict(result)
+        if proposal_validation is not None and review_input.get("proposal_validation") is proposal_validation:
+            from ..validation.proposal_validation import ProposalValidationResult
+
+            gate = review_input.get("proposal_gate")
+            paths = gate.get("changed_paths") if type(gate) is dict else None
+            if (type(proposal_validation) is ProposalValidationResult
+                    and type(paths) in (list, tuple)
+                    and len(paths) <= 128
+                    and all(type(path) is str for path in paths)
+                    and tuple(paths) == proposal_validation.proposal.changed_paths):
+                # This exact live object is an in-process candidate-binding
+                # seam, not an opaque diagnostic projection. Review the
+                # compact proposal gate without changing the returned binding.
+                # Keep the key so absent/malformed gate paths cannot fall back
+                # to selection's read-only validation impact paths.
+                review_input["proposal_validation"] = None
         review = review_implementation_failure(
             task_id=task.task_id,
             attempt=int(attempt),
             expected_outputs=expected_outputs,
             validation_commands=tuple(task.validation),
-            validation_result=result,
+            validation_result=review_input,
             workspace_path=workspace_path,
             log_excerpt=log_excerpt,
             proposal_accepted=proposal_accepted,
@@ -48173,6 +48364,122 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             replayable.add(proposal_id)
         return tuple(sorted(replayable))
 
+    def _current_admitted_test_failure(
+        self,
+        result: Mapping[str, Any],
+        *,
+        task: PortalTask,
+        workspace_path: Path,
+        baseline_ref: str,
+    ) -> bool:
+        """Prove that staging alone cannot repair this current test failure.
+
+        This is only a rescue optimization. It never admits failed validation
+        and deliberately leaves unknown, stale, or preflight evidence alone.
+        """
+
+        from ..validation.proposal_validation import ProposalValidationResult
+
+        live = result.get("proposal_validation")
+        gate = result.get("proposal_gate")
+        failed_tests = result.get("failed_tests")
+        failed_commands = result.get("failed_commands")
+        if not (
+            type(live) is ProposalValidationResult
+            and live.accepted is True
+            and type(gate) is dict
+            and gate.get("accepted") is True
+            and gate.get("proposal_id") == live.proposal.proposal_id
+            and gate.get("receipt_id") == live.receipt.receipt_id
+            and type(gate.get("changed_paths")) in (list, tuple)
+            and len(gate["changed_paths"]) <= 128
+            and all(type(path) is str for path in gate["changed_paths"])
+            and tuple(gate["changed_paths"]) == live.proposal.changed_paths
+            and live.proposal.task_id == task.task_id
+            and live.proposal.repository_tree_id == baseline_ref
+            and result.get("passed") is False
+            and result.get("attempted") is True
+            and result.get("error") == "validation_command_failed"
+            and result.get("source_unchanged") is not False
+            and type(failed_tests) in (list, tuple)
+            and 0 < len(failed_tests) <= 128
+            and all(type(node) is str and "::" in node for node in failed_tests)
+            and type(failed_commands) in (list, tuple)
+            and 0 < len(failed_commands) <= 128
+            and all(type(command) is str for command in failed_commands)
+        ):
+            return False
+        rows = result.get("results")
+        exception_types = result.get("exception_types")
+        assertion_error = (
+            type(exception_types) in (list, tuple)
+            and "AssertionError" in exception_types
+        )
+        if type(rows) not in (list, tuple) or not 0 < len(rows) <= 128 or not any(
+            type(row) is dict
+            and type(row.get("returncode")) is int
+            and row["returncode"] > 0
+            and row.get("command") in failed_commands
+            and all(row.get(key) is False for key in (
+                "cache_hit", "timed_out"
+            ))
+            and type(row.get("validation_python_launcher")) is dict
+            and row["validation_python_launcher"].get("sealed") is True
+            and (
+                row.get("infrastructure_failure") is False
+                or ("infrastructure_failure" not in row
+                    and "native_executor_failure" not in row
+                    and row.get("error") in (None, "")
+                    and assertion_error)
+            )
+            and (
+                "native_executor_failure" not in row
+                or row["native_executor_failure"] is False
+                or (type(row["native_executor_failure"]) is dict
+                    and row["native_executor_failure"] == {"returncode": 1}
+                    and row.get("error") == "failed_assertion")
+            )
+            and all(type(row.get(key)) is str and row[key] for key in (
+                "started_at", "finished_at"
+            ))
+            and row.get("source_unchanged") is not False
+            and row.get("error") in (None, "", "failed_assertion")
+            and (row.get("error") == "failed_assertion" or assertion_error)
+            for row in rows
+        ):
+            return False
+        expected = task_declared_output_paths(task)
+        entries = live.proposal.candidate_diff
+        if not expected or len(expected) > 128 or not entries or len(entries) > 128:
+            return False
+        try:
+            for relative in expected:
+                if type(relative) is not str:
+                    return False
+                target = workspace_path / relative
+                if (not self._repo_relative_path_safe(relative)
+                        or self._path_crosses_live_symlink(workspace_path, relative)
+                        or target.is_symlink() or not target.is_file()):
+                    return False
+            for entry in entries:
+                relative = entry.new_path
+                source = entry.after_source
+                if type(relative) is not str:
+                    return False
+                target = workspace_path / relative
+                if (not self._repo_relative_path_safe(relative)
+                        or self._path_crosses_live_symlink(workspace_path, relative)
+                        or type(source) is not str
+                        or target.is_symlink() or not target.is_file()):
+                    return False
+                encoded = source.encode("utf-8")
+                with target.open("rb") as handle:
+                    if handle.read(len(encoded) + 1) != encoded:
+                        return False
+        except (OSError, UnicodeError, ValueError):
+            return False
+        return True
+
     def _automatic_implementation_rescue(
         self,
         *,
@@ -48305,6 +48612,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 expected_outputs_present_on_disk=present,
                 dirty_in_scope_paths=dirty,
                 missing_expected_outputs=missing,
+                current_admitted_test_failure=self._current_admitted_test_failure(
+                    result, task=task, workspace_path=workspace_path,
+                    baseline_ref=baseline_ref,
+                ),
                 # This method runs before commit, merge queue admission, or
                 # any accepted transition. Candidate edits in the fenced
                 # worktree are not authoritative effects.
@@ -50066,7 +50377,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "returncode": int(completed.returncode),
             "output": output,
         }
-        if sys.platform != "linux":
+        if sys.platform == "linux":
+            # Expose the original report only after the native subreaper and
+            # process-group stream checks above have actually returned.
+            result["validation_process_custody"] = {
+                "schema": "native-validation-process-custody/v1", "supported": True,
+                **report,
+            }
+        else:
             result["validation_process_custody"] = {"supported": False, "scope": "direct_process_only"}
         if launcher_receipt is not None:
             result["validation_python_launcher"] = {
@@ -55028,10 +55346,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
         if not callable(has_pending):
             return False
-        if not (
-            has_pending(self._canonical_ref(task))
-            or has_pending(task.task_id)
-        ):
+        if not has_pending(self._canonical_ref(task)):
             return False
         queued_commits = {
             str(item.get("implementation_commit") or "")
@@ -61092,6 +61407,298 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "intent": dict(intent),
         }
 
+    def _obsolete_protected_completion_proof(self, lease):
+        """Prove a later Native completion supersedes this exact old journal.
+
+        This is settlement of an obsolete transaction, not approval of its
+        protected history and not a new completion decision.
+        """
+        from ..merge.merge_queue import completed_request_digest
+        from ..merge.merge_train import MergeTrain
+        from types import SimpleNamespace
+
+        def require(condition, reason):
+            if not condition:
+                raise ValueError(reason)
+
+        observations = {}
+        def read_record(path):
+            path = Path(path)
+            require(path.resolve() == path and not path.is_symlink(), "record_path_alias")
+            before = path.stat()
+            require(stat_module.S_ISREG(before.st_mode) and before.st_uid == os.getuid()
+                    and before.st_nlink == 1 and before.st_size <= 20_000_000, "record_identity")
+            raw = path.read_bytes()
+            after = path.stat()
+            identity = lambda st: [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns]
+            require(identity(before) == identity(after), "record_changed")
+            observations[str(path)] = {"identity": identity(after), "sha256": hashlib.sha256(raw).hexdigest()}
+            value = json.loads(raw)
+            require(isinstance(value, dict), "record_not_mapping")
+            return value
+
+        root = self.repo_root.resolve()
+        metadata = dict(lease.metadata)
+        activity_error = self._protected_checkout_recovery_activity_error()
+        require(not activity_error, activity_error)
+        implementation_path = self._implementation_lock_path()
+        if os.path.lexists(implementation_path):
+            read_record(implementation_path)
+        require(metadata.get("protected_recovery_owner") == "implementation_daemon"
+                and metadata.get("protected_recovery_required") is True
+                and metadata.get("operation") == "mark_tasks_completed", "journal_owner_or_operation")
+        owner_pid = int(metadata.get("pid") or 0)
+        require(owner_pid > 0 and not process_is_running(owner_pid)
+                and not self._lock_owner_is_active(metadata, expected_kind="merge"), "journal_owner_active")
+        guard = metadata.get("protected_release_guard")
+        intent = metadata.get("protected_recovery_intent")
+        require(isinstance(guard, Mapping) and isinstance(intent, Mapping), "journal_payload_missing")
+        require(guard.get("schema") == "ipfs_accelerate_py.agent_supervisor.protected-checkout-release-guard@1"
+                and intent.get("schema") == "ipfs_accelerate_py.agent_supervisor.protected-checkout-recovery-intent@1",
+                "journal_schema_unknown")
+        # Historical Native completion journals used worktree_root while their
+        # generic repo_root field was empty. Accept only that exact repo-bound
+        # Native variant; never resolve an empty path against the caller cwd.
+        validation_metadata = dict(metadata)
+        if not str(metadata.get("repo_root") or ""):
+            require(Path(str(metadata.get("worktree_root") or "")).resolve() == root
+                    and metadata.get("repository_id") == checkout_repository_id(root), "legacy_repository_binding")
+            validation_metadata["repo_root"] = str(root)
+        paths = self._recovery_lock_paths(metadata)
+        require(paths and not self._protected_recovery_journal_validation_error(
+            validation_metadata, paths, guard, intent), "journal_binding_invalid")
+        require(intent.get("operation") == "mark_tasks_completed", "intent_operation")
+        old_completion = intent.get("completion_intent")
+        expectation = intent.get("callback_expectation")
+        require(isinstance(old_completion, Mapping) and isinstance(expectation, Mapping), "completion_binding_missing")
+        require(old_completion.get("schema") == "ipfs_accelerate_py.agent_supervisor.completion-publication-intent@1",
+                "completion_schema_unknown")
+        sink = self._validated_completion_publication_sink(old_completion, recovery_metadata=metadata)
+        require(Path(str(sink["state_path"])) == self.state_path.resolve()
+                and Path(str(sink["state_dir"])) == self.state_path.resolve().parent, "state_sink_mismatch")
+        board = expectation.get("task_board")
+        require(isinstance(board, Mapping) and Path(str(board.get("path") or "")).resolve() == self.todo_path.resolve(),
+                "board_binding_mismatch")
+        require(tuple(paths) == (self.todo_path.resolve(),), "unacknowledged_protected_paths")
+        members = expectation.get("members")
+        require(isinstance(members, list) and members, "members_missing")
+        member_map = {str(m.get("task_id") or ""): dict(m) for m in members if isinstance(m, Mapping)}
+        require(len(member_map) == len(members) and set(member_map) == set(expectation.get("task_ids", ()))
+                and all(member_map), "members_invalid")
+        current_tasks = {task.task_id: task for task in self._load_tasks()}
+        for task_id, member in member_map.items():
+            task = current_tasks.get(task_id)
+            require(task is not None and normalize_status(task.status) == "completed", "member_not_completed")
+            identity = self._identity_for_task(task)
+            require(identity.canonical_task_cid == member.get("canonical_task_cid")
+                    and identity.canonical_task_key == member.get("canonical_task_key")
+                    and identity.board_namespace == member.get("board_namespace"), "member_revision_changed")
+        require(self._manual_completion_authority_rejection(member_map) is None, "manual_completion_authority_required")
+        primary = str(intent.get("task_id") or "")
+        require(primary in member_map and metadata.get("task_id") == primary, "primary_task_mismatch")
+        old_payload = old_completion["completion_payload"]
+        require(old_payload.get("task_id") == primary
+                and old_payload.get("task_cid") == member_map[primary]["canonical_task_cid"], "old_completion_task_mismatch")
+        head = self._implementation_protected_git_head(root)
+        old_tree = str(old_payload.get("merged_tree_id") or "")
+        def git(*args):
+            result = subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, check=False)
+            require(result.returncode == 0, "git_evidence_unavailable")
+            return result.stdout.strip()
+        def ancestor(before, after):
+            require(bool(before and after), "integration_missing")
+            git("merge-base", "--is-ancestor", before, after)
+        relative_board = self.todo_path.resolve().relative_to(root).as_posix()
+        records = guard.get("paths") or []
+        require(len(records) == 1 and records[0].get("path") == relative_board, "old_guard_scope_mismatch")
+        repositories = records[0].get("repositories") or []
+        require(len(repositories) == 1 and repositories[0].get("repository") == "."
+                and repositories[0].get("target") == relative_board
+                and repositories[0].get("head") == old_tree, "old_guard_integration_mismatch")
+        before_board = subprocess.check_output(["git", "show", old_tree + ":" + relative_board], cwd=root)
+        require(records[0].get("content") == {"exists": True, "size": len(before_board),
+                "sha256": hashlib.sha256(before_board).hexdigest()}, "old_guard_content_mismatch")
+        expected_lines = before_board.decode("utf-8").splitlines(keepends=True)
+        delta = self._mark_tasks_completed_in_locked_lines(expected_lines,
+            target_task_ids=list(member_map), primary_task_id=primary,
+            completion_reason="obsolete_journal_scope_verification", bundle_work_order=None)
+        require(not delta.get("missing_task_ids") and not delta.get("missing_status_task_ids")
+                and "".join(expected_lines).encode("utf-8") == self.todo_path.read_bytes(),
+                "unacknowledged_protected_board_changes")
+        requests = self.merge_queue.completed_requests(limit=128, metadata_schema="ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            canonical_task_id=member_map[primary]["canonical_task_cid"])
+        matches = []
+        for request in requests:
+            meta = request.metadata
+            if request.task_id != primary or meta.get("completion_task_cids") != {
+                    task_id: member["canonical_task_cid"] for task_id, member in member_map.items()}:
+                continue
+            if Path(str(meta.get("repo_root") or "")).resolve() != root or Path(str(meta.get("todo_path") or "")).resolve() != self.todo_path.resolve():
+                continue
+            require(request.canonical_task_id == member_map[primary]["canonical_task_cid"]
+                    and request.canonical_task_key == member_map[primary]["canonical_task_key"]
+                    and meta.get("target_repository_id") == checkout_repository_id(root)
+                    and meta.get("target_branch") == self.resolved_merge_target_branch
+                    and Path(str(meta.get("state_path") or "")).resolve() == self.state_path.resolve(), "request_scope_mismatch")
+            validation = meta.get("validation_proof") or {}
+            require(validation.get("passed") is True and validation.get("attempted") is True
+                    and validation.get("target_commit") == request.commit_sha
+                    and validation.get("target_tree") == git("rev-parse", request.commit_sha + "^{tree}")
+                    and validation.get("results") and all(r.get("returncode") == 0 and not r.get("timed_out")
+                        for r in validation["results"]), "candidate_validation_missing")
+            require(git("diff", "--name-only", str(meta.get("baseline_ref") or ""), request.commit_sha), "empty_candidate")
+            key = MergeTrain._dedupe_key(SimpleNamespace(queue=self.merge_queue), request.canonical_identity, request.commit_sha)
+            train_path = Path(self.merge_queue_dir).resolve() / "train" / "receipts" / (key + ".json")
+            train = read_record(train_path)
+            require(train.get("request_id") == request.request_id and train.get("accepted") is True
+                    and train.get("commit_sha") == request.commit_sha and train.get("task_id") == primary,
+                    "train_acceptance_mismatch")
+            merged = train.get("merge_result") or {}
+            target = str(merged.get("merge_commit") or "")
+            require(merged.get("returncode") == 0 and merged.get("merged") is True, "successor_not_integrated")
+            integration = merged.get("integration_commit_proof") or {}
+            require(integration.get("passed") is True and integration.get("implementation_commit") == request.commit_sha
+                    and integration.get("integration_commit") == target, "successor_integration_mismatch")
+            ancestor(request.commit_sha, old_tree); ancestor(old_tree, target); ancestor(target, head)
+            callback = merged.get("todo_update_result") or {}
+            post = callback.get("protected_board_postcondition") or {}
+            release = post.get("release_proof") or {}
+            require(callback.get("durable") is True and post.get("checked") is True
+                    and post.get("clean") is True and post.get("trusted") is True
+                    and release.get("trusted") is True and release.get("clean") is True
+                    and release.get("reason") == "protected_outputs_exact_pre_state", "successor_callback_not_durable")
+            fresh_expectation = json.loads(json.dumps(expectation))
+            for member in fresh_expectation["members"]:
+                member["initial_status"] = "completed"
+            fresh_expectation.pop("expectation_id", None)
+            fresh_expectation["expectation_id"] = content_identity(fresh_expectation)
+            evidence = self._completion_callback_evidence(fresh_expectation, callback)
+            require(evidence is not None and evidence == callback.get("completion_callback_evidence"), "successor_member_evidence_mismatch")
+            for receipt in callback.get("completion_receipts", ()):
+                member = member_map.get(str(receipt.get("task_id") or ""))
+                require(member and all(receipt.get(k) == member.get(k) for k in
+                        ("canonical_task_cid", "canonical_task_key", "board_namespace")), "successor_member_revision_mismatch")
+            relative = self.todo_path.resolve().relative_to(root).as_posix()
+            require(not self._dirty_implementation_protected_paths(paths)
+                    and not git("log", "--format=%H", target + ".." + head, "--", relative)
+                    and self.todo_path.read_bytes() == subprocess.check_output(["git", "show", target + ":" + relative], cwd=root),
+                    "current_protected_board_changed")
+            histories = release.get("histories") or []
+            require(len(histories) == 1 and histories[0].get("repository") == "."
+                    and histories[0].get("target") == relative
+                    and histories[0].get("before_head") == histories[0].get("after_head") == target
+                    and not histories[0].get("commits"), "successor_guard_scope_mismatch")
+            successor = json.loads(json.dumps(old_completion))
+            payload = successor["completion_payload"]
+            payload["merged_tree_id"] = target
+            payload["post_merge_evidence"] = {**dict(meta.get("production_reviewed_evidence") or {}),
+                "passed": True, "completion_authoritative": True, "repository_tree_id": target,
+                "merge_result": {k: merged.get(k) for k in ("merged", "already_merged", "reason", "merge_commit")}}
+            successor.pop("intent_id", None); successor["intent_id"] = content_identity(successor)
+            publication = callback.get("completion_publication") or {}
+            require(publication.get("intent_id") == successor["intent_id"]
+                    and publication.get("queue_task_cid") == member_map[primary]["canonical_task_cid"]
+                    and publication.get("sink_id") == sink["sink_id"], "successor_intent_mismatch")
+            pub_path = self._completion_publication_record_path(sink, successor["intent_id"])
+            published = self._validated_completion_publication_record(read_record(pub_path),
+                intent_id=successor["intent_id"], sink_id=str(sink["sink_id"]))
+            require(published is not None and published.get("queue_recorded") is True
+                    and published["publication"] == publication, "successor_publication_missing")
+            matches.append({"request_id": request.request_id, "completed_request_digest": completed_request_digest(request),
+                "candidate_commit": request.commit_sha, "successor_integration": target,
+                "successor_publication": publication, "train_path": str(train_path)})
+        require(len(matches) == 1, "successor_missing_or_ambiguous")
+        require(read_record(lease.lock_path) == metadata, "journal_preimage_changed")
+        raw_journal = lease.lock_path.read_bytes()
+        require(hashlib.sha256(raw_journal).hexdigest() == observations[str(lease.lock_path)]["sha256"]
+                and json.loads(raw_journal) == metadata, "journal_preimage_changed")
+        queue = PersistentTaskQueue.load(Path(str(sink["task_queue_path"])))
+        queue_entry = queue.entries.get(queue.resolve_key(str(old_completion["queue_task_cid"])))
+        require(queue_entry is not None and queue_entry.last_completed_at > 0, "successor_queue_ack_missing")
+        return {"schema": "ipfs_accelerate_py.agent_supervisor.obsolete-completion-journal-settlement@1",
+            "repository_id": checkout_repository_id(root), "old_lease_id": lease.lease_id,
+            "old_lease_device": lease.device, "old_lease_inode": lease.inode,
+            "old_journal": metadata, "old_journal_raw_hex": raw_journal.hex(), "old_guard_trusted": False,
+            "members": members, "current_head": head, "successor": matches[0],
+            "observations": observations, "completion_authority": False, "attempt_refunded": False}
+
+    def reconcile_obsolete_protected_completion_journal(self):
+        """Retire only a dead, exactly superseded Native completion journal."""
+        lease = read_checkout_mutation_lease(self._repo_merge_lock_path())
+        if lease is None or lease.metadata.get("protected_recovery_required") is not True:
+            return {"required": False, "recovered": False}
+        blocked = {"required": True, "recovered": False, "checkout_mutation_lease_retained": True}
+        try:
+            proof = self._obsolete_protected_completion_proof(lease)
+            proof_id = content_identity(proof)
+            archive_key = hashlib.sha256((str(proof["repository_id"]) + "\0" + lease.lease_id).encode()).hexdigest()
+            archive = self.state_path.resolve().parent / "protected-checkout-settlements" / (archive_key + ".json")
+            archive.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if archive.parent.is_symlink() or archive.parent.resolve() != archive.parent:
+                raise ValueError("settlement_archive_path_alias")
+            with serialized_lock_update(archive):
+                prior = load_json_dict(archive)
+                if prior is not None and (prior.get("proof") != proof or prior.get("retired") is True):
+                    raise ValueError("settlement_archive_changed_or_journal_replayed")
+                if prior is None:
+                    write_json_atomic(archive, {"proof": proof, "settlement_id": proof_id, "retired": False})
+            if self._obsolete_protected_completion_proof(lease) != proof:
+                raise ValueError("settlement_evidence_changed")
+            if process_is_running(int(lease.metadata.get("pid") or 0)):
+                raise ValueError("journal_owner_active")
+            if not release_checkout_mutation_lease(lease, require_exact_metadata=True):
+                raise ValueError("settlement_lease_cas_failed")
+            write_json_atomic(archive, {"proof": proof, "settlement_id": proof_id, "retired": True})
+            result = {"required": True, "recovered": True, "checkout_mutation_lease_recovered": True,
+                "checkout_mutation_lease_retained": False, "reason": "obsolete_completion_journal_settled",
+                "settlement_id": proof_id, "settlement_path": str(archive),
+                "old_guard_trusted": False, "completion_authority": False, "attempt_refunded": False}
+            self._record_event("obsolete_completion_journal_settled", result)
+            return result
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError, subprocess.SubprocessError, TaskSourceError) as exc:
+            return {**blocked, "blocked": True, "reason": "obsolete_completion_journal_unsettled", "error": str(exc)[-1000:]}
+
+    def _protected_checkout_recovery_activity_error(self) -> str:
+        """Observe real workers, allowing only this caller's maintenance lease."""
+        if self._current_checkout_mutation_lease() is not None:
+            return "current_checkout_transaction"
+        if self._find_live_inflight_implementation() is not None:
+            return "implementation_worker_active"
+        path = self._implementation_lock_path()
+        if not os.path.lexists(path):
+            return ""
+        implementation = load_json_dict(path)
+        if not isinstance(implementation, Mapping):
+            return "implementation_lease_owner_unknown"
+        pid = int(implementation.get("pid") or 0)
+        if pid <= 0:
+            return "implementation_lease_owner_unknown"
+        if not process_is_running(pid):
+            return ""
+        # An exclusive supervisor maintenance lease is not a provider or
+        # validation worker. In particular, a live attempt-zero lease is not
+        # inferred idle merely because paid-attempt events do not include it.
+        own_maintenance = (
+            pid == os.getpid()
+            and implementation.get("kind") == "implementation"
+            and implementation.get("lease_role") == "supervisor_maintenance"
+            and bool(implementation.get("lease_id"))
+            and Path(str(implementation.get("repo_root") or "")).resolve() == self.repo_root.resolve()
+            and Path(str(implementation.get("state_path") or "")).resolve() == self.state_path.resolve()
+            and Path(str(implementation.get("state_dir") or "")).resolve() == self.state_path.resolve().parent)
+        return "" if own_maintenance else "implementation_worker_active"
+
+    def reconcile_protected_checkout_recovery(self) -> dict[str, Any]:
+        """Resolve the Native owner's retained journal before other recovery."""
+        try:
+            error = self._protected_checkout_recovery_activity_error()
+        except (OSError, ValueError, TypeError, RuntimeError, TaskSourceError):
+            error = "implementation_activity_unavailable"
+        if error:
+            return {"required": True, "blocked": True, "recovered": False,
+                    "reason": error, "checkout_mutation_lease_retained": True}
+        return self._recover_protected_checkout_mutation()
+
     def _recover_protected_checkout_mutation(self) -> dict[str, Any]:
         """Autonomously finish a retained protected generated-file mutation."""
 
@@ -61161,6 +61768,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         **authority_rejection,
                     }
 
+        settlement = self.reconcile_obsolete_protected_completion_journal()
+        if settlement.get("checkout_mutation_lease_recovered"):
+            return settlement
         adoption = self._adopt_protected_checkout_recovery()
         if not adoption.get("required", False):
             return {"required": False, "recovered": False}
@@ -69399,7 +70009,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         all_tasks: Sequence[PortalTask] | None = None,
         downstream_unlock_by_task: Mapping[str, int] | None = None,
     ) -> PortalTask | None:
-        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        from ..task_sources.execution_packet_admission import execution_packet_required_metadata
+        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"
+                 and not execution_packet_required_metadata(task.metadata)]
         if self.manual_completion_authority_revalidation_only:
             ready = [
                 task
@@ -74385,6 +74997,7 @@ class DatabaseImplementationDaemon:
             repository_tree_id=repository_tree_id,
             plan_root_cid=plan_root_cid,
         )
+        from ..task_sources.execution_packet_admission import execution_packet_required
         registered: list[str] = []
         for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
             deps = tuple(str(dep) for dep in task.dependencies)
@@ -74396,6 +75009,7 @@ class DatabaseImplementationDaemon:
                     "task_alias": task.task_alias,
                     "status": task.status,
                     "priority": task.priority,
+                    **({"execution_packet_required": True} if execution_packet_required(task.body) else {}),
                 },
             )
             registered.append(task.task_cid)
@@ -74412,8 +75026,12 @@ class DatabaseImplementationDaemon:
         ready = self.task_source.ready_tasks(
             limit=TASK_SOURCE_QUERY_LIMIT, **self._positive_claim_selection(),
         )
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        self._required_execution_packet_tasks = set()
         registered: list[str] = []
         for task in ready.tasks:
+            if execution_packet_required(task.body):
+                self._required_execution_packet_tasks.add(task.task_cid)
             status = str(task.status or "").strip().lower()
             if status in {"completed", "complete", "done", "skipped", "cancelled"}:
                 continue
@@ -74442,7 +75060,8 @@ class DatabaseImplementationDaemon:
                 task_cid=task.task_cid,
                 task_id=task.task_alias or task.task_cid,
                 dependency_task_cids=tuple(live_deps),
-                body={"task_alias": task.task_alias, "status": task.status},
+                body={"task_alias": task.task_alias, "status": task.status,
+                      **({"execution_packet_required": True} if execution_packet_required(task.body) else {})},
             )
             readiness = self.coordinator.claimability(task.task_cid)
             if str(readiness.get("completion_status") or "") == "failed":
@@ -75622,6 +76241,8 @@ class DatabaseImplementationDaemon:
         excluded.update(self._automatic_claim_exclusions())
         parked_goals: set[str] = set()
 
+        packet_denials: dict[str, str] = {}
+
         def accept_task_cid(task_cid: str) -> bool:
             record = self.task_source.get(task_cid)
             self._shutdown_boundary()
@@ -75632,6 +76253,13 @@ class DatabaseImplementationDaemon:
             if self._task_goal_is_inconclusive(record):
                 parked_goals.add(task_cid)
                 return False
+            from ..task_sources.execution_packet_admission import execution_packet_required, NativeExecutionPacketAuthority, ExecutionPacketAdmissionError
+            if execution_packet_required(getattr(record, "body", {})) and self._typed_quack_authority_binding is None:
+                try:
+                    NativeExecutionPacketAuthority(self.task_source.intent).require(task_cid, phase="claim")
+                except (ExecutionPacketAdmissionError, AttributeError) as exc:
+                    packet_denials[task_cid] = str(exc)
+                    return False
             return str(record.status or "").strip().lower() in _DATABASE_CONTROL_READY_STATUSES
 
         self._shutdown_boundary()
@@ -75640,12 +76268,17 @@ class DatabaseImplementationDaemon:
         )
         if claim is None:
             self._shutdown_boundary()
+            packet_options = {}
+            if self._typed_quack_authority_binding is None and getattr(self, "_required_execution_packet_tasks", set()):
+                from ..task_sources.execution_packet_admission import NativeExecutionPacketAuthority
+                packet_options["execution_packet_authority"] = NativeExecutionPacketAuthority(self.task_source.intent)
             claim = self.coordinator.claim_ready_task(
                 owner_session_id=self.owner_session_id,
                 lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
                 exclude_task_cids=excluded,
                 now_ms=self._now_ms(),
                 accept_task_cid=accept_task_cid,
+                **packet_options,
             )
         if claim is None:
             parked_reader = getattr(self.task_source, "parked_ready_task_cids", None)
@@ -75660,6 +76293,12 @@ class DatabaseImplementationDaemon:
                     "formalized": False,
                     "reason": "goals_inconclusive",
                     "task_cids": sorted(parked_goals),
+                }
+            if packet_denials:
+                self._last_claim_withdrawal = {
+                    **self._last_claim_withdrawal, "admitted": False, "claim_state": "not_claimed", "formalized": False,
+                    "reason": self._last_claim_withdrawal.get("reason", "execution_packet_not_admitted"),
+                    "execution_packet_denials": dict(sorted(packet_denials.items())),
                 }
             return None
         task = self.task_source.get(claim.task_cid)
@@ -76088,6 +76727,8 @@ class DatabaseImplementationDaemon:
             [owner],
         ).fetchall()
         attempts = [self._attempt_from_row(row) for row in rows]
+        if not attempts:
+            return []
         from .unresolved_interruption import continuation_admitted
 
         attempts = [item for item in attempts if not continuation_admitted(self, item)]
@@ -76541,6 +77182,12 @@ class DatabaseImplementationDaemon:
                            task_cid=attempt.task_cid, body=receipt)
 
     def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
+        from ..task_sources.execution_packet_admission import execution_packet_required
+        current_packet_task = self.task_source.get(attempt.task_cid)
+        if current_packet_task is not None and execution_packet_required(getattr(current_packet_task, "body", {})):
+            # V1 is read/test metadata only; no signed local profile can turn
+            # that into model/provider authority, including injected callbacks.
+            raise DatabaseImplementationAuthorityError("execution packet metadata v1 has no provider authority")
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
 
@@ -79207,6 +79854,15 @@ class DatabaseImplementationDaemon:
                     return observed
             raise
 
+    def run_native_metadata_validation(self, *, task_cid: str, expected_revision: int) -> dict[str, Any]:
+        """Run one signed execution-only metadata plan without provider authority."""
+        from .native_metadata_execution import execute_native_metadata_validation
+        with self._lock:
+            self.open()
+            return execute_native_metadata_validation(
+                self, task_cid=task_cid, expected_revision=expected_revision,
+            )
+
     def run_once(self) -> dict[str, Any]:
         """Preserve unsettled attempts while required completion evidence is absent."""
         from .completion_deferral import (
@@ -79633,6 +80289,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Exact native owner client scope for the inherited bootstrap")
     parser.add_argument("--task-context-bundle-artifact", default="")
     parser.add_argument("--task-context-bundle-sha256", default="")
+    parser.add_argument("--native-metadata-execution-task-cid", default="",
+                        help="Exact signed execution-only manual metadata task; requires --once --implement and an explicit single-owner slice")
+    parser.add_argument("--native-metadata-execution-task-revision", type=int, default=0,
+                        help="Expected canonical ready revision for that metadata task")
     parser.add_argument("--once", action="store_true", help="Run one backlog pass and exit")
     parser.add_argument("--interval", type=float, default=300.0, help="Seconds between backlog passes")
     parser.add_argument(
@@ -80155,6 +80815,16 @@ def main(argv: list[str] | None = None) -> None:
     # never when a model-hosting parent imports this module. Startup can wait
     # inside owner RPC or portal construction before the first live heartbeat;
     # retain its child stack without relaxing the lifecycle health deadline.
+    if args.native_metadata_execution_task_cid:
+        if not (args.once and args.implement and args.task_source_kind == "duckdb"
+                and args.authority_mode in {"embedded", "embedded_exclusive"}
+                and args.max_task_attempts == 1
+                and args.native_metadata_execution_task_revision > 0
+                and args.execution_slice_task_cid == [args.native_metadata_execution_task_cid]
+                and args.state_owner_bootstrap_fd == -1):
+            raise ValueError("native metadata execution requires an exact bounded single-owner invocation")
+    elif args.native_metadata_execution_task_revision:
+        raise ValueError("native metadata revision requires its exact task CID")
     native_startup_watchdog = args.state_owner_bootstrap_fd != -1
     startup_watchdog = None
     try:
@@ -80211,6 +80881,15 @@ def main(argv: list[str] | None = None) -> None:
                 if program is not None
                 else str(getattr(args, "task_source_kind", "") or "duckdb")
             )
+            metadata_source_kwargs = {}
+            if args.native_metadata_execution_task_cid:
+                from ..task_sources.database_task_source import DatabaseTaskSource
+                metadata_source_kwargs = {
+                    "task_source": DatabaseTaskSource(Path(database_path),
+                        owner_id="native-metadata-executor:" + str(args.owner_session_id),
+                        install_schema=False),
+                    "close_task_source": True,
+                }
             daemon: Any = DatabaseImplementationDaemon(
                 database_path=Path(database_path),
                 coordination_path=getattr(args, "coordination_path", None),
@@ -80237,6 +80916,7 @@ def main(argv: list[str] | None = None) -> None:
                 task_shard_index=args.task_shard_index,
                 strict_task_sharding=args.strict_task_sharding,
                 **owner_bootstrap,
+                **metadata_source_kwargs,
             )
             from ..runtime.native_dispatch_drain import from_native_admission
             if native_startup_watchdog:
@@ -80245,15 +80925,16 @@ def main(argv: list[str] | None = None) -> None:
                 admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
                 repo_root=REPO_ROOT,
             )
-            bind_database_portal_execution_from_args(
-                daemon,
-                args,
-                repo_root=REPO_ROOT,
-                portal_daemon_class=PortalImplementationDaemon,
-                configured_board_live_admission=(
-                    _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
-                ),
-            )
+            if not args.native_metadata_execution_task_cid:
+                bind_database_portal_execution_from_args(
+                    daemon,
+                    args,
+                    repo_root=REPO_ROOT,
+                    portal_daemon_class=PortalImplementationDaemon,
+                    configured_board_live_admission=(
+                        _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
+                    ),
+                )
             if native_startup_watchdog:
                 logger.info("Native owner startup stage: portal execution bound")
         else:
@@ -80400,6 +81081,13 @@ def main(argv: list[str] | None = None) -> None:
                 if use_database_daemon and owner_bootstrap and not args.implement:
                     from .native_owner_bootstrap import observe_typed_database_without_dispatch
                     result = observe_typed_database_without_dispatch(daemon)
+                elif args.native_metadata_execution_task_cid:
+                    result = daemon.run_native_metadata_validation(
+                        task_cid=args.native_metadata_execution_task_cid,
+                        expected_revision=args.native_metadata_execution_task_revision,
+                    )
+                    if result.get("passed") is not True:
+                        raise RuntimeError("native metadata execution failed; manual acceptance remains closed")
                 else:
                     result = daemon.run_once()
                 if use_database_daemon:

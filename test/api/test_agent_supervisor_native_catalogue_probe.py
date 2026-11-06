@@ -315,3 +315,208 @@ def test_optional_goal_objective_rejects_nonstring_or_invalid_nonempty_identifie
     result = observe(catalogue)
     assert result["health"] == "unknown" and not result["progress_token"]
     assert result["reason_codes"] == ["native_catalogue_invalid_binding"]
+
+
+# A current independently verified task completion must not hide a prior UNKNOWN.
+def _complete_with_retained_outcome(catalogue, *, mutate=None, exhausted=False):
+    receipt = {"task_cid": "baguqeerataska", "attempt_number": 2,
+               "automatic_retry_admitted": False,
+               "failure_kind": "administrative_operator_stop_outcome_unknown",
+               "provider_invocation_count": 1}
+    if exhausted:
+        receipt.update(max_task_attempts=2, attempt_budget_exhausted=True)
+    entry = {"task_cid": "baguqeerataska", "task_revision": 13,
+             "completion_receipt": receipt,
+             "sha256": hashlib.sha256(json.dumps(receipt, sort_keys=True,
+                 separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()}
+    if mutate is not None:
+        mutate(entry)
+    body = {"board_namespace": NAMESPACE,
+            "completion_receipt": {"operation": "independent_metadata_acceptance"},
+            "retained_execution_outcomes": [entry]}
+    change_database(catalogue,
+        "UPDATE tasks SET body_json=?, status='completed', revision=15 WHERE task_alias='LIR-9001'",
+        [json.dumps(body)])
+
+
+def test_completed_factual_work_retains_prior_unknown_without_retry_authority(catalogue):
+    _complete_with_retained_outcome(catalogue)
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    task = diagnostic["tasks"][0]
+    assert task["status"] == "completed" and task["revision"] == 15
+    assert task["receipt_failure_kind"] is None
+    assert task["retained_execution_outcomes"][0]["attempt_number"] == 2
+    assert task["retained_execution_outcomes"][0]["max_task_attempts"] is None
+    assert diagnostic["retained_unknown_outcome_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["retry_not_admitted_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["provider_outcome_knowledge"] == "unknown_observed"
+    assert diagnostic["external_outcome_knowledge"] == "unknown_observed"
+    assert diagnostic["historical_outcomes_are_separate_from_current_completion"] is True
+    assert result["complete"] is result["completion_candidate"] is False
+    assert diagnostic["completion_authority"] is False
+    assert "recovery_action" not in result
+
+
+def _bound_scientific_board(catalogue, tmp_path):
+    return {"id": "legal-ir-scientific", "cwd": str(tmp_path), "hold_files": [],
+        "probe_profile": "native_catalogue", "probe": {"argv": ["probe"]},
+        "max_repair_attempts": 3, "failure_grace_seconds": 0,
+        "native_catalogue_binding": {"board_namespace": NAMESPACE, "plan_root_cid": ROOT,
+            "repository_tree_id": TREE,
+            "population_sha256": hashlib.sha256(catalogue[1].read_bytes()).hexdigest(),
+            "max_age_seconds": 180},
+        "recovery_policy": {"profile": "infrastructure-only/v1",
+            "repairable_stalls": ["native_catalogue_read_unavailable"],
+            "max_actions_per_window": 3, "window_seconds": 1000, "circuit_breaker_seconds": 100}}
+
+
+@pytest.mark.parametrize("peer_status", ["blocked", "todo"])
+def test_completed_history_exposes_current_activation_wait_and_keeps_recovery_budget(catalogue, tmp_path, monkeypatch, peer_status):
+    import time
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog as fleet
+
+    _complete_with_retained_outcome(catalogue, exhausted=True)
+    change_database(catalogue, "UPDATE tasks SET status=? WHERE task_alias='LIR-9002'", [peer_status])
+    change_database(catalogue, "INSERT INTO provider_invocations VALUES ('baguqeerataska','old-attempt-a','unknown')")
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    assert diagnostic["provider_outcome_knowledge"] == diagnostic["external_outcome_knowledge"] == "unknown_observed"
+    assert diagnostic["exhausted_receipt_task_cids"] == diagnostic["retry_not_admitted_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["tasks"][0]["retained_execution_outcomes"][0]["attempt_budget_exhausted"] is True
+    assert all(not cids for cids in diagnostic["current_nonterminal_blockers"].values())
+    assert diagnostic["ready_status_count"] == (1 if peer_status == "todo" else 0)
+    assert diagnostic["normalized_provider_status_rows"] == [["baguqeerataska", "old-attempt-a", "unknown"]]
+    assert set(result["reason_codes"]) == {"native_catalogue_activation_missing", "native_catalogue_executor_unverified"}
+    board = _bound_scientific_board(catalogue, tmp_path)
+    previous = {"attempts": 2, "ensure_attempts": 1,
+                "infrastructure_budget": {"status": "open", "total_actions": 3}}
+    monkeypatch.setattr(fleet, "command", lambda *a, **k: pytest.fail("history cannot authorize recovery"))
+    now = time.time()
+    state = fleet.assess(result, previous, board, now)
+    assert state["health"] == "blocked" and state["stall_class"] == "native_catalogue_activation_missing"
+    assert fleet.select_action(state, board, now) == ""
+    for field in ("attempts", "ensure_attempts", "infrastructure_budget"):
+        assert state[field] == previous[field]
+    assert diagnostic["activation_state"] == "not_activated" and diagnostic["executor_health"] == "not_established"
+    assert diagnostic["completion_authority"] is result["complete"] is result["completion_candidate"] is False
+    assert "recovery_action" not in result
+
+
+@pytest.mark.parametrize("source", ["current_receipt", "normalized_provider_row"])
+def test_completed_history_does_not_mask_an_unresolved_current_peer(catalogue, tmp_path, source):
+    import time
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_watchdog as fleet
+
+    _complete_with_retained_outcome(catalogue)
+    if source == "current_receipt":
+        change_database(catalogue, "UPDATE tasks SET body_json=? WHERE task_alias='LIR-9002'",
+            [json.dumps({"board_namespace": NAMESPACE, "completion_receipt": {
+                "attempt_number": 1, "max_task_attempts": 1,
+                "automatic_retry_admitted": False, "attempt_budget_exhausted": True,
+                "failure_kind": "provider_outcome_unknown", "provider_invocation_count": 1}})])
+    else:
+        change_database(catalogue, "INSERT INTO provider_invocations VALUES ('baguqeerataskb','attempt-b','unknown')")
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    current = diagnostic["current_nonterminal_blockers"]
+    assert current["provider_outcome_unknown_task_cids"] == ["baguqeerataskb"]
+    assert diagnostic["retained_unknown_outcome_task_cids"] == ["baguqeerataska"]
+    assert diagnostic["tasks"][0]["retained_execution_outcomes"][0]["automatic_retry_admitted"] is False
+    if source == "current_receipt":
+        assert current["retry_not_admitted_task_cids"] == current["exhausted_receipt_task_cids"] == ["baguqeerataskb"]
+        assert set(diagnostic["retry_not_admitted_task_cids"]) == {"baguqeerataska", "baguqeerataskb"}
+    board = _bound_scientific_board(catalogue, tmp_path)
+    now = time.time()
+    state = fleet.assess(result, {}, board, now)
+    assert state["stall_class"] == "native_catalogue_provider_outcome_unknown"
+    assert fleet.select_action(state, board, now) == ""
+    assert diagnostic["completion_authority"] is result["complete"] is result["completion_candidate"] is False
+
+
+@pytest.mark.parametrize("status", ["blocked", "todo", "cancelled", "failed", "complete", "done"])
+def test_only_exact_native_completion_separates_retained_unknown_from_current_wait(catalogue, status):
+    _complete_with_retained_outcome(catalogue, exhausted=True)
+    change_database(catalogue, "UPDATE tasks SET status=? WHERE task_alias='LIR-9001'", [status])
+    result = observe(catalogue)
+    diagnostic = result["details"]["native_catalogue"]
+    assert all(cids == ["baguqeerataska"] for cids in diagnostic["current_nonterminal_blockers"].values())
+    assert {"native_catalogue_provider_outcome_unknown", "native_catalogue_outcome_unknown",
+            "native_catalogue_retry_not_admitted", "native_catalogue_attempt_budget_exhausted"} <= set(result["reason_codes"])
+    assert result["complete"] is diagnostic["completion_authority"] is False
+
+
+@pytest.mark.parametrize("damage", ["digest", "wrong_task", "future_revision", "boolean_revision", "receipt_identity", "malformed"])
+def test_invalid_retained_outcome_is_unknown_instead_of_silently_discarded(catalogue, damage):
+    def mutate(entry):
+        if damage == "digest": entry["sha256"] = "0" * 64
+        elif damage == "wrong_task": entry["task_cid"] = "baguqeeraother"
+        elif damage == "future_revision": entry["task_revision"] = 15
+        elif damage == "boolean_revision": entry["task_revision"] = True
+        elif damage == "malformed": entry["extra"] = "unexpected"
+        else:
+            entry["completion_receipt"]["task_cid"] = "baguqeeraother"
+            entry["sha256"] = hashlib.sha256(json.dumps(entry["completion_receipt"],
+                sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    _complete_with_retained_outcome(catalogue, mutate=mutate)
+    result = observe(catalogue)
+    assert result["health"] == "unknown"
+    assert "native_catalogue_native_retained_outcome_invalid" in result["reason_codes"]
+    assert result["details"]["native_catalogue"]["fresh_read"] is False
+
+
+def test_current_administrative_unknown_retains_provider_invocation_knowledge(catalogue):
+    receipt = {"attempt_number": 2, "automatic_retry_admitted": False,
+               "failure_kind": "administrative_operator_stop_outcome_unknown",
+               "provider_invocation_count": 1}
+    change_database(catalogue, "UPDATE tasks SET body_json=? WHERE task_alias='LIR-9001'",
+                    [json.dumps({"board_namespace": NAMESPACE, "completion_receipt": receipt})])
+    result = observe(catalogue)
+    assert result["details"]["native_catalogue"]["provider_outcome_knowledge"] == "unknown_observed"
+    assert result["details"]["native_catalogue"]["external_outcome_knowledge"] == "unknown_observed"
+
+
+def test_absent_executor_profile_never_reads_health_evidence(catalogue, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    monkeypatch.setattr(health, "verify_bound_executor", lambda *a, **k: pytest.fail("legacy observer read executor evidence"))
+    report = observe(catalogue)
+    native = report["details"]["native_catalogue"]
+    assert native["activation_state"] == "not_activated"
+    assert native["executor_health"] == "not_established"
+    assert "executor_verification" not in native
+    assert "native_catalogue_activation_missing" in report["reason_codes"]
+
+
+@pytest.mark.parametrize("verified", [False, True])
+def test_opt_in_executor_join_preserves_native_unknown_and_task_counts(catalogue, monkeypatch, verified):
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    profile = {"path": "/private/operator/executor.json", "bytes": 10, "sha256": "a" * 64}
+    seen = []
+    def independent(ref, native, *, now):
+        assert native["fresh_read"] and native["database_and_wal_metadata_unchanged"]
+        seen.append((ref, native["counts"], now))
+        return {"verified": verified, "scope": "genuine_scoped_idle", "reason": "fixture_join"}
+    monkeypatch.setattr(health, "verify_bound_executor", independent)
+    report = observe(catalogue, executor_profile_ref=profile)
+    native = report["details"]["native_catalogue"]
+    assert len(seen) == 1 and seen[0][0] == profile and seen[0][1] == {"blocked": 2}
+    assert native["executor_verification"]["verified"] is verified
+    assert native["activation_state"] == ("active" if verified else "not_activated")
+    assert native["executor_health"] == ("healthy" if verified else "not_established")
+    assert ("native_catalogue_activation_missing" in report["reason_codes"]) is not verified
+    assert "native_catalogue_provider_outcome_unknown" in report["reason_codes"]
+    assert "native_catalogue_attempt_budget_exhausted" in report["reason_codes"]
+    assert report["complete"] is report["completion_candidate"] is report["busy"] is False
+    assert report["health"] == "blocked"
+    assert native["counts"] == {"blocked": 2} and native["completion_authority"] is False
+
+
+@pytest.mark.parametrize("selected", [["--executor-profile", "/missing/profile"],
+    ["--executor-profile-bytes", "1"], ["--executor-profile-sha256", "a" * 64]])
+def test_executor_cli_requires_complete_descriptor_before_native_read(monkeypatch, selected):
+    monkeypatch.setattr(probe, "observe_native_catalogue", lambda *a, **k: pytest.fail("partial health binding reached native read"))
+    with pytest.raises(SystemExit) as error:
+        probe.main(["--board", "legal-ir-scientific", "--database", "/missing/db", "--population", "/missing/pop",
+            "--namespace", NAMESPACE, "--plan-root-cid", ROOT, "--repository-tree-id", TREE,
+            "--population-sha256", "a" * 64, *selected])
+    assert error.value.code == 2

@@ -859,6 +859,7 @@ def _validate_did_state(
     value: Mapping[str, Any],
     *,
     expected_root_identity_did: str,
+    mirror: bool = True,
 ) -> dict[str, Any]:
     expected = {
         "schema",
@@ -922,11 +923,12 @@ def _validate_did_state(
             if key not in {"root_signature", "state_id"}
         },
         signature=str(value.get("root_signature") or ""),
+        mirror=mirror,
     )
     return dict(value)
 
 
-def _load_did_state(identity_did: str) -> dict[str, Any]:
+def _load_did_state(identity_did: str, *, mirror: bool = True) -> dict[str, Any]:
     value = _read_private_json(
         _did_state_path(identity_did),
         maximum_bytes=_MAX_ANCHOR_BYTES,
@@ -936,6 +938,7 @@ def _load_did_state(identity_did: str) -> dict[str, Any]:
     state = _validate_did_state(
         value,
         expected_root_identity_did=lifecycle_root_identity_did(),
+        mirror=mirror,
     )
     if state.get("identity_did") != identity_did:
         raise LocalProfileTampered("local lifecycle DID identity drifted")
@@ -1010,6 +1013,7 @@ def _validate_lifecycle_anchor(
     value: Mapping[str, Any],
     *,
     expected_root_identity_did: str = "",
+    mirror: bool = True,
 ) -> dict[str, Any]:
     expected = {
         "schema",
@@ -1116,11 +1120,12 @@ def _validate_lifecycle_anchor(
             if key != "root_signature"
         },
         signature=str(value.get("root_signature") or ""),
+        mirror=mirror,
     )
     return dict(value)
 
 
-def _load_anchor(path: Path) -> dict[str, Any]:
+def _load_anchor(path: Path, *, mirror: bool = True) -> dict[str, Any]:
     try:
         value = _read_private_json(path, maximum_bytes=_MAX_ANCHOR_BYTES)
     except LocalProfileTampered as exc:
@@ -1132,6 +1137,7 @@ def _load_anchor(path: Path) -> dict[str, Any]:
     return _validate_lifecycle_anchor(
         value,
         expected_root_identity_did=lifecycle_root_identity_did(),
+        mirror=mirror,
     )
 
 
@@ -1683,7 +1689,10 @@ def load_local_profile(
     signing_key: bytes | None = None,
     source: str | None = None,
     prompt_payload: Mapping[str, Any] | None = None,
+    mirror: bool = True,
 ) -> SignedSupervisorProfile:
+    if type(mirror) is not bool:
+        raise LocalProfileTampered("exact profile metadata mirroring control required")
     _reject_prompt(source, prompt_payload)
     directory = _absolute_without_symlinks(_path(profile_dir))
     _owned_directory(directory)
@@ -1722,8 +1731,8 @@ def load_local_profile(
     # non-base58 impostors even when the private file is present.
     ed25519_public_key_from_did(profile.identity_did)
     anchor_path, anchor_id = _anchor_path(directory, lifecycle_dir)
-    anchor = _load_anchor(anchor_path)
-    did_state = _load_did_state(profile.identity_did)
+    anchor = _load_anchor(anchor_path, mirror=mirror)
+    did_state = _load_did_state(profile.identity_did, mirror=mirror)
     if anchor.get("status") == "revoked":
         raise LocalProfileRevoked("local profile is revoked")
     if (

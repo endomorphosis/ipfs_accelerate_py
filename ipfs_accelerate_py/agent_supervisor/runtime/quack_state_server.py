@@ -5706,7 +5706,7 @@ class QuackStateServer:
         try:
             from ..task_sources.intent_repository import IntentRepository
             from ..task_sources.quack_owner_command import (
-                FALSE_TERMINAL_BLOCKED_REASON_MARKERS,
+                false_terminal_blocked_rearm_reason,
                 STALE_IN_PROGRESS_UNSTALL_SECONDS,
             )
 
@@ -5737,13 +5737,18 @@ class QuackStateServer:
             return
         for row in rows:
             cid, alias, status, revision, body, updated = row
-            blob = f"{alias}\n{body or ''}"
             status_text = str(status or "").lower()
             rearm = False
+            rearm_reason = None
             if status_text == "blocked":
-                rearm = any(
-                    marker in blob for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
-                ) or candidate_receipt_admits_owner_rearm(str(alias or ""))
+                try:
+                    task_body = json.loads(body) if isinstance(body, str) else body
+                except (TypeError, ValueError, RecursionError):
+                    task_body = None
+                rearm_reason = false_terminal_blocked_rearm_reason(task_body)
+                if rearm_reason is None and candidate_receipt_admits_owner_rearm(str(alias or "")):
+                    rearm_reason = false_terminal_blocked_rearm_reason(task_body, candidate_ready=True)
+                rearm = rearm_reason is not None
             elif status_text == "in_progress":
                 store_id = str(getattr(identity, "store_id", "") or "")
                 if "semantic_addressed_world_model" in store_id:
@@ -5779,14 +5784,7 @@ class QuackStateServer:
                         "operation": (
                             "stale_in_progress_unstall"
                             if status_text == "in_progress"
-                            else (
-                                "false_terminal_blocked_supervisor_bug"
-                                if any(
-                                    marker in blob
-                                    for marker in FALSE_TERMINAL_BLOCKED_REASON_MARKERS
-                                )
-                                else "local_validation_pending_native_admission"
-                            )
+                            else rearm_reason
                         ),
                         "completion_authority": False,
                         "remaining_requirements": [
