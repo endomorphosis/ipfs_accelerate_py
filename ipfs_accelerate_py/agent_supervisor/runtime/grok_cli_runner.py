@@ -33,7 +33,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 from typing import TextIO
@@ -1403,16 +1403,29 @@ def _grok_isolation_deny_paths(
     # deny rule for the fixed in-container primary-binary destination.
     denied.add(Path("/opt/ipfs-accelerate/grok"))
 
-    directory_denies = tuple(path for path in denied if path.is_dir())
-    nonoverlapping = {
+    return _nonoverlapping_deny_paths(denied)
+
+
+def _nonoverlapping_deny_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
+    """Drop a path already hidden by a denied ancestor directory.
+
+    A read-only container rejects a file mount inside a directory mask
+    because the nested mountpoint cannot be created on that root. The
+    ancestor mask already hides the path, so the nested mount is not a
+    second boundary.
+    """
+
+    materialized = tuple(paths)
+    directories = tuple(path for path in materialized if path.is_dir())
+    kept = {
         path
-        for path in denied
+        for path in materialized
         if not any(
             path != directory and path.is_relative_to(directory)
-            for directory in directory_denies
+            for directory in directories
         )
     }
-    return tuple(sorted(nonoverlapping, key=lambda item: str(item)))
+    return tuple(sorted(kept, key=str))
 
 
 def _same_existing_file(path: Path, other: Path | None) -> bool:
@@ -3104,10 +3117,14 @@ def _docker_grok_command_for_pinned_image(
 
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
-    effective_denied = set(denied_paths) | set(private_paths)
+    effective_denied_set = set(denied_paths) | set(private_paths)
     if private_policy and git_control_path is not None:
-        effective_denied.add(git_control_path)
-    for index, denied in enumerate(sorted(effective_denied, key=str)):
+        effective_denied_set.add(git_control_path)
+    # Private-path expansion lists nested files as well as the directory that
+    # already covers them. Mounting both makes runc fail with EROFS while
+    # creating the nested mountpoint. Collapse back to the ancestor mask.
+    effective_denied = _nonoverlapping_deny_paths(effective_denied_set)
+    for index, denied in enumerate(effective_denied):
         if (
             denied in {
                 sentinel,
