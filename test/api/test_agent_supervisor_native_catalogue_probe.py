@@ -6,6 +6,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import copy
+import runpy
+import stat
 
 import pytest
 
@@ -168,8 +171,32 @@ def test_progress_token_ignores_read_clock_but_tracks_native_revision(catalogue)
     assert observe(catalogue)["progress_token"] != first["progress_token"]
 
 
+@pytest.fixture
+def population_special_file_cleanup(tmp_path):
+    """Close only the exact private negative object created by this test."""
+    registered = []
+    def identity(info):
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
+                info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    def register(path):
+        assert path == tmp_path / "population.json" and not registered
+        info = path.lstat()
+        assert info.st_uid == os.geteuid() and info.st_nlink == 1
+        assert stat.S_ISFIFO(info.st_mode) or stat.S_ISLNK(info.st_mode)
+        target = os.readlink(path) if stat.S_ISLNK(info.st_mode) else None
+        registered.append((path, identity(info), target))
+    try:
+        yield register
+    finally:
+        for path, original, target in registered:
+            assert identity(path.lstat()) == original
+            if target is not None:
+                assert os.readlink(path) == target
+            path.unlink()
+
+
 @pytest.mark.parametrize("kind", ["missing", "symlink", "fifo", "oversized", "bad_digest", "duplicate_json_key"])
-def test_population_file_boundary_refuses_without_worker(catalogue, monkeypatch, kind):
+def test_population_file_boundary_refuses_without_worker(catalogue, monkeypatch, kind, population_special_file_cleanup):
     population = catalogue[1]
     changes = {}
     if kind == "missing": population.unlink()
@@ -177,9 +204,11 @@ def test_population_file_boundary_refuses_without_worker(catalogue, monkeypatch,
         target = population.with_name("target.json")
         population.rename(target)
         population.symlink_to(target)
+        population_special_file_cleanup(population)
     elif kind == "fifo":
         population.unlink()
         os.mkfifo(population)
+        population_special_file_cleanup(population)
     elif kind == "oversized":
         with population.open("wb") as handle: handle.truncate(probe.MAX_POPULATION_BYTES + 1)
     elif kind == "bad_digest": changes["population_sha256"] = "0" * 64
@@ -520,3 +549,440 @@ def test_executor_cli_requires_complete_descriptor_before_native_read(monkeypatc
             "--namespace", NAMESPACE, "--plan-root-cid", ROOT, "--repository-tree-id", TREE,
             "--population-sha256", "a" * 64, *selected])
     assert error.value.code == 2
+
+
+@pytest.fixture
+def authored_dependency_graph(tmp_path, monkeypatch):
+    """Synthetic authored64/34/115 input; no retired boundary schema emitted."""
+    goals = [{"goal_cid": f"baguqeeragoal{i}", "goal_alias": f"LIR-G{i:03}",
+              "objective_id": "objective:one", "parent_goal_cid": ""} for i in range(34)]
+    tasks = [{"task_cid": f"baguqeeratask{i}", "task_alias": f"LIR-{9000+i}",
+              "goal_cid": goals[min(i, 33)]["goal_cid"], "plan_cid": ROOT,
+              "objective_id": "objective:one", "dependencies": []} for i in range(64)]
+    for i in range(1, 64): tasks[i]["dependencies"].append(tasks[0]["task_cid"])
+    for i in range(2, 54): tasks[i]["dependencies"].append(tasks[1]["task_cid"])
+    authored = {"schema": probe.POPULATION_SCHEMA, "board_namespace": NAMESPACE,
+                "plan_root_cid": ROOT, "repository_tree_id": TREE, "tasks": tasks, "goals": goals,
+                "plans": [{"plan_cid": ROOT, "goal_cid": goals[0]["goal_cid"]}]}
+    def store(name, value):
+        path = tmp_path / name; raw = json.dumps(value, sort_keys=True).encode()
+        path.write_bytes(raw)
+        return {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    authored_ref = store("authored.json", authored)
+    monkeypatch.setattr(probe, "AUTHORED_BOUNDARY_POPULATION_SHA256", authored_ref["sha256"])
+    def envelope(document):
+        boundary_ref = store("boundary.json", document)
+        return store("envelope.json", {"schema": probe.BOUNDARY_POPULATION_SCHEMA,
+                     "authored_population_ref": authored_ref, "dependency_boundary_ref": boundary_ref})
+    return {"authored": authored, "authored_ref": authored_ref, "envelope": envelope,
+            "edges": [(task["task_cid"], dep, "depends_on") for task in tasks for dep in task["dependencies"]]}
+
+
+@pytest.fixture
+def observational_graph(authored_dependency_graph):
+    """Synthetic closed graph: eight roots, two grandchildren, one foreign prerequisite."""
+    base = authored_dependency_graph
+    nodes, roots = [], []
+    for i in range(8):
+        parent = base["authored"]["tasks"][62 if i < 5 else 63]
+        cid, alias = parent["task_cid"] + f"--obligation-{i}", parent["task_alias"] + f"--obligation-{i}"
+        projection = {"completion": "manual", "resource_stage": "analysis",
+            "parent_task_cid": parent["task_cid"], "parent_task_alias": parent["task_alias"],
+            "resolution_subgoal": True, "obligation": f"Store the independently recorded fact {i}",
+            "obligation_kind": "recorded_fact", "spawn_decision": "missing_evidence",
+            "execution_packet_required": True, "admitted": False, "formalized": False,
+            "gold_or_teacher_admission_granted": False, "constitution_roundtrip_ok": False,
+            "completion_authority": False}
+        nodes.append({"task_cid": cid, "task_alias": alias,
+            **{key: parent[key] for key in ("goal_cid", "plan_cid", "objective_id")},
+            "minimum_revision": 1, "namespace_binding": {"present": False, "value": None},
+            "observation_role": "root_dependency",
+            "body_binding": {"profile": "resolution-obligation/v1", "projection": projection},
+            "dependencies": [{"dependency_task_cid": dep, "kind": "depends_on"} for dep in parent["dependencies"]]})
+        roots.append({"task_cid": parent["task_cid"], "dependency_task_cid": cid, "kind": "depends_on"})
+    foreign = {"task_cid": "baguqeeraforeignprerequisite", "task_alias": "OTHER-42",
+        "goal_cid": "baguqeeraforeigngoal", "plan_cid": "baguqeeraforeignplan", "objective_id": None,
+        "minimum_revision": 2, "namespace_binding": {"present": True, "value": "separate-board"},
+        "observation_role": "transitive_dependency", "body_binding": {"profile": "literal-prerequisite/v1"},
+        "dependencies": [{"dependency_task_cid": "baguqeeratask0", "kind": "reviewed_prerequisite"}]}
+    parent = nodes[0]
+    for i in range(2):
+        child = copy.deepcopy(parent)
+        child["task_cid"] += f"--nested-{i}"; child["task_alias"] += f"--nested-{i}"
+        child["observation_role"] = "transitive_dependency"
+        child["body_binding"]["projection"].update(parent_task_cid=parent["task_cid"], parent_task_alias=parent["task_alias"])
+        child["dependencies"] = [{"dependency_task_cid": foreign["task_cid"], "kind": "depends_on"}]
+        parent["dependencies"].append({"dependency_task_cid": child["task_cid"], "kind": "depends_on"})
+        nodes.append(child)
+    nodes.append(foreign)
+    document = {"schema": probe.GRAPH_DEPENDENCY_BOUNDARY_SCHEMA, "board_namespace": NAMESPACE,
+        "plan_root_cid": ROOT, "repository_tree_id": TREE,
+        "authored_population_sha256": base["authored_ref"]["sha256"], "authored_task_count": 64,
+        "authored_goal_count": 34, "authored_dependency_count": 115,
+        "root_dependencies": roots, "observed_tasks": nodes, "completion_authority": False}
+    base["edges"] += [(row["task_cid"], row["dependency_task_cid"], row["kind"]) for row in roots]
+    ref = base["envelope"](document)
+    return {"base": base, "document": document, "foreign": foreign,
+            "arguments": {"population_path": ref["path"], "population_sha256": ref["sha256"],
+                          "board_namespace": NAMESPACE, "plan_root_cid": ROOT, "repository_tree_id": TREE}}
+
+
+def graph_population(case, document=None):
+    if document is None:
+        return probe._population(case["arguments"])
+    ref = case["base"]["envelope"](document)
+    return probe._population(dict(case["arguments"], population_path=ref["path"], population_sha256=ref["sha256"]))
+
+
+def graph_rows(document):
+    rows = []
+    for node in document["observed_tasks"]:
+        binding = node["body_binding"]
+        body = (copy.deepcopy(binding["projection"]) if binding["profile"] == "resolution-obligation/v1"
+                else {"arbitrary_support_semantics": "not qualified", "admitted": True})
+        if node["namespace_binding"]["present"]:
+            body["board_namespace"] = node["namespace_binding"]["value"]
+        rows.append([*(node[key] for key in ("task_cid", "task_alias", "goal_cid", "plan_cid", "objective_id")),
+                     "blocked", node["minimum_revision"], json.dumps(body)])
+    return rows
+
+
+def graph_observation(case, *, document=None, rows=None, primary_edges=None, observed_edges=None):
+    document = case["document"] if document is None else document
+    selected, _, plan = graph_population(case, document)
+    edges = [(cid, dep, "depends_on") for cid, task in selected.items() for dep in task["dependencies"]]
+    edges += [(r["task_cid"], r["dependency_task_cid"], r["kind"]) for r in document["root_dependencies"]]
+    noncore = [(n["task_cid"], r["dependency_task_cid"], r["kind"])
+               for n in document["observed_tasks"] for r in n["dependencies"]]
+    return probe._validate_graph_observation(plan, selected,
+        edges if primary_edges is None else primary_edges,
+        graph_rows(document) if rows is None else rows,
+        noncore if observed_edges is None else observed_edges)
+
+
+def test_closed_graph_keeps_grandchildren_and_foreign_prerequisite_outside_primary_authority(observational_graph):
+    case = observational_graph
+    selected, goals, plan = graph_population(case)
+    assert isinstance(plan, probe._GraphBoundaryPlan) and (len(selected), len(goals)) == (64, 34)
+    result = graph_observation(case)
+    assert result["authored_dependency_count"] == 115 and result["boundary_dependency_count"] == 8
+    assert result["native_outgoing_dependency_count"] == 123
+    assert (result["node_count"], result["edge_count"], result["observed_task_count"],
+            result["observed_dependency_count"], result["maximum_outward_depth"]) == (75, 136, 11, 13, 3)
+    support = next(n for n in result["observed_tasks"] if n["task_cid"] == case["foreign"]["task_cid"])
+    assert support["goal_cid"] == "baguqeeraforeigngoal" and support["objective_id"] is None
+    assert support["namespace_binding"] == {"present": True, "value": "separate-board"}
+    assert result["completion_authority"] is result["dispatch_authority"] is False
+    assert result["observed_task_completion_established"] is result["prerequisite_body_semantics_qualified"] is False
+    unsupported = copy.deepcopy(case["document"])
+    unsupported["schema"] = "legal-ir-native-dependency-boundary/v1"
+    with pytest.raises(probe.InvalidCatalogue, match="dependency_boundary_schema_unsupported"):
+        graph_population(case, unsupported)
+
+
+def test_new_ninth_root_requires_an_explicit_closed_certificate_without_a_source_change(observational_graph):
+    case = observational_graph
+    selected, _, old_plan = graph_population(case)
+    document = copy.deepcopy(case["document"])
+    extra = copy.deepcopy(document["observed_tasks"][-1])
+    extra.update(task_cid="baguqeeraninthroot", task_alias="OTHER-43", observation_role="root_dependency")
+    document["observed_tasks"].append(extra)
+    edge = ("baguqeeratask63", extra["task_cid"], "depends_on")
+    document["root_dependencies"].append(dict(zip(("task_cid", "dependency_task_cid", "kind"), edge)))
+    primary = case["base"]["edges"] + [edge]
+    with pytest.raises(probe.InvalidCatalogue, match="native_graph_dependencies_changed"):
+        probe._validate_graph_observation(old_plan, selected, primary, [], [])
+    result = graph_observation(case, document=document)
+    assert result["boundary_dependency_count"] == 9 and result["observed_task_count"] == 12
+    assert result["authored_dependency_count"] == 115 and result["native_outgoing_dependency_count"] == 124
+    assert result["completion_authority"] is False
+
+
+@pytest.mark.parametrize("damage", ["missing", "unreachable", "role", "cycle", "target", "duplicate_node",
+                                    "duplicate_edge", "core_edge", "core_count", "authority", "semantic_profile"])
+def test_closed_graph_declaration_refuses_scope_and_topology_damage(observational_graph, damage):
+    case = observational_graph
+    document = copy.deepcopy(case["document"])
+    nodes = document["observed_tasks"]
+    if damage == "missing": nodes.pop()
+    elif damage == "unreachable":
+        extra = copy.deepcopy(nodes[-1]); extra.update(task_cid="baguqeeraunreachable", task_alias="UNREACHABLE")
+        nodes.append(extra)
+    elif damage == "role": nodes[0]["observation_role"] = "transitive_dependency"
+    elif damage == "cycle": nodes[-1]["dependencies"] = [{"dependency_task_cid": nodes[0]["task_cid"], "kind": "depends_on"}]
+    elif damage == "target": nodes[-1]["dependencies"][0]["dependency_task_cid"] = "baguqeeraunknown"
+    elif damage == "duplicate_node": nodes.append(copy.deepcopy(nodes[-1]))
+    elif damage == "duplicate_edge": document["root_dependencies"].append(copy.deepcopy(document["root_dependencies"][0]))
+    elif damage == "core_edge": document["root_dependencies"][0]["dependency_task_cid"] = "baguqeeratask0"
+    elif damage == "core_count": document["authored_dependency_count"] = 114
+    elif damage == "authority": document["completion_authority"] = True
+    else: nodes[0]["body_binding"]["projection"]["admitted"] = True
+    with pytest.raises(probe.InvalidCatalogue):
+        graph_population(case, document)
+
+
+@pytest.mark.parametrize("damage", ["foreign_goal", "namespace", "revision", "obligation", "new_optional_semantics",
+                                    "missing_node", "missing_edge", "edge_kind"])
+def test_closed_graph_actual_rows_cannot_hide_identity_semantic_or_edge_drift(observational_graph, damage):
+    case = observational_graph
+    rows = graph_rows(case["document"])
+    noncore = [(n["task_cid"], r["dependency_task_cid"], r["kind"])
+               for n in case["document"]["observed_tasks"] for r in n["dependencies"]]
+    if damage == "foreign_goal": rows[-1][2] = "baguqeeradifferentgoal"
+    elif damage == "namespace":
+        body = json.loads(rows[-1][7]); body["board_namespace"] = NAMESPACE; rows[-1][7] = json.dumps(body)
+    elif damage == "revision": rows[-1][6] -= 1
+    elif damage in {"obligation", "new_optional_semantics"}:
+        body = json.loads(rows[0][7])
+        body["obligation" if damage == "obligation" else "missing_record_subgoal"] = "changed" if damage == "obligation" else False
+        rows[0][7] = json.dumps(body)
+    elif damage == "missing_node": rows.pop()
+    elif damage == "missing_edge": noncore.pop()
+    else: noncore[-1] = (*noncore[-1][:2], "different_kind")
+    with pytest.raises(probe.InvalidCatalogue):
+        graph_observation(case, rows=rows, observed_edges=noncore)
+
+
+@pytest.mark.parametrize("literal", [None, True, 1, 1.0, {"foreign": [True, 1, 1.0]}, NAMESPACE])
+def test_foreign_namespace_is_a_typed_literal_without_inheritance(observational_graph, literal):
+    case = observational_graph
+    document = copy.deepcopy(case["document"])
+    document["observed_tasks"][-1]["namespace_binding"]["value"] = literal
+    result = graph_observation(case, document=document)
+    support = next(n for n in result["observed_tasks"] if n["task_cid"] == case["foreign"]["task_cid"])
+    assert type(support["namespace_binding"]["value"]) is type(literal)
+    assert support["namespace_binding"]["value"] == literal
+    rows = graph_rows(document)
+    body = json.loads(rows[-1][7])
+    body["board_namespace"] = 1 if literal is True else True
+    rows[-1][7] = json.dumps(body)
+    with pytest.raises(probe.InvalidCatalogue, match="native_graph_namespace_changed"):
+        graph_observation(case, document=document, rows=rows)
+
+
+def test_graph_progress_does_not_rebind_semantics_or_establish_parent_completion(observational_graph):
+    case = observational_graph
+    rows = graph_rows(case["document"])
+    rows[0][5:7] = ["completed", 5]
+    body = json.loads(rows[0][7]); body.update(resolution_decomposed=True, completion_receipt={"operation": "new fact"})
+    rows[0][7] = json.dumps(body)
+    rows[-1][5:7] = ["skipped", 7]
+    body = json.loads(rows[-1][7]); body["arbitrary_support_semantics"] = "not qualified by this observer"
+    rows[-1][7] = json.dumps(body)
+    result = graph_observation(case, rows=rows)
+    assert result["observed_status_counts"] == {"completed": 1, "blocked": 9, "skipped": 1}
+    assert result["observed_task_completion_established"] is result["completion_authority"] is False
+
+
+def test_resolution_marker_presence_cannot_downgrade_to_identity_only_prerequisite(observational_graph):
+    case = observational_graph
+    rows = graph_rows(case["document"])
+    body = json.loads(rows[-1][7]); body["resolution_work"] = False
+    rows[-1][7] = json.dumps(body)
+    with pytest.raises(probe.InvalidCatalogue, match="native_graph_resolution_profile_required"):
+        graph_observation(case, rows=rows)
+
+
+@pytest.mark.parametrize("damage", ["orphan_parent", "parent_alias", "goal", "alias_prefix", "cid_prefix", "origin_edge_kind"])
+def test_resolution_profile_joins_declared_native_parent_and_constructor_lineage(observational_graph, damage):
+    case = observational_graph
+    document = copy.deepcopy(case["document"])
+    node = document["observed_tasks"][0]
+    projection = node["body_binding"]["projection"]
+    if damage == "orphan_parent": projection["parent_task_cid"] = "baguqeeraunobservedparent"
+    elif damage == "parent_alias": projection["parent_task_alias"] = "WRONG-PARENT"
+    elif damage == "goal": node["goal_cid"] = "baguqeeraforeigngoal"
+    elif damage == "alias_prefix": node["task_alias"] = "NO-CONSTRUCTOR-PREFIX"
+    elif damage == "origin_edge_kind": document["root_dependencies"][0]["kind"] = "related_only"
+    else:
+        old = node["task_cid"]; node["task_cid"] = "baguqeeranonsuffixchild"
+        document["root_dependencies"][0]["dependency_task_cid"] = node["task_cid"]
+        for child in document["observed_tasks"]:
+            for row in child["dependencies"]:
+                if row["dependency_task_cid"] == old: row["dependency_task_cid"] = node["task_cid"]
+    with pytest.raises(probe.InvalidCatalogue, match="graph_resolution_lineage_invalid"):
+        graph_population(case, document)
+
+
+def _literal_graph_node(index):
+    return {"task_cid": f"baguqeeraliteral{index}", "task_alias": f"OTHER-{index}",
+            "goal_cid": "baguqeeraforeigngoal", "plan_cid": None, "objective_id": "",
+            "minimum_revision": 1, "namespace_binding": {"present": False, "value": None},
+            "observation_role": "transitive_dependency", "body_binding": {"profile": "literal-prerequisite/v1"},
+            "dependencies": []}
+
+
+def test_outward_discovery_depth_is_bounded_separately_from_whole_graph_acyclicity(observational_graph):
+    case = observational_graph
+    document = copy.deepcopy(case["document"])
+    previous = document["observed_tasks"][0]
+    for i in range(15):
+        node = _literal_graph_node(i)
+        previous["dependencies"].append({"dependency_task_cid": node["task_cid"], "kind": "depends_on"})
+        document["observed_tasks"].append(node); previous = node
+    _, _, plan = graph_population(case, document)
+    assert plan.graph_topology["maximum_outward_depth"] == 16
+    node = _literal_graph_node(15)
+    previous["dependencies"].append({"dependency_task_cid": node["task_cid"], "kind": "depends_on"})
+    document["observed_tasks"].append(node)
+    with pytest.raises(probe.InvalidCatalogue, match="graph_depth_bound"):
+        graph_population(case, document)
+
+
+def test_iterative_graph_validation_handles_the_total_node_bound_without_recursion(observational_graph):
+    case = observational_graph
+    document = copy.deepcopy(case["document"])
+    previous = None
+    for i in range(925):
+        node = _literal_graph_node(i)
+        node["observation_role"] = "root_dependency"
+        document["root_dependencies"].append({"task_cid": "baguqeeratask63",
+            "dependency_task_cid": node["task_cid"], "kind": "depends_on"})
+        if previous is not None:
+            previous["dependencies"].append({"dependency_task_cid": node["task_cid"], "kind": "depends_on"})
+        document["observed_tasks"].append(node); previous = node
+    _, _, plan = graph_population(case, document)
+    assert plan.graph_topology["node_count"] == 1000
+    document["observed_tasks"].append(_literal_graph_node(925))
+    with pytest.raises(probe.InvalidCatalogue, match="graph_bounds"):
+        graph_population(case, document)
+
+
+def test_graph_edge_budget_and_actual_read_budget_refuse_without_partial_observation(observational_graph, monkeypatch):
+    case = observational_graph
+    selected, _, plan = graph_population(case)
+    monkeypatch.setattr(probe, "MAX_GRAPH_EDGES", 136)
+    assert graph_observation(case)["edge_count"] == 136
+    document = copy.deepcopy(case["document"])
+    document["observed_tasks"][0]["dependencies"].append({"dependency_task_cid": "baguqeeratask1", "kind": "depends_on"})
+    with pytest.raises(probe.InvalidCatalogue, match="graph_edge_bound"):
+        graph_population(case, document)
+    monkeypatch.setattr(probe, "MAX_GRAPH_BOUNDARY_BYTES", 128)
+    with pytest.raises(probe.InvalidCatalogue, match="native_graph_read_bound"):
+        probe._validate_graph_observation(plan, selected, case["base"]["edges"], graph_rows(case["document"]),
+            [(n["task_cid"], d["dependency_task_cid"], d["kind"])
+             for n in case["document"]["observed_tasks"] for d in n["dependencies"]])
+
+
+def test_graph_read_byte_budget_is_shared_across_queries_and_refuses_incrementally():
+    class Cursor:
+        def __init__(self, rows):
+            self.rows = iter(rows)
+            self.fetched = 0
+        def fetchone(self):
+            self.fetched += 1
+            return next(self.rows, None)
+    class Connection:
+        def execute(self, sql, parameters):
+            self.cursor = Cursor([("x" * 32,)] if sql == "first" else [("y" * 32,)] * 10)
+            return self.cursor
+    connection = Connection()
+    budget = [96]
+    assert probe._bounded_rows(connection, "first", byte_budget=budget) == [("x" * 32,)]
+    with pytest.raises(probe.InvalidCatalogue, match="native_graph_read_bound"):
+        probe._bounded_rows(connection, "next", byte_budget=budget)
+    assert connection.cursor.fetched == 2
+
+
+@pytest.mark.parametrize("same_namespace", [False, True])
+def test_private_graph_SQL_preserves_authored_scope_and_rejects_unrepresented_namespace_rows(catalogue, observational_graph, same_namespace):
+    import duckdb
+    case = observational_graph
+    document = copy.deepcopy(case["document"])
+    if same_namespace:
+        document["observed_tasks"][-1]["namespace_binding"]["value"] = NAMESPACE
+    ref = case["base"]["envelope"](document)
+    arguments = dict(case["arguments"], population_path=ref["path"], population_sha256=ref["sha256"],
+                     database_path=str(catalogue[0]))
+    connection = duckdb.connect(str(catalogue[0]))
+    try:
+        for table in ("tasks", "goals", "plans", "task_dependencies"):
+            connection.execute("DELETE FROM " + table)
+        connection.execute("INSERT INTO plans VALUES (?,?)", [ROOT, "baguqeeragoal0"])
+        for goal in case["base"]["authored"]["goals"]:
+            connection.execute("INSERT INTO goals VALUES (?,?,?,?,?,?)", [
+                goal["goal_cid"], goal["goal_alias"], goal["objective_id"], goal["parent_goal_cid"], "open", 1])
+        for task in case["base"]["authored"]["tasks"]:
+            connection.execute("INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)", [
+                *(task[k] for k in ("task_cid", "task_alias", "goal_cid", "plan_cid", "objective_id")),
+                "blocked", 3, json.dumps({"board_namespace": NAMESPACE})])
+        for row in graph_rows(document):
+            connection.execute("INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)", row)
+        edges = list(case["base"]["edges"]) + [(n["task_cid"], d["dependency_task_cid"], d["kind"])
+                for n in document["observed_tasks"] for d in n["dependencies"]]
+        for edge in edges:
+            connection.execute("INSERT INTO task_dependencies VALUES (?,?,?)", list(edge))
+    finally:
+        connection.close()
+    before = catalogue[0].read_bytes()
+    result = probe._read_catalogue(arguments)
+    assert len(result["tasks"]) == 64 and result["goal_count"] == 34 and result["dependency_count"] == 115
+    assert result["dependency_boundary"]["observed_task_count"] == 11
+    assert result["dependency_boundary"]["node_count"] == 75
+    assert catalogue[0].read_bytes() == before and not Path(str(catalogue[0]) + ".wal").exists()
+    change_database(catalogue, "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)", [
+        "baguqeeraunrepresented", "UNREPRESENTED", "baguqeeraforeigngoal", None, None,
+        "blocked", 1, json.dumps({"board_namespace": NAMESPACE})])
+    with pytest.raises(probe.InvalidCatalogue, match="native_population_mismatch"):
+        probe._read_catalogue(arguments)
+
+
+def test_legacy_v2_lineage_population_keeps_its_original_three_value_contract(tmp_path):
+    goal = {"goal_cid": "baguqeeragoal", "goal_alias": "LIR-G090",
+            "objective_id": "objective:one", "parent_goal_cid": ""}
+    task = {"task_cid": "baguqeeratask", "task_alias": "LIR-9001",
+            "goal_cid": goal["goal_cid"], "plan_cid": ROOT,
+            "objective_id": "objective:one", "dependencies": []}
+    plan = {"plan_cid": ROOT, "goal_cid": goal["goal_cid"], "status": "active", "revision": 1,
+            "body_sha256": "f" * 64, "repository_tree_id": TREE, "continuation_of": None,
+            "continued_by": None, "revision_cid": None, "delta_cid": None, "idempotency_key": None}
+    population = {"schema": probe.LINEAGE_POPULATION_SCHEMA, "board_namespace": NAMESPACE,
+                  "plan_root_cid": ROOT, "repository_tree_id": TREE,
+                  "tasks": [task], "goals": [goal], "plans": [plan]}
+    path = tmp_path / "legacy-lineage.json"; path.write_text(json.dumps(population))
+    selected, goals, bound_plan = probe._population({"population_path": str(path),
+        "population_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "board_namespace": NAMESPACE, "plan_root_cid": ROOT, "repository_tree_id": TREE})
+    assert selected == {task["task_cid"]: task} and goals == {goal["goal_cid"]: goal}
+    assert isinstance(bound_plan, probe._LineagePlan) and not isinstance(bound_plan, probe._GraphBoundaryPlan)
+    assert bound_plan["lineage"] == [plan]
+
+
+def test_selected_script_observer_uses_canonical_health_owner_without_a_fake_package(tmp_path, monkeypatch):
+    """Actual file execution/import; worker and verifier facts explicitly modeled."""
+    import time
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    selected = runpy.run_path(probe.__file__, run_name="_selected_catalogue_observer")
+    assert selected["__package__"] in (None, "") and selected["__file__"] == probe.__file__
+    task = {"task_cid": "baguqeeramodeledtask", "task_alias": "MODELED-1",
+            "goal_cid": "baguqeeramodeledgoal", "plan_cid": ROOT, "objective_id": "objective:one"}
+    population = {"schema": probe.POPULATION_SCHEMA, "board_namespace": NAMESPACE,
+        "plan_root_cid": ROOT, "repository_tree_id": TREE, "tasks": [task],
+        "goals": [{"goal_cid": task["goal_cid"], "goal_alias": "MODELED-G1",
+                   "objective_id": task["objective_id"], "parent_goal_cid": ""}],
+        "plans": [{"plan_cid": ROOT, "goal_cid": task["goal_cid"]}]}
+    path = tmp_path / "modeled-population.json"; path.write_text(json.dumps(population))
+    data = {"tasks": [{**task, "status": "blocked", "revision": 1,
+        "completion_receipt_attempt_number": None, "automatic_retry_admitted": None,
+        "receipt_max_task_attempts": None, "receipt_attempt_budget_exhausted": None,
+        "receipt_failure_kind": None, "receipt_provider_invocation_count": None,
+        "retained_execution_outcomes": []}], "goal_count": 1, "dependency_count": 0,
+        "attempt_rows": [], "provider_status_rows": [], "claim_state_rows": [],
+        "event_cursor": 1, "store_generation": 1, "store_schema_revision": 1,
+        "database_uuid": "modeled-database", "database_and_wal_metadata_unchanged": True,
+        "read_finished_at_epoch": time.time()}
+    seen = []
+    def verifier(reference, native, *, now):
+        seen.append((reference, native["task_count"]))
+        return {"verified": False, "reason": "modeled_verifier_called"}
+    monkeypatch.setattr(health, "verify_bound_executor", verifier)
+    monkeypatch.setattr(selected["subprocess"], "run", lambda *a, **k:
+        subprocess.CompletedProcess(a[0], 0, stdout=json.dumps(data).encode(), stderr=b""))
+    profile = {"path": "/modeled/profile.json", "bytes": 1, "sha256": "a" * 64}
+    result = selected["observe_native_catalogue"](Path("/modeled/unopened.duckdb"), path,
+        board_id="legal-ir-scientific", board_namespace=NAMESPACE, plan_root_cid=ROOT,
+        repository_tree_id=TREE, population_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        executor_profile_ref=profile)
+    assert seen == [(profile, 1)]
+    assert result["details"]["native_catalogue"]["executor_verification"]["reason"] == "modeled_verifier_called"
+    assert result["completion_candidate"] is result["details"]["completion_authority"] is False
