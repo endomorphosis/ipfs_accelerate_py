@@ -916,3 +916,330 @@ def test_closed_idle_original_poll_and_proof_budget_cannot_be_reset(closed_idle_
     case = closed_idle_case; case['config'][field] += 1
     with pytest.raises(executor.ExecutorHold, match='original_budget_changed'): _closed_resume(case)
     assert not (case['closed_cycle'] / 'closed-idle-reconciliation-v01.json').exists()
+
+@pytest.fixture
+def capacity_case(closed_idle_case, monkeypatch):
+    """Explicit historical metadata only; real canonical parsers, no native run."""
+    case = closed_idle_case; old_root = case['root']; old_config = copy.deepcopy(case['config'])
+    old_config.update(max_cycles=10000, poll_seconds=60, max_proof_bytes=1024**3)
+    old_config_ref = put(Path(case['config_ref']['path']), old_config)
+    prior = copy.deepcopy(case['profile'])
+    prior['source_descriptors'] = [old_config_ref if pin['path'] == old_config_ref['path'] else pin
+                                   for pin in prior['source_descriptors']]
+    prior['unit']['argv'][prior['unit']['argv'].index('--config-sha256') + 1] = old_config_ref['sha256']
+    prior_ref = put(Path(case['profile_ref']['path']), prior)
+    # Retain both real parser fixtures' negative lineages after updating only
+    # this fixture's original finite limits; no past execution is fabricated.
+    first_auth = health._document(case['closed_value']['prior_authorization_ref'])
+    first_plan = health._document(first_auth['activation_plan_ref'])
+    first_plan['main_loop_limits'] = dict(max_cycles=10000, poll_seconds=60, max_proof_bytes=1024**3)
+    first_auth['activation_plan_ref'] = put(Path(first_auth['activation_plan_ref']['path']), first_plan)
+    first_auth_ref = put(Path(case['closed_value']['prior_authorization_ref']['path']), first_auth)
+    first_ack = health._document(case['closed_value']['prior_ack_ref']); first_ack['recovery_ref'] = first_auth_ref
+    first_ack_ref = put(Path(case['closed_value']['prior_ack_ref']['path']), first_ack)
+    capture2 = health._document(case['closed_value']['prior_administrative_capture_ref'])
+    capture2['recovery_authorization_ref'] = first_auth_ref
+    capture2_ref = put(Path(case['closed_value']['prior_administrative_capture_ref']['path']), capture2)
+    negative2 = health._document(case['closed_value']['negative_audit_ref'])
+    negative2.update(authorization_ref=first_auth_ref, negative_ack_ref=first_ack_ref, actual_administrative_capture=capture2_ref)
+    negative2_ref = put(Path(case['closed_value']['negative_audit_ref']['path']), negative2)
+    closed_value = dict(case['closed_value'], profile_ref=prior_ref, prior_authorization_ref=first_auth_ref,
+        prior_ack_ref=first_ack_ref, prior_administrative_capture_ref=capture2_ref, negative_audit_ref=negative2_ref)
+    closed_auth_ref = put(Path(case['closed_ref']['path']), closed_value)
+    old_main = dict(unit=prior['unit']['name'], pid=1000006, birth_ticks=6, boot_id='explicit-capacity-prior-fixture-boot',
+        invocation_id='c'*32, argv=list(prior['unit']['argv']), exe=prior['unit']['interpreter'],
+        cwd=prior['unit']['working_directory'], environment={**prior['unit']['environment'],
+            'INVOCATION_ID':'c'*32, health.ENV_PROFILE_SHA:prior_ref['sha256']})
+    monkeypatch.setenv(executor.CLOSED_IDLE_SHA_ENV, closed_auth_ref['sha256'])
+    assert executor.reconcile_known_closed_idle(closed_auth_ref,prior_ref,prior,old_config,old_main)==2
+    closed_ack_ref = health.descriptor(case['closed_cycle']/'closed-idle-reconciliation-v01.json')
+    old_source = Path(prior['owner_source']['path']).parents[3]
+    previous_receipt = None; last = None
+    for number in range(3,13):
+        cycle=old_root/('cycle-%08d-'%number + ('%032x'%number));cycle.mkdir(mode=0o700)
+        attempt=cycle/'attempt';(attempt/'exports').mkdir(parents=True)
+        plan=copy.deepcopy(health._document(case['closed_proof']['plan_ref']))
+        plan=executor.relocate(plan,case['closed_cycle'],cycle)
+        pins={pin['path']:pin['sha256']for pin in prior['source_descriptors']}
+        cli=plan['native_metadata_cli'];cli.update(cwd=prior['unit']['working_directory'],
+            attempt_directory=str(attempt),temporary_directory=str(attempt/'temporary'),source_sha256=pins)
+        cli['pre_body_guard']=next(pin for pin in prior['source_descriptors']if pin['path'].endswith('project_import_source_guard.py'))
+        route=cli['import_head_capsule_Git']['route_source']
+        cli['import_head_capsule_Git']=dict(blobs=[],ls_tree_tail=[],payload_bytes=0,required_relative_files=[],
+            route_source=route,scope='explicit archived source fixture only',selected_file_count=0,
+            source_head='e'*40,source_root=str(old_source),unique_blob_count=0)
+        plan_ref=put(cycle/'operation-plan.json',plan)
+        request=copy.deepcopy(health._document(case['closed_proof']['request_ref']))
+        request.update(request_id='fixture:capacity-old-cycle-'+str(number),attempt_directory=str(attempt),source_sha256=dict(pins),
+            external_files=[dict(path=request['database_preimage']['path'],max_bytes=128*1024**2)],timeout_seconds=300)
+        request['source_sha256'][plan_ref['path']]=plan_ref['sha256']
+        request['argv']=[prior['unit']['argv'][0],'-B',prior['driver_source']['path'],'--plan',plan_ref['path'],'--plan-sha256',plan_ref['sha256']]
+        request_ref=put(cycle/'request.json',request)
+        execution_ref=put(attempt/'execution-request.json',dict(schema='native-metadata-resource-owner-execution-request/v1',
+            request=request_ref,owner_source=prior['owner_source'],disk_reservation_id='fixture:capacity-disk-'+str(number),
+            completion_authority=False,provider_authority=False))
+        origins=copy.deepcopy(case['closed_origins'])
+        for row in origins['project_imports']:row['execution_profile']='compiled_exact_authenticated_source_bytes'
+        origins_ref=put(attempt/'exports/origins.json',origins)
+        result=copy.deepcopy(case['closed_result']);result_ref=put(Path(cli['result_path']),result)
+        finished=time.time()-(12-number)*5-1;started=finished-3
+        mono=time.monotonic_ns()-(12-number)*5*10**9-10**9;start_mono=mono-3*10**9
+        native=copy.deepcopy(case['closed_native']);native['checked_at_epoch']=finished-0.1
+        native_ref=put(cycle/'native-diagnostic.json',native)
+        terminal=copy.deepcopy(case['closed_terminal']);owner_pid=1000100+number;owner_birth=100+number
+        terminal.update(request_sha256=request_ref['sha256'],execution_request=execution_ref,owner_pid=owner_pid,
+            owner_birth=str(owner_birth),elapsed_seconds=2.0)
+        reservation=terminal['reservation'];reservation['reservation_id']='fixture:capacity-disk-'+str(number)
+        reservation['record'].update(reservation_id=reservation['reservation_id'],owner_pid=owner_pid,
+            native_lease_id='fixture:capacity-native-'+str(number),created_at=started+0.5,released_at=finished-0.25)
+        reservation['resource_lease'].update(owner_pid=owner_pid,lease_id='fixture:capacity-native-'+str(number))
+        terminal_ref=put(cycle/'terminal.json',terminal);put(cycle/'owner.stdout',terminal)
+        proof=copy.deepcopy(case['closed_proof']);proof.update(sequence=number-2,
+            process={k:old_main[k]for k in ('pid','birth_ticks','boot_id','invocation_id')},
+            started_at=started,finished_at=finished,started_monotonic_ns=start_mono,finished_monotonic_ns=mono,
+            request_ref=request_ref,execution_request_ref=execution_ref,terminal_ref=terminal_ref,result_ref=result_ref,
+            plan_ref=plan_ref,origins_ref=origins_ref,native_diagnostic_ref=native_ref)
+        proof['owner_observation']=dict(pid=owner_pid,birth_ticks=owner_birth,boot_id=old_main['boot_id'],
+            argv=[prior['unit']['argv'][0],'-B',prior['owner_source']['path'],'--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']],
+            captured_at=started+0.25,captured_monotonic_ns=start_mono+250000000,
+            ancestry=[dict(pid=owner_pid,birth_ticks=owner_birth,parent_pid=old_main['pid']),
+                dict(pid=old_main['pid'],birth_ticks=old_main['birth_ticks'],parent_pid=1)])
+        proof_ref=put(cycle/'cycle-proof.json',proof)
+        put(cycle/'intent.json',dict(kind='genuine_scoped_idle',sequence=number-2,cycle_number=number,
+            request_ref=request_ref,automatic_retry_admitted=False))
+        receipt=dict(schema=health.RECEIPT_SCHEMA,profile_ref=prior_ref,sequence=number-2,identity=old_main,
+            observed_at=finished+0.1,observed_monotonic_ns=mono+100000000,cycle_proof_ref=proof_ref,
+            catalogue=dict({k:native[k]for k in health.IDENTITY_KEYS},event_cursor=native['event_cursor'],task_scope=prior['task_scope']),
+            origins={'__main__':prior['main_entrypoint'],'health':prior['health_module']},
+            previous_receipt_sha256=None if previous_receipt is None else previous_receipt['sha256'])
+        receipt_ref=put(Path(prior['receipt_path']),receipt)
+        put(cycle/'closed.json',dict(cycle_proof_ref=proof_ref,receipt_ref=receipt_ref));previous_receipt=receipt_ref
+        last=dict(cycle=cycle,proof=proof,proof_ref=proof_ref,terminal=terminal,native=native,request=request,plan=plan)
+    capacity=old_root/('cycle-00000013-'+'d'*32);capacity.mkdir(mode=0o700)
+    capacity_intent=put(capacity/'intent.json',dict(kind='not_selected',sequence=11,cycle_number=13,automatic_retry_admitted=False))
+    capacity_hold=put(capacity/'cycle-held.json',dict(schema='agent-supervisor/scientific-cycle-held@1',reason='proof_storage_bound',
+        recorded_at=time.time(),automatic_retry_admitted=False))
+    root=old_root.with_name('fresh-proof');root.mkdir(mode=0o700);archive=root/'reconciliation-v03';archive.mkdir(mode=0o700)
+    seed=root/'seed-v01';seed.mkdir(mode=0o700);put(root/'scientific-executor.lock',b'')
+    prior_snapshot=put(archive/'prior-profile.json',prior);config_snapshot=put(archive/'prior-config.json',old_config)
+    new_source=old_source.with_name(old_source.name+'-readonly-successor');profile=copy.deepcopy(prior)
+    replacements={}
+    for pin in prior['source_descriptors']:
+        old_path=Path(pin['path'])
+        if old_path.is_relative_to(old_source):
+            raw=old_path.read_bytes()
+            if old_path.suffix=='.py' and pin!=prior['health_module']:raw+=b'# explicitly qualified successor fixture\n'
+            new=put(new_source/old_path.relative_to(old_source),raw);replacements[pin['path']]=new
+    daemon=put(new_source/'ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py',b'# explicit readonly daemon fixture\n')
+    for role in ('main_entrypoint','health_module','owner_source','driver_source'):profile[role]=replacements[prior[role]['path']]
+    profile['source_descriptors']=[replacements.get(pin['path'],pin)for pin in prior['source_descriptors']]+[daemon]
+    profile.update(proof_root=str(root),receipt_path=str(root/'executor-health.json'))
+    profile['unit']['argv']=executor.relocate(profile['unit']['argv'],old_source,new_source)
+    argv=profile['unit']['argv'];idx=argv.index('--known-closed-idle-recovery')
+    auth_path=archive/'known-unselected-capacity-authorization.json'
+    argv[idx:idx+2]=['--known-unselected-capacity-handover',str(auth_path)]
+    future=executor.relocate(last['plan'],last['cycle'],seed);future=executor.relocate(future,old_source,new_source)
+    future_pins={pin['path']:pin['sha256']for pin in profile['source_descriptors']if Path(pin['path']).is_relative_to(new_source)}
+    cli=future['native_metadata_cli'];cli['source_sha256']=future_pins
+    cli['pre_body_guard']=replacements[last['plan']['native_metadata_cli']['pre_body_guard']['path']]
+    cli['observation_binding']['observer_source']=replacements[last['plan']['native_metadata_cli']['observation_binding']['observer_source']['path']]
+    cli['project_import_plan']['source_pins']=[pin for pin in profile['source_descriptors']if Path(pin['path']).suffix=='.py']
+    route=replacements[last['plan']['native_metadata_cli']['import_head_capsule_Git']['route_source']['path']]
+    cli['import_head_capsule_Git'].update(scope=executor.READ_ONLY_IMPORT_SCOPE,source_head='1'*40,route_source=route)
+    future_plan_ref=put(seed/'plan.json',future)
+    future_request=executor.relocate(last['request'],last['cycle'],seed);future_request=executor.relocate(future_request,old_source,new_source)
+    future_request['source_sha256']=dict(future_pins);future_request['source_sha256'][future_plan_ref['path']]=future_plan_ref['sha256']
+    future_request_ref=put(seed/'request.json',future_request)
+    template=dict(schema=executor.TEMPLATE_SCHEMA,kind='genuine_scoped_idle',seed_root=str(seed),
+        plan_ref=future_plan_ref,request_ref=future_request_ref,links=dict(execution_request='attempt/execution-request.json',
+        result='attempt/exports/result.json',origins='attempt/exports/origins.json'))
+    template_ref=put(archive/'idle-template.json',template)
+    config=dict(old_config,idle_template_ref=template_ref)
+    config_ref=put(Path(case['config_ref']['path']),config)
+    profile['source_descriptors']=[config_ref if pin['path']==config_ref['path']else pin for pin in profile['source_descriptors']]
+    argv[argv.index('--config-sha256')+1]=config_ref['sha256']
+    profile_ref=put(Path(prior_ref['path']),profile)
+    selected=[pin for pin in profile['source_descriptors']if Path(pin['path']).is_relative_to(new_source)and Path(pin['path']).suffix=='.py']
+    inventory=put(archive/'current-inventory.json',dict(schema='legal-ir-scientific-source-inventory/v1',source_root=str(new_source),
+        source_commit='1'*40,source_tree='2'*40,file_count=len(selected),files=selected))
+    commitment=put(archive/'current-commitment.json',dict(schema='legal-ir-scientific-source-commitment/v1',source_root=str(new_source),
+        source_commit='1'*40,source_tree='2'*40,source_inventory=inventory,runtime_activation_or_task_authority=False))
+    footprint=dict(regular_files=20121,regular_bytes=999887773)
+    history=dict(schema='agent-supervisor/scientific-capacity-prior-history@1',prior_profile_ref=prior_ref,
+        prior_config_ref=old_config_ref,prior_source_commitment_ref=closed_value['source_commitment_ref'],
+        closed_idle_authorization_ref=closed_auth_ref,closed_idle_ack_ref=closed_ack_ref,
+        global_hold_ref=closed_value['global_hold_ref'],cycle2_hold_ref=closed_value['cycle_hold_ref'],latest_receipt_ref=receipt_ref,
+        capacity_intent_ref=capacity_intent,capacity_hold_ref=capacity_hold,old_root_storage=footprint)
+    history_ref=put(archive/'prior-history.json',history)
+    current=copy.deepcopy(last['native']);current['checked_at_epoch']=time.time()
+    value=dict(schema=executor.CAPACITY_SCHEMA,recovery_kind='known_unselected_capacity_hold',profile_ref=profile_ref,
+        prior_profile_ref=prior_ref,prior_profile_snapshot_ref=prior_snapshot,prior_config_snapshot_ref=config_snapshot,
+        prior_history_ref=history_ref,source_commitment_ref=commitment,
+        scheduler_snapshot_ref=put(archive/'scheduler.snapshot.json',case['scheduler_state']),
+        current_native_ref=put(archive/'current-native.json',current),spent_cycle_count=13,max_cycles=10000,
+        authorization='resume_genuine_scoped_idle_in_fresh_root',recorded_at=time.time(),
+        manager_before=dict(Id=profile['unit']['name'],MainPID='0',ActiveState='failed'))
+    recovery_ref=put(auth_path,value);monkeypatch.setenv(executor.CAPACITY_SHA_ENV,recovery_ref['sha256'])
+    monkeypatch.delenv(executor.RECOVERY_SHA_ENV,raising=False);monkeypatch.delenv(executor.CLOSED_IDLE_SHA_ENV,raising=False)
+    # A footprint-only metadata stub avoids creating21k disposable files in
+    # every parser case. Separate cases exercise the real finite walker.
+    monkeypatch.setattr(executor,'_capacity_root_storage',lambda path:dict(footprint))
+    opening=dict(unit=profile['unit']['name'],pid=1000200,birth_ticks=200,boot_id='explicit-capacity-next-fixture-boot',
+        invocation_id='f'*32,argv=list(argv),exe=profile['unit']['interpreter'],cwd=profile['unit']['working_directory'],
+        environment={**profile['unit']['environment'],'INVOCATION_ID':'f'*32,health.ENV_PROFILE_SHA:profile_ref['sha256']})
+    monkeypatch.setattr(executor,'require_main_process',lambda *args:opening)
+    case.update(root=root,old_root=old_root,profile=profile,profile_ref=profile_ref,config=config,config_ref=config_ref,
+        capacity=value,capacity_ref=recovery_ref,capacity_history=history,capacity_archive=archive,capacity_cycle=capacity,
+        capacity_prior=prior,capacity_prior_ref=prior_ref,capacity_last=last,opening=opening,
+        capacity_preserved={str(p):p.read_bytes()for p in old_root.rglob('*')if p.is_file()})
+    return case
+
+
+def _capacity_resume(case):
+    return executor.reconcile_known_unselected_capacity_handover(case['capacity_ref'],case['profile_ref'],
+        case['profile'],case['config'],case['opening'])
+
+
+def _resign_capacity(case,monkeypatch):
+    case['capacity_ref']=put(Path(case['capacity_ref']['path']),case['capacity'])
+    monkeypatch.setenv(executor.CAPACITY_SHA_ENV,case['capacity_ref']['sha256'])
+
+
+def test_capacity_ack_counts_all_thirteen_without_touching_old_proofs(capacity_case):
+    case=capacity_case;assert _capacity_resume(case)==13
+    path=case['capacity_archive']/'capacity-handover-acknowledgement.json';first=path.read_bytes()
+    assert _capacity_resume(case)==13 and path.read_bytes()==first
+    ack=json.loads(first)
+    assert (ack['spent_cycle_count'],ack['next_cycle_number'],ack['first_health_sequence'],ack['remaining_cycle_count'])==(13,14,1,9987)
+    assert all(ack[k]is False for k in ('health_credit','completion_authority','dispatch_authority','historical_origins_relabelled'))
+    assert all(Path(p).read_bytes()==raw for p,raw in case['capacity_preserved'].items())
+    assert not Path(case['profile']['receipt_path']).exists() and not list(case['root'].glob('cycle-*'))
+
+
+@pytest.mark.parametrize('mutation',['spent','max','poll','proof','execution','old-root','new-receipt','new-cycle','kind','scope','head','daemon-pin','envelope'])
+def test_capacity_refuses_budget_reset_unknown_root_or_unadopted_readonly_source(capacity_case,monkeypatch,mutation):
+    case=capacity_case
+    if mutation=='spent':case['capacity']['spent_cycle_count']=12
+    elif mutation=='max':case['config']['max_cycles']=9999
+    elif mutation=='poll':case['config']['poll_seconds']=1
+    elif mutation=='proof':case['config']['max_proof_bytes']=2*1024**3
+    elif mutation=='execution':case['config']['execution_templates']=[{}]
+    elif mutation=='old-root':case['profile']['proof_root']=str(case['old_root'])
+    elif mutation=='new-receipt':put(Path(case['profile']['receipt_path']),{})
+    elif mutation=='new-cycle':(case['root']/'cycle-unknown').mkdir()
+    elif mutation=='kind':case['capacity']['recovery_kind']='retry_known_closed_idle'
+    else:
+        template=health._document(case['config']['idle_template_ref']);plan=health._document(template['plan_ref'])
+        if mutation=='scope':plan['native_metadata_cli']['import_head_capsule_Git']['scope']='legacy archive mode'
+        elif mutation=='head':plan['native_metadata_cli']['import_head_capsule_Git']['source_head']='0'*40
+        elif mutation=='daemon-pin':
+            case['profile']['source_descriptors']=[pin for pin in case['profile']['source_descriptors']if not pin['path'].endswith('implementation_daemon.py')]
+        else:
+            request=health._document(template['request_ref']);request['memory_mb']=1537
+            template['request_ref']=put(Path(template['request_ref']['path']),request)
+        template['plan_ref']=put(Path(template['plan_ref']['path']),plan)
+        case['config']['idle_template_ref']=put(Path(case['config']['idle_template_ref']['path']),template)
+    _resign_capacity(case,monkeypatch)
+    with pytest.raises((executor.ExecutorHold,health.ExecutorHealthError)):_capacity_resume(case)
+    assert not (case['capacity_archive']/'capacity-handover-acknowledgement.json').exists()
+
+
+@pytest.mark.parametrize('mutation',['selected','wrong-hold','request-file','owner-file','gap','positive-held','positive-open','positive-dispatched','unknown-negative'])
+def test_capacity_refuses_any_ambiguous_or_effectful_old_history(capacity_case,monkeypatch,mutation):
+    case=capacity_case;history=case['capacity_history'];cycle=case['capacity_cycle']
+    if mutation=='selected':
+        intent=health._document(history['capacity_intent_ref']);intent['kind']='genuine_scoped_idle'
+        history['capacity_intent_ref']=put(cycle/'intent.json',intent)
+    elif mutation=='wrong-hold':
+        held=health._document(history['capacity_hold_ref']);held['reason']='original_owner_failed'
+        history['capacity_hold_ref']=put(cycle/'cycle-held.json',held)
+    elif mutation in ('request-file','owner-file'):put(cycle/('request.json'if mutation=='request-file'else'owner.stdout'),{})
+    elif mutation=='gap':(case['old_root']/'cycle-unknown').mkdir()
+    elif mutation=='positive-held':put(case['capacity_last']['cycle']/'cycle-held.json',{})
+    elif mutation=='positive-open':
+        proof=case['capacity_last']['proof'];terminal=dict(case['capacity_last']['terminal'],source_READ_closed=False)
+        proof['terminal_ref']=put(Path(proof['terminal_ref']['path']),terminal)
+        put(case['capacity_last']['cycle']/'cycle-proof.json',proof)
+    elif mutation=='positive-dispatched':
+        proof=case['capacity_last']['proof'];result=health._document(proof['result_ref']);result['provider_dispatched']=True
+        proof['result_ref']=put(Path(proof['result_ref']['path']),result);put(case['capacity_last']['cycle']/'cycle-proof.json',proof)
+    else:
+        ack=health._document(history['closed_idle_ack_ref']);ack['health_credit']=True
+        history['closed_idle_ack_ref']=put(Path(history['closed_idle_ack_ref']['path']),ack)
+    case['capacity']['prior_history_ref']=put(Path(case['capacity']['prior_history_ref']['path']),history)
+    _resign_capacity(case,monkeypatch)
+    with pytest.raises((executor.ExecutorHold,health.ExecutorHealthError)):_capacity_resume(case)
+    assert not (case['capacity_archive']/'capacity-handover-acknowledgement.json').exists()
+
+
+def test_capacity_authorization_cannot_be_consumed_by_a_different_main(capacity_case):
+    case=capacity_case;assert _capacity_resume(case)==13
+    case['opening']=dict(case['opening'],pid=1000201,invocation_id='e'*32)
+    with pytest.raises(executor.ExecutorHold,match='consumed_by_other_main'):_capacity_resume(case)
+
+
+def test_capacity_service_starts_fourteen_sequence_one_with_only_remaining_budget(capacity_case,monkeypatch):
+    case=capacity_case;seen=[]
+    monkeypatch.setattr(executor,'observe_native',lambda config:health._document(case['capacity']['current_native_ref']))
+    def cycle(*args,**kwargs):seen.append((args[5],kwargs['cycle_number']))
+    monkeypatch.setattr(executor,'run_cycle',cycle)
+    class Once:
+        def is_set(self):return bool(seen)
+        def wait(self,seconds):assert seconds==60;return True
+    assert executor.serve(case['config_ref'],Once(),recovery_ref=case['capacity_ref'])==0
+    assert seen==[(1,14)]
+
+
+def test_capacity_cli_cannot_combine_an_old_consumed_authorization():
+    with pytest.raises(SystemExit)as exc:
+        executor.main(['serve','--config','/unused','--config-sha256','0'*64,
+            '--known-closed-idle-recovery','/old','--known-unselected-capacity-handover','/new'])
+    assert exc.value.code==2
+
+
+def test_capacity_real_footprint_reader_counts_ordinary_files_without_rewriting(tmp_path):
+    put(tmp_path/'nested/one',b'abc');put(tmp_path/'two',b'12345')
+    before={str(p):p.read_bytes()for p in tmp_path.rglob('*')if p.is_file()}
+    assert executor._capacity_root_storage(tmp_path)==dict(regular_files=2,regular_bytes=8)
+    assert all(Path(p).read_bytes()==raw for p,raw in before.items())
+
+
+@pytest.mark.parametrize('running',[False,True],ids=['absent-main','running-main'])
+def test_capacity_admin_requires_actual_no_main_and_publishes_only_new_root(capacity_case,monkeypatch,running):
+    case=capacity_case;spec={k:v for k,v in case['capacity'].items()if k not in ('schema','recorded_at','manager_before')}
+    spec_ref=put(case['capacity_archive']/'authorization-spec.json',spec)
+    output=Path(case['capacity_ref']['path']);output.unlink()
+    monkeypatch.setattr(health,'_manager',lambda unit:dict(Id=unit,MainPID='123'if running else'0',ActiveState='active'if running else'failed'))
+    if running:
+        with pytest.raises(executor.ExecutorHold,match='requires_no_main'):
+            executor.authorize_known_unselected_capacity_handover(spec_ref,output)
+        assert not output.exists()
+    else:
+        ref=executor.authorize_known_unselected_capacity_handover(spec_ref,output)
+        assert health._document(ref)['schema']==executor.CAPACITY_SCHEMA
+    assert all(Path(p).read_bytes()==raw for p,raw in case['capacity_preserved'].items())
+
+
+def test_capacity_original_process_family_must_be_dead(capacity_case,monkeypatch):
+    case=capacity_case;original=health._definitely_dead_identity
+    monkeypatch.setattr(health,'_definitely_dead_identity',lambda previous,current:
+        False if previous.get('pid')==1000006 else original(previous,current))
+    with pytest.raises(executor.ExecutorHold,match='prior_main_alive'):_capacity_resume(case)
+    assert not (case['capacity_archive']/'capacity-handover-acknowledgement.json').exists()
+
+
+def test_capacity_current_native_request_family_must_not_be_retained(capacity_case,monkeypatch):
+    case=capacity_case;state=copy.deepcopy(case['scheduler_state'])
+    state['leases']['explicit-residual-fixture']={'request_id':case['capacity_last']['request']['request_id']}
+    put(Path(case['scheduler_ref']['path']),state)
+    with pytest.raises(executor.ExecutorHold,match='original_request_still_active'):_capacity_resume(case)
+    assert not (case['capacity_archive']/'capacity-handover-acknowledgement.json').exists()
+
+
+@pytest.mark.parametrize('old_kind',['nonstarted','closed-idle'])
+def test_capacity_new_authorization_refuses_retained_old_authority_environment(capacity_case,monkeypatch,old_kind):
+    case=capacity_case
+    name=executor.RECOVERY_SHA_ENV if old_kind=='nonstarted'else executor.CLOSED_IDLE_SHA_ENV
+    monkeypatch.setenv(name,'a'*64)
+    with pytest.raises(executor.ExecutorHold,match='previous_authorization_environment_retained'):_capacity_resume(case)
+    assert not (case['capacity_archive']/'capacity-handover-acknowledgement.json').exists()

@@ -32,6 +32,8 @@ from urllib.parse import quote
 import uuid
 import zipfile
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -8073,6 +8075,53 @@ def materialize_agent_implementation_control_plane_capsule(
         ),
         capsule_root=destination,
     )
+
+
+
+@dataclass(frozen=True)
+class AgentImplementationReadOnlyImportScope:
+    """Process-local restriction; this object grants no implementation authority."""
+
+    source_root: Path
+    source_head: str
+
+
+_AGENT_IMPLEMENTATION_READ_ONLY_IMPORT_SCOPE: ContextVar[
+    AgentImplementationReadOnlyImportScope | None
+] = ContextVar("agent_implementation_read_only_import_scope", default=None)
+
+
+def current_agent_implementation_read_only_import_scope(
+) -> AgentImplementationReadOnlyImportScope | None:
+    """Return the active restriction for the current import context."""
+
+    return _AGENT_IMPLEMENTATION_READ_ONLY_IMPORT_SCOPE.get()
+
+
+@contextmanager
+def agent_implementation_read_only_import_scope(
+    *, source_root: Path | str, source_head: str
+):
+    """Restrict a cold normal daemon import to observation, without a capsule.
+
+    The daemon still verifies its actual clean HEAD/tree before and after the
+    import checkpoint. A module imported here permanently refuses implement=True.
+    Exiting this scope never upgrades that module to an implementation capability.
+    """
+
+    root = resolve_agent_implementation_private_state_path(source_root)
+    if root.resolve(strict=True) != root or not root.is_dir():
+        raise ValueError("read-only import requires an unaliased source directory")
+    if type(source_head) is not str or re.fullmatch(r"[0-9a-f]{40}", source_head) is None:
+        raise ValueError("read-only import requires an exact source HEAD")
+    if current_agent_implementation_read_only_import_scope() is not None:
+        raise ValueError("read-only import scopes cannot be nested")
+    scope = AgentImplementationReadOnlyImportScope(root, source_head)
+    token = _AGENT_IMPLEMENTATION_READ_ONLY_IMPORT_SCOPE.set(scope)
+    try:
+        yield scope
+    finally:
+        _AGENT_IMPLEMENTATION_READ_ONLY_IMPORT_SCOPE.reset(token)
 
 
 def agent_implementation_control_plane_source_generation(
