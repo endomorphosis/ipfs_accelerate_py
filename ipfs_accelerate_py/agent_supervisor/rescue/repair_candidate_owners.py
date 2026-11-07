@@ -2002,7 +2002,6 @@ def _bootstrap_marker_paths(value, prefix=()):
     return result
 
 
-
 def _bootstrap_config_projection(config, policy, checked_policy_reference, owner_policy_path):
     need(type(checked_policy_reference) is dict and
          checked_policy_reference.get("path") == owner_policy_path,
@@ -2180,7 +2179,6 @@ def _bootstrap_current_profile_contract(policy, frozen, anchor, config, board, c
                 for suffix, pin in observed["loaded_runtime"].items()})
 
 
-
 def current_profile_contract(policy, frozen, *, checked_policy_reference=None):
     """Advance only exact prior profile postimages from the anchored chain."""
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import repair_job_directory
@@ -2225,9 +2223,10 @@ def current_profile_contract(policy, frozen, *, checked_policy_reference=None):
                  "mode": stat.S_IMODE(Path(pin["path"]).lstat().st_mode)}
                 for pin in [*base["units"].values(), base["config"]]]}
         science = next((item for item in config["boards"] if item["id"] == "legal-ir-scientific"), None)
-        if science is not None and "native_executor_git_binding" in science:
-            need("native_executor_binding" in science, "scientific Git binding requires its exact profile")
+        if science is not None and "native_executor_binding" in science:
             seed["scientific_executor_binding"] = science["native_executor_binding"]
+        if science is not None and "native_executor_git_binding" in science:
+            need("scientific_executor_binding" in seed, "scientific Git binding requires its exact profile")
             seed["scientific_executor_git_binding"] = science["native_executor_git_binding"]
         observed = observe_repair_upgrade(seed, command)
         return dict(base, expected_loaded_before={suffix: json_object(checked_descriptor(pin))["owner"]
