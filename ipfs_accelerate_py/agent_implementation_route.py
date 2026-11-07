@@ -31,7 +31,7 @@ import time
 from urllib.parse import quote
 import uuid
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -7906,14 +7906,104 @@ def _agent_control_plane_head_payloads(
     return payloads
 
 
+@dataclass(frozen=True)
+class _AgentImplementationControlPlaneCaptureBinding:
+    source_root: str
+    accepted_pin: AgentImplementationControlPlanePin
+
+
+_AGENT_CONTROL_PLANE_CAPTURE_CONTEXT: ContextVar[
+    _AgentImplementationControlPlaneCaptureBinding | None
+] = ContextVar("agent_control_plane_capture_context", default=None)
+
+
+def _agent_checked_capture_pin(
+    pin: AgentImplementationControlPlanePin,
+) -> AgentImplementationControlPlanePin:
+    """Check the existing closed pin shape without creating or launching anything."""
+
+    if type(pin) is not AgentImplementationControlPlanePin or (
+        pin.schema != _AGENT_CONTROL_PLANE_PIN_SCHEMA
+        or any(type(value) is not str or not value or len(value) > 8192
+               or "\0" in value or "\n" in value or "\r" in value
+               for value in pin.as_dict().values())
+        or re.fullmatch(r"[0-9a-f]{40}", pin.source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", pin.source_tree) is None
+        or any(re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+               for value in (pin.capsule_id, pin.runner_sha256, pin.archive_sha256))
+    ):
+        raise ValueError("accepted retained control-plane pin is invalid")
+    root = resolve_agent_implementation_private_state_path(pin.capsule_root)
+    runner = resolve_agent_implementation_private_state_path(pin.runner_path)
+    if (not Path(pin.capsule_root).is_absolute() or not Path(pin.runner_path).is_absolute()
+        or str(root) != pin.capsule_root or str(runner) != pin.runner_path
+        or runner != root / "ipfs_accelerate_py" / "agent_supervisor" / "runtime" / "grok_cli_runner.py"):
+        raise ValueError("accepted retained control-plane paths differ")
+    return pin
+
+
+@contextmanager
+def agent_implementation_control_plane_capture_context(
+    *, source_root: Path | str, accepted_pin: AgentImplementationControlPlanePin,
+) -> Iterator[None]:
+    """Scope an admitted retained pin around the normal eager daemon import.
+
+    This transports a pin; it does not perform Git I/O, materialize a capsule,
+    import the daemon or grant execution authority. Normal capture validates
+    current source bytes and freshly seals the accepted capsule in each child.
+    """
+
+    root = resolve_agent_implementation_private_state_path(source_root)
+    if root.resolve(strict=True) != root:
+        raise ValueError("accepted control-plane source root contains a symlink")
+    pin = _agent_checked_capture_pin(accepted_pin)
+    if _AGENT_CONTROL_PLANE_CAPTURE_CONTEXT.get() is not None:
+        raise ValueError("accepted control-plane capture context is already active")
+    token = _AGENT_CONTROL_PLANE_CAPTURE_CONTEXT.set(
+        _AgentImplementationControlPlaneCaptureBinding(str(root), pin)
+    )
+    try:
+        yield
+    finally:
+        _AGENT_CONTROL_PLANE_CAPTURE_CONTEXT.reset(token)
+
+
+def agent_implementation_control_plane_capture_pin(
+    source_root: Path | str,
+) -> AgentImplementationControlPlanePin | None:
+    """Return only this context's pin for its exact normal source root."""
+
+    binding = _AGENT_CONTROL_PLANE_CAPTURE_CONTEXT.get()
+    if binding is None:
+        return None
+    root = resolve_agent_implementation_private_state_path(source_root)
+    if str(root) != binding.source_root:
+        raise ValueError("accepted control-plane capture source root differs")
+    return _agent_checked_capture_pin(binding.accepted_pin)
+
+
 def materialize_agent_implementation_control_plane_capsule(
     *,
     source_root: Path | str,
     capsule_parent: Path | str,
     source_head: str,
     source_tree: str,
+    reuse_only: bool = False,
+    accepted_pin: AgentImplementationControlPlanePin | None = None,
 ) -> AgentImplementationControlPlanePin:
-    """Snapshot the daemon's loaded source generation into a private capsule."""
+    """Snapshot or revalidate one exact retained source capsule.
+
+    Default capture creates a private capsule as before. Reuse-only capture
+    creates no parent, staging directory or missing destination, and requires
+    the exact accepted pin after all current Git and loaded-body checks.
+    """
+
+    if type(reuse_only) is not bool or (accepted_pin is None) != (not reuse_only):
+        raise ValueError("accepted retained control-plane mode/pin differs")
+    if accepted_pin is not None:
+        accepted_pin = _agent_checked_capture_pin(accepted_pin)
+        if (accepted_pin.source_head, accepted_pin.source_tree) != (source_head, source_tree):
+            raise ValueError("accepted retained control-plane generation differs")
 
     unresolved_root = resolve_agent_implementation_private_state_path(source_root)
     root = unresolved_root.resolve(strict=True)
@@ -7972,10 +8062,19 @@ def materialize_agent_implementation_control_plane_capsule(
     )
     capsule_id = str(manifest["capsule_id"])
     parent = resolve_agent_implementation_private_state_path(capsule_parent)
+    destination = parent / capsule_id.removeprefix("sha256:")
+    if accepted_pin is not None and (
+        accepted_pin.capsule_id != capsule_id
+        or accepted_pin.capsule_root != str(destination)
+        or accepted_pin.runner_path != str(destination / "ipfs_accelerate_py" / "agent_supervisor" / "runtime" / "grok_cli_runner.py")
+    ):
+        raise ValueError("accepted retained control-plane identity differs")
     created_parent_identity: tuple[int, int, int, int] | None = None
     try:
         os.lstat(parent)
     except FileNotFoundError:
+        if reuse_only:
+            raise ValueError("accepted retained control-plane parent is missing") from None
         created_parent_identity = _agent_create_private_directory_chain(
             parent,
             final_mode=0o700,
@@ -8006,7 +8105,7 @@ def materialize_agent_implementation_control_plane_capsule(
     if destination_metadata is not None:
         if stat_module.S_ISLNK(destination_metadata.st_mode):
             raise ValueError("accepted control-plane capsule cannot be a symlink")
-        return build_agent_implementation_control_plane_pin(
+        pin = build_agent_implementation_control_plane_pin(
             runner_path=(
                 destination
                 / "ipfs_accelerate_py"
@@ -8016,6 +8115,11 @@ def materialize_agent_implementation_control_plane_capsule(
             ),
             capsule_root=destination,
         )
+        if accepted_pin is not None and pin != accepted_pin:
+            raise ValueError("accepted retained control-plane pin drifted")
+        return pin
+    if reuse_only:
+        raise ValueError("accepted retained control-plane capsule is missing")
     staging = Path(tempfile.mkdtemp(prefix=".capsule-", dir=parent))
     try:
         for relative, raw in payloads.items():

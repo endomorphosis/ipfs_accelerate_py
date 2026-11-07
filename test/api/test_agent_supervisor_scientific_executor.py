@@ -228,7 +228,17 @@ def test_unknown_or_failed_original_cycle_is_terminated_held_and_never_retried(s
     process = FixtureProcess()
     def fixture_spawn(*args, **kwargs): calls.append(args[0]); return process
     monkeypatch.setattr(executor.subprocess, 'Popen', fixture_spawn)
-    monkeypatch.setattr(health, 'track_original_cycle', lambda *args, **kwargs: object())
+    # This source-only failure fixture models both halves of the existing
+    # captured-cycle API; it does not claim a live Popen or health capability.
+    fixture_handle = object()
+    monkeypatch.setattr(health, 'track_original_cycle', lambda *args, **kwargs: fixture_handle)
+    def fixture_start_fields(offered):
+        assert offered is fixture_handle
+        return dict(sequence=1, process=dict(pid=123, birth_ticks=1,
+            boot_id='fixture-only', invocation_id='a'*32),
+            owner_observation=dict(pid=124, birth_ticks=2, boot_id='fixture-only'),
+            started_at=0.0, started_monotonic_ns=0)
+    monkeypatch.setattr(health, 'cycle_start_fields', fixture_start_fields)
     monkeypatch.setattr(health, 'publish_after_native_cycle', lambda *args, **kwargs: pytest.fail('failed cycle cannot publish'))
     if failure == 'signal': stop.set()
     elif failure == 'timeout':
@@ -1243,3 +1253,216 @@ def test_capacity_new_authorization_refuses_retained_old_authority_environment(c
     monkeypatch.setenv(name,'a'*64)
     with pytest.raises(executor.ExecutorHold,match='previous_authorization_environment_retained'):_capacity_resume(case)
     assert not (case['capacity_archive']/'capacity-handover-acknowledgement.json').exists()
+
+@pytest.mark.parametrize('boundary',['files','bytes'])
+def test_predictive_proof_budget_accounts_for_reserved_growth_before_writes(service_case,boundary):
+    case=service_case
+    if boundary=='files':
+        # Existing files alone fit; the next admitted cycle would cross the cap.
+        reserve=20000
+        with pytest.raises(executor.ExecutorHold,match='proof_projected_storage_bound'):
+            executor.check_proof_budget(case['root'],1024**3,reserve_files=reserve)
+    else:
+        with pytest.raises(executor.ExecutorHold,match='proof_projected_storage_bound'):
+            executor.check_proof_budget(case['root'],executor.REUSE_CYCLE_RESERVE_BYTES-1,
+                reserve_bytes=executor.REUSE_CYCLE_RESERVE_BYTES)
+
+
+def test_reuse_cycle_preflight_refuses_before_cycle_directory_intent_or_owner(service_case,monkeypatch):
+    case=service_case;case['plan']['native_metadata_cli']['schema']='native-embedded-scoped-observation-cli/v3'
+    case['template']['plan_ref']=put(Path(case['template']['plan_ref']['path']),case['plan'])
+    case['request']['storage_bytes']=384*1024**2
+    case['template']['request_ref']=put(Path(case['template']['request_ref']['path']),case['request'])
+    case['template_ref']=put(Path(case['template_ref']['path']),case['template'])
+    before={str(p) for p in case['root'].rglob('*')};calls=[]
+    monkeypatch.setattr(executor.subprocess,'Popen',lambda *a,**kw:calls.append('unadmitted'))
+    with pytest.raises(executor.ExecutorHold,match='proof_projected_storage_bound'):
+        executor.run_cycle(case['config'],case['profile_ref'],case['profile'],case['template_ref'],
+            'genuine_scoped_idle',1,threading.Event(),cycle_number=14)
+    assert calls==[] and {str(p) for p in case['root'].rglob('*')}==before
+
+
+def _generation_census_fixture(root,metadata):
+    import stat
+    rows=[];directories=[('.',stat.S_IMODE(root.stat().st_mode))]
+    for p in root.rglob('*'):
+        if p.is_dir():directories.append((p.relative_to(root).as_posix(),stat.S_IMODE(p.stat().st_mode)))
+        else:rows.append(dict(relative_path=p.relative_to(root).as_posix(),bytes=p.stat().st_size,
+            sha256=hashlib.sha256(p.read_bytes()).hexdigest(),mode=stat.S_IMODE(p.stat().st_mode)))
+    files=put(metadata/'files.json',dict(schema='agent-supervisor/scientific-proof-file-manifest@1',root=str(root),files=rows))
+    Path(files['path']).chmod(0o400)
+    ref=put(metadata/'census.json',dict(schema='agent-supervisor/scientific-proof-generation-census@1',root=str(root),
+        manifests=[files],file_count=len(rows),source_bytes=sum(row['bytes'] for row in rows),
+        directory_sha256=hashlib.sha256(json.dumps(sorted(directories),separators=(',',':')).encode()).hexdigest()))
+    Path(ref['path']).chmod(0o400);return ref
+
+
+@pytest.mark.parametrize('mutation',['none','file','directory'])
+def test_logically_sealed_census_preserves_original_modes_and_rejects_drift(tmp_path,monkeypatch,mutation):
+    root=tmp_path/'prior';root.mkdir(mode=0o700);nested=root/'nested';nested.mkdir(mode=0o700)
+    p=nested/'original.json';p.write_bytes(b'original bytes');p.chmod(0o600)
+    reference=_generation_census_fixture(root,tmp_path/'immutable-census')
+    monkeypatch.setattr(executor,'ORIGINAL_NAMED_ROOTS',(tmp_path,))
+    before=p.read_bytes(),p.stat().st_mode&0o777,nested.stat().st_mode&0o777
+    if mutation=='file':p.write_bytes(b'different bytes')
+    elif mutation=='directory':nested.chmod(0o500)
+    if mutation=='none':
+        assert executor._generation_census(reference)['file_count']==1
+        assert before==(p.read_bytes(),p.stat().st_mode&0o777,nested.stat().st_mode&0o777)
+    else:
+        with pytest.raises((executor.ExecutorHold,health.ExecutorHealthError)):executor._generation_census(reference)
+
+
+def _bounded_handover_fixture(case,tmp_path,monkeypatch):
+    # Grant-composition fixture: the unchanged old native-cycle verifier is
+    # modeled and recorded. Actual census bytes/modes have separate real tests;
+    # this fixture never claims actual manager/native/cold-import credit.
+    oldroot=case['root'];newroot=oldroot.parent/'proof-next';newroot.mkdir(mode=0o700)
+    config=copy.deepcopy(case['config']);config.update(max_cycles=10000,max_proof_bytes=1024**3,poll_seconds=60)
+    old_config_ref=put(tmp_path/'old-service.json',config)
+    prior=copy.deepcopy(case['profile']);prior['source_descriptors']=[p for p in prior['source_descriptors'] if p['path']!=case['config_ref']['path']]+[old_config_ref]
+    prior_ref=put(tmp_path/'prior-profile.json',prior);snapshot=put(tmp_path/'prior-profile-snapshot.json',prior)
+    old_identity=dict(unit=prior['unit']['name'],pid=2000001,birth_ticks=100,boot_id='fixture-old-boot',invocation_id='a'*32,
+        argv=list(prior['unit']['argv']),exe=prior['unit']['interpreter'],cwd=prior['unit']['working_directory'],
+        environment={**prior['unit']['environment'],'INVOCATION_ID':'a'*32,health.ENV_PROFILE_SHA:prior_ref['sha256']})
+    cycles=[]
+    for n in range(1,14):
+        c=oldroot/('cycle-%08d-'%n+'a'*32);c.mkdir(mode=0o700);cycles.append(c)
+        put(c/'intent.json',dict(kind='not_selected' if n==13 else 'genuine_scoped_idle',cycle_number=n,sequence=n,automatic_retry_admitted=False))
+        if n<13:put(c/'closed.json',dict(cycle_proof_ref={}))
+    hold=put(oldroot/'executor-held.json',dict(schema='agent-supervisor/scientific-executor-persistent-hold@1',reason='retained_original',automatic_retry_admitted=False))
+    held=put(cycles[-1]/'cycle-held.json',dict(schema='agent-supervisor/scientific-cycle-held@1',reason='proof_storage_bound',automatic_retry_admitted=False))
+    diagnostic=put(cycles[-2]/'native.json',case['native'])
+    oldproof=dict(kind='genuine_scoped_idle',sequence=12,process={key:old_identity[key] for key in ('pid','birth_ticks','boot_id','invocation_id')},native_diagnostic_ref=diagnostic,finished_at=case['native']['checked_at_epoch'],finished_monotonic_ns=1,
+        owner_observation=dict(pid=2000002,birth_ticks=101,boot_id='fixture-old-boot'))
+    proof_ref=put(cycles[-2]/'cycle-proof.json',oldproof);put(cycles[-2]/'closed.json',dict(cycle_proof_ref=proof_ref))
+    census=put(tmp_path/'retained-census.json',dict(schema='agent-supervisor/scientific-proof-generation-census@1',root=str(oldroot),file_count=20121,source_bytes=999887773))
+    Path(census['path']).chmod(0o400)
+    calls=[];monkeypatch.setattr(executor,'_generation_census',lambda ref:dict(health._document(ref)))
+    monkeypatch.setattr(health,'_cycle',lambda *args,**kw:calls.append((args,kw)))
+    monkeypatch.setattr(health,'_definitely_dead_identity',lambda *args:True)
+    monkeypatch.setattr(executor,'ORIGINAL_NAMED_ROOTS',(tmp_path,))
+    profile=copy.deepcopy(prior);profile.update(proof_root=str(newroot),receipt_path=str(newroot/'current.json'))
+    runtime=tmp_path/'new-runtime'
+    for role,name in (('main_entrypoint','scientific_executor.py'),('health_module','native_executor_health.py'),('owner_source','original_embedded_observation_owner.py'),('driver_source','native_embedded_observation_driver.py')):
+        before=profile[role];replacement=put(runtime/'ipfs_accelerate_py/agent_supervisor/rescue'/name,Path(before['path']).read_bytes())
+        profile[role]=replacement;profile['source_descriptors']=[replacement if p==before else p for p in profile['source_descriptors']]
+    profile['unit']['argv']=[profile['unit']['interpreter'],'-B',profile['main_entrypoint']['path']]
+    init=newroot/'cache-bootstrap/attempt';init.mkdir(parents=True)
+    cache_root=init/('c'*64);cache_root.mkdir()
+    runner='ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py'
+    pin=dict(schema='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2',runner_path=str(cache_root/runner),runner_sha256='sha256:'+'a'*64,
+        capsule_root=str(cache_root),capsule_id='sha256:'+'c'*64,source_head='2'*40,source_tree='3'*40,archive_sha256='sha256:'+'b'*64)
+    manifest=put(cache_root/'.agent-control-plane-manifest.json',dict(schema='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1',
+        source_head=pin['source_head'],source_tree=pin['source_tree'],capsule_id=pin['capsule_id'],files={runner:pin['runner_sha256']}))
+    commitment=put(newroot/'source-commitment.json',dict(schema='legal-ir-scientific-source-commitment/v1',source_root=str(runtime),
+        source_commit=pin['source_head'],source_tree=pin['source_tree'],runtime_activation_or_task_authority=False))
+    cache=put(newroot/'source-capsule.json',dict(schema='agent-supervisor/scientific-source-capsule-reuse@1',accepted_pin=pin,manifest_ref=manifest,source_commitment_ref=commitment))
+    seed=newroot/'seed';seed.mkdir()
+    plan=dict(schema='native-embedded-scoped-observation-plan/v1',operation='native_embedded_scoped_observation_v1',accelerate_root=str(runtime),task_scope=profile['task_scope'],
+        native_metadata_cli=dict(schema='native-embedded-scoped-observation-cli/v3',runtime_root=str(runtime),source_capsule_ref=cache))
+    plan_ref=put(seed/'plan.json',plan)
+    template=dict(schema=executor.TEMPLATE_SCHEMA,kind='genuine_scoped_idle',seed_root=str(seed),plan_ref=plan_ref,request_ref=put(seed/'request.json',{}),
+        links=dict(execution_request='attempt/execution-request.json',result='attempt/exports/result.json',origins='attempt/exports/origins.json'))
+    config['idle_template_ref']=put(newroot/'template.json',template);config['profile_path']=str(tmp_path/'new-profile.json')
+    config_ref=put(newroot/'service.json',config);profile['source_descriptors']=[*profile['source_descriptors'],config_ref,cache,manifest,commitment]
+    grant_path=newroot/'one-handover.json';profile['unit']['argv'] += ['--config',config_ref['path'],'--config-sha256',config_ref['sha256'],'--bounded-generation-handover',str(grant_path)]
+    profile_ref=put(Path(config['profile_path']),profile)
+    policy=dict(fixture_original_policy=True);policy_sha=hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    state=dict(config=policy,waiters={},leases={});state_ref=put(tmp_path/'scheduler.json',state);state_snapshot=put(newroot/'scheduler-snapshot.json',state)
+    init_plan=copy.deepcopy(plan);init_plan['native_metadata_cli']={**init_plan['native_metadata_cli'],'schema':'native-embedded-scoped-observation-cli/v2','import_head_capsule_Git':dict(source_head=pin['source_head'])};init_plan['native_metadata_cli'].pop('source_capsule_ref')
+    init_plan_ref=put(newroot/'initial-plan.json',init_plan)
+    ledger_path=tmp_path/'original-disk-ledger.json';monkeypatch.setattr(executor,'ORIGINAL_RESOURCE_LEDGER',ledger_path)
+    request=dict(schema='legal-ir-original-native-control-request/v1',request_id='fixture:cache-init',attempt_directory=str(init),
+        argv=[sys.executable,'-B',profile['driver_source']['path'],'--plan',init_plan_ref['path'],'--plan-sha256',init_plan_ref['sha256']],
+        source_sha256={profile['owner_source']['path']:profile['owner_source']['sha256'],profile['driver_source']['path']:profile['driver_source']['sha256'],init_plan_ref['path']:init_plan_ref['sha256']},
+        source_roots=[str(tmp_path.parents[1]),'/home/barberb/lift_coding/external/ipfs_accelerate'],resource_ledger=str(ledger_path),
+        scheduler_state_path=state_ref['path'],expected_scheduler_policy_sha256=policy_sha,cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300)
+    request_ref=put(newroot/'initial-request.json',request)
+    historical={**request,'request_id':'fixture:historical12'}
+    historical_ref=put(cycles[-2]/'request.json',historical)
+    oldproof['request_ref']=historical_ref
+    proof_ref=put(cycles[-2]/'cycle-proof.json',oldproof)
+    put(cycles[-2]/'closed.json',dict(cycle_proof_ref=proof_ref))
+    intent=health._document(health.descriptor(cycles[-2]/'intent.json'));intent['request_ref']=historical_ref;put(cycles[-2]/'intent.json',intent)
+    for c in cycles[:-2]:
+        r=put(c/'cycle-proof.json',oldproof);put(c/'closed.json',dict(cycle_proof_ref=r))
+    record=dict(status='released',reservation_id='fixture:initial',owner_pid=2000003,native_lease_id='fixture:native',scheduler_lane='orchestration',workload='canonical_parented_phase',
+        artifacts_durable_asserted=True,attempt_directory=dict(path=str(init)),scheduler_policy_sha256=policy_sha,scheduler_state_path=state_ref['path'],
+        **{k:request[k] for k in ('cpu_slots','memory_mb','child_process_slots','storage_bytes')})
+    info=tmp_path.stat();put(ledger_path,dict(schema='daemon-resource-reservations-v1',limit_bytes=220000000000,
+        roots=[dict(path=str(tmp_path),device=info.st_dev,inode=info.st_ino)],reservations={'fixture:initial':record}))
+    execution=put(init/'execution-request.json',dict(request=request_ref,owner_source=profile['owner_source'],disk_reservation_id='fixture:initial'))
+    terminal=dict(schema='legal-ir-original-native-control-terminal/v1',request_sha256=request_ref['sha256'],completed=True,source_READ_closed=True,
+        original_native_compute_closed=True,child_reaped=True,child_returncode=0,storage_status='released',cleanup_errors=[],received_signals=[],partial_or_failed_control_must_be_reconciled=False,
+        owner_pid=2000003,owner_birth='103',owner_boot_id='fixture-current-boot',execution_request=execution,
+        reservation=dict(reservation_id='fixture:initial',record=record,resource_lease=dict(released=True,lease_id='fixture:native')),
+        sampled_process_custody_final=dict(live_processes=0,live_identities=[],rss_bytes=0,tracking_error=''),process_spawn_receipts=dict(all_recorded_original_births_stopped=True))
+    terminal_ref=put(newroot/'initial-terminal.json',terminal)
+    value=dict(schema=executor.GENERATION_SCHEMA,authorization='one_bounded_source_generation_handover',profile_ref=profile_ref,
+        prior_profile_ref=prior_ref,prior_profile_snapshot_ref=snapshot,prior_config_ref=old_config_ref,prior_config_snapshot_ref=old_config_ref,
+        retained_census_ref=census,prior_global_hold_ref=hold,prior_cycle_hold_ref=held,prior_intent_ref=health.descriptor(cycles[-1]/'intent.json'),
+        prior_last_closed_cycle_ref=proof_ref,prior_main_identity=old_identity,source_capsule_ref=cache,cache_initialization_request_ref=request_ref,
+        cache_initialization_terminal_ref=terminal_ref,scheduler_snapshot_ref=state_snapshot,retained_generations=[census],generation_number=2,max_generations=2,
+        global_max_bytes=220000000000,spent_cycle_count=13,recorded_at=time.time(),manager_before=dict(Id=profile['unit']['name'],MainPID='0',ActiveState='failed'))
+    def seal():
+        if grant_path.exists():grant_path.chmod(0o600)
+        reference=put(grant_path,value);grant_path.chmod(0o400);monkeypatch.setenv(executor.GENERATION_SHA_ENV,reference['sha256']);return reference
+    return dict(value=value,ref=seal(),seal=seal,profile=profile,profile_ref=profile_ref,config=config,oldroot=oldroot,root=newroot,calls=calls,
+        opening=dict(pid=2000004,birth_ticks=104,boot_id='fixture-current-boot',invocation_id='d'*32))
+
+
+def test_exact_bounded_generation_grant_preserves_thirteen_spent_and_old_hold_bytes(service_case,tmp_path,monkeypatch):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    before={str(p):p.read_bytes() for p in d['oldroot'].rglob('*') if p.is_file()}
+    assert executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])==13
+    ack=json.loads((d['root']/'bounded-generation-handover.json').read_bytes())
+    assert ack['next_cycle_number']==14 and ack['generation_number']==ack['max_generations']==2 and d['calls']
+    assert {str(p):p.read_bytes() for p in d['oldroot'].rglob('*') if p.is_file()}==before
+
+
+@pytest.mark.parametrize('mutation',['generations','native_unclosed','other_main'])
+def test_bounded_generation_cannot_expand_or_borrow_unknown_native_custody(service_case,tmp_path,monkeypatch,mutation):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    if mutation=='generations':d['value']['max_generations']=64;d['ref']=d['seal']()
+    elif mutation=='native_unclosed':
+        ref=d['value']['cache_initialization_terminal_ref'];terminal=health._document(ref);terminal['original_native_compute_closed']=False
+        d['value']['cache_initialization_terminal_ref']=put(Path(ref['path']),terminal);d['ref']=d['seal']()
+    else:
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+        d['opening']={**d['opening'],'pid':2000005}
+    with pytest.raises((executor.ExecutorHold,health.ExecutorHealthError)):
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+
+
+
+def test_generation_handover_refuses_borrowing_an_earlier_closed_cycle(service_case,tmp_path,monkeypatch):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    earlier=next(d['oldroot'].glob('cycle-00000011-*'))/'cycle-proof.json'
+    d['value']['prior_last_closed_cycle_ref']=health.descriptor(earlier);d['ref']=d['seal']()
+    with pytest.raises(executor.ExecutorHold,match='last_closed_proof'):
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+
+
+@pytest.mark.parametrize('state',['alive','unknown'])
+def test_generation_grant_refuses_live_or_unknown_original_initialization_owner(service_case,tmp_path,monkeypatch,state):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    def decision(previous,current):
+        if previous['pid']==2000003:
+            if state=='unknown':raise health.ExecutorHealthError('previous_process_custody_unknown')
+            return False
+        return True
+    monkeypatch.setattr(health,'_definitely_dead_identity',decision)
+    with pytest.raises((executor.ExecutorHold,health.ExecutorHealthError)):
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+    assert not (d['root']/'bounded-generation-handover.json').exists()
+
+
+
+def test_generation_grant_preserves_an_active_historical_original_request(service_case,tmp_path,monkeypatch):
+    d=_bounded_handover_fixture(service_case,tmp_path,monkeypatch)
+    original=health._document(d['value']['cache_initialization_request_ref']);state=Path(original['scheduler_state_path'])
+    value=health._document(health.descriptor(state));value['leases']['retained']={'request_id':'fixture:historical12:root'};put(state,value)
+    with pytest.raises(executor.ExecutorHold,match='original_request_still_active'):
+        executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
+    assert health._document(health.descriptor(state))==value

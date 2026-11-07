@@ -202,7 +202,8 @@ def source_admission_source_inventory(reference, profile):
          and all(type(source.get(k))is str and len(source[k])==40 and set(source[k])<=set('0123456789abcdef')for k in ('source_commit','source_tree'))
          and type(rows)is list and 0<len(rows)<=4096 and inventory.get('file_count')==len(rows)
          and all(type(row)is dict and type(row.get('path'))is str for row in rows),'source_admission_inventory_shape')
-    indexed={row['path']:row for row in rows};selected=[pin for pin in profile['source_descriptors']if Path(pin['path']).is_relative_to(producer)]
+    indexed={row['path']:row for row in rows};under=[pin for pin in profile['source_descriptors']if Path(pin['path']).is_relative_to(producer)];selected=[pin for pin in under if Path(pin['path']).suffix=='.py']
+    need(selected==under,'source_admission_producer_or_parent_source_inventory_changed')
     parents=[producer/'ipfs_accelerate_py/__init__.py',producer/'ipfs_accelerate_py/agent_supervisor/__init__.py',producer/'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py']
     need(len(indexed)==len(rows)and len(selected)==4 and profile['main_entrypoint']in selected
          and {pin['path']for pin in selected}=={profile['main_entrypoint']['path'],*(str(path)for path in parents)}
@@ -1504,7 +1505,7 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
                     request=h._document(request_ref)
                     witness=source_admission_deferral(profile,request_ref,request,root,kind,process,h.cycle_start_fields(handle),original_returncode)
                 except Exception:
-                    # An unproved optional deferral preserves the original hold.
+                    # ExecutorHold and any other unproved optional deferral preserve the original hold.
                     pass
                 else:
                     raise SourceAdmissionDeferred(witness['path'])
