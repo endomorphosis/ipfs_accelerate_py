@@ -129,7 +129,8 @@ def parse_candidate_policy(worker: Mapping[str, Any]) -> CandidatePolicy | None:
     _require(repository != state and repository not in state.parents and state not in repository.parents,
              "candidate state must be disjoint from source")
     namespace = _text(value["namespace"], "namespace", 64)
-    _require(re.fullmatch(r"ptr_lane_\d+", namespace) is not None, "explicit repair lane namespace required")
+    _require(namespace == "legal_ir_unattended_repair" or re.fullmatch(r"ptr_lane_\d+", namespace) is not None,
+             "explicit repair lane namespace required")
     _require(type(value["base_commit"]) is str and bool(_OID.fullmatch(value["base_commit"])),
              "exact base commit required")
     sources, allowed = _paths(value["source_paths"], "source_paths"), _paths(value["allowed_paths"], "allowed_paths")
