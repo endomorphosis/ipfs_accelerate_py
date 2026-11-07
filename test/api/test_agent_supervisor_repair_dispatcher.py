@@ -52,9 +52,15 @@ def rig(tmp_path, monkeypatch):
     live = {100: True, 200: True}
 
     def probe(pid):
+        argv = (["python", "-m", "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume",
+                 "--repo-root", str(tmp_path), "--todo-path", "todo.md", "--bundle-key", "vog",
+                 "--status-path", str(lane / "vog_status.json"),
+                 "--pid-path", str(lane / "vog_bundle_supervisor.pid")]
+                if pid == 200 else
+                ["python", "-m", "ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog",
+                 "--manifest-path", str(manifest), "--repo-root", str(tmp_path)])
         return {"pid": pid, "alive": live.get(pid, False), "age_seconds": 5000, "start_ticks": pid * 10,
-                "argv": ["python", "-m", "ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog",
-                         "--manifest-path", str(manifest), "--repo-root", str(tmp_path)], "cwd": str(tmp_path)}
+                "argv": argv, "cwd": str(tmp_path)}
 
     return config, now, lane, live, probe
 
@@ -90,6 +96,77 @@ def test_dead_owner_and_lane_with_pending_work_are_concrete(rig):
     config, now, lane, live, probe = rig
     live.update({100: False, 200: False})
     assert {"owner_dead", "lane_dead_pending"} <= kinds(observe(config, {}, now=now, probe=probe))
+
+
+@pytest.mark.parametrize("process_kind", ["dead", "reused", "matching"])
+def test_finished_stopped_lane_does_not_dispatch_a_stale_heartbeat_repair(rig, process_kind):
+    config, now, lane, live, probe = rig
+    (config.repo_root / "todo.md").write_text("## VOG-001 Work\n- Status: completed\n- Depends on:\n")
+    status(lane, state="stopped", phase="lane_resume_exited", active_task_id="",
+           terminal_reason="resume_duration_elapsed", heartbeat_at_ms=(now - 54861) * 1000)
+    os.utime(lane / "supervisor.log", (now - 82732, now - 82732))
+    live[200] = process_kind != "dead"
+
+    def observed(pid):
+        process = probe(pid)
+        if pid == 200 and process_kind == "reused":
+            process.update(argv=["unrelated", "private-argument"], age_seconds=21)
+        return process
+
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=observed,
+                  worker=lambda *_: pytest.fail("repair ran for a finished stopped lane"))
+    assert result["action"] == "healthy" and not result["incidents"]
+    assert result["pending_task_ids"] == result["selectable_task_ids"] == []
+    assert not state.get("attempts")
+    assert result["work_complete"] is result["completion_authority"] is False
+    assert "private-argument" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("mismatch", ["module", "repo", "board", "lane", "status", "pid", "duplicate", "script"])
+def test_unrelated_live_pid_cannot_mask_a_dead_lane_with_pending_work(rig, mismatch):
+    config, now, lane, live, probe = rig
+    status(lane, state="stopped", phase="lane_resume_exited", active_task_id="",
+           terminal_reason="resume_duration_elapsed", heartbeat_at_ms=(now - 54861) * 1000)
+
+    def reused(pid):
+        process = probe(pid)
+        if pid == 200:
+            argv = process["argv"]
+            if mismatch == "module":
+                argv[2] = "unrelated.private_module"
+            elif mismatch == "script":
+                argv.insert(1, "private-script.py")
+            elif mismatch == "duplicate":
+                argv.extend(["--repo-root", str(config.repo_root)])
+            else:
+                option = {"repo": "--repo-root", "board": "--todo-path", "lane": "--bundle-key",
+                          "status": "--status-path", "pid": "--pid-path"}[mismatch]
+                argv[argv.index(option) + 1] = "private-other-owner"
+        return process
+
+    result = observe(config, {}, now=now, probe=reused)
+    assert kinds(result) == {"lane_dead_pending"}
+    process = result["lanes"][0]["process"]
+    assert process["alive"] is process["identity_verified"] is False
+    assert process["identity_reason"] == "lane_identity_mismatch"
+    assert "private-" not in json.dumps(result)
+
+
+def test_matching_lane_with_pending_work_still_reports_stale_heartbeat(rig):
+    config, now, lane, live, probe = rig
+    status(lane, heartbeat_at_ms=(now - 1000) * 1000)
+    result = observe(config, {}, now=now, probe=probe)
+    assert kinds(result) == {"lane_heartbeat_stale"}
+    assert result["lanes"][0]["process"]["identity_verified"] is True
+
+
+def test_missing_pid_file_can_still_verify_the_matching_status_owner(rig):
+    config, now, lane, live, probe = rig
+    (lane / "vog_bundle_supervisor.pid").unlink()
+    result = observe(config, {}, now=now, probe=probe)
+    assert not result["incidents"]
+    assert result["lanes"][0]["process"]["identity_verified"] is True
 
 
 def test_operator_stop_and_hold_marker_prevent_dispatch(rig):

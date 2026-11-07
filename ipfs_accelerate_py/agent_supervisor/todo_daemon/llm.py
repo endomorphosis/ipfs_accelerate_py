@@ -30,6 +30,7 @@ LLM_CHILD_ENVELOPE_VERSION = 1
 MAX_ENVELOPE_BYTES = 16_384
 MAX_RESULT_BYTES = 32_768
 MAX_TEXT_FIELD_BYTES = 512
+PROVIDER_BUDGET_POLICY_VERSION = 1
 
 # Modes mirror the provider execution gateway. ``off`` is the default and must
 # remain behaviorally identical to the pre-ASI-166 child launch path.
@@ -701,9 +702,13 @@ try:
     parameters = inspect.signature(llm_router.generate_text).parameters
 except (TypeError, ValueError):
     parameters = {{}}
-if "trace" in parameters:
+accepts_extra_kwargs = any(
+    parameter.kind is inspect.Parameter.VAR_KEYWORD
+    for parameter in parameters.values()
+)
+if "trace" in parameters or accepts_extra_kwargs:
     kwargs["trace"] = os.environ.get({trace_env!r}) == "1"
-if "trace_dir" in parameters:
+if "trace_dir" in parameters or accepts_extra_kwargs:
     trace_dir = os.environ.get({trace_dir_env!r}) or None
     kwargs["trace_dir"] = trace_dir
 alloc_session = os.environ.get({allocation_session_env!r}) or ""
@@ -814,6 +819,14 @@ def call_llm_router_with_receipt(
     provider verification and timeouts. Non-off modes additionally emit a
     bounded versioned JSON result file carrying receipt IDs only.
     """
+
+    # An opt-in operator freeze denies before route adaptation, temporary
+    # provider files, or any child. Unconfigured invocation prefixes keep the
+    # original transport; this never allocates or resets a quota.
+    if f"{config.env_prefix}_BUDGET_POLICY" in os.environ:
+        _set_last_llm_result(None)
+        from .budget_policy import enforce_budget_freeze
+        enforce_budget_freeze(config)
 
     backend = os.environ.get(config.backend_env_name, config.backend_default)
     if backend != "llm_router":

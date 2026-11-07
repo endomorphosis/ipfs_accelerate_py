@@ -2814,7 +2814,12 @@ class SupervisorWatchdog:
                     report["status"]["completion_authority"] = False
                     reports.append(report)
                     continue
-            master_alive = _manifest_master_alive(manifest, repo_root=self.repo_root)
+            # The generic restart gate returns True when no master marker is
+            # configured, meaning per-lane recovery is permitted. That default
+            # is not evidence of a live coordinator owning this stopped lane.
+            master_alive = bool(manifest.get("master_pid_path")) and _manifest_master_alive(
+                manifest, repo_root=self.repo_root
+            )
             stopped_pending = classify_stopped_pending_stall(
                 process_alive=alive,
                 master_alive=master_alive,

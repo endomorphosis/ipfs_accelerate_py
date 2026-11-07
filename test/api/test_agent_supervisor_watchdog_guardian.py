@@ -1,10 +1,12 @@
-"""Guardian tests use synthetic /proc entries and never start real workers."""
+"""Synthetic discovery plus isolated, owned watchdog-process recovery fixtures."""
 
 from __future__ import annotations
 
 import json
 import errno
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +14,168 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.rescue import watchdog_guardian as guardian_module
+
+
+@pytest.fixture
+def real_watchdog(tmp_path, monkeypatch):
+    """A stdlib sleeping process, never an application/provider supervisor."""
+    repo = tmp_path / "owned-repo"
+    directory = repo / "data/watchdog"
+    directory.mkdir(parents=True)
+    manifest = directory / "manifest.json"
+    manifest.write_text(json.dumps({"report_path": "data/watchdog/report.json",
+        "lanes": [{"state_dir": "data/watchdog/lane", "state_prefix": "test"}]}))
+    source = repo / "external/ipfs_accelerate"
+    package = source
+    for name in ("ipfs_accelerate_py", "agent_supervisor", "rescue"):
+        package /= name
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("")
+    (package / "supervisor_watchdog.py").write_text(
+        "import pathlib,time\npathlib.Path('ready').write_text('ready')\n"
+        "while True: time.sleep(60)\n")
+    process = subprocess.Popen([sys.executable, "-m", guardian_module.WATCHDOG_MODULE,
+        "--manifest-path", str(manifest), "--repo-root", str(repo)], cwd=repo,
+        env={**os.environ, "PYTHONPATH": str(source), "PYTHONDONTWRITEBYTECODE": "1"},
+        start_new_session=True)
+    deadline = time.monotonic() + 3
+    while not (repo / "ready").exists() and time.monotonic() < deadline:
+        time.sleep(.01)
+    assert (repo / "ready").exists() and process.poll() is None
+    guardian = guardian_module.WatchdogGuardian(manifest, repo, python=sys.executable,
+        apply=True, restart_cooldown=20, unresponsive_grace_seconds=1)
+    guardian.children = [process]
+    calls = []
+    def spawn(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(pid=701, poll=lambda: None)
+    monkeypatch.setattr(guardian_module.subprocess, "Popen", spawn)
+    try:
+        yield guardian, process, calls
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=3)
+
+
+def test_real_stale_owned_watchdog_is_pidfd_terminated_reaped_then_replaced(real_watchdog):
+    guardian, process, calls = real_watchdog
+    now = time.time()
+    assert guardian.inspect(now=now)["action"] == "owner_unresponsive"
+    assert process.poll() is None and not calls
+    result = guardian.inspect(now=now + 2)
+    assert result["owner_recovery"]["reason"] == "pidfd_term_confirmed"
+    assert result["owner_recovery"]["stopped"] is True
+    assert process.poll() is not None and result["action"] == "launched" and len(calls) == 1
+    assert result["next_launch_after"] == now + 22
+    assert not result["completion_authority"]
+
+
+@pytest.mark.parametrize("protection", ["fresh", "hold", "activity", "once", "children", "storage"])
+def test_real_live_watchdog_protections_prevent_termination(real_watchdog, monkeypatch, protection):
+    guardian, process, calls = real_watchdog
+    now = time.time()
+    guardian.inspect(now=now)
+    if protection == "fresh":
+        fresh_report(guardian, pid=process.pid, now=now)
+    elif protection == "hold":
+        lane = guardian.manifest.parent / "lane"
+        lane.mkdir()
+        (lane / "HOLD").write_text("owned fixture hold")
+    elif protection == "activity":
+        (guardian.manifest.parent / "guardian-watchdog.log").write_text("real check advanced\n")
+    elif protection == "children":
+        monkeypatch.setattr(guardian, "_has_children", lambda pid: True)
+    elif protection == "storage":
+        original = guardian_module.check_storage_capacity
+        monkeypatch.setattr(guardian_module, "check_storage_capacity", lambda *a, **kw:
+            {**original(*a, **kw), "ok": False})
+    result = guardian.inspect(now=now + 2, once=protection == "once")
+    assert process.poll() is None and not calls
+    assert not (result.get("owner_recovery") or {}).get("stopped")
+
+
+def test_recovery_rechecks_fresh_report_after_durable_signal_intent(real_watchdog, monkeypatch):
+    guardian, process, calls = real_watchdog
+    now = time.time()
+    guardian.inspect(now=now)
+    original = guardian_module.atomic_json
+    def write(path, value):
+        original(path, value)
+        if value.get("unresponsive_termination_attempt") and "action" not in value:
+            fresh_report(guardian, pid=process.pid, now=now + 2)
+    monkeypatch.setattr(guardian_module, "atomic_json", write)
+    result = guardian.inspect(now=now + 2)
+    assert process.poll() is None and not calls
+    assert result["owner_recovery"]["reason"] == "fresh_activity_or_storage_wait_before_signal"
+
+
+def test_final_activity_refusal_rearms_after_real_activity_stops(real_watchdog, monkeypatch):
+    guardian, process, calls = real_watchdog
+    now = time.time()
+    guardian.inspect(now=now)
+    original = guardian_module.atomic_json
+    advanced = []
+    def write(path, value):
+        original(path, value)
+        if value.get("unresponsive_termination_attempt") and "action" not in value and not advanced:
+            advanced.append(True)
+            (guardian.manifest.parent / "guardian-watchdog.log").write_text("check progressed\n")
+    monkeypatch.setattr(guardian_module, "atomic_json", write)
+    refused = guardian.inspect(now=now + 2)
+    assert process.poll() is None and not calls
+    assert refused["owner_recovery"]["reason"] == "fresh_activity_or_storage_wait_before_signal"
+    assert refused["unresponsive_termination_attempt"] == {}
+    assert guardian.inspect(now=now + 3)["action"] == "owner_unresponsive"
+    result = guardian.inspect(now=now + 5)
+    assert result["owner_recovery"]["stopped"] and process.poll() is not None
+    assert len(calls) == 1
+
+
+def test_final_owner_start_tick_change_prevents_pidfd_signal(real_watchdog, monkeypatch):
+    guardian, process, calls = real_watchdog
+    now = time.time()
+    guardian.inspect(now=now)
+    original_write, original_discover = guardian_module.atomic_json, guardian_module.discover_watchdogs
+    final_check = []
+    def write(path, value):
+        original_write(path, value)
+        if value.get("unresponsive_termination_attempt") and "action" not in value:
+            final_check.append(True)
+    def discover(*args, **kwargs):
+        owners, errors = original_discover(*args, **kwargs)
+        if final_check:
+            owners = [{**item, "start_ticks": str(int(item["start_ticks"]) + 1)} for item in owners]
+        return owners, errors
+    monkeypatch.setattr(guardian_module, "atomic_json", write)
+    monkeypatch.setattr(guardian_module, "discover_watchdogs", discover)
+    result = guardian.inspect(now=now + 2)
+    assert process.poll() is None and not calls
+    assert result["owner_recovery"]["reason"] == "owner_or_hold_changed_before_signal"
+
+
+def test_positive_dormant_rescue_caps_never_enable_a_provider(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import prompt_workflow_cid
+    from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import (
+        AutonomousUnstallCoordinator, AutonomousUnstallPolicy, SupervisorWatchdog)
+    policy = SupervisorWatchdog._manifest_unstall_policy({"autonomous_unstall_policy": {
+        "enabled": True, "max_provider_calls": 1, "max_rescue_executions": 1,
+        "rescue_preview_enabled": False, "rescue_execution_enabled": False,
+        "allow_provider_calls": False}})
+    assert isinstance(policy, AutonomousUnstallPolicy)
+    calls = []
+    def forbidden(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("dormant positive caps must not call a provider")
+    root = prompt_workflow_cid({"fixture": "dormant-caps"})
+    coordinator = AutonomousUnstallCoordinator(state_dir=tmp_path / "state",
+        repository_root=tmp_path, repository_root_cid=root, policy_root=root,
+        run_cid=root, policy=policy, health_probe=lambda: {"healthy": False},
+        rescue_planner=SimpleNamespace(plan=forbidden), rescue_request_factory=forbidden)
+    result = coordinator.unstall(evidence={"provider": {"provider_id": "fixture", "unavailable": True}})
+    assert not calls and not result["work_complete"]
+    state = json.loads(coordinator.state_path.read_text())
+    assert all(not value.get("provider_calls", 0) for value in state["rescue_runtime"].values())
 
 
 @pytest.fixture
@@ -101,6 +265,34 @@ def test_absent_owner_launches_detached_with_checkout_pythonpath(setup_guardian)
     assert options["cwd"] == guardian.repo
     assert options["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(guardian.repo / "external/ipfs_accelerate")
     assert result["next_launch_after"] == 1020
+
+
+def test_target_without_framework_uses_loaded_package_not_inherited_pythonpath(setup_guardian, monkeypatch):
+    guardian, _proc, calls = setup_guardian
+    module_relative = Path(*guardian_module.WATCHDOG_MODULE.split(".")).with_suffix(".py")
+    (guardian.repo / "external/ipfs_accelerate" / module_relative).unlink()
+    monkeypatch.setenv("PYTHONPATH", "/untrusted/arbitrary-package")
+    monkeypatch.setattr(guardian_module, "__name__", "__main__")  # actual -m entry semantics
+    result = guardian.inspect(now=1000)
+    assert result["action"] == "launched" and len(calls) == 1
+    argv, options = calls[0]
+    loaded_source = Path(guardian_module.__file__).resolve().parents[3]
+    assert options["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(loaded_source)
+    assert options["cwd"] == guardian.repo
+    assert argv[argv.index("--repo-root") + 1] == str(guardian.repo)
+    assert argv[argv.index("--manifest-path") + 1] == str(guardian.manifest)
+
+
+def test_missing_loaded_sibling_cannot_fall_back_to_arbitrary_pythonpath(setup_guardian, monkeypatch, tmp_path):
+    guardian, _proc, calls = setup_guardian
+    module_relative = Path(*guardian_module.WATCHDOG_MODULE.split(".")).with_suffix(".py")
+    (guardian.repo / "external/ipfs_accelerate" / module_relative).unlink()
+    fake = tmp_path / "other-source/ipfs_accelerate_py/agent_supervisor/rescue/watchdog_guardian.py"
+    fake.parent.mkdir(parents=True); fake.write_text("# guardian without watchdog sibling\n")
+    monkeypatch.setattr(guardian_module, "__file__", str(fake))
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "foreign-package"))
+    result = guardian.inspect(now=1000)
+    assert result["action"] == "launch_failed" and not calls
 
 
 @pytest.mark.parametrize("state", ["Z", "X"])

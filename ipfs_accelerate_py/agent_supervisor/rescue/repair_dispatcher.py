@@ -15,28 +15,42 @@ import fcntl
 import hashlib
 import json
 import math
+import marshal
 import os
 from pathlib import Path
 import re
+import select
 import signal
+import socket
+import stat
 import subprocess
 import time
 from typing import Any, Callable, Iterator
+from types import CodeType
 import uuid
 
 from .command_processes import CommandProcessTree
 from .gate_recovery import evidence_file_fingerprint
 from .watchdog_guardian import (discover_watchdogs, _declared_storage_paths, _minimum_storage_bytes,
                                 _storage_status, _lane_storage_identity,
-                                lane_storage_emergency, watchdog_storage_emergency)
+                                lane_storage_emergency, watchdog_storage_emergency,
+                                _option, _python_entrypoint)
 from .storage_pressure import (check_storage_capacity, clear_emergency_status,
                                is_storage_pressure, publish_emergency_status)
+from .planned_work_watchdog import observe_planned_work, collect_gate_blockers
+from .queue_hold_lease import (QUEUE_HOLD_LEASE_VERSION, review_queue_hold, expire_queue_hold,
+                               register_queue_hold, publisher_queue_hold_proof, expired_queue_hold_matches)
+from .previous_worker_context import build_previous_worker_context, context_environment
 
 
 SCHEMA = "ipfs_accelerate_py.agent_supervisor.repair-dispatcher@1"
+SERVICE_WATCHDOG_VERSION = 1
+LANE_ENVIRONMENT_GUARD_VERSION = 1
+WORKER_STORAGE_ADMISSION_VERSION = 1
 FLAGS = {"work_complete": False, "completion_authority": False}
 _HELD_STATES = {"paused", "draining", "stopping"}
 _COMPLETED = {"completed", "complete", "done"}
+_DESCENDANT_CLEANUP_GRACE_SECONDS = 5.0
 
 
 @dataclass
@@ -59,8 +73,15 @@ class Config:
     cooldown_seconds: float = 300.0
     max_cooldown_seconds: float = 3600.0
     max_attempts: int = 3
+    required_lane_env: tuple[str, ...] = ()
+    worker_minimum_free_bytes: int = 64 * 1024 * 1024
     _storage_retry_payload: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _storage_retry_path: Path | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if (type(self.worker_minimum_free_bytes) is not int
+                or not 1 <= self.worker_minimum_free_bytes <= 2**63 - 1):
+            raise ValueError("worker_minimum_free_bytes must be a positive signed64-bit integer")
 
 
 def _path(root: Path, value: str | Path) -> Path:
@@ -69,7 +90,11 @@ def _path(root: Path, value: str | Path) -> Path:
 
 
 def _json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text())
+    raw = path.read_text()
+    try:
+        value = json.loads(raw)
+    except RecursionError as exc:
+        raise ValueError('dispatcher metadata JSON nesting exceeds decoder limit') from exc
     if not isinstance(value, dict):
         raise ValueError(f"expected JSON object: {path}")
     return value
@@ -186,9 +211,100 @@ def _verify_owner(owner: dict[str, Any], config: Config) -> dict[str, Any]:
             "identity_reason": "module_manifest_repo_match" if verified else "owner_identity_mismatch"}
 
 
+def _verify_lane(
+    process: dict[str, Any], config: Config, manifest: dict[str, Any],
+    lane: dict[str, Any], status_path: Path, pid_path: Path,
+) -> dict[str, Any]:
+    """A recycled advisory PID is not evidence that this lane is running."""
+    if not process["alive"]:
+        return process
+    argv = process.get("argv", [])
+    mode, module, index = _python_entrypoint(argv)
+    verified = bool(argv) and bool(re.fullmatch(r"(?:python|pypy)(?:\d+(?:\.\d+)*)?", Path(argv[0]).name))
+    verified = (verified and mode == "module"
+                and module == "ipfs_accelerate_py.agent_supervisor.rescue.lane_resume"
+                and argv[index] == "-m"
+                and all(flag in {"-u", "-B", "-E", "-s", "-S", "-I", "-O", "-OO"}
+                        for flag in argv[1:index]))
+    if verified:
+        application_args = argv[index + 2:]
+        cwd = Path(process.get("cwd") or config.repo_root)
+        paths = {"--repo-root": config.repo_root, "--status-path": status_path, "--pid-path": pid_path}
+        if manifest.get("todo_path"):
+            paths["--todo-path"] = _path(config.repo_root, manifest["todo_path"])
+        verified = _option(application_args, "--bundle-key") == lane["bundle_key"]
+        for name, expected in paths.items():
+            value = _option(application_args, name)
+            if not value or _path(cwd, value).resolve() != expected.resolve():
+                verified = False
+                break
+    return {**process, "alive": verified, "identity_verified": verified,
+            "identity_reason": "module_lane_repo_match" if verified else "lane_identity_mismatch"}
+
+
 def _public_process(process: dict[str, Any]) -> dict[str, Any]:
     # An unrelated reused PID may carry unrelated private argv; do not persist it.
     return {k: v for k, v in process.items() if k not in {"argv", "command", "cwd"}}
+
+
+def _lane_environment(process: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    """Compare explicitly allowed policy variables without publishing their values."""
+    if not keys:
+        return {"enabled": False}
+    if any(not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*_BUDGET_POLICY", key)
+           for key in keys):
+        return {"enabled": True, "verified": False, "reason": "invalid_required_key", "required_keys": []}
+    keys = tuple(sorted(set(keys)))
+    result = {"enabled": True, "verified": False, "pid": process.get("pid"),
+              "start_ticks": process.get("start_ticks"), "required_keys": list(keys)}
+    expected = {key: os.environ.get(key) for key in keys}
+    missing = [key for key in keys if not expected[key]]
+    if missing:
+        return {**result, "reason": "expected_environment_missing", "affected_keys": missing}
+    if not process.get("alive") or not process.get("identity_verified"):
+        return {**result, "reason": "lane_identity_unverified"}
+    pid = int(process["pid"])
+    expected_start = process.get("start_ticks")
+    try:
+        before = probe_process(pid)
+        uid_before = (Path("/proc") / str(pid)).stat().st_uid
+        if (not before["alive"] or before.get("start_ticks") != expected_start
+                or uid_before != os.getuid() or before.get("argv") != process.get("argv")
+                or before.get("cwd") != process.get("cwd")):
+            return {**result, "reason": "lane_identity_changed"}
+        raw = (Path("/proc") / str(pid) / "environ").read_bytes()
+        after = probe_process(pid)
+        uid_after = (Path("/proc") / str(pid)).stat().st_uid
+    except OSError:
+        # A process exit during /proc reads is ordinary identity uncertainty,
+        # not proof that a live lane has an unreadable policy environment.
+        try:
+            current = probe_process(pid)
+            current_uid = (Path("/proc") / str(pid)).stat().st_uid
+        except OSError:
+            return {**result, "reason": "lane_identity_changed"}
+        if (not current["alive"] or current.get("start_ticks") != expected_start
+                or current_uid != os.getuid() or current.get("argv") != process.get("argv")
+                or current.get("cwd") != process.get("cwd")):
+            return {**result, "reason": "lane_identity_changed"}
+        return {**result, "reason": "environment_unreadable"}
+    if (not after["alive"] or after.get("start_ticks") != expected_start
+            or uid_after != uid_before or uid_after != os.getuid()
+            or after.get("argv") != before.get("argv") or after.get("cwd") != before.get("cwd")):
+        return {**result, "reason": "lane_identity_changed"}
+    values: dict[bytes, list[bytes]] = {}
+    wanted = {key.encode() for key in keys}
+    for entry in raw.split(b"\0"):
+        name, separator, value = entry.partition(b"=")
+        if separator and name in wanted:
+            values.setdefault(name, []).append(value)
+    missing = [key for key in keys if key.encode() not in values]
+    if missing:
+        return {**result, "reason": "required_environment_missing", "affected_keys": missing}
+    mismatched = [key for key in keys if values[key.encode()] != [expected[key].encode()]]
+    if mismatched:
+        return {**result, "reason": "required_environment_mismatch", "affected_keys": mismatched}
+    return {**result, "verified": True, "reason": "required_environment_matches"}
 
 
 def _find_owner(
@@ -229,8 +345,108 @@ def _find_owner(
     return owner, [_public_process(process) for process in owners], errors
 
 
+def _native_rotation_grace(config: Config, state: dict[str, Any], lane: dict[str, Any],
+                           owner: dict[str, Any], report: dict[str, Any], *, now: float,
+                           report_age: float | None, owner_uncertain: bool,
+                           storage_pressure: bool) -> dict[str, Any] | None:
+    """Give a verified native watchdog one bounded ordinary lease rotation."""
+    pid = lane["process"].get("pid")
+    stamp = lane.get("terminal_heartbeat_at_ms")
+    if (lane["state"] != "stopped" or lane["phase"] != "lane_resume_exited"
+            or lane["terminal_reason"] != "resume_duration_elapsed"
+            or type(pid) is not int or pid <= 0 or lane.get("status_pid") != pid
+            or lane["process"].get("process_state") not in (None, "Z", "X")
+            or type(stamp) not in (int, float) or not math.isfinite(stamp)
+            or not 0 < stamp / 1000 <= now):
+        return None
+    interval = _option(owner.get("argv", []), "--check-interval")
+    if interval is None and owner.get("alive"):
+        try:
+            directory = Path("/proc") / str(owner["pid"])
+            if directory.stat().st_uid != os.getuid():
+                return None
+            # Read only the native watchdog's nonsecret poll setting. Never
+            # persist its environment or use the dispatcher's own setting.
+            environment = (directory / "environ").read_bytes()
+            interval = next((entry.split(b"=", 1)[1].decode() for entry in environment.split(b"\0")
+                             if entry.startswith(b"WATCHDOG_CHECK_INTERVAL_SECONDS=")), None)
+        except (OSError, UnicodeError):
+            return None
+    try:
+        poll = float(interval) if interval is not None else 120.0
+        if not math.isfinite(poll) or poll <= 0:
+            return None
+    except (TypeError, ValueError):
+        return None
+    grace = min(600.0, max(config.startup_grace_seconds, poll + config.interval + 15.0))
+    records = state.setdefault("lease_rotation_observations", {})
+    if not isinstance(records, dict):
+        records = state["lease_rotation_observations"] = {}
+    previous = records.get(lane["lane"], {})
+    if isinstance(previous, dict) and previous.get("expired_pid") == pid:
+        anchor, deadline = previous.get("anchor"), previous.get("deadline")
+        if (type(anchor) not in (int, float) or type(deadline) not in (int, float)
+                or not math.isfinite(anchor) or not math.isfinite(deadline)
+                or not 0 < anchor <= deadline <= anchor + 600):
+            return None
+    else:
+        anchor, deadline = stamp / 1000, stamp / 1000 + grace
+    observation = {"lane": lane["lane"], "expired_pid": pid, "anchor": anchor,
+                   "deadline": deadline, "waiting": False,
+                   "watchdog_pid": owner.get("pid"), "watchdog_start_ticks": owner.get("start_ticks")}
+    records[lane["lane"]] = observation
+    status = report.get("status") if isinstance(report.get("status"), dict) else {}
+    if (now >= deadline or owner_uncertain or storage_pressure or not owner.get("alive")
+            or not owner.get("identity_verified") or report_age is None
+            or report_age > config.report_seconds or status.get("pid") != owner.get("pid")
+            or status.get("state") not in {"healthy", "starting", "degraded"}):
+        return observation
+    for prior in report.get("reports", []):
+        if not isinstance(prior, dict) or prior.get("bundle_key") != lane["lane"]:
+            continue
+        if (prior.get("action") in {"restart_failed", "fenced_stop_required"}
+                or str(prior.get("action", "")).startswith("repeated_")):
+            return observation
+    # Independently reread the real role/UID/start tick; an advisory PID or a
+    # report belonging to an earlier process cannot earn this grace.
+    actual, errors = discover_watchdogs(config.manifest_path.resolve(), config.repo_root.resolve())
+    if (errors or len(actual) != 1 or actual[0]["pid"] != owner["pid"]
+            or str(actual[0]["start_ticks"]) != str(owner.get("start_ticks"))
+            or report_age > float(owner.get("age_seconds", 0)) + 1):
+        return observation
+    observation["waiting"] = True
+    return observation
+
+
+def _runtime_policy_provenance() -> dict[str, Any]:
+    """Compare loaded contract functions with current disk code, without exec."""
+    from . import lane_resume
+    def normalized(code: CodeType) -> CodeType:
+        return code.replace(co_consts=tuple(normalized(c) if isinstance(c, CodeType) else c
+                                          for c in code.co_consts),
+                            co_filename="", co_firstlineno=0, co_linetable=b"")
+    path = Path(lane_resume.__file__).resolve()
+    try:
+        raw = path.read_bytes()
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("runtime policy source exceeds bound")
+        compiled = {code.co_name: code for code in compile(raw, str(path), "exec", dont_inherit=True).co_consts
+                    if isinstance(code, CodeType)}
+        names = ("_command_contract", "_runtime_contract_code", "_run_argv", "_declared_evidence",
+                 "_execution_input_contract", "parse_deterministic_command")
+        changed = [name for name in names if name in compiled and
+                   (not hasattr(getattr(lane_resume, name, None), "__code__") or
+                    marshal.dumps(normalized(getattr(lane_resume, name).__code__)) !=
+                    marshal.dumps(normalized(compiled[name])))]
+        return {"policy_source": str(path), "disk_source_sha256": hashlib.sha256(raw).hexdigest(),
+                "loaded_policy_matches_disk": not changed, "mismatched_functions": changed}
+    except (OSError, ValueError, SyntaxError) as exc:
+        return {"policy_source": str(path), "loaded_policy_matches_disk": False,
+                "provenance_error": str(exc)}
+
+
 def _exhausted_wait_proofs(
-    config: Config, lane: dict[str, Any], ready: list[str],
+    config: Config, lane: dict[str, Any], ready: list[str], *, reviews: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Read current invocation receipts; a cooldown label alone is not failure.
 
@@ -238,7 +454,7 @@ def _exhausted_wait_proofs(
     a failing producer needs its own nonzero exit receipt. Both cases require
     three spent attempts, a declared deadline, and unchanged source contracts.
     """
-    if lane["phase"] != "attempt_retry_wait":
+    if lane["phase"] not in {"attempt_retry_wait", "semantic_failure_wait"}:
         return []
     try:
         ledger_path = Path(lane["status_path"]).with_name("lane_resume_attempts.json")
@@ -257,7 +473,8 @@ def _exhausted_wait_proofs(
         if not isinstance(reason, str):
             continue
         task_id, separator, suffix = reason.partition(":")
-        if not separator or suffix != "attempts_exhausted" or task_id not in ready:
+        semantic = suffix == "unchanged_semantic_failure_budget_exhausted"
+        if not separator or suffix not in {"attempts_exhausted", "unchanged_semantic_failure_budget_exhausted"} or task_id not in ready:
             continue
         count = ledger.get(task_id)
         retry = ledger.get("_retry_after_ms", {})
@@ -268,6 +485,14 @@ def _exhausted_wait_proofs(
         retry = retry.get(task_id)
         receipt = receipt.get(task_id)
         fixed = fixed.get(task_id, {})
+        progress = fixed.get("execution_progress", {}) if isinstance(fixed, dict) else {}
+        if semantic:
+            if (not isinstance(progress, dict) or progress.get("schema") != "agent-supervisor/execution-progress@1"
+                    or type(progress.get("semantic_failures")) is not int or progress["semantic_failures"] < 6
+                    or progress.get("state") == "validated"):
+                continue
+            if retry is None:
+                retry = progress.get("finished_at_ms")
         if (not isinstance(count, int) or isinstance(count, bool) or count < 3
                 or not isinstance(retry, (int, float)) or isinstance(retry, bool)
                 or not math.isfinite(retry) or retry <= 0 or not isinstance(receipt, dict)):
@@ -285,7 +510,10 @@ def _exhausted_wait_proofs(
                 or not isinstance(retry_contract, str) or not re.fullmatch(r"[0-9a-f]{64}", retry_contract)):
             continue
         failures = fixed.get("failures") if isinstance(fixed, dict) else None
-        if code == 0 and (not isinstance(failures, int) or isinstance(failures, bool) or failures < 3
+        semantic_validation_failure = (semantic and progress.get("state") == "failed"
+            and progress.get("last_stage") == "validation" and type(progress.get("last_exit_code")) is int
+            and progress["last_exit_code"] not in (0, 75))
+        if code == 0 and not semantic_validation_failure and (not isinstance(failures, int) or isinstance(failures, bool) or failures < 3
                           or fixed.get("admitted")
                           or not re.fullmatch(r"[0-9a-f]{64}", str(fixed.get("digest") or ""))):
             continue
@@ -297,7 +525,14 @@ def _exhausted_wait_proofs(
         validation = parse_deterministic_command(fields.get("validation") or "", repo_root=config.repo_root)
         if not command or (fields.get("validation") and not validation):
             continue
-        if retry_contract != _command_contract(fields, command, validation, repo_root=config.repo_root):
+        current_contract = _command_contract(fields, command, validation, repo_root=config.repo_root)
+        if retry_contract != current_contract:
+            if reviews is not None:
+                reviews.append({"task_id": task_id, "reason": "recorded_retry_contract_not_current",
+                    "recorded_retry_contract": retry_contract, "loaded_current_contract": current_contract,
+                    "current_proof_accepted": False, **_runtime_policy_provenance()})
+            continue
+        if semantic and progress.get("contract") != current_contract:
             continue
         current = {}
         valid = True
@@ -366,7 +601,9 @@ def observe(
     declared_storage = _declared_storage_paths(manifest, config.repo_root)
     minimum_free_bytes = _minimum_storage_bytes(manifest)
     owner_uncertain = bool(owner_errors)
-    holds = [str(p) for p in _configured_holds(config, manifest) if p.exists()]
+    queue_lease = review_queue_hold(config, now)
+    holds = [str(p) for p in _configured_holds(config, manifest) if p.exists()
+             and not expired_queue_hold_matches(config, p, now, queue_lease)]
     tasks: dict[str, dict[str, Any]] = {}
     if manifest.get("todo_path"):
         tasks = _tasks(_path(config.repo_root, manifest["todo_path"]), manifest.get("task_header_prefix", "## TASK-"))
@@ -379,6 +616,7 @@ def observe(
     source_digest = _digest({str(p): evidence_file_fingerprint(p) for p in sources})
     incidents: list[dict[str, Any]] = []
     snapshots = []
+    environment_reviews: list[dict[str, Any]] = []
 
     def incident(kind: str, lane: str = "", task: str = "", **evidence: Any) -> None:
         incidents.append({"kind": kind, "lane": lane, "task": task, "evidence": evidence})
@@ -394,9 +632,21 @@ def observe(
         except (OSError, ValueError) as exc:
             status, status_error = {}, str(exc)
         pid_path = directory / f"{prefix}_bundle_supervisor.pid"
-        if not pid_path.exists():
-            pid_path = directory / f"{prefix}_supervisor.pid"
-        process = probe(_pid(pid_path) or int(status.get("pid") or 0))
+        legacy_pid_path = directory / f"{prefix}_supervisor.pid"
+        if not pid_path.exists() and legacy_pid_path.exists():
+            pid_path = legacy_pid_path
+        process = _verify_lane(probe(_pid(pid_path) or int(status.get("pid") or 0)),
+                               config, manifest, lane, status_path, pid_path)
+        environment = _lane_environment(process, config.required_lane_env)
+        if environment.get("enabled") and not environment.get("verified"):
+            review = {"lane": key, **environment}
+            environment_reviews.append(review)
+            # An absent/unverified actor follows the existing bounded native
+            # recovery path. Environment uncertainty cannot bypass its normal
+            # startup/lease-rotation grace or authorize an extra repair worker.
+            if environment["reason"] not in {"lane_identity_unverified", "lane_identity_changed"}:
+                incident("lane_environment_review_needed", key,
+                         **{name: value for name, value in environment.items() if name not in {"enabled", "verified"}})
         emergency = lane_storage_emergency(status_path, process["pid"], config.repo_root.resolve())
         if emergency:
             status = {**status, **emergency["payload"], "pid": process["pid"]}
@@ -423,9 +673,12 @@ def observe(
                           "last_task_transition_at_ms": transition,
                           "gate_recovery_needed": status.get("gate_recovery_needed") is True,
                           "heartbeat_age_seconds": heartbeat_age, "transition_age_seconds": transition_age,
+                          "status_pid": status.get("pid"), "terminal_heartbeat_at_ms": heartbeat,
                           "storage_pressure": storage_pressure, "emergency_identity_verified": bool(emergency),
                           "log_age_seconds": _age(log_path, now), "status_error": status_error,
                           "held": bool(intentional or lane_holds), "hold_paths": lane_holds})
+        if environment.get("enabled"):
+            snapshots[-1]["required_environment"] = environment
 
     eligible = [lane for lane in snapshots if not lane["held"]]
     has_work = bool(pending or any(lane["active_task_id"] for lane in eligible))
@@ -442,27 +695,40 @@ def observe(
     current_gates: set[str] = set()
     exhausted_waits = state.setdefault("exhausted_wait_observations", {})
     current_exhausted: set[str] = set()
+    retry_waits: list[dict[str, Any]] = []
+    provenance_reviews: list[dict[str, Any]] = []
+    rotation_waits: list[dict[str, Any]] = []
+    current_rotations: set[str] = set()
     for lane in eligible:
         key, task, phase = lane["lane"], lane["active_task_id"], lane["phase"]
         alive = lane["process"]["alive"]
         lane_ready = ready or ([task] if task and not tasks else [])
         if not alive and lane_ready:
-            incident("lane_dead_pending", key, task, pending_task_ids=lane_ready,
-                     terminal_reason=lane["terminal_reason"], pid=lane["process"]["pid"])
+            rotation = _native_rotation_grace(config, state, lane, owner, report, now=now,
+                report_age=report_age, owner_uncertain=owner_uncertain,
+                storage_pressure=owner_pressure or lane["storage_pressure"])
+            if rotation is not None:
+                current_rotations.add(key)
+            if rotation and rotation["waiting"]:
+                rotation_waits.append(rotation)
+            else:
+                incident("lane_dead_pending", key, task, pending_task_ids=lane_ready,
+                         terminal_reason=lane["terminal_reason"], pid=lane["process"]["pid"])
         elif alive:
             if lane["storage_pressure"]:
                 continue
             heartbeat_age = lane["heartbeat_age_seconds"]
-            if heartbeat_age is not None and heartbeat_age > config.heartbeat_seconds:
+            if (pending or task) and heartbeat_age is not None and heartbeat_age > config.heartbeat_seconds:
                 incident("lane_heartbeat_stale", key, task, age_seconds=heartbeat_age)
             if lane["state"] in {"blocked", "failed"} and (pending or task):
                 incident("lane_blocked", key, task, phase=phase, reasons=lane["backpressure_reasons"])
             if lane["status_error"] and not startup and not fresh_active:
                 incident("lane_status_unreadable", key, error=lane["status_error"])
             if not holds:
-                for proof in _exhausted_wait_proofs(config, lane, ready):
+                reviews: list[dict[str, Any]] = []
+                for proof in _exhausted_wait_proofs(config, lane, ready, reviews=reviews):
                     wait_key = f"{key}:{proof['task_id']}"
-                    signature = _digest([board_digest, source_digest, proof["retry_contract"],
+                    signature = _digest([proof["retry_contract"],
                                          proof["semantic_evidence"], proof["failure_stage"],
                                          lane["last_task_transition_at_ms"]])
                     previous = exhausted_waits.get(wait_key, {})
@@ -472,6 +738,9 @@ def observe(
                     exhausted_waits[wait_key] = {"signature": signature, "first_seen": first,
                                                 "retry_deadline": deadline, "last_seen": now}
                     current_exhausted.add(wait_key)
+                    retry_waits.append({"lane": key, "task_id": proof["task_id"],
+                                        "first_seen": first, "retry_deadline": deadline,
+                                        "failure_stage": proof["failure_stage"]})
                     # Honor the first bounded wait. A recurring failure cannot
                     # postpone escalation by moving its retry deadline forever.
                     if now > first and (now - first >= config.quiet_seconds or now >= deadline):
@@ -481,7 +750,12 @@ def observe(
                                  first_seen=first, retry_deadline=deadline,
                                  attempt_path=proof["attempt_path"],
                                  failure_evidence_fingerprint=signature)
-            if task and phase not in {"gate_withheld", "gate_retry_wait", "gate_recovery_needed", "attempt_retry_wait"}:
+                provenance_reviews.extend({"lane": key, **review} for review in reviews)
+                for review in reviews:
+                    if review.get("loaded_policy_matches_disk") is False:
+                        incident("source_change_review_needed", key, review["task_id"], **{
+                            k: v for k, v in review.items() if k != "task_id"})
+            if task and phase not in {"gate_withheld", "gate_retry_wait", "gate_recovery_needed", "attempt_retry_wait", "semantic_failure_wait"}:
                 log_age, transition_age = lane["log_age_seconds"], lane["transition_age_seconds"]
                 if log_age is not None and transition_age is not None and min(log_age, transition_age) >= config.quiet_seconds:
                     incident("lane_no_progress", key, task, log_age_seconds=log_age,
@@ -515,7 +789,38 @@ def observe(
             gates.pop(key)
     for key in list(exhausted_waits):
         if key not in current_exhausted:
-            exhausted_waits.pop(key)
+            lane_key, _, task_id = key.rpartition(":")
+            running_retry = any(lane["lane"] == lane_key and not lane["held"] and
+                                lane["phase"] in {"deterministic_command", "validation", "lane_resume"}
+                                for lane in eligible)
+            if holds or task_id not in ready or not running_retry:
+                exhausted_waits.pop(key)
+    if not isinstance(state.get("lease_rotation_observations", {}), dict):
+        state["lease_rotation_observations"] = {}
+    for key in list(state.get("lease_rotation_observations", {})):
+        if key not in current_rotations:
+            state["lease_rotation_observations"].pop(key)
+    policy = manifest.get("planned_work_policy")
+    frontier_gates = (collect_gate_blockers(repo_root=config.repo_root, manifest=manifest,
+                      lanes=eligible, ready=ready, now=now)
+                      if isinstance(policy, dict) and policy.get("enabled") is True and not holds
+                      else {"proofs": [], "reviews": []})
+    if frontier_gates["reviews"]:
+        provenance = _runtime_policy_provenance()
+        if provenance.get("loaded_policy_matches_disk") is False:
+            for review in frontier_gates["reviews"]:
+                incident("source_change_review_needed", review["lane"], review["task_id"],
+                         **{key: value for key, value in review.items() if key not in {"lane", "task_id"}},
+                         **provenance)
+    planned_work = observe_planned_work(policy=policy,
+        repo_root=config.repo_root, tasks=tasks, lanes=snapshots, state=state, now=now,
+        held=bool(holds) or owner_uncertain or bool(snapshots) and not eligible
+             or owner_pressure or any(lane["storage_pressure"] for lane in snapshots),
+        gate_blockers=frontier_gates["proofs"])
+    for entry in planned_work["incidents"]:
+        incident(entry["kind"], **entry["evidence"])
+    if planned_work.get("enabled"):
+        source_digest = _digest([source_digest, planned_work["contract_fingerprint"]])
     # Volatile ages and PIDs are evidence, not a new incident on each poll.
     identities = [{"kind": i["kind"], "lane": i["lane"], "task": i["task"],
                    "phase": i["evidence"].get("phase", ""),
@@ -532,8 +837,17 @@ def observe(
             "storage_paths": [str(path) for path in declared_storage], "storage_minimum_free_bytes": minimum_free_bytes,
             "report_path": str(report_path), "report_age_seconds": report_age,
             "pending_task_ids": pending, "selectable_task_ids": ready,
+            "retry_waits": retry_waits, "source_provenance_reviews": provenance_reviews,
+            "lane_environment_reviews": environment_reviews,
+            "native_rotation_grace": rotation_waits,
+            "retry_failure_observation_pending": bool(exhausted_waits),
+            "native_retry_wait_observed": bool(ready) and any(
+                lane["phase"] in {"attempt_retry_wait", "semantic_failure_wait"} for lane in eligible),
+            "planned_work": planned_work,
+            "frontier_gate_reviews": frontier_gates["reviews"],
             "lanes": snapshots, "incidents": incidents, "signature": signature,
             "held": bool(holds) or owner_uncertain or (bool(snapshots) and not eligible), "hold_paths": holds,
+            **({"queue_hold_lease": queue_lease} if queue_lease["status"] != "absent" else {}),
             **FLAGS}
 
 
@@ -571,19 +885,106 @@ def _remove_owned_marker(path: Path, inode: int, token: str) -> None:
         pass
 
 
+def _repair_marker_matches(lease: dict[str, Any]) -> bool:
+    try:
+        path = Path(lease["path"])
+        info = path.lstat()
+        value = _json(path)
+        return (stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+                and (info.st_dev, info.st_ino) == (lease["device"], lease["inode"])
+                and value.get("schema") == SCHEMA and value.get("token") == lease["token"]
+                and value.get("pid") == lease["pid"]
+                and value.get("start_ticks") == lease["start_ticks"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _release_repair_marker(lease: dict[str, Any] | None) -> bool:
+    if lease is None or not _repair_marker_matches(lease):
+        return False
+    try:
+        path = Path(lease["path"])
+        current = path.lstat()
+        if (current.st_dev, current.st_ino) != (lease["device"], lease["inode"]):
+            return False
+        path.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _transfer_repair_marker(lease: dict[str, Any] | None,
+                            identity: dict[str, Any]) -> dict[str, Any] | None:
+    if lease is None or not identity.get("alive"):
+        return None
+    pid = identity.get("pid")
+    actual = probe_process(int(pid or 0))
+    try:
+        directory = Path("/proc") / str(pid)
+        parent = int((directory / "stat").read_text().rsplit(")", 1)[1].split()[1])
+        owned = (directory.stat().st_uid == os.getuid() and parent == os.getpid()
+                 and actual.get("alive") and actual.get("start_ticks") == identity.get("start_ticks")
+                 and actual.get("pgid") == pid and actual.get("session_id") == pid)
+    except (OSError, ValueError, IndexError):
+        owned = False
+    if not owned or not _repair_marker_matches(lease):
+        raise AlreadyRunning("repair presence ownership changed before worker handoff")
+    path = Path(lease["path"])
+    value = _json(path)
+    value.update(pid=pid, start_ticks=actual["start_ticks"], owner_kind="repair_worker")
+    temporary = path.with_name(f".{path.name}.{lease['token']}.{uuid.uuid4().hex}.transfer")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, "w") as handle:
+            json.dump(value, handle, sort_keys=True, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+            replacement = os.fstat(handle.fileno())
+        if not _repair_marker_matches(lease):
+            raise AlreadyRunning("repair presence changed during worker handoff")
+        os.replace(temporary, path)
+        lease.update(device=replacement.st_dev, inode=replacement.st_ino,
+                     pid=pid, start_ticks=actual["start_ticks"])
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        return dict(lease)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _saved_repair_marker(config: Config, active: dict[str, Any]) -> dict[str, Any] | None:
+    marker = active.get("repair_marker")
+    if not isinstance(marker, dict) or config.repair_lock_path is None:
+        return None
+    if (marker.get("path") != str(config.repair_lock_path.absolute())
+            or marker.get("pid") != active.get("pid")
+            or marker.get("start_ticks") != active.get("start_ticks")):
+        return None
+    return marker
+
+
 @contextlib.contextmanager
-def repair_lock(path: Path | None) -> Iterator[None]:
+def repair_lock(path: Path | None) -> Iterator[dict[str, Any] | None]:
     """Share a presence marker with older repair agents without taking theirs."""
     if path is None:
         yield
         return
+    path = path.absolute()
     path.parent.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
     temporary = path.with_name(f".{path.name}.{token}.tmp")
+    start_ticks = probe_process(os.getpid()).get("start_ticks")
     _atomic_json(temporary, {"schema": SCHEMA, "pid": os.getpid(),
-                            "start_ticks": probe_process(os.getpid()).get("start_ticks"),
+                            "start_ticks": start_ticks,
                             "token": token, "created_at": time.time(), **FLAGS})
-    inode = temporary.stat().st_ino
+    information = temporary.stat()
+    inode = information.st_ino
+    lease = {"path": str(path), "device": information.st_dev, "inode": inode,
+             "token": token, "pid": os.getpid(), "start_ticks": start_ticks}
     try:
         try:
             os.link(temporary, path)
@@ -603,10 +1004,10 @@ def repair_lock(path: Path | None) -> Iterator[None]:
             except (OSError, ValueError, TypeError) as error:
                 raise AlreadyRunning(str(path)) from error
         temporary.unlink()
-        yield
+        yield lease
     finally:
         temporary.unlink(missing_ok=True)
-        _remove_owned_marker(path, inode, token)
+        _release_repair_marker(lease)
 
 
 def _stop_owned_worker(process: subprocess.Popen[Any]) -> None:
@@ -623,6 +1024,43 @@ def _stop_owned_worker(process: subprocess.Popen[Any]) -> None:
         process.wait()
     except ProcessLookupError:
         process.wait()
+
+
+def _finish_worker_tree(tree: CommandProcessTree, *, term_already_sent: bool = False) -> None:
+    """Let observed descendants finish cleanup within one fixed grace period.
+
+    The registry contains pidfds opened while those exact births were owned.
+    Poll their exit readiness rather than trusting reusable PID numbers. Never
+    inspect or clear a hold: only its actual owner may release it in finally.
+    """
+    def live_handles() -> bool:
+        handles = [fd for _start, fd in tree._owned.values()]
+        if not handles:
+            return False
+        poller = select.poll()
+        for fd in handles:
+            poller.register(fd, select.POLLIN)
+        return len(poller.poll(0)) < len(handles)
+
+    try:
+        tree.snapshot()
+        if not term_already_sent:
+            tree.send_signal(signal.SIGTERM)
+        deadline = time.monotonic() + _DESCENDANT_CLEANUP_GRACE_SECONDS
+        while True:
+            tree.snapshot()
+            if not live_handles():
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.05, remaining))
+    finally:
+        try:
+            tree.snapshot()
+            tree.send_signal(signal.SIGKILL)
+        finally:
+            tree.close()
 
 
 def stop_adopted_worker(identity: dict[str, Any]) -> bool:
@@ -655,12 +1093,13 @@ def stop_adopted_worker(identity: dict[str, Any]) -> bool:
             except ProcessLookupError:
                 pass
     finally:
-        tree.send_signal(signal.SIGKILL)
-        tree.close()
+        _finish_worker_tree(tree, term_already_sent=True)
     return True
 
 
-def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any]], None], *,
+               on_poll: Callable[[dict[str, Any]], None] | None = None,
+               previous_worker_context_json: str | None = None) -> dict[str, Any]:
     if not config.worker_argv or config.prompt_path is None:
         return {"outcome": "configuration_error", "error": "worker argv and prompt path are required"}
     process = None
@@ -669,12 +1108,14 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
     try:
         with config.prompt_path.open("rb") as prompt, log_path.open("ab") as output:
             environment = dict(os.environ, REPAIR_DISPATCHER_STATUS_PATH=str(config.state_dir / "status.json"))
+            environment = context_environment(environment, previous_worker_context_json)
             process = subprocess.Popen(config.worker_argv, stdin=prompt, stdout=output, stderr=subprocess.STDOUT,
                                        cwd=config.repo_root, env=environment, start_new_session=True)
             tree = CommandProcessTree(process.pid)
             tree.snapshot()
             on_start(probe_process(process.pid))
             deadline = time.monotonic() + config.worker_timeout
+            next_control_poll = time.monotonic() + min(30.0, config.interval)
             while True:
                 tree.snapshot()
                 try:
@@ -684,6 +1125,14 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
                     if time.monotonic() >= deadline:
                         _stop_owned_worker(process)
                         return {"outcome": "timed_out", "exit_code": process.returncode}
+                    # A real bounded wait and the original deadline/owned tree
+                    # check must complete before any control-plane heartbeat.
+                    tree.snapshot()
+                    if on_poll is not None and time.monotonic() >= next_control_poll:
+                        identity = probe_process(process.pid)
+                        if identity["alive"] and process.poll() is None:
+                            on_poll(identity)
+                        next_control_poll = time.monotonic() + min(30.0, config.interval)
     except (OSError, ValueError) as exc:
         if is_storage_pressure(exc):
             storage_result = {"outcome": "storage_blocked", "error": str(exc),
@@ -695,11 +1144,7 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
         if process is not None and process.poll() is None:
             _stop_owned_worker(process)
         if tree is not None:
-            tree.snapshot()
-            tree.send_signal(signal.SIGTERM)
-            time.sleep(0.1)
-            tree.send_signal(signal.SIGKILL)
-            tree.close()
+            _finish_worker_tree(tree)
         if storage_result is not None:
             storage_result["owned_child_stopped"] = process is None or process.poll() is not None
 
@@ -754,6 +1199,9 @@ def _retry_storage_payload(config: Config) -> OSError | None:
 
 
 def _save(config: Config, state: dict[str, Any], telemetry: dict[str, Any]) -> bool:
+    telemetry.update(control_heartbeat_at=time.time(), control_pid=os.getpid(),
+                     queue_hold_lease_version=QUEUE_HOLD_LEASE_VERSION,
+                     control_start_ticks=probe_process(os.getpid()).get("start_ticks"))
     pending = state
     try:
         _atomic_json(config.state_dir / "state.json", state)
@@ -781,41 +1229,61 @@ def tick(
     use_wall_clock = now is None
     now = time.time() if now is None else now
     state.update({"schema": SCHEMA, **FLAGS})
+    queue_retirement = expire_queue_hold(config, state, now, apply=apply)
     try:
         observation = observe(config, state, now=now, probe=probe)
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        telemetry = {"schema": SCHEMA, "observed_at": now, "action": "observation_error", "error": str(exc), **FLAGS}
+        telemetry = {"schema": SCHEMA, "observed_at": now,
+                     "last_full_observation_at": state.get("last_full_observation_at"),
+                     "action": "observation_error", "error": str(exc), **FLAGS}
         _save(config, state, telemetry)
         return telemetry
-    telemetry = {**observation, "action": "observational", "apply": apply}
+    state["last_full_observation_at"] = observation["observed_at"]
+    telemetry = {**observation, "last_full_observation_at": observation["observed_at"],
+                 "action": "observational", "apply": apply,
+                 **({"queue_hold_retirement": queue_retirement} if "retirement" in queue_retirement else {})}
     active = state.get("active_worker", {})
     if active:
         live = probe(int(active.get("pid") or 0))
         if live["alive"] and live.get("start_ticks") == active.get("start_ticks"):
+            marker = _saved_repair_marker(config, active)
+            marker_mismatch = "repair_marker" in active and (marker is None or not _repair_marker_matches(marker))
             deadline = active.get("deadline")
             if deadline is None:
                 telemetry["action"] = "attention_required"
                 telemetry["reason"] = "adopted_worker_missing_deadline"
             elif now >= float(deadline):
                 if observation["held"]:
-                    telemetry["action"] = "held"
+                    # Preserve holds while making the expired original deadline explicit.
+                    telemetry.update(action="held", reason="adopted_worker_deadline_exceeded_while_held",
+                                     worker_deadline=float(deadline),
+                                     worker_overdue_seconds=max(0.0, now - float(deadline)), degraded=True)
                 elif not apply:
                     telemetry["action"] = "would_timeout_adopted_worker"
                 else:
                     stopped = stop_adopted_worker(active)
                     telemetry["action"] = "adopted_worker_timed_out" if stopped else "attention_required"
                     if stopped:
+                        _release_repair_marker(_saved_repair_marker(config, active))
                         state.pop("active_worker", None)
                         state["last_worker"] = {"outcome": "timed_out", "finished_at": now, **FLAGS}
                         state["next_dispatch_at"] = now + config.cooldown_seconds
+            elif marker_mismatch:
+                telemetry.update(action="attention_required", reason="adopted_worker_presence_mismatch")
             else:
                 telemetry["action"] = "worker_already_running"
             _save(config, state, telemetry)
             return telemetry
+        _release_repair_marker(_saved_repair_marker(config, active))
         state.pop("active_worker", None)
         state["last_worker"] = {"outcome": "interrupted", "finished_at": now, **FLAGS}
     if state.get("spawn_intent"):
         telemetry.update({"action": "attention_required", "reason": "spawn_uncertain_after_dispatcher_interruption"})
+        _save(config, state, telemetry)
+        return telemetry
+    if any(review["reason"] in {"invalid_required_key", "expected_environment_missing"}
+           for review in observation["lane_environment_reviews"]):
+        telemetry["action"] = "lane_environment_configuration_error"
         _save(config, state, telemetry)
         return telemetry
     if observation.get("storage_pressure"):
@@ -825,7 +1293,8 @@ def tick(
     capacity = check_storage_capacity([config.state_dir, config.manifest_path.parent, config.repo_root,
                                        *([config.repair_lock_path.parent] if config.repair_lock_path else []),
                                        *(Path(path) for path in observation["storage_paths"])],
-                                      minimum_free_bytes=observation["storage_minimum_free_bytes"])
+                                      minimum_free_bytes=max(observation["storage_minimum_free_bytes"],
+                                                             config.worker_minimum_free_bytes))
     if not capacity["ok"]:
         _storage_blocked(config, telemetry, capacity=capacity)
         _save(config, state, telemetry)
@@ -839,13 +1308,33 @@ def tick(
     if observation["held"]:
         telemetry["action"] = "owner_uncertain" if observation["owner_discovery_uncertain"] else "held"
     elif not signature:
-        telemetry["action"] = "healthy"
-        if state.get("unresolved_signature"):
+        planned_state = observation["planned_work"].get("state")
+        planned_wait = (observation["planned_work"].get("enabled") and planned_state not in
+                        {"disabled", "complete", "execution_available", "held", "materialization_grace"})
+        environment_identity_wait = any(review["reason"] == "lane_identity_changed"
+                                        for review in observation["lane_environment_reviews"])
+        unresolved = (observation["retry_failure_observation_pending"] or
+                      observation["native_retry_wait_observed"] or
+                      bool(observation["native_rotation_grace"]) or
+                      environment_identity_wait or
+                      planned_wait or bool(observation["frontier_gate_reviews"]) or
+                      bool(observation["source_provenance_reviews"]))
+        telemetry["action"] = ("source_change_review_needed" if observation["source_provenance_reviews"]
+                               else "gate_evidence_review_needed" if observation["frontier_gate_reviews"]
+                               else "native_lease_rotation_wait" if observation["native_rotation_grace"]
+                               else "lane_environment_identity_wait" if environment_identity_wait
+                               else "replan_deferred_active_work" if planned_state == "blocked_frontier_deferred"
+                               else "blocked_frontier_wait" if planned_state == "blocked_frontier_grace"
+                               else "waiting_external_gate" if planned_state == "waiting_external_gate"
+                               else "plan_dependency_wait" if planned_wait
+                               else "retry_wait" if unresolved else "healthy")
+        if state.get("unresolved_signature") and not unresolved:
             telemetry["action"] = "recovery_observed"
             state["recovery_observed_at"] = now
             state["attempts"] = {}
             state["next_dispatch_at"] = 0
-        state["unresolved_signature"] = ""
+        if not unresolved:
+            state["unresolved_signature"] = ""
     else:
         state["unresolved_signature"] = signature
         record = state.setdefault("attempts", {}).setdefault(signature, {"count": 0, "next_dispatch_at": 0})
@@ -862,7 +1351,7 @@ def tick(
             before_dispatch = copy.deepcopy(state)
             worker_started = False
             try:
-                with repair_lock(config.repair_lock_path):
+                with repair_lock(config.repair_lock_path) as presence:
                     record["count"] += 1
                     delay = min(config.max_cooldown_seconds, config.cooldown_seconds * 2 ** min(record["count"] - 1, 30))
                     record["next_dispatch_at"] = now + delay
@@ -878,8 +1367,14 @@ def tick(
                         return telemetry
 
                     def started(identity: dict[str, Any]) -> None:
+                        # Handoff before state commit: if the dispatcher dies
+                        # here, live worker presence still excludes contenders
+                        # and the persisted spawn_intent refuses another launch.
+                        marker = _transfer_repair_marker(presence, identity)
                         state["active_worker"] = {**_public_process(identity), "owned_session": True,
                                                   "started_at": now, "deadline": now + config.worker_timeout}
+                        if marker is not None:
+                            state["active_worker"]["repair_marker"] = marker
                         state.pop("spawn_intent", None)
                         try:
                             _atomic_json(config.state_dir / "state.json", state)
@@ -935,6 +1430,47 @@ def tick(
     return telemetry
 
 
+def _notify_control_watchdog() -> bool:
+    """Notify systemd only when its watchdog explicitly targets this PID."""
+    try:
+        address = os.environ.get("NOTIFY_SOCKET", "")
+        if (not address or int(os.environ.get("WATCHDOG_PID", "0")) != os.getpid()
+                or int(os.environ.get("WATCHDOG_USEC", "0")) <= 0
+                or not address.startswith(("/", "@"))):
+            return False
+        if address.startswith("@"):
+            address = "\0" + address[1:]
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as channel:
+            channel.settimeout(0.05)
+            channel.sendto(b"WATCHDOG=1", address)
+        return True
+    except (OSError, ValueError, TypeError):
+        # An optional notification failure cannot stop the CLI or its worker.
+        return False
+
+
+def _control_worker(config: Config, state: dict[str, Any], log_path: Path,
+                    on_start: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+    """Keep the synchronous owned worker observable after genuine poll steps."""
+    last_observation = _json(config.state_dir / "status.json")
+
+    def polled(identity: dict[str, Any]) -> None:
+        active = state.get("active_worker", {})
+        if (identity.get("pid") != active.get("pid")
+                or identity.get("start_ticks") != active.get("start_ticks")):
+            return
+        telemetry = {**last_observation, "action": "worker_running",
+                     "control_phase": "worker_poll", "active_worker": dict(active)}
+        # Preserve observed_at/last_full_observation_at: this is control
+        # liveness, never a new lane observation, repair, or task progress.
+        _save(config, state, telemetry)
+        _notify_control_watchdog()
+
+    return run_worker(config, log_path, on_start, on_poll=polled,
+                      previous_worker_context_json=build_previous_worker_context(
+                          config.state_dir, state.get("last_worker")))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest-path", required=True, type=Path)
@@ -946,6 +1482,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--worker-argv-json", help="JSON array of argv strings; shell interpretation is never used")
     parser.add_argument("--hold-path", type=Path, action="append", default=[])
     parser.add_argument("--evidence-path", type=Path, action="append", default=[])
+    parser.add_argument("--required-lane-env", action="append", default=[],
+                        help="require a nonsecret uppercase *_BUDGET_POLICY variable to match this dispatcher's environment")
     parser.add_argument("--once", action="store_true", help="observe one cycle; dispatch requires --apply")
     parser.add_argument("--apply", action="store_true", help="enable the explicitly configured repair worker")
     for option, default in (("interval", 30), ("heartbeat-seconds", 120), ("report-seconds", 600),
@@ -953,7 +1491,11 @@ def main(argv: list[str] | None = None) -> int:
                             ("cooldown-seconds", 300), ("max-cooldown-seconds", 3600)):
         parser.add_argument(f"--{option}", type=float, default=default)
     parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--worker-min-free-bytes", dest="worker_minimum_free_bytes", type=int,
+                        default=64 * 1024 * 1024, help="minimum free bytes before admitting a new repair worker")
     args = parser.parse_args(argv)
+    if any(not re.fullmatch(r"[A-Z][A-Z0-9_]*_BUDGET_POLICY", key) for key in args.required_lane_env):
+        parser.error("--required-lane-env must name an uppercase *_BUDGET_POLICY key")
     try:
         worker_argv = json.loads(args.worker_argv_json) if args.worker_argv_json else []
     except ValueError:
@@ -963,9 +1505,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.apply and (not worker_argv or not args.prompt_path):
         parser.error("--apply requires --worker-argv-json and --prompt-path")
     for name in ("interval", "heartbeat_seconds", "report_seconds", "quiet_seconds", "startup_grace_seconds",
-                 "worker_timeout", "cooldown_seconds", "max_cooldown_seconds", "max_attempts"):
+                 "worker_timeout", "cooldown_seconds", "max_cooldown_seconds", "max_attempts", "worker_minimum_free_bytes"):
         if getattr(args, name) <= 0:
             parser.error(f"{name} must be positive")
+    if args.worker_minimum_free_bytes > 2**63 - 1:
+        parser.error("worker_minimum_free_bytes exceeds signed64-bit bound")
     root = args.repo_root.resolve()
     manifest_path = _path(root, args.manifest_path).resolve()
     config = Config(manifest_path=manifest_path, repo_root=root,
@@ -975,6 +1519,8 @@ def main(argv: list[str] | None = None) -> int:
                     repair_lock_path=_path(root, args.repair_lock_path) if args.repair_lock_path else None,
                     hold_paths=tuple(_path(root, p) for p in args.hold_path),
                     evidence_paths=tuple(_path(root, p) for p in args.evidence_path),
+                    required_lane_env=tuple(sorted(set(args.required_lane_env))),
+                    worker_minimum_free_bytes=args.worker_minimum_free_bytes,
                     **{key: getattr(args, key) for key in ("interval", "heartbeat_seconds", "report_seconds", "quiet_seconds",
                        "startup_grace_seconds", "worker_timeout", "cooldown_seconds", "max_cooldown_seconds", "max_attempts")})
     try:
@@ -1003,8 +1549,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps({"action": "state_error", "error": str(exc), **FLAGS}), flush=True)
                 return 2
             while True:
-                result = tick(config, state, apply=args.apply)
-                print(json.dumps({k: result.get(k) for k in ("action", "signature", "observed_at", "attempt_count", "error")}), flush=True)
+                result = tick(config, state, apply=args.apply,
+                              worker=lambda cfg, log, started: _control_worker(cfg, state, log, started))
+                print(json.dumps({k: result.get(k) for k in ("action", "signature", "observed_at", "control_heartbeat_at", "attempt_count", "error")}), flush=True)
+                _notify_control_watchdog()
                 if args.once:
                     return 2 if result["action"] == "observation_error" else 0
                 time.sleep(config.interval)
