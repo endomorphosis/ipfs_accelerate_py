@@ -13,7 +13,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.rescue.repair_dispatcher import (
     AlreadyRunning, Config, main, observe, probe_process, run_worker, singleton_lock, tick,
-    repair_lock,
+    repair_lock, _unchanged_exit75_frontier,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue import repair_dispatcher
 from ipfs_accelerate_py.agent_supervisor.rescue import watchdog_guardian
@@ -232,6 +232,113 @@ def test_failed_same_signature_retries_with_persisted_cooldown_then_caps(rig):
     assert cap["work_complete"] is False and cap["completion_authority"] is False
     config.evidence_paths[0].write_text("version = 2\n")
     assert tick(config, state, apply=True, now=now + 10001, probe=probe, worker=fail)["action"] == "worker_finished"
+
+
+def test_provider_usage_limit_does_not_exhaust_the_attempt_budget(rig):
+    config, now, lane, live, probe = rig
+    config.report_seconds = 100000
+    config.max_cooldown_seconds = 3600
+    live[200] = False
+    message = ("You\u2019ve hit your usage limit. Visit https://chatgpt.com/settings/usage "
+               "to purchase more credits or try again at Nov 4th, 2026 7:35 AM.")
+    body = "\n".join([
+        json.dumps({"type": "thread.started", "thread_id": "quota"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "error", "message": message}),
+        json.dumps({"type": "turn.failed", "error": {"message": message}}),
+    ]) + "\n"
+    calls = []
+
+    def fail(config, log_path, _on_start):
+        calls.append(log_path)
+        log_path.write_text(body)
+        return {"outcome": "failed", "exit_code": 1}
+
+    state = {}
+    first = tick(config, state, apply=True, now=now, probe=probe, worker=fail)
+    assert first["action"] == "provider_backoff"
+    assert first["reason"] == "provider_usage_limit"
+    assert first["attempt_count"] == 0
+    assert first["work_complete"] is False and first["completion_authority"] is False
+    waiting = tick(config, state, apply=True, now=now + 10, probe=probe, worker=fail)
+    assert waiting["action"] == "provider_backoff"
+    assert len(calls) == 1
+    config.evidence_paths[0].write_text("version = 2\n")
+    changed = tick(config, state, apply=True, now=now + 11, probe=probe, worker=fail)
+    assert changed["signature"] != first["signature"]
+    assert changed["action"] == "provider_backoff"
+    assert changed["reason"] == "provider_usage_limit"
+    assert len(calls) == 1
+    record = state["attempts"][changed["signature"]]
+    record["count"] = 3
+    record.pop("provider_quota", None)
+    capped = tick(config, state, apply=True, now=now + 20, probe=probe, worker=fail)
+    assert capped["action"] == "provider_backoff"
+    assert capped["reason"] == "provider_usage_limit"
+    assert len(calls) == 1
+    calls[0].write_text(body + json.dumps({"type": "item.completed", "item": {"type": "agent_message"}}) + "\n")
+    record["count"] = 3
+    record.pop("provider_quota", None)
+    state["next_dispatch_at"] = 0
+    exhausted = tick(config, state, apply=True, now=now + 30, probe=probe, worker=fail)
+    assert exhausted["action"] == "attention_required"
+    assert len(calls) == 1
+
+
+def _provider_log(message):
+    return "\n".join([
+        json.dumps({"type": "thread.started", "thread_id": "provider"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "error", "message": message}),
+        json.dumps({"type": "turn.failed", "error": {"message": message}}),
+    ]) + "\n"
+
+
+def test_rate_limit_before_work_waits_from_the_log_time(rig):
+    config, now, lane, live, probe = rig
+    config.report_seconds = 100000
+    config.max_cooldown_seconds = 3600
+    live[200] = False
+    calls = []
+
+    def fail(config, log_path, _on_start):
+        calls.append(log_path)
+        log_path.write_text(_provider_log("Rate limit reached. Try again in 15 minutes."))
+        os.utime(log_path, (now, now))
+        return {"outcome": "failed", "exit_code": 1}
+
+    state = {}
+    first = tick(config, state, apply=True, now=now, probe=probe, worker=fail)
+    assert first["action"] == "provider_backoff"
+    assert first["attempt_count"] == 0
+    assert first["next_dispatch_at"] == pytest.approx(now + 15 * 60, abs=1)
+    waiting = tick(config, state, apply=True, now=now + 30, probe=probe, worker=fail)
+    assert waiting["action"] == "provider_backoff"
+    assert len(calls) == 1
+    resumed = tick(config, state, apply=True, now=now + 15 * 60 + 1, probe=probe, worker=fail)
+    assert resumed["action"] == "provider_backoff"
+    assert len(calls) == 2
+
+
+def test_authentication_failure_still_caps_repair_attempts(rig):
+    config, now, lane, live, probe = rig
+    config.report_seconds = 100000
+    live[200] = False
+    calls = []
+
+    def fail(config, log_path, _on_start):
+        calls.append(1)
+        log_path.write_text(_provider_log("Incorrect API key. Authentication failed."))
+        return {"outcome": "failed", "exit_code": 1}
+
+    state = {}
+    assert tick(config, state, apply=True, now=now, probe=probe, worker=fail)["action"] == "worker_finished"
+    assert tick(config, state, apply=True, now=now + 9, probe=probe, worker=fail)["action"] == "cooldown"
+    assert tick(config, state, apply=True, now=now + 10, probe=probe, worker=fail)["action"] == "worker_finished"
+    tick(config, state, apply=True, now=now + 30, probe=probe, worker=fail)
+    capped = tick(config, state, apply=True, now=now + 10000, probe=probe, worker=fail)
+    assert capped["action"] == "attention_required"
+    assert len(calls) == 3
 
 
 def test_success_requires_fresh_observation_and_does_not_complete_work(rig):
@@ -757,6 +864,26 @@ def test_uncertain_spawn_is_explicit_and_does_not_duplicate(rig):
     result = tick(config, state, apply=True, now=now, probe=probe, worker=lambda *_: pytest.fail("worker ran"))
     assert result["action"] == "attention_required"
     assert result["reason"] == "spawn_uncertain_after_dispatcher_interruption"
+    assert state["spawn_intent"]["started_at"] == now - 100
+
+
+def test_expired_spawn_without_a_survivor_resumes(rig):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    config.worker_timeout = 30
+    config.worker_argv = ["/usr/bin/jevops-repair-worker-absent"]
+    calls = []
+    state = {"spawn_intent": {"started_at": now - 31, "argv_digest": "absent"}}
+
+    def fail(*args):
+        calls.append(args)
+        return {"outcome": "failed", "exit_code": 1}
+
+    result = tick(config, state, apply=True, now=now, probe=probe, worker=fail)
+    assert "spawn_intent" not in state
+    assert result["action"] == "worker_finished"
+    assert len(calls) == 1
+    assert result.get("reason") != "spawn_uncertain_after_dispatcher_interruption"
 
 
 @pytest.mark.parametrize("held", [False, True])
@@ -1112,3 +1239,266 @@ def test_verified_progress_clock_is_not_refreshed_by_log_spam(rig):
     # A subsequent verified transition, rather than arbitrary stdout, clears it.
     status(lane, meaningful_progress_at_ms=now * 1000)
     assert "lane_no_progress" not in kinds(observe(config, {}, now=now, probe=probe))
+
+
+def _route_codex_candidate(config, monkeypatch, *, grok="/opt/repair-grok", codex="/usr/bin/codex"):
+    config.report_seconds = 100000
+    config.worker_argv = [codex, "exec", "--sandbox", "danger-full-access", "--json", "-"]
+    monkeypatch.setattr(repair_dispatcher, "_grok_binary", lambda _config: grok)
+    monkeypatch.setattr(repair_dispatcher, "_codex_binary", lambda _config: codex if codex else "")
+
+
+def _codex_quota_log(config, now):
+    message = ("You\u2019ve hit your usage limit. Visit https://chatgpt.com/settings/usage "
+               "to purchase more credits or try again at Nov 4th, 2026 7:35 AM.")
+    body = "\n".join([
+        json.dumps({"type": "thread.started", "thread_id": "quota"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "error", "message": message}),
+        json.dumps({"type": "turn.failed", "error": {"message": message}}),
+    ]) + "\n"
+    config.state_dir.mkdir(parents=True, exist_ok=True)
+    path = config.state_dir / "worker-codexquota-1.log"
+    path.write_text(body)
+    os.utime(path, (now, now))
+    return path
+
+
+def test_router_selects_grok_when_codex_quota_names_a_future_retry(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    _route_codex_candidate(config, monkeypatch)
+    _codex_quota_log(config, now)
+    deadlines = repair_dispatcher._provider_quota_deadlines(config, now)
+    assert set(deadlines) == {"codex"}
+    seen = []
+
+    def fail(config, _log_path, _on_start):
+        seen.append(list(config.launch_argv))
+        return {"outcome": "failed", "exit_code": 1}
+
+    signature_quota = deadlines["codex"]
+    signature = observe(config, {}, now=now, probe=probe)["signature"]
+    state = {"next_dispatch_at": signature_quota, "attempts": {signature: {
+        "count": 0, "next_dispatch_at": signature_quota,
+        "provider_quota": {"reason": "provider_usage_limit", "retry_at": signature_quota},
+    }}}
+    result = tick(config, state, apply=True, now=now, probe=probe, worker=fail)
+    assert result["action"] == "worker_finished"
+    assert result["router_provider"] == "grok"
+    assert result["attempt_count"] == 1
+    assert seen[0][0] == "/opt/repair-grok"
+    assert seen[0][seen[0].index("--model") + 1] == "grok-4.7"
+    assert "--prompt-file" in seen[0]
+    assert str(config.prompt_path) in seen[0]
+    assert all(part != "/usr/bin/codex" for part in seen[0])
+    assert result["work_complete"] is False and result["completion_authority"] is False
+
+
+def test_router_uses_codex_only_after_grok_hard_quota(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    _route_codex_candidate(config, monkeypatch)
+    config.state_dir.mkdir(parents=True, exist_ok=True)
+    log = config.state_dir / "worker-grokquota-1.log"
+    log.write_text("You've hit your usage limit. Try again at Nov 4th, 2026 7:35 AM.\n")
+    os.utime(log, (now, now))
+    repair_dispatcher._bind_log_provider(config, log, "grok")
+    seen = []
+
+    def fail(config, _log_path, _on_start):
+        seen.append(list(config.launch_argv))
+        return {"outcome": "failed", "exit_code": 1}
+
+    result = tick(config, {}, apply=True, now=now, probe=probe, worker=fail)
+    assert result["action"] == "worker_finished"
+    assert result["router_provider"] == "codex"
+    assert seen == [config.worker_argv]
+    assert "fallback_after_preferred_hard_quota" in result["router_reasons"]
+
+
+def test_router_does_not_launch_codex_while_both_sources_are_in_quota(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    _route_codex_candidate(config, monkeypatch)
+    _codex_quota_log(config, now)
+    log = config.state_dir / "worker-grokquota-1.log"
+    log.write_text("You've hit your usage limit. Try again at Nov 4th, 2026 7:35 AM.\n")
+    os.utime(log, (now - 1, now - 1))
+    repair_dispatcher._bind_log_provider(config, log, "grok")
+    calls = []
+    result = tick(config, {}, apply=True, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "failed", "exit_code": 1})
+    assert result["action"] == "provider_backoff"
+    assert result["reason"] == "provider_usage_limit"
+    assert result["attempt_count"] == 0
+    assert calls == []
+
+
+def test_router_backs_off_without_spending_an_attempt_when_no_source_is_good(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    _route_codex_candidate(config, monkeypatch, grok="")
+    calls = []
+    result = tick(config, {}, apply=True, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "failed", "exit_code": 1})
+    assert result["action"] == "provider_backoff"
+    assert result["reason"] == "no_eligible_implementation_provider"
+    assert result["router_provider"] == ""
+    assert result["attempt_count"] == 0
+    assert calls == []
+    waiting = tick(config, {}, apply=True, now=now + 1, probe=probe,
+                   worker=lambda *_: calls.append(1) or {"outcome": "failed", "exit_code": 1})
+    assert waiting["action"] == "provider_backoff"
+    assert calls == []
+
+
+def test_router_selected_grok_failures_still_reach_the_attempt_cap(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    live[200] = False
+    _route_codex_candidate(config, monkeypatch)
+    calls = []
+
+    def fail(config, _log_path, _on_start):
+        calls.append(config.launch_argv[0])
+        return {"outcome": "failed", "exit_code": 1}
+
+    state = {}
+    assert tick(config, state, apply=True, now=now, probe=probe, worker=fail)["action"] == "worker_finished"
+    assert tick(config, state, apply=True, now=now + 9, probe=probe, worker=fail)["action"] == "cooldown"
+    assert tick(config, state, apply=True, now=now + 10, probe=probe, worker=fail)["action"] == "worker_finished"
+    tick(config, state, apply=True, now=now + 30, probe=probe, worker=fail)
+    capped = tick(config, state, apply=True, now=now + 10000, probe=probe, worker=fail)
+    assert capped["action"] == "attention_required"
+    assert calls == ["/opt/repair-grok"] * 3
+
+
+def _exit75_frontier_observation(now, fingerprint, *, task="VOG-001", extra_incidents=()):
+    return {
+        "schema": "test",
+        "observed_at": now,
+        "signature": "cd" * 32,
+        "held": False,
+        "hold_paths": [],
+        "incidents": [
+            {"kind": "gate_fixed_point", "lane": "vog", "task": task, "evidence": {}},
+            {"kind": "planned_work_blocked_frontier", "lane": "", "task": "", "evidence": {}},
+            *extra_incidents,
+        ],
+        "selectable_task_ids": ["VOG-001", "VOG-002"],
+        "pending_task_ids": ["VOG-001", "VOG-002"],
+        "planned_work": {
+            "enabled": True,
+            "state": "plan_replan_required",
+            "blocked_task_ids": ["VOG-001", "VOG-002"],
+            "blocked_frontier_proofs": [
+                {"task_id": "VOG-001", "last_exit_code": 75},
+                {"task_id": "VOG-002", "last_exit_code": 75},
+            ],
+            "blockage_fingerprint": fingerprint,
+        },
+        "lane_environment_reviews": [],
+        "storage_pressure": False,
+        "storage_paths": [],
+        "storage_minimum_free_bytes": 1,
+        "owner_discovery_uncertain": False,
+        "retry_failure_observation_pending": False,
+        "native_retry_wait_observed": False,
+        "native_rotation_grace": [],
+        "frontier_gate_reviews": [],
+        "source_provenance_reviews": [],
+        "lanes": [],
+        "owner": {"alive": True, "pid": 100},
+        "work_complete": False,
+        "completion_authority": False,
+    }
+
+
+def _frontier_state(fingerprint, now):
+    return {
+        "blocked_frontier_observation": {
+            "signature": fingerprint, "first_seen": now - 100, "blocked_task_ids": ["VOG-001", "VOG-002"],
+        },
+        "last_worker": {
+            "exit_code": 0, "outcome": "awaiting_observation", "finished_at": now - 10,
+            "work_complete": False, "signature": "ab" * 32,
+        },
+        "next_dispatch_at": now - 1,
+    }
+
+
+def test_unchanged_exit75_frontier_does_not_launch_another_worker(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    fingerprint = "ab" * 32
+    calls = []
+    monkeypatch.setattr(
+        repair_dispatcher, "observe",
+        lambda *args, **kwargs: _exit75_frontier_observation(now, fingerprint, task="VOG-002"))
+    result = tick(config, _frontier_state(fingerprint, now), apply=True, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "waiting_external_gate"
+    assert result["reason"] == "unchanged_exit75_frontier"
+    assert result["completion_authority"] is False
+    assert calls == []
+    # The same proofs stay withheld when the lane cursor points at the other task.
+    assert _unchanged_exit75_frontier(
+        _exit75_frontier_observation(now, fingerprint, task="VOG-001"),
+        _frontier_state(fingerprint, now)) is True
+
+
+def test_deferred_exit75_frontier_does_not_launch_another_worker(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    fingerprint = "ab" * 32
+    observation = _exit75_frontier_observation(now, fingerprint)
+    observation["planned_work"]["state"] = "blocked_frontier_deferred"
+    observation["incidents"] = [item for item in observation["incidents"] if item["kind"] == "gate_fixed_point"]
+    calls = []
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: observation)
+    result = tick(config, _frontier_state(fingerprint, now), apply=True, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "waiting_external_gate"
+    assert result["reason"] == "unchanged_exit75_frontier"
+    assert calls == []
+
+
+def test_reset_frontier_clock_stays_settled(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    fingerprint = "ab" * 32
+    observation = _exit75_frontier_observation(now, fingerprint)
+    observation["planned_work"]["state"] = "blocked_frontier_grace"
+    observation["incidents"] = [item for item in observation["incidents"] if item["kind"] == "gate_fixed_point"]
+    state = _frontier_state(fingerprint, now)
+    state["blocked_frontier_observation"]["first_seen"] = now + 5
+    state["settled_exit75_frontiers"] = {fingerprint: {
+        "exit_code": 0, "work_complete": False, "outcome": "awaiting_observation",
+        "finished_at": now - 10,
+    }}
+    calls = []
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: observation)
+    result = tick(config, state, apply=True, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "waiting_external_gate"
+    assert result["reason"] == "unchanged_exit75_frontier"
+    assert calls == []
+
+
+def test_changed_exit75_frontier_can_dispatch_again(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    monkeypatch.setattr(
+        repair_dispatcher, "observe",
+        lambda *args, **kwargs: _exit75_frontier_observation(now, "cd" * 32))
+    result = tick(config, _frontier_state("ab" * 32, now), apply=False, now=now, probe=probe,
+                  worker=lambda *_: pytest.fail("dry run must not launch"))
+    assert result["action"] == "would_dispatch"
+
+
+def test_other_incident_still_dispatches_on_an_exit75_frontier(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    fingerprint = "ab" * 32
+    monkeypatch.setattr(
+        repair_dispatcher, "observe",
+        lambda *args, **kwargs: _exit75_frontier_observation(
+            now, fingerprint, extra_incidents=({"kind": "lane_heartbeat_stale", "lane": "vog", "task": "VOG-001", "evidence": {}},)))
+    result = tick(config, _frontier_state(fingerprint, now), apply=False, now=now, probe=probe,
+                  worker=lambda *_: pytest.fail("dry run must not launch"))
+    assert result["action"] == "would_dispatch"

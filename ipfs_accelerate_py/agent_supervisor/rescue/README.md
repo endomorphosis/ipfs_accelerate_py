@@ -103,7 +103,10 @@ six semantic failures for unchanged inputs (or the explicitly declared
 `semantic_failure_limit` integer from 1 through 6), that task waits in-process for a real contract repair while other
 ready tasks can advance. Declared source/configuration content changes rearm
 only that contract; touching a file or waiting out a cooldown does not. Only a
-completed semantic validation clears the failure history. Live retries and
+completed semantic validation clears the failure history. Validator exit 76 is
+an unjudged native call, not one of those six failures. A task that says
+`Retry unjudged native: true` runs its producer again after the same 15-minute
+backoff. Exit 75 admission waits stay validation-only. Live retries and
 retry-wait heartbeats preserve their degraded state and publish the actual
 retry deadline.
 

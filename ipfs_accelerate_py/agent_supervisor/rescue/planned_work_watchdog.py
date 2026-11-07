@@ -174,6 +174,14 @@ def _blocked_frontier(*, result: dict[str, Any], tasks: dict[str, dict[str, Any]
                           first_seen=prior["first_seen"],
                           replan_required=now - prior["first_seen"] >= result["grace_seconds"])
             return True
+        # A stopped lane contributes no proofs. Dropping the clock here makes
+        # the next lease look like a new frontier and starts its grace over.
+        if (not proofs and not real_execution and isinstance(prior, dict)
+                and isinstance(prior.get("signature"), str) and len(prior["signature"]) == 64
+                and type(prior.get("first_seen")) in (int, float)
+                and not isinstance(prior.get("first_seen"), bool)
+                and math.isfinite(prior["first_seen"]) and 0 <= prior["first_seen"] <= now):
+            return False
         state.pop(key, None)
         return False
     signature = _digest([{name: by_id[task][name] for name in

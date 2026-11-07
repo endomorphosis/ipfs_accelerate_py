@@ -133,6 +133,62 @@ def test_unchanged_retries_back_off_and_revalidate_dependencies_only_once(lane: 
         assert sum(argv[-1] in {"source.py", "coverage.json"} for argv in lane.calls) == calls, "upstream validators ran again without changed source"
 
 
+def test_cooling_higher_priority_gate_does_not_hide_a_due_probe(
+    lane: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lane.board.write_text(
+        "## TEST-010 Source\n- Status: completed\n- Depends on:\n"
+        "- Predicted files: source.py\n- Validation: python3 source.py\n\n"
+        "## TEST-040 Aggregate\n- Status: completed\n- Depends on: TEST-010\n"
+        "- Deterministic command: python3 aggregate.py\n"
+        "- Predicted files: coverage.json\n- Validation: test -f coverage.json\n\n"
+        "## TEST-060 First gate\n- Status: pending\n- Priority: P1\n- Depends on: TEST-040\n"
+        "- Deterministic command: python3 gate_a.py\n"
+        "- Validation: python3 validate_a.py\n- Predicted files: board.md\n\n"
+        "## TEST-080 Second gate\n- Status: pending\n- Priority: P2\n- Depends on: TEST-040\n"
+        "- Deterministic command: python3 gate_b.py\n"
+        "- Validation: python3 validate_b.py\n- Predicted files: board.md\n",
+        encoding="utf-8",
+    )
+    for name in ("gate_a.py", "gate_b.py", "validate_a.py", "validate_b.py"):
+        (lane.root / name).write_text("# gate\n", encoding="utf-8")
+
+    def run(argv: list[str], **kwargs: Any) -> int:
+        lane.calls.append(list(argv))
+        with kwargs["log_path"].open("a", encoding="utf-8") as stream:
+            stream.write(f"fresh log {len(lane.calls)}\n")
+        return 75 if argv[-1] in {"gate_a.py", "gate_b.py"} else 0
+
+    monkeypatch.setattr(lane_resume, "_run_argv", run)
+    lane.calls.clear()
+    for _ in range(3):
+        probed = lane.cycle()
+    assert probed["active_task_id"] == "TEST-060"
+    assert probed["phase"] == "gate_recovery_needed"
+    assert probed["gate_recovery_needed"] is True
+    cooling = lane.cycle()
+    assert cooling["phase"] == "gate_retry_wait"
+    assert cooling["active_task_id"] == "TEST-060"
+    assert "TEST-080:gate_fixed_point" in cooling["backpressure_reasons"]
+    calls = len(lane.calls)
+    gates_path = lane.root / "attempts.gates.json"
+    gates = json.loads(gates_path.read_text())
+    now_ms = int(lane.now[0] * 1000)
+    gates["TEST-060"]["next_retry_at_ms"] = now_ms + 900_000
+    gates["TEST-080"]["next_retry_at_ms"] = now_ms - 1
+    gates_path.write_text(json.dumps(gates), encoding="utf-8")
+    due = lane.cycle()
+    assert due["active_task_id"] == "TEST-080"
+    assert due["phase"] == "gate_recovery_needed"
+    assert due["gate_recovery_needed"] is True
+    assert "TEST-060:gate_fixed_point" in due["backpressure_reasons"]
+    assert "TEST-080:gate_fixed_point" in due["backpressure_reasons"]
+    new_calls = [argv[-1] for argv in lane.calls[calls:]]
+    assert "gate_b.py" in new_calls
+    assert "gate_a.py" not in new_calls
+    assert "- Status: pending" in lane.board.read_text()
+
+
 @pytest.mark.parametrize("during_cooldown", [False, True])
 def test_withheld_gate_does_not_starve_later_ready_task(lane: SimpleNamespace, during_cooldown: bool) -> None:
     if during_cooldown:
