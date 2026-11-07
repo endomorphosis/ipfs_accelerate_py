@@ -20,7 +20,7 @@ TREE = "baguqeeraexpectedtree"
 
 
 @pytest.fixture
-def catalogue(tmp_path):
+def catalogue(tmp_path, request):
     import duckdb
 
     tasks = [{"task_cid": f"baguqeeratask{letter}", "task_alias": f"LIR-900{number}",
@@ -31,7 +31,11 @@ def catalogue(tmp_path):
                   "plans": [{"plan_cid": ROOT, "goal_cid": "baguqeeragoal"}],
                   "goals": [{"goal_cid": "baguqeeragoal", "goal_alias": "LIR-G090",
                              "objective_id": "objective:one", "parent_goal_cid": ""}]}
-    pop = tmp_path / "population.json"
+    parameters = getattr(getattr(request.node, "callspec", None), "params", {})
+    special = (request.node.originalname == "test_population_file_boundary_refuses_without_worker"
+               and parameters.get("kind") in {"symlink", "fifo"})
+    # A declared physical slot stays absent until its special object is created.
+    pop = tmp_path / ("population-input.json" if special else "population.json")
     pop.write_text(json.dumps(population))
     database = tmp_path / "control.duckdb"
     connection = duckdb.connect(str(database))
@@ -198,15 +202,19 @@ def population_special_file_cleanup(tmp_path):
 @pytest.mark.parametrize("kind", ["missing", "symlink", "fifo", "oversized", "bad_digest", "duplicate_json_key"])
 def test_population_file_boundary_refuses_without_worker(catalogue, monkeypatch, kind, population_special_file_cleanup):
     population = catalogue[1]
+    source_population = population
+    if kind in {"symlink", "fifo"}:
+        population = population.with_name("population.json")
+        catalogue = (catalogue[0], population)
     changes = {}
     if kind == "missing": population.unlink()
     elif kind == "symlink":
         target = population.with_name("target.json")
-        population.rename(target)
+        source_population.rename(target)
         population.symlink_to(target)
         population_special_file_cleanup(population)
     elif kind == "fifo":
-        population.unlink()
+        source_population.unlink()
         os.mkfifo(population)
         population_special_file_cleanup(population)
     elif kind == "oversized":
@@ -986,3 +994,108 @@ def test_selected_script_observer_uses_canonical_health_owner_without_a_fake_pac
     assert seen == [(profile, 1)]
     assert result["details"]["native_catalogue"]["executor_verification"]["reason"] == "modeled_verifier_called"
     assert result["completion_candidate"] is result["details"]["completion_authority"] is False
+
+
+@pytest.mark.parametrize("kind", ["ordinary", "known_catalogue", "invalid_catalogue_code", "oversized", "unprintable", "bad_class"])
+def test_worker_main_emits_only_bounded_exception_identity_and_optional_text_hash(monkeypatch, capsys, kind):
+    secret = "SELECT protected_text FROM private_payload"
+    if kind == "known_catalogue": error = probe.InvalidCatalogue("native_goal_mismatch")
+    elif kind == "invalid_catalogue_code": error = probe.InvalidCatalogue(secret)
+    elif kind == "oversized": error = RuntimeError("x" * (probe.MAX_BODY_BYTES + 1))
+    elif kind == "unprintable":
+        class UnprintableError(RuntimeError):
+            def __str__(self): raise ValueError("do not disclose this either")
+        error = UnprintableError()
+    elif kind == "bad_class": error = type("X" * 81, (RuntimeError,), {})(secret)
+    else: error = RuntimeError(secret)
+    def fail(arguments): raise error
+    monkeypatch.setattr(probe, "_read_catalogue", fail)
+    assert probe.main(["--worker", "{}"]) == 0
+    encoded = capsys.readouterr().out
+    wire = json.loads(encoded)
+    assert len(encoded) < 512 and secret not in encoded and "do not disclose" not in encoded
+    expected = {"known_catalogue": "native_goal_mismatch", "invalid_catalogue_code": "native_worker_invalid"}
+    assert wire["error"] == expected.get(kind, "read_unavailable")
+    metadata = wire["worker_error"]
+    assert metadata["schema"] == probe.WORKER_ERROR_SCHEMA
+    assert set(metadata) <= {"schema", "exception_class", "error_text_sha256"}
+    assert len(metadata["exception_class"]) <= 80
+    if kind in {"oversized", "unprintable"}: assert "error_text_sha256" not in metadata
+    elif kind == "known_catalogue":
+        assert metadata["error_text_sha256"] == hashlib.sha256(b"native_goal_mismatch").hexdigest()
+    else: assert metadata["error_text_sha256"] == hashlib.sha256(secret.encode()).hexdigest()
+
+
+@pytest.fixture
+def worker_error_population(tmp_path):
+    """Tiny real population input; all worker responses are explicitly modeled."""
+    goal = {"goal_cid": "baguqeeramodeledgoal", "goal_alias": "MODELED-G1",
+            "objective_id": "objective:one", "parent_goal_cid": ""}
+    task = {"task_cid": "baguqeeramodeledtask", "task_alias": "MODELED-1",
+            "goal_cid": goal["goal_cid"], "plan_cid": ROOT, "objective_id": goal["objective_id"]}
+    population = {"schema": probe.POPULATION_SCHEMA, "board_namespace": NAMESPACE,
+        "plan_root_cid": ROOT, "repository_tree_id": TREE, "tasks": [task], "goals": [goal],
+        "plans": [{"plan_cid": ROOT, "goal_cid": goal["goal_cid"]}]}
+    path = tmp_path / "modeled-population.json"; raw = json.dumps(population).encode(); path.write_bytes(raw)
+    return {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def modeled_worker_error_observation(population, monkeypatch, *, returncode=0, wire=None, stderr=b""):
+    monkeypatch.setattr(probe.subprocess, "run", lambda *a, **k:
+        subprocess.CompletedProcess(a[0], returncode,
+            stdout=json.dumps(wire or {"error": "read_unavailable"}).encode(), stderr=stderr))
+    return probe.observe_native_catalogue(Path("/modeled/unopened.duckdb"), Path(population["path"]),
+        board_id="legal-ir-scientific", board_namespace=NAMESPACE, plan_root_cid=ROOT,
+        repository_tree_id=TREE, population_sha256=population["sha256"])
+
+
+def test_worker_error_metadata_preserves_unknown_without_counts_or_authority_override(worker_error_population, monkeypatch):
+    report = modeled_worker_error_observation(worker_error_population, monkeypatch, wire={
+        "error": "read_unavailable", "worker_error": {"schema": probe.WORKER_ERROR_SCHEMA,
+            "exception_class": "IOException", "error_text_sha256": "a" * 64,
+            "returncode": 999, "fresh_read": True, "counts": {"completed": 64},
+            "completion_authority": True, "retry_admitted": True, "message": "private SQL"}})
+    native = report["details"]["native_catalogue"]
+    assert report["reason_codes"] == ["native_catalogue_read_unavailable"]
+    assert native["worker_error"] == {"schema": probe.WORKER_ERROR_SCHEMA, "returncode": 0,
+        "exception_class": "IOException", "error_text_sha256": "a" * 64}
+    assert native["fresh_read"] is native["completion_authority"] is report["complete"] is report["busy"] is False
+    assert "counts" not in native and "recovery_action" not in report and "retry_admitted" not in native
+    assert "private SQL" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("damage", ["class", "digest", "schema"])
+def test_untrusted_worker_error_values_cannot_enter_safe_unknown_metadata(worker_error_population, monkeypatch, damage):
+    metadata = {"schema": probe.WORKER_ERROR_SCHEMA, "exception_class": "ValueError", "error_text_sha256": "b" * 64}
+    if damage == "class": metadata["exception_class"] = "X" * 81
+    elif damage == "digest": metadata["error_text_sha256"] = "raw private SQL"
+    else: metadata["schema"] = "untrusted"
+    report = modeled_worker_error_observation(worker_error_population, monkeypatch,
+        wire={"error": "read_unavailable", "worker_error": metadata})
+    safe = report["details"]["native_catalogue"]["worker_error"]
+    if damage in {"class", "schema"}: assert "exception_class" not in safe
+    if damage in {"digest", "schema"}: assert "error_text_sha256" not in safe
+    assert safe["returncode"] == 0 and "raw private SQL" not in json.dumps(report)
+    assert report["complete"] is report["completion_candidate"] is False
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+def test_nonzero_worker_exit_carries_actual_code_and_only_bounded_stderr_hash(worker_error_population, monkeypatch, oversized):
+    stderr = b"private SQL details" if not oversized else b"x" * (probe.MAX_REPORT_BYTES + 1)
+    report = modeled_worker_error_observation(worker_error_population, monkeypatch, returncode=-9, stderr=stderr)
+    native = report["details"]["native_catalogue"]
+    assert report["reason_codes"] == ["native_catalogue_native_worker_failed"]
+    assert native["worker_error"]["returncode"] == -9
+    if oversized: assert "stderr_sha256" not in native["worker_error"]
+    else: assert native["worker_error"]["stderr_sha256"] == hashlib.sha256(stderr).hexdigest()
+    assert "private SQL" not in json.dumps(report) and "counts" not in native
+    assert native["fresh_read"] is native["completion_authority"] is report["complete"] is False
+
+
+def test_known_worker_error_reason_is_unchanged_when_safe_metadata_is_available(worker_error_population, monkeypatch):
+    report = modeled_worker_error_observation(worker_error_population, monkeypatch, wire={
+        "error": "native_goal_mismatch", "worker_error": {"schema": probe.WORKER_ERROR_SCHEMA,
+            "exception_class": "InvalidCatalogue", "error_text_sha256": "c" * 64}})
+    assert report["reason_codes"] == ["native_catalogue_native_goal_mismatch"]
+    assert report["details"]["native_catalogue"]["worker_error"]["exception_class"] == "InvalidCatalogue"
+    assert report["complete"] is report["completion_candidate"] is report["busy"] is False

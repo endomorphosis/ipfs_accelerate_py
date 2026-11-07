@@ -22,6 +22,7 @@ from typing import Any
 
 SCHEMA = "agent-supervisor/native-catalogue-probe@1"
 DIAGNOSTIC_SCHEMA = "native-catalogue-diagnostic/v1"
+WORKER_ERROR_SCHEMA = "native-catalogue-worker-error/v1"
 POPULATION_SCHEMA = "legal-ir-native-task-population/v1"
 LINEAGE_POPULATION_SCHEMA = "legal-ir-native-task-population/v2"
 BOUNDARY_POPULATION_SCHEMA = "legal-ir-native-catalogue-boundary/v1"
@@ -868,6 +869,40 @@ def _read_catalogue(arguments):
             "read_finished_at_epoch": time.time()}
 
 
+def _worker_exception_metadata(error):
+    """Bounded exception identity/digest only; never serialize SQL or data text."""
+    name = type(error).__name__
+    if type(name) is not str or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", name) is None:
+        name = "Exception"
+    result = {"schema": WORKER_ERROR_SCHEMA, "exception_class": name}
+    try:
+        message = str(error)
+        if type(message) is str and len(message) <= MAX_BODY_BYTES:
+            raw = message.encode()
+            if len(raw) <= MAX_BODY_BYTES:
+                result["error_text_sha256"] = hashlib.sha256(raw).hexdigest()
+    except Exception:
+        pass
+    return result
+
+
+def _safe_worker_error(value, returncode, stderr=None):
+    """Only whitelisted scalar metadata crosses into an unknown diagnostic."""
+    result = {"schema": WORKER_ERROR_SCHEMA}
+    if type(returncode) is int and -(2**31) <= returncode < 2**31:
+        result["returncode"] = returncode
+    if type(value) is dict and value.get("schema") == WORKER_ERROR_SCHEMA:
+        name = value.get("exception_class")
+        if type(name) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", name):
+            result["exception_class"] = name
+        digest = value.get("error_text_sha256")
+        if type(digest) is str and re.fullmatch(r"[0-9a-f]{64}", digest):
+            result["error_text_sha256"] = digest
+    if type(stderr) is bytes and 0 < len(stderr) <= MAX_REPORT_BYTES:
+        result["stderr_sha256"] = hashlib.sha256(stderr).hexdigest()
+    return result
+
+
 def _limits():
     import resource
     resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
@@ -876,7 +911,7 @@ def _limits():
     resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
 
 
-def _unknown(board_id, arguments, code):
+def _unknown(board_id, arguments, code, *, worker_error=None):
     return {"schema": SCHEMA, "board_id": board_id, "health": "unknown",
             "complete": False, "completion_candidate": False, "busy": False,
             "progress_token": "", "reason_codes": [code],
@@ -887,7 +922,8 @@ def _unknown(board_id, arguments, code):
                 "population_sha256": arguments.get("population_sha256"),
                 "probe_observed_at_epoch": time.time(),
                 "checked_at_epoch": None, "fresh_read": False,
-                "activation_state": "unknown", "completion_authority": False}}}
+                "activation_state": "unknown", "completion_authority": False,
+                **({"worker_error": worker_error} if worker_error is not None else {})}}}
 
 
 def observe_native_catalogue(database_path: Path, population_path: Path, *, board_id: str,
@@ -898,6 +934,7 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
     arguments = {"database_path": str(database_path), "population_path": str(population_path),
                  "board_namespace": board_namespace, "plan_root_cid": plan_root_cid,
                  "repository_tree_id": repository_tree_id, "population_sha256": population_sha256}
+    worker_error = None
     try:
         _identifier(board_id)
         for key in ("board_namespace", "plan_root_cid", "repository_tree_id"):
@@ -914,6 +951,8 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
         process = subprocess.run([sys.executable, "-I", "-B", str(Path(__file__).resolve()),
                                   "--worker", json.dumps(arguments, separators=(",", ":"))],
             capture_output=True, timeout=timeout_seconds, env=env, preexec_fn=_limits)
+        worker_error = _safe_worker_error(None, process.returncode,
+                                          process.stderr if process.returncode != 0 else None)
         if process.returncode != 0 or len(process.stdout) > MAX_REPORT_BYTES:
             raise InvalidCatalogue("native_worker_failed")
         data = _decode(process.stdout)
@@ -921,7 +960,9 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
             code = data.get("error") if isinstance(data, dict) else "native_worker_invalid"
             if not isinstance(code, str) or not re.fullmatch(r"[a-z_]{1,80}", code):
                 code = "native_worker_invalid"
-            return _unknown(board_id, arguments, "native_catalogue_" + code)
+            return _unknown(board_id, arguments, "native_catalogue_" + code,
+                worker_error=_safe_worker_error(data.get("worker_error") if isinstance(data, dict) else None,
+                                                process.returncode))
         checked = data["read_finished_at_epoch"]
         observed = time.time() if now is None else now
         if (type(checked) not in (int, float) or not math.isfinite(checked)
@@ -1048,9 +1089,9 @@ def observe_native_catalogue(database_path: Path, population_path: Path, *, boar
     except subprocess.TimeoutExpired:
         return _unknown(board_id, arguments, "native_catalogue_read_timeout")
     except InvalidCatalogue as error:
-        return _unknown(board_id, arguments, "native_catalogue_" + str(error))
+        return _unknown(board_id, arguments, "native_catalogue_" + str(error), worker_error=worker_error)
     except (OSError, ValueError, TypeError, KeyError, RecursionError):
-        return _unknown(board_id, arguments, "native_catalogue_read_unavailable")
+        return _unknown(board_id, arguments, "native_catalogue_read_unavailable", worker_error=worker_error)
 
 
 def main(argv=None):
@@ -1060,9 +1101,15 @@ def main(argv=None):
         try:
             value = _read_catalogue(_decode(argv[1]))
         except InvalidCatalogue as error:
-            value = {"error": str(error)}
-        except Exception:
-            value = {"error": "read_unavailable"}
+            try:
+                code = str(error)
+            except Exception:
+                code = "native_worker_failed"
+            if re.fullmatch(r"[a-z_]{1,80}", code) is None:
+                code = "native_worker_invalid"
+            value = {"error": code, "worker_error": _worker_exception_metadata(error)}
+        except Exception as error:
+            value = {"error": "read_unavailable", "worker_error": _worker_exception_metadata(error)}
         encoded = json.dumps(value, separators=(",", ":"))
         print(encoded if len(encoded.encode()) <= MAX_REPORT_BYTES else '{"error":"native_report_bound"}')
         return 0
