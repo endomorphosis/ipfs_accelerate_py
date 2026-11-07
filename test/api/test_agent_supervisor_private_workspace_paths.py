@@ -126,6 +126,20 @@ def test_direct_tools_and_kernel_policy_receive_the_same_private_paths(tmp_path)
         temporary.cleanup()
 
 
+def test_relative_symlink_inside_denied_dependency_is_not_a_new_alias(tmp_path):
+    root = _workspace(tmp_path)
+    dependency = root / "external" / "ipfs_datasets_py"
+    (dependency / "docker").mkdir(parents=True)
+    (dependency / "docker" / "Dockerfile").write_text("FROM scratch\n")
+    (dependency / "Dockerfile").symlink_to("docker/Dockerfile")
+    (root / "public-alias").symlink_to(dependency / "docker" / "Dockerfile")
+    reached = G._workspace_symlinks_reach_denied_paths(
+        workspace=root, denied_paths=(dependency,),
+    )
+    assert dependency / "Dockerfile" not in reached
+    assert root / "public-alias" in reached
+
+
 def test_private_rules_use_supported_prefixes_even_with_legacy_list_keyword(tmp_path):
     path = tmp_path / "private"
     ordinary = G._grok_filesystem_deny_rules((path,))

@@ -1681,6 +1681,16 @@ def _workspace_symlinks_reach_denied_paths(
                 candidate = root_path / name
                 if not candidate.is_symlink():
                     continue
+                # A link that already lives inside a denied directory does not
+                # open a new alias from the allowed workspace. Relative links
+                # inside a pinned dependency stay covered by that directory's
+                # own deny rules.
+                parent = candidate.parent.resolve(strict=False)
+                if any(
+                    parent == denied or parent.is_relative_to(denied)
+                    for denied in sensitive
+                ):
+                    continue
                 target = candidate.resolve(strict=False)
                 if any(
                     target == denied or target.is_relative_to(denied)
