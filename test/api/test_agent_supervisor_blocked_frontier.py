@@ -87,6 +87,20 @@ def test_real_source_current_command_and_validation_refusals_are_collected(front
     assert 'VOG-004' not in plan['runnable_task_ids'] and not plan['completion_authority']
 
 
+def test_stopped_lane_without_proofs_keeps_the_frontier_clock(frontier):
+    config, now, lane, live, probe, ledger, gates = frontier
+    state = {}
+    observe(frontier, state)
+    original = state["blocked_frontier_observation"]["first_seen"]
+    tasks = dispatcher._tasks(config.repo_root / "todo.md", "## VOG-")
+    policy = json.loads(config.manifest_path.read_text())["planned_work_policy"]
+    result = planned.observe_planned_work(
+        policy=policy, repo_root=config.repo_root, tasks=tasks, lanes=[],
+        state=state, now=now + 30, gate_blockers=[])
+    assert state["blocked_frontier_observation"]["first_seen"] == original
+    assert result["state"] != "blocked_frontier_grace"
+
+
 def test_rotating_readonly_probes_and_json_clocks_cannot_renew_grace(frontier):
     config,now,lane,live,probe,ledger,gates=frontier;state={}
     observe(frontier,state)

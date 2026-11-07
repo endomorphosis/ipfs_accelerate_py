@@ -1976,7 +1976,7 @@ def _attempt_backoff_backpressure(reasons: Sequence[Any]) -> bool:
     """
 
     items = [str(item) for item in reasons if str(item)]
-    return bool(items) and all(item.endswith(":attempts_exhausted") for item in items)
+    return bool(items) and all(item.endswith(":attempts_exhausted") or item.endswith(":unjudged_native_backoff") for item in items)
 
 
 _ATTEMPT_BACKOFF_PHASES = frozenset(

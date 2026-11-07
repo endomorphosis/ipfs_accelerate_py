@@ -3,6 +3,12 @@
 The dispatcher never changes task completion, signals a supervisor, or assumes
 that a successful repair process proves recovery.  All worker commands are
 explicit argv lists; the caller supplies the worker's instructions on stdin.
+
+A configured Codex repair command is only the Codex candidate.  Before launch
+the dispatcher asks ``llm_router.decide_router_owned_implementation_provider``
+which source is usable.  Grok is preferred.  Codex is launched only after Grok
+hard-quota evidence.  One source's quota does not park a source the router
+still considers good.  The decision builds no model call.
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ import argparse
 import contextlib
 import copy
 from dataclasses import dataclass, field
+from datetime import datetime
 import fcntl
 import hashlib
 import json
@@ -48,6 +55,28 @@ SERVICE_WATCHDOG_VERSION = 1
 LANE_ENVIRONMENT_GUARD_VERSION = 1
 WORKER_STORAGE_ADMISSION_VERSION = 1
 FLAGS = {"work_complete": False, "completion_authority": False}
+_QUOTA_RETRY_RE = re.compile(
+    r"try again at ([A-Z][a-z]{2,8} \d{1,2}(?:st|nd|rd|th)?, \d{4} \d{1,2}:\d{2} [AP]M)"
+)
+_RELATIVE_RETRY_RE = re.compile(r"try again in (\d+)\s*(second|minute|hour|day)s?", re.IGNORECASE)
+_RETRY_UNITS = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}
+_TRANSIENT_PREWORK_RE = re.compile(
+    r"hit your usage limit|usage limit|quota exceeded|rate limit|too many requests|"
+    r"overloaded|try again (?:at|in)|\b429\b|temporarily unavailable|server is busy",
+    re.IGNORECASE,
+)
+_AUTH_STICK_RE = re.compile(
+    r"incorrect api key|invalid api key|unauthorized|payment required|billing hard limit|"
+    r"authentication failed",
+    re.IGNORECASE,
+)
+_TRANSIENT_PREWORK_TOKENS = (
+    b"usage limit", b"rate limit", b"quota exceeded", b"too many requests",
+    b"overloaded", b"try again", b"429", b"temporarily unavailable", b"server is busy",
+)
+_QUOTA_NEUTRAL_TYPES = {"thread.started", "turn.started"}
+_QUOTA_LOG_LIMIT = 65536
+_QUOTA_RETRY_HORIZON_SECONDS = 14 * 24 * 60 * 60
 _HELD_STATES = {"paused", "draining", "stopping"}
 _COMPLETED = {"completed", "complete", "done"}
 _DESCENDANT_CLEANUP_GRACE_SECONDS = 5.0
@@ -60,6 +89,8 @@ class Config:
     state_dir: Path
     prompt_path: Path | None = None
     worker_argv: list[str] = field(default_factory=list)
+    # Argv chosen for the launch in progress.  Empty means worker_argv.
+    launch_argv: list[str] = field(default_factory=list)
     owner_pid_path: Path | None = None
     repair_lock_path: Path | None = None
     hold_paths: tuple[Path, ...] = ()
@@ -1107,7 +1138,8 @@ def stop_adopted_worker(identity: dict[str, Any]) -> bool:
 def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any]], None], *,
                on_poll: Callable[[dict[str, Any]], None] | None = None,
                previous_worker_context_json: str | None = None) -> dict[str, Any]:
-    if not config.worker_argv or config.prompt_path is None:
+    argv = [str(part) for part in (config.launch_argv or config.worker_argv)]
+    if not argv or config.prompt_path is None:
         return {"outcome": "configuration_error", "error": "worker argv and prompt path are required"}
     process = None
     tree = None
@@ -1116,7 +1148,7 @@ def run_worker(config: Config, log_path: Path, on_start: Callable[[dict[str, Any
         with config.prompt_path.open("rb") as prompt, log_path.open("ab") as output:
             environment = dict(os.environ, REPAIR_DISPATCHER_STATUS_PATH=str(config.state_dir / "status.json"))
             environment = context_environment(environment, previous_worker_context_json)
-            process = subprocess.Popen(config.worker_argv, stdin=prompt, stdout=output, stderr=subprocess.STDOUT,
+            process = subprocess.Popen(argv, stdin=prompt, stdout=output, stderr=subprocess.STDOUT,
                                        cwd=config.repo_root, env=environment, start_new_session=True)
             tree = CommandProcessTree(process.pid)
             tree.snapshot()
@@ -1228,6 +1260,543 @@ def _save(config: Config, state: dict[str, Any], telemetry: dict[str, Any]) -> b
         return False
 
 
+def _transient_prework_message(message: str) -> bool:
+    """True for a provider refusal that ends before repair work starts.
+
+    Authentication and billing failures stay ordinary attempts.  Waiting does
+    not clear a bad credential, and those must still reach attention_required.
+    """
+    if _AUTH_STICK_RE.search(message):
+        return False
+    return _TRANSIENT_PREWORK_RE.search(message) is not None
+
+
+def provider_quota_backoff(log_path: Path, *, now: float, fallback_seconds: float) -> dict[str, Any] | None:
+    """Return a local retry time when a worker log is only a transient provider refusal.
+
+    A refusal that exits before any repair work must not spend the signature's
+    attempt budget.  Other log shapes, including a limit message mixed with
+    real events, stay ordinary failures.
+    """
+    try:
+        raw = log_path.read_bytes()
+        log_mtime = log_path.stat().st_mtime
+    except OSError:
+        return None
+    if not raw or len(raw) > _QUOTA_LOG_LIMIT or not any(token in raw.lower() for token in _TRANSIENT_PREWORK_TOKENS):
+        return None
+    messages: list[str] = []
+    for line in raw.decode("utf-8", "replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(item, dict):
+            return None
+        kind = item.get("type")
+        if kind in _QUOTA_NEUTRAL_TYPES:
+            continue
+        if kind == "error" and isinstance(item.get("message"), str):
+            messages.append(item["message"])
+            continue
+        if kind == "turn.failed" and isinstance(item.get("error"), dict):
+            message = item["error"].get("message")
+            if isinstance(message, str):
+                messages.append(message)
+                continue
+        return None
+    if not messages or any(not _transient_prework_message(message) for message in messages):
+        return None
+    stated_retry_at = _parse_quota_retry_at(messages[-1], log_mtime=log_mtime)
+    retry_at = stated_retry_at
+    if (retry_at is None or retry_at < now or retry_at > now + _QUOTA_RETRY_HORIZON_SECONDS):
+        retry_at = now + fallback_seconds
+    return {"reason": "provider_usage_limit", "retry_at": retry_at,
+            "stated_retry_at": stated_retry_at, "log_mtime": log_mtime}
+
+
+def _parse_quota_retry_at(message: str, *, log_mtime: float) -> float | None:
+    match = _QUOTA_RETRY_RE.search(message)
+    if match is not None:
+        stamp = re.sub(r"(\d)(?:st|nd|rd|th)", r"\1", match.group(1))
+        try:
+            parsed = datetime.strptime(stamp, "%b %d, %Y %I:%M %p")
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            try:
+                return parsed.replace(tzinfo=datetime.now().astimezone().tzinfo).timestamp()
+            except (OSError, OverflowError, ValueError):
+                return None
+    relative = _RELATIVE_RETRY_RE.search(message)
+    if relative is None:
+        return None
+    try:
+        amount = int(relative.group(1))
+    except ValueError:
+        return None
+    return log_mtime + amount * _RETRY_UNITS[relative.group(2).lower()]
+
+
+def _quota_attempt_logs(config: Config, signature: str) -> list[Path]:
+    prefix = f"worker-{signature[:16]}-"
+    try:
+        return sorted(path for path in config.state_dir.glob(prefix + "*.log")
+                      if path.is_file() and path.name.removeprefix(prefix).removesuffix(".log").isdigit())
+    except OSError:
+        return []
+
+
+def _latest_stated_quota_retry(config: Config, now: float) -> float | None:
+    """Use the newest worker log's stated provider time, across repair signatures.
+
+    A signature change must not launch another worker while the provider has
+    already named a future retry.  A stamp that is already due does not block:
+    the next real attempt is what discovers whether the limit has lifted.
+    """
+    try:
+        logs = [path for path in config.state_dir.glob("worker-*.log") if path.is_file()]
+    except OSError:
+        return None
+    if not logs:
+        return None
+    try:
+        latest = max(logs, key=lambda path: path.stat().st_mtime)
+    except OSError:
+        return None
+    quota = provider_quota_backoff(latest, now=now, fallback_seconds=config.max_cooldown_seconds)
+    if quota is None:
+        return None
+    stated = quota.get("stated_retry_at")
+    if not isinstance(stated, (int, float)):
+        # Anchor an unstamped refusal to the log time.  Re-reading the same
+        # file must not keep sliding the wait forward.
+        stated = float(quota.get("log_mtime") or now) + config.max_cooldown_seconds
+    if now < float(stated) <= now + _QUOTA_RETRY_HORIZON_SECONDS:
+        return float(stated)
+    return None
+
+
+def _recover_quota_exhaustion(config: Config, signature: str, record: dict[str, Any], now: float) -> float | None:
+    """Drop a spent budget when every persisted attempt log is only a usage limit."""
+    logs = _quota_attempt_logs(config, signature)
+    if not logs:
+        return None
+    latest = None
+    for path in logs:
+        quota = provider_quota_backoff(path, now=now, fallback_seconds=config.max_cooldown_seconds)
+        if quota is None:
+            return None
+        latest = quota
+    assert latest is not None
+    record["count"] = 0
+    record["provider_quota"] = {"reason": "provider_usage_limit", "retry_at": latest["retry_at"]}
+    return float(latest["retry_at"])
+
+
+def _repair_lock_owner_alive(config: Config) -> bool:
+    """True when the repair marker is missing a proof that its owner has exited."""
+    path = config.repair_lock_path
+    if path is None:
+        return False
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    if not stat.S_ISREG(info.st_mode):
+        return True
+    try:
+        prior = _json(path)
+        owner = probe_process(int(prior.get("pid") or 0))
+    except (OSError, ValueError, TypeError):
+        return True
+    if prior.get("schema") != SCHEMA or not prior.get("token"):
+        return True
+    return bool(owner.get("alive") and owner.get("start_ticks") == prior.get("start_ticks"))
+
+
+def _worker_argv_still_running(config: Config, intent: dict[str, Any]) -> bool:
+    """True unless every live process fails to match the recorded worker argv.
+
+    An empty argv cannot be distinguished from an unrelated process, so the
+    interrupted launch stays uncertain.  A router-selected command is matched
+    from the spawn record, not from the configured Codex candidate.
+    """
+    recorded = intent.get("argv")
+    if (isinstance(recorded, list) and recorded
+            and all(isinstance(part, str) and part for part in recorded)):
+        expected = list(recorded)
+    else:
+        expected = [str(part) for part in config.worker_argv]
+    if not expected:
+        return True
+    digest = intent.get("argv_digest")
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError:
+        return True
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        command = [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
+        if command[:len(expected)] != expected:
+            continue
+        if isinstance(digest, str) and digest and _digest(command[:len(expected)]) != digest:
+            continue
+        return True
+    return False
+
+
+def _spawn_intent_still_uncertain(config: Config, intent: Any, now: float) -> bool:
+    """Keep a single-launch guard until the worker deadline passes with no survivor.
+
+    A restart between the spawn record and the worker handoff must not start a
+    second repair.  After the original deadline, a dead lock and no matching
+    process means that launch did not survive, so the dispatcher may continue.
+    """
+    if not isinstance(intent, dict):
+        return True
+    try:
+        started = float(intent.get("started_at"))
+    except (TypeError, ValueError):
+        return True
+    if now < started + config.worker_timeout:
+        return True
+    if _repair_lock_owner_alive(config):
+        return True
+    return _worker_argv_still_running(config, intent)
+
+
+def _remember_provider_quota(config: Config, state: dict[str, Any], record: dict[str, Any],
+                             result: dict[str, Any], log_path: Path, finished: float) -> bool:
+    if result.get("outcome") != "failed":
+        record.pop("provider_quota", None)
+        return False
+    quota = provider_quota_backoff(log_path, now=finished, fallback_seconds=config.max_cooldown_seconds)
+    if quota is None:
+        record.pop("provider_quota", None)
+        return False
+    record["count"] = max(0, int(record.get("count") or 0) - 1)
+    provider = _provider_log_index(config).get(log_path.name, "")
+    record["provider_quota"] = {"reason": "provider_usage_limit", "retry_at": quota["retry_at"],
+                                **({"provider": provider} if provider else {})}
+    record["next_dispatch_at"] = quota["retry_at"]
+    state["next_dispatch_at"] = quota["retry_at"]
+    return True
+
+
+def _argv_provider(argv: list[str]) -> str:
+    """Return the implementation source named by an argv, or an empty string."""
+    if not argv:
+        return ""
+    name = Path(str(argv[0])).name
+    if name == "codex":
+        return "codex"
+    if name in {"grok", "grok.exe"}:
+        return "grok"
+    return ""
+
+
+def _grok_binary(_config: Config) -> str:
+    """Locate the Grok CLI without starting it or calling a model."""
+    from ipfs_accelerate_py.llm_router import find_grok_cli
+
+    found = str(find_grok_cli() or "").strip()
+    if found:
+        return found
+    candidate = Path.home() / ".local" / "bin" / "grok"
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    return ""
+
+
+def _codex_binary(config: Config) -> str:
+    """Return the configured Codex executable when that file is executable."""
+    argv = config.worker_argv
+    if _argv_provider([str(part) for part in argv]) != "codex":
+        return ""
+    candidate = Path(argv[0])
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    return ""
+
+
+def _provider_log_index(config: Config) -> dict[str, str]:
+    path = config.state_dir / "provider-log-index.json"
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {str(name): provider for name, provider in value.items() if provider in {"grok", "codex"}}
+
+
+def _bind_log_provider(config: Config, log_path: Path, provider: str) -> None:
+    if provider not in {"grok", "codex"}:
+        return
+    index = _provider_log_index(config)
+    index[log_path.name] = provider
+    _atomic_json(config.state_dir / "provider-log-index.json", index)
+
+
+def _plain_transient_backoff(raw: bytes, *, log_mtime: float, now: float,
+                             fallback_seconds: float) -> dict[str, Any] | None:
+    """A one-line pre-work refusal, used for a Grok log that is not Codex JSON."""
+    if not raw or len(raw) > _QUOTA_LOG_LIMIT or b"\n" in raw.strip():
+        return None
+    text = raw.decode("utf-8", "replace").strip()
+    if not text or text.startswith("{") or not _transient_prework_message(text):
+        return None
+    stated_retry_at = _parse_quota_retry_at(text, log_mtime=log_mtime)
+    retry_at = stated_retry_at
+    if retry_at is None or retry_at < now or retry_at > now + _QUOTA_RETRY_HORIZON_SECONDS:
+        retry_at = now + fallback_seconds
+    return {"reason": "provider_usage_limit", "retry_at": retry_at,
+            "stated_retry_at": stated_retry_at, "log_mtime": log_mtime}
+
+
+def _classify_worker_log(config: Config, log_path: Path, now: float) -> tuple[str, dict[str, Any]] | None:
+    """Attribute a pure pre-work refusal to the provider that produced it."""
+    hint = _provider_log_index(config).get(log_path.name, "")
+    quota = provider_quota_backoff(log_path, now=now, fallback_seconds=config.max_cooldown_seconds)
+    if quota is not None:
+        return (hint or "codex"), quota
+    if hint != "grok":
+        return None
+    try:
+        raw = log_path.read_bytes()
+        log_mtime = log_path.stat().st_mtime
+    except OSError:
+        return None
+    plain = _plain_transient_backoff(raw, log_mtime=log_mtime, now=now,
+                                     fallback_seconds=config.max_cooldown_seconds)
+    if plain is None:
+        return None
+    return "grok", plain
+
+
+def _log_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _provider_quota_deadlines(config: Config, now: float) -> dict[str, float]:
+    """Future refusal time for each provider, from that provider's newest log.
+
+    A Codex usage-limit log does not become a deadline for Grok.  A newer log
+    from the same provider that is real work clears that provider's deadline.
+    """
+    try:
+        logs = [path for path in config.state_dir.glob("worker-*.log") if path.is_file()]
+    except OSError:
+        return {}
+    index = _provider_log_index(config)
+    newest: dict[str, Path] = {}
+    for path in sorted(logs, key=_log_mtime):
+        provider = index.get(path.name, "")
+        if not provider and provider_quota_backoff(
+                path, now=now, fallback_seconds=config.max_cooldown_seconds) is not None:
+            provider = "codex"
+        if provider in {"grok", "codex"}:
+            newest[provider] = path
+    deadlines: dict[str, float] = {}
+    for provider, path in newest.items():
+        classified = _classify_worker_log(config, path, now)
+        if classified is None or classified[0] != provider:
+            continue
+        retry_at = classified[1].get("retry_at")
+        if isinstance(retry_at, (int, float)) and now < float(retry_at) <= now + _QUOTA_RETRY_HORIZON_SECONDS:
+            deadlines[provider] = float(retry_at)
+    return deadlines
+
+
+def _repair_source_observations(config: Config, now: float):
+    """Non-charging observations for the two repair sources."""
+    from ipfs_accelerate_py.llm_router import RouterOwnedProviderObservation
+
+    deadlines = _provider_quota_deadlines(config, now)
+    binaries = {"grok": _grok_binary(config), "codex": _codex_binary(config)}
+    observations = []
+    for provider in ("grok", "codex"):
+        binary = binaries[provider]
+        retry_at = deadlines.get(provider)
+        exhausted = retry_at is not None
+        observations.append(RouterOwnedProviderObservation(
+            provider_id=provider,
+            ready=bool(binary) and not exhausted,
+            authenticated=bool(binary),
+            binary_available=bool(binary),
+            hard_quota_exhausted=exhausted,
+            retry_at="" if retry_at is None else str(retry_at),
+            source="repair_dispatcher",
+        ))
+    return tuple(observations), deadlines
+
+
+def _grok_repair_argv(config: Config) -> list[str]:
+    """Build the Grok repair command with the router's own argv helper."""
+    from ipfs_accelerate_py.llm_router import build_grok_cli_command
+
+    if config.prompt_path is None:
+        raise ValueError("repair prompt is required")
+    return build_grok_cli_command(
+        mode="agent",
+        workspace=config.repo_root,
+        model_name="grok-4.7",
+        grok_bin=_grok_binary(config),
+        prompt_file=config.prompt_path,
+        permission_mode="bypassPermissions",
+    )
+
+
+def _choose_repair_source(config: Config, now: float) -> dict[str, Any]:
+    """Ask the router which repair source is usable.  This makes no model call."""
+    from ipfs_accelerate_py.llm_router import (
+        LLMRouterError, ROUTER_OWNED_COMPATIBILITY_CANONICAL,
+        decide_router_owned_implementation_provider,
+    )
+
+    observations, deadlines = _repair_source_observations(config, now)
+    decision = decide_router_owned_implementation_provider(
+        observations,
+        preferred_provider="grok",
+        fallback_provider="codex",
+        secondary_providers=("codex",),
+        allow_secondary_without_preferred_quota=False,
+        compatibility_mode=ROUTER_OWNED_COMPATIBILITY_CANONICAL,
+    )
+    argv: list[str] = []
+    if decision.authorized and decision.selected_provider == "grok":
+        try:
+            argv = _grok_repair_argv(config)
+        except (OSError, ValueError, LLMRouterError):
+            argv = []
+    elif decision.authorized and decision.selected_provider == "codex":
+        argv = [str(part) for part in config.worker_argv]
+    authorized = bool(decision.authorized and argv)
+    retry_at = None
+    if not authorized:
+        try:
+            parsed = float(decision.retry_at) if decision.retry_at else None
+        except ValueError:
+            parsed = None
+        if parsed is not None and now < parsed <= now + _QUOTA_RETRY_HORIZON_SECONDS:
+            retry_at = parsed
+        elif deadlines:
+            future = [stamp for stamp in deadlines.values() if stamp > now]
+            retry_at = min(future) if future else None
+    if not authorized and deadlines:
+        reason = "provider_usage_limit"
+    elif decision.reason_codes:
+        reason = str(decision.reason_codes[0])
+    else:
+        reason = "no_eligible_implementation_provider"
+    return {"authorized": authorized, "decision": decision.decision if authorized else decision.decision,
+            "selected_provider": decision.selected_provider if authorized else "",
+            "reason_codes": list(decision.reason_codes), "reason": reason, "retry_at": retry_at,
+            "argv": argv, "deadlines": deadlines}
+
+
+_EXTERNAL_GATE_INCIDENTS = frozenset({"gate_fixed_point", "planned_work_blocked_frontier"})
+# Grace and deferred are the same proofs while the lane cursor or a gate
+# revalidation heartbeat is outside the retry-wait set. They must not dispatch.
+_EXTERNAL_FRONTIER_STATES = frozenset({
+    "plan_replan_required", "blocked_frontier_deferred", "blocked_frontier_grace",
+})
+
+
+def _unchanged_exit75_frontier(observation: dict[str, Any], state: dict[str, Any]) -> bool:
+    """True when a clean repair already saw this same exit-75 frontier.
+
+    The lane cursor rotates the active task across the same withheld proofs.
+    A gate revalidation heartbeat also drops the frontier out of
+    plan_replan_required for one observation. Neither event opens a new
+    repair attempt. A later proof change resets the frontier clock and
+    repair can run again. Tasks stay pending.
+    """
+    planned = observation.get("planned_work")
+    if not isinstance(planned, dict) or planned.get("state") not in _EXTERNAL_FRONTIER_STATES:
+        return False
+    blocked = planned.get("blocked_task_ids")
+    selectable = observation.get("selectable_task_ids")
+    proofs = planned.get("blocked_frontier_proofs")
+    incidents = observation.get("incidents")
+    fingerprint = planned.get("blockage_fingerprint")
+    if (not isinstance(blocked, list) or not blocked
+            or not isinstance(selectable, list) or not set(selectable) <= set(blocked)
+            or not isinstance(proofs, list) or not proofs
+            or any(not isinstance(proof, dict) or proof.get("last_exit_code") != 75 for proof in proofs)
+            or not isinstance(incidents, list) or not incidents
+            or any(not isinstance(item, dict) or item.get("kind") not in _EXTERNAL_GATE_INCIDENTS for item in incidents)
+            or not isinstance(fingerprint, str) or len(fingerprint) != 64):
+        return False
+    def _clean(record: Any) -> bool:
+        return (isinstance(record, dict) and record.get("exit_code") == 0
+                and record.get("work_complete") is False
+                and record.get("outcome") == "awaiting_observation")
+
+    frontier = state.get("blocked_frontier_observation")
+    last = state.get("last_worker")
+    settled = (state.get("settled_exit75_frontiers") or {}).get(fingerprint) if isinstance(
+        state.get("settled_exit75_frontiers"), dict) else None
+    clock_ok = False
+    if isinstance(frontier, dict) and isinstance(last, dict):
+        first = frontier.get("first_seen")
+        finished = last.get("finished_at")
+        clock_ok = (frontier.get("signature") == fingerprint and _clean(last)
+                    and type(first) in (int, float) and not isinstance(first, bool)
+                    and type(finished) in (int, float) and not isinstance(finished, bool)
+                    and first <= float(finished))
+    if not clock_ok and not _clean(settled):
+        return False
+    if not _clean(settled):
+        remembered = state.setdefault("settled_exit75_frontiers", {})
+        if isinstance(remembered, dict):
+            remembered[fingerprint] = {"exit_code": 0, "work_complete": False,
+                                       "outcome": "awaiting_observation",
+                                       "finished_at": last.get("finished_at")}
+    return True
+
+
+def _matches_foreign_deadline(stamp: Any, foreign: list[float]) -> bool:
+    return isinstance(stamp, (int, float)) and any(abs(float(stamp) - item) < 1.0 for item in foreign)
+
+
+def _drop_foreign_provider_deadline(state: dict[str, Any], record: dict[str, Any], selected: str,
+                                    deadlines: dict[str, float]) -> None:
+    """A deadline recorded for another source must not cool down the selected one.
+
+    Older dispatchers copied a Codex refusal onto the attempt record without a
+    provider name.  That untagged stamp is still a foreign deadline when it
+    matches another source's refusal time.
+    """
+    foreign = [stamp for provider, stamp in deadlines.items() if provider != selected]
+    if _matches_foreign_deadline(state.get("next_dispatch_at"), foreign):
+        state["next_dispatch_at"] = 0
+    quota = record.get("provider_quota") if isinstance(record.get("provider_quota"), dict) else {}
+    tagged = str(quota.get("provider") or "")
+    foreign_quota = bool(tagged and tagged != selected)
+    untagged_foreign = bool(not tagged and quota and (
+        _matches_foreign_deadline(quota.get("retry_at"), foreign)
+        or _matches_foreign_deadline(record.get("next_dispatch_at"), foreign)))
+    if foreign_quota or untagged_foreign or _matches_foreign_deadline(record.get("next_dispatch_at"), foreign):
+        if foreign_quota or untagged_foreign:
+            record.pop("provider_quota", None)
+        if _matches_foreign_deadline(record.get("next_dispatch_at"), foreign):
+            record["next_dispatch_at"] = 0
+
+
 def tick(
     config: Config, state: dict[str, Any], *, apply: bool = False, now: float | None = None,
     probe: Callable[[int], dict[str, Any]] = probe_process,
@@ -1284,10 +1853,11 @@ def tick(
         _release_repair_marker(_saved_repair_marker(config, active))
         state.pop("active_worker", None)
         state["last_worker"] = {"outcome": "interrupted", "finished_at": now, **FLAGS}
-    if state.get("spawn_intent"):
+    if state.get("spawn_intent") and _spawn_intent_still_uncertain(config, state.get("spawn_intent"), now):
         telemetry.update({"action": "attention_required", "reason": "spawn_uncertain_after_dispatcher_interruption"})
         _save(config, state, telemetry)
         return telemetry
+    state.pop("spawn_intent", None)
     if any(review["reason"] in {"invalid_required_key", "expected_environment_missing"}
            for review in observation["lane_environment_reviews"]):
         telemetry["action"] = "lane_environment_configuration_error"
@@ -1347,9 +1917,65 @@ def tick(
         record = state.setdefault("attempts", {}).setdefault(signature, {"count": 0, "next_dispatch_at": 0})
         telemetry["attempt_count"] = record["count"]
         telemetry["max_attempts"] = config.max_attempts
-        telemetry["next_dispatch_at"] = max(record["next_dispatch_at"], state.get("next_dispatch_at", 0))
-        if record["count"] >= config.max_attempts:
-            telemetry["action"] = "attention_required"
+        selected_argv = [str(part) for part in config.worker_argv]
+        selected_provider = ""
+        routed = _argv_provider(selected_argv) == "codex"
+        router_blocked = False
+        if routed:
+            choice = _choose_repair_source(config, now)
+            telemetry["router_decision"] = choice["decision"]
+            telemetry["router_provider"] = choice["selected_provider"]
+            telemetry["router_reasons"] = choice["reason_codes"]
+            if choice["authorized"]:
+                selected_provider = str(choice["selected_provider"])
+                selected_argv = list(choice["argv"])
+                _drop_foreign_provider_deadline(state, record, selected_provider, choice["deadlines"])
+            else:
+                router_blocked = True
+                retry_at = choice["retry_at"]
+                if not isinstance(retry_at, (int, float)):
+                    retry_at = now + config.cooldown_seconds
+                record["next_dispatch_at"] = retry_at
+                state["next_dispatch_at"] = retry_at
+                telemetry["action"] = "provider_backoff"
+                telemetry["reason"] = choice["reason"]
+                telemetry["next_dispatch_at"] = float(retry_at)
+                telemetry["attempt_count"] = record["count"]
+        if not router_blocked:
+            telemetry["next_dispatch_at"] = max(record["next_dispatch_at"], state.get("next_dispatch_at", 0))
+        provider_quota = record.get("provider_quota") if isinstance(record.get("provider_quota"), dict) else {}
+        provider_retry_at = None if routed else provider_quota.get("retry_at")
+        stated_retry_at = None if routed else _latest_stated_quota_retry(config, now)
+        if stated_retry_at is not None:
+            provider_retry_at = stated_retry_at
+            record["provider_quota"] = {"reason": "provider_usage_limit", "retry_at": stated_retry_at}
+            record["next_dispatch_at"] = stated_retry_at
+            state["next_dispatch_at"] = stated_retry_at
+        if router_blocked:
+            pass
+        elif record["count"] >= config.max_attempts:
+            recovered_retry_at = _recover_quota_exhaustion(config, signature, record, now)
+            telemetry["attempt_count"] = record["count"]
+            if recovered_retry_at is None:
+                telemetry["action"] = "attention_required"
+            else:
+                telemetry["action"] = "provider_backoff"
+                telemetry["reason"] = "provider_usage_limit"
+                telemetry["next_dispatch_at"] = recovered_retry_at
+                record["next_dispatch_at"] = recovered_retry_at
+                state["next_dispatch_at"] = recovered_retry_at
+        elif _unchanged_exit75_frontier(observation, state):
+            # The proofs did not change after the last clean repair. Launching
+            # another worker only because the lane cursor moved, or because a
+            # lease restart cleared the frontier clock, spends the attempt
+            # budget without a new gate result.
+            telemetry["action"] = "waiting_external_gate"
+            telemetry["reason"] = "unchanged_exit75_frontier"
+            telemetry["attempt_count"] = record["count"]
+        elif isinstance(provider_retry_at, (int, float)) and now < float(provider_retry_at):
+            telemetry["action"] = "provider_backoff"
+            telemetry["reason"] = "provider_usage_limit"
+            telemetry["next_dispatch_at"] = float(provider_retry_at)
         elif not apply:
             telemetry["action"] = "would_dispatch"
         elif now < telemetry["next_dispatch_at"]:
@@ -1363,8 +1989,11 @@ def tick(
                     delay = min(config.max_cooldown_seconds, config.cooldown_seconds * 2 ** min(record["count"] - 1, 30))
                     record["next_dispatch_at"] = now + delay
                     state["next_dispatch_at"] = now + delay
-                    telemetry.update({"action": "dispatching", "attempt_count": record["count"], "next_dispatch_at": now + delay})
-                    state["spawn_intent"] = {"signature": signature, "started_at": now, "argv_digest": _digest(config.worker_argv)}
+                    telemetry.update({"action": "dispatching", "attempt_count": record["count"], "next_dispatch_at": now + delay,
+                                      **({"router_provider": selected_provider} if selected_provider else {})})
+                    state["spawn_intent"] = {"signature": signature, "started_at": now, "argv": list(selected_argv),
+                                             "argv_digest": _digest(selected_argv),
+                                             **({"provider": selected_provider} if selected_provider else {})}
                     if not _save(config, state, telemetry):
                         state.clear()
                         state.update(before_dispatch)
@@ -1391,8 +2020,14 @@ def tick(
                             raise
 
                     log_path = config.state_dir / f"worker-{signature[:16]}-{record['count']}.log"
-                    worker_started = True
-                    result = worker(config, log_path, started)
+                    config.launch_argv = list(selected_argv)
+                    try:
+                        if selected_provider in {"grok", "codex"}:
+                            _bind_log_provider(config, log_path, selected_provider)
+                        worker_started = True
+                        result = worker(config, log_path, started)
+                    finally:
+                        config.launch_argv = []
                     if result.get("outcome") == "storage_blocked":
                         # run_worker has already stopped and reaped only its
                         # owned child when storage admission/persistence fails.
@@ -1420,7 +2055,12 @@ def tick(
                         record["next_dispatch_at"] = finished + delay
                         state["next_dispatch_at"] = finished + delay
                         state["last_worker"] = {**result, "finished_at": finished, "signature": signature, "log_path": str(log_path), **FLAGS}
-                        telemetry.update({"action": "worker_finished", "worker": state["last_worker"], "next_dispatch_at": finished + delay})
+                        if _remember_provider_quota(config, state, record, result, log_path, finished):
+                            telemetry.update({"action": "provider_backoff", "reason": "provider_usage_limit",
+                                              "worker": state["last_worker"], "attempt_count": record["count"],
+                                              "next_dispatch_at": record["next_dispatch_at"]})
+                        else:
+                            telemetry.update({"action": "worker_finished", "worker": state["last_worker"], "next_dispatch_at": finished + delay})
                     # No recovery is inferred from exit 0.  The next tick reads live evidence again.
             except AlreadyRunning:
                 telemetry.update({"action": "repair_already_running", "repair_lock_path": str(config.repair_lock_path)})

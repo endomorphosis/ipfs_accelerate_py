@@ -122,3 +122,67 @@ def test_operator_hold_prevents_replay_after_probe_changes_guard(work):
     before=events();(root/'HOLD').write_text('owned test hold')
     assert cycle()['phase']=='operator_hold' and events()==before
     assert '- Status: pending' in (root/'board.md').read_text()
+
+
+def _unjudged_work(tmp_path, monkeypatch, opt_in):
+    (tmp_path / "producer.py").write_text(
+        "import pathlib\n"
+        "r=pathlib.Path('.')\n"
+        "with (r/'events.log').open('a') as f:f.write('producer\\n')\n"
+        "(r/'result.json').write_text('{}')\n"
+    )
+    (tmp_path / "validator.py").write_text(
+        "import pathlib,sys\n"
+        "r=pathlib.Path('.')\n"
+        "with (r/'events.log').open('a') as f:f.write('validator\\n')\n"
+        "sys.exit(76)\n"
+    )
+    clock = [1000.0]
+    monkeypatch.setattr(lane_resume.time, "time", lambda: clock[0])
+    monkeypatch.setattr(lane_resume, "_refill_module", lambda _: None)
+    opt = "- Retry unjudged native: true\n" if opt_in else ""
+    (tmp_path / "board.md").write_text(
+        "## TASK-001 Unjudged native stage\n- Status: pending\n- Depends on:\n"
+        "- Deterministic command: python3 producer.py\n- Validation: python3 validator.py\n"
+        "- Outputs: result.json\n- Resource class: cpu-small\n- Implementation timeout seconds: 10\n"
+        + opt
+    )
+
+    def cycle():
+        return lane_resume.run_resume_cycle(
+            repo_root=tmp_path, todo_path=tmp_path / "board.md",
+            task_header_prefix="## TASK-", attempt_path=tmp_path / "attempts.json",
+            log_path=tmp_path / "lane.log", heartbeat=lambda **_: None,
+        )
+
+    def events():
+        return (tmp_path / "events.log").read_text().splitlines()
+
+    return clock, cycle, events
+
+
+def test_unjudged_native_exit_retries_producer_after_backoff(tmp_path, monkeypatch):
+    clock, cycle, events = _unjudged_work(tmp_path, monkeypatch, True)
+    first = cycle()
+    assert first["phase"] == "unjudged_native_wait"
+    assert events() == ["producer", "validator"]
+    assert "- Status: pending" in (tmp_path / "board.md").read_text()
+    assert first["next_retry_at_ms"] > clock[0] * 1000
+    held = cycle()
+    assert events().count("producer") == 1
+    assert held["phase"] == "attempt_retry_wait"
+    clock[0] = first["next_retry_at_ms"] / 1000 + 1
+    again = cycle()
+    assert again["phase"] == "unjudged_native_wait"
+    assert events().count("producer") == 2
+    # The middle validator is the cheap backoff recheck. It must not be a third producer.
+    assert events() == ["producer", "validator", "validator", "producer", "validator"]
+    assert "- Status: pending" in (tmp_path / "board.md").read_text()
+
+
+def test_unjudged_native_exit_without_opt_in_stays_validation_only(tmp_path, monkeypatch):
+    _clock, cycle, events = _unjudged_work(tmp_path, monkeypatch, False)
+    assert cycle()["phase"] == "gate_withheld"
+    cycle(); cycle()
+    assert events().count("producer") == 1
+    assert "- Status: pending" in (tmp_path / "board.md").read_text()
