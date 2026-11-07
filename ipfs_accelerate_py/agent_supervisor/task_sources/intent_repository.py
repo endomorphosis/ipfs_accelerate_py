@@ -5032,6 +5032,97 @@ class IntentRepository:
                 missing.append(f"criterion:{criterion or item.get('ordinal')}")
         return (not missing), tuple(missing)
 
+    def replace_retrying_rearm_receipt(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_operation: str,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        """Replace one open retrying rearm receipt without a new revision.
+
+        The coordination fence accepts this row only at
+        ``control_expected_revision + 2``. A later status CAS would move the
+        revision off that value, so the receipt is closed in place.
+        """
+
+        tcid = _identifier(task_cid, noun="task_cid")
+        expected = _positive_int(expected_revision, noun="expected_revision")
+        operation = str(expected_operation or "")
+        if operation != "obsolete_workflow_gate_rearm":
+            raise IntentRepositoryError(
+                "retrying rearm receipt close is not the open workflow receipt"
+            )
+        if set(receipt) != {"operation", "settlement_id"}:
+            raise IntentRepositoryError("closed rearm receipt is not exact")
+        if receipt.get("operation") != "operator_control_plane_repair":
+            raise IntentRepositoryError("closed rearm receipt operation is wrong")
+        settlement = receipt.get("settlement_id")
+        if (
+            not isinstance(settlement, str)
+            or not settlement
+            or settlement != settlement.strip()
+            or len(settlement) > 256
+        ):
+            raise IntentRepositoryError("closed rearm receipt has no settlement")
+        replacement = {
+            "operation": "operator_control_plane_repair",
+            "settlement_id": settlement,
+        }
+        now = _utc_iso()
+        with self._connection(write=True) as connection:
+            row = connection.execute(
+                """
+                SELECT task_cid, status, revision, body_json
+                FROM tasks WHERE task_cid = ? OR task_alias = ?
+                ORDER BY task_cid LIMIT 2
+                """,
+                [tcid, tcid],
+            ).fetchall()
+            if len(row) != 1:
+                raise IntentRepositoryIntegrityError(
+                    "retrying rearm receipt task lookup is not exact"
+                )
+            resolved_cid = str(row[0][0])
+            if str(row[0][1]) != "retrying" or int(row[0][2]) != expected:
+                return False
+            body_map = _decode_json(row[0][3], noun="task body")
+            if not isinstance(body_map, dict):
+                return False
+            current = body_map.get("completion_receipt")
+            if (
+                not isinstance(current, Mapping)
+                or current.get("operation") != operation
+            ):
+                return False
+            if dict(current) == replacement:
+                return True
+            body_map = dict(body_map)
+            body_map["completion_receipt"] = replacement
+            encoded = _canonical(body_map, noun="task body")
+            updated = connection.execute(
+                """
+                UPDATE tasks SET body_json = ?, updated_at = ?
+                WHERE task_cid = ? AND revision = ? AND status = 'retrying'
+                RETURNING task_cid
+                """,
+                [encoded, now, resolved_cid, expected],
+            ).fetchall()
+            revised = connection.execute(
+                """
+                UPDATE task_revisions SET body_json = ?
+                WHERE task_cid = ? AND revision = ? AND status = 'retrying'
+                RETURNING task_cid
+                """,
+                [encoded, resolved_cid, expected],
+            ).fetchall()
+            if len(updated) != 1 or len(revised) != 1:
+                raise IntentRepositoryConflictError(
+                    "retrying rearm receipt close did not match one current row"
+                )
+            return True
+
     def cas_task_status(
         self,
         *,

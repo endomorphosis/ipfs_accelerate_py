@@ -224,3 +224,33 @@ def test_portal_retains_preflight_store_for_retry_after_contended_close(tmp_path
         assert reopened.read_blob(projection["full_receipt_artifact"]) == (
             canonical_project_dependency_preflight_receipt_bytes(receipt)
         )
+
+
+def test_preflight_checkpoint_close_timeout_does_not_mask_provider_outcome() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        _close_portal_runtime_after_provider,
+    )
+
+    class CheckpointBusy:
+        def close_event_runtime(self) -> None:
+            raise TimeoutError("dependency preflight checkpoint close deadline elapsed")
+
+    _close_portal_runtime_after_provider(CheckpointBusy())
+
+    class OtherTimeout:
+        def close_event_runtime(self) -> None:
+            raise TimeoutError("provider close failed")
+
+    with pytest.raises(TimeoutError, match="provider close failed"):
+        _close_portal_runtime_after_provider(OtherTimeout())
+
+    class Closed:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    daemon = Closed()
+    _close_portal_runtime_after_provider(daemon)
+    assert daemon.closed is True

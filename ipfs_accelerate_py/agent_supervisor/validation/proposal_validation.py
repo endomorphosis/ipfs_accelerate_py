@@ -385,10 +385,358 @@ _VALIDATION_WEAKENING_ADDITION_RE = re.compile(
     r"\|\|\s*true\b"
     r")"
 )
+# Removing this line makes a required gate fail closed. It is not weakening.
+_CONTINUE_ON_ERROR_TRUE_LINE_RE = re.compile(
+    r"(?i)^\s*continue-on-error\s*:\s*true\s*$"
+)
+_WORKFLOW_COMMAND_RE = re.compile(
+    r"^(\s*)(?:-\s*)?(run|uses)\s*:\s*(.*?)\s*$",
+    re.IGNORECASE,
+)
+_WORKFLOW_BLOCK_SCALAR_RE = re.compile(r"^[|>][+-]?$")
+
+
+def _is_workflow_yaml(path: str) -> bool:
+    """True for a GitHub Actions workflow file, not a nested lookalike."""
+
+    pure = PurePosixPath(path)
+    return (
+        len(pure.parts) >= 3
+        and pure.parts[0] == ".github"
+        and pure.parts[1] == "workflows"
+        and pure.suffix.lower() in {".yml", ".yaml"}
+    )
+
+
+def _workflow_command_texts(source: str) -> list[str]:
+    """Return ``run`` and ``uses`` commands, including block-scalar bodies."""
+
+    lines = source.splitlines()
+    commands: list[str] = []
+    index = 0
+    while index < len(lines):
+        match = _WORKFLOW_COMMAND_RE.match(lines[index])
+        if match is None:
+            index += 1
+            continue
+        indent = len(match.group(1))
+        kind = match.group(2).lower()
+        value = match.group(3).strip()
+        if _WORKFLOW_BLOCK_SCALAR_RE.fullmatch(value):
+            index += 1
+            body: list[str] = []
+            while index < len(lines):
+                line = lines[index]
+                if not line.strip():
+                    body.append("")
+                    index += 1
+                    continue
+                column = len(line) - len(line.lstrip(" "))
+                if column <= indent:
+                    break
+                body.append(line)
+                index += 1
+            while body and body[-1] == "":
+                body.pop()
+            width = min(
+                (
+                    len(line) - len(line.lstrip(" "))
+                    for line in body
+                    if line.strip()
+                ),
+                default=0,
+            )
+            text = "\n".join(line[width:] if line else "" for line in body)
+            commands.append(f"{kind}\n{text}")
+            continue
+        commands.append(f"{kind}\n{value}")
+        index += 1
+    return commands
+
+
+def _command_extends(before: str, after: str) -> bool:
+    """True when ``after`` is the same command or a longer continuation."""
+
+    return (
+        after == before
+        or after.startswith(before + " ")
+        or after.startswith(before + "\n")
+    )
+
+
+def _added_lines(before: str, after: str) -> list[str]:
+    """Lines present in ``after`` beyond the multiset of ``before`` lines."""
+
+    before_counts = Counter(before.splitlines())
+    added: list[str] = []
+    for line in after.splitlines():
+        if before_counts[line] > 0:
+            before_counts[line] -= 1
+            continue
+        added.append(line)
+    return added
+
+
+def _workflow_command_edit_is_non_weakening(before: str, after: str) -> bool:
+    """Admit a workflow edit that keeps every command and adds no bypass.
+
+    Comment, name, environment, and step-order edits are allowed. A ``run``
+    or ``uses`` command may stay or grow. It may not disappear or be replaced
+    by a different command. ``|| true``, ``continue-on-error``, and the other
+    weakening additions stay forbidden. Non-workflow config keeps the stricter
+    in-order additive rule.
+    """
+
+    before_commands = _workflow_command_texts(before)
+    after_commands = _workflow_command_texts(after)
+    used = [False] * len(after_commands)
+    for command in sorted(before_commands, key=len, reverse=True):
+        exact = next(
+            (
+                index
+                for index, candidate in enumerate(after_commands)
+                if not used[index] and candidate == command
+            ),
+            None,
+        )
+        if exact is not None:
+            used[exact] = True
+            continue
+        extended = next(
+            (
+                index
+                for index, candidate in enumerate(after_commands)
+                if not used[index] and _command_extends(command, candidate)
+            ),
+            None,
+        )
+        if extended is None:
+            return False
+        used[extended] = True
+    return not _VALIDATION_WEAKENING_ADDITION_RE.search(
+        "\n".join(_added_lines(before, after))
+    )
+
+
+def workflow_gate_checker_revision() -> str:
+    """Identity of the workflow preservation rule currently loaded."""
+
+    source = (
+        _workflow_command_edit_is_non_weakening.__doc__ or ""
+    ) + "\n" + (_workflow_command_texts.__doc__ or "")
+    # Bind the revision to the rule text the process actually loaded.
+    import inspect
+
+    try:
+        source = inspect.getsource(_workflow_command_edit_is_non_weakening)
+    except (OSError, TypeError):
+        pass
+    return "sha256:" + hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def workflow_pairs_are_non_weakening(
+    pairs: Sequence[tuple[str, str | None, str | None]],
+) -> bool:
+    """True when every preserved workflow pair passes the current gate rule."""
+
+    if not pairs:
+        return False
+    for path, before, after in pairs:
+        if not _is_workflow_yaml(path) or after is None:
+            return False
+        if before is None:
+            if _VALIDATION_WEAKENING_ADDITION_RE.search(after):
+                return False
+            continue
+        entry = CandidateDiffEntry(
+            old_path=path,
+            new_path=path,
+            change_kind=DiffChangeKind.MODIFY,
+            before_source=before,
+            after_source=after,
+        )
+        if not _validation_config_change_is_additive(entry):
+            return False
+    return True
+
+
+_WORKFLOW_STEP_RE = re.compile(r"^(\s*)-\s+\S")
+
+
+def _workflow_command_entries(source: str) -> list[tuple[int, str]]:
+    """Line index and command text for each ``run`` or ``uses`` entry."""
+
+    lines = source.splitlines()
+    entries: list[tuple[int, str]] = []
+    index = 0
+    while index < len(lines):
+        match = _WORKFLOW_COMMAND_RE.match(lines[index])
+        if match is None:
+            index += 1
+            continue
+        header = index
+        indent = len(match.group(1))
+        kind = match.group(2).lower()
+        value = match.group(3).strip()
+        if _WORKFLOW_BLOCK_SCALAR_RE.fullmatch(value):
+            index += 1
+            body: list[str] = []
+            while index < len(lines):
+                line = lines[index]
+                if not line.strip():
+                    body.append("")
+                    index += 1
+                    continue
+                column = len(line) - len(line.lstrip(" "))
+                if column <= indent:
+                    break
+                body.append(line)
+                index += 1
+            while body and body[-1] == "":
+                body.pop()
+            width = min(
+                (
+                    len(line) - len(line.lstrip(" "))
+                    for line in body
+                    if line.strip()
+                ),
+                default=0,
+            )
+            text = "\n".join(line[width:] if line else "" for line in body)
+            entries.append((header, f"{kind}\n{text}"))
+            continue
+        entries.append((header, f"{kind}\n{value}"))
+        index += 1
+    return entries
+
+
+def _yaml_command_scalar(value: str) -> str:
+    if re.search(r"[:#{}[\],&*!|>'\"%@`]", value) or value != value.strip():
+        return json.dumps(value)
+    return value
+
+
+def restore_substituted_workflow_commands(before: str, after: str) -> str | None:
+    """Put removed ``run`` and ``uses`` commands back without dropping additions.
+
+    Returns None when nothing was removed, a removed command is a block
+    scalar, the candidate added a bypass, or the restored text still fails
+    the preservation rule. Added commands stay. This does not treat a
+    different command as a match for the one that was removed.
+    """
+
+    if _VALIDATION_WEAKENING_ADDITION_RE.search("\n".join(_added_lines(before, after))):
+        return None
+    before_commands = _workflow_command_texts(before)
+    entries = _workflow_command_entries(after)
+    after_commands = [command for _index, command in entries]
+    if not before_commands or not after_commands:
+        return None
+    need = Counter(before_commands)
+    used = [False] * len(after_commands)
+    for command in sorted(need, key=len, reverse=True):
+        while need[command] > 0:
+            exact = next(
+                (
+                    index
+                    for index, candidate in enumerate(after_commands)
+                    if not used[index] and candidate == command
+                ),
+                None,
+            )
+            chosen = exact
+            if chosen is None:
+                chosen = next(
+                    (
+                        index
+                        for index, candidate in enumerate(after_commands)
+                        if not used[index] and _command_extends(command, candidate)
+                    ),
+                    None,
+                )
+            if chosen is None:
+                break
+            used[chosen] = True
+            need[command] -= 1
+    missing = []
+    remaining = Counter(need)
+    for command in before_commands:
+        if remaining[command] <= 0:
+            continue
+        kind, separator, value = command.partition("\n")
+        if (
+            separator != "\n"
+            or kind not in {"run", "uses"}
+            or "\n" in value
+            or not value.strip()
+        ):
+            return None
+        missing.append(command)
+        remaining[command] -= 1
+    if not missing:
+        return None
+    novel = next(
+        (
+            index
+            for index, command in enumerate(after_commands)
+            if not any(
+                _command_extends(preserved, command)
+                for preserved in before_commands
+            )
+        ),
+        None,
+    )
+    lines = after.splitlines()
+    if novel is None:
+        insert_at = len(lines)
+        dash_indent = 0
+        body_indent = 2
+        for line in lines:
+            step = _WORKFLOW_STEP_RE.match(line)
+            if step is not None:
+                dash_indent = len(step.group(1))
+                body_indent = dash_indent + 2
+    else:
+        command_line = entries[novel][0]
+        if command_line < 0 or command_line >= len(lines):
+            return None
+        insert_at = command_line
+        for cursor in range(command_line, -1, -1):
+            if _WORKFLOW_STEP_RE.match(lines[cursor]):
+                insert_at = cursor
+                break
+        step = _WORKFLOW_STEP_RE.match(lines[insert_at])
+        dash_indent = len(step.group(1)) if step is not None else 0
+        command_indent = len(lines[command_line]) - len(lines[command_line].lstrip(" "))
+        body_indent = command_indent if command_indent > dash_indent else dash_indent + 2
+    added_steps: list[str] = []
+    for command in missing:
+        kind, _separator, value = command.partition("\n")
+        added_steps.append(" " * dash_indent + "- name: Preserve required command")
+        added_steps.append(
+            " " * body_indent + f"{kind}: {_yaml_command_scalar(value)}"
+        )
+    restored_lines = lines[:insert_at] + added_steps + lines[insert_at:]
+    newline = "\n" if after.endswith("\n") else ""
+    restored = "\n".join(restored_lines) + newline
+    if _VALIDATION_WEAKENING_ADDITION_RE.search(
+        "\n".join(_added_lines(before, restored))
+    ):
+        return None
+    if not workflow_pairs_are_non_weakening(
+        [(".github/workflows/restore.yml", before, restored)]
+    ):
+        return None
+    return restored
 
 
 def _validation_config_change_is_additive(entry: CandidateDiffEntry) -> bool:
-    """Allow only non-weakening insertions into an existing config file."""
+    """Allow only non-weakening changes to an existing validation config.
+
+    Workflow YAML may reorder, rename, and extend commands. Every other
+    validation config must keep its previous lines in order and may only
+    insert non-weakening lines, including omission of ``continue-on-error: true``.
+    """
 
     if (
         entry.change_kind is DiffChangeKind.DELETE
@@ -396,11 +744,23 @@ def _validation_config_change_is_additive(entry: CandidateDiffEntry) -> bool:
         or entry.after_source is None
     ):
         return False
+    if _is_workflow_yaml(entry.path):
+        return _workflow_command_edit_is_non_weakening(
+            entry.before_source,
+            entry.after_source,
+        )
     before_lines = entry.before_source.splitlines(keepends=True)
     after_lines = entry.after_source.splitlines(keepends=True)
     added_lines: list[str] = []
     after_index = 0
     for before_line in before_lines:
+        if _CONTINUE_ON_ERROR_TRUE_LINE_RE.match(before_line.rstrip("\r\n")):
+            if (
+                after_index < len(after_lines)
+                and after_lines[after_index] == before_line
+            ):
+                after_index += 1
+            continue
         while (
             after_index < len(after_lines)
             and after_lines[after_index] != before_line

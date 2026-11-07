@@ -34806,9 +34806,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     @staticmethod
     def _begin_database_provider_child_custody():
         """Use the existing Linux subreaper fence; never adopt another child's evidence."""
-        from .native_cli_subreaper import _enable_child_subreaper
+        from .native_cli_subreaper import _enable_child_subreaper, _reap_zombie_children
         try:
-            if not _enable_child_subreaper() or not PortalImplementationDaemon._database_provider_children_empty():
+            if not _enable_child_subreaper():
+                return None
+            # Dead adopted children are not another invocation's evidence.
+            # A live child still makes this return None.
+            _reap_zombie_children()
+            if not PortalImplementationDaemon._database_provider_children_empty():
                 return None
             return (os.getpid(), PortalImplementationDaemon._provider_process_identity(os.getpid()))
         except (OSError, RuntimeError, ValueError):
@@ -34817,7 +34822,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     @staticmethod
     def _database_provider_child_custody_reason(custody):
         """Name the existing quiescence gate without authorizing any cleanup."""
-        from .native_cli_subreaper import _PR_GET_CHILD_SUBREAPER
+        from .native_cli_subreaper import _PR_GET_CHILD_SUBREAPER, _reap_zombie_children
         import ctypes
         reason = "custody_owner_unavailable"
         try:
@@ -34834,6 +34839,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if enabled.value != 1:
                 return "subreaper_disabled"
             reason = "child_census_unavailable"
+            _reap_zombie_children()
             if not PortalImplementationDaemon._database_provider_children_empty():
                 return "child_census_not_empty_or_unstable"
             return "verified"
@@ -74213,6 +74219,7 @@ class DatabaseImplementationDaemon:
             receipt = self._portal_failure_phase_receipt(attempt)
             if receipt is None:
                 continue
+            task = self._task_with_closed_workflow_rearm_receipt(task, receipt)
             self._coordination_rearm_portal_failure(task, receipt)
             return
         body = getattr(task, "body", None)
@@ -74227,11 +74234,26 @@ class DatabaseImplementationDaemon:
         ):
             # Historical settlements live on the control task.  A later live
             # owner must not require the original lane-local execution sidecar.
+            task = self._task_with_closed_workflow_rearm_receipt(
+                task, dict(control_receipt)
+            )
             self._coordination_rearm_portal_failure(task, dict(control_receipt))
             return
         raise DatabaseImplementationAuthorityError(
             "failed coordination barrier has no exact local Portal receipt"
         )
+
+    def _task_with_closed_workflow_rearm_receipt(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+    ) -> Any:
+        """Close one open workflow rearm receipt before the coordination fence."""
+
+        from .obsolete_workflow_gate_rearm import close_open_receipt
+
+        updated = close_open_receipt(self, task, receipt)
+        return task if updated is None else updated
 
     def _coordination_rearm_portal_failure(
         self,
@@ -74518,6 +74540,41 @@ class DatabaseImplementationDaemon:
         from .native_validation_failure_retry import rearm
         return rearm(self, task)
 
+    def _rearm_obsolete_workflow_gate_block(self, task):
+        """Rearm a budget-exhausted workflow edit the current gate now admits.
+
+        A preserved command-preserving workflow diff is not completion. The
+        control row returns to retrying once per checker revision. A diff the
+        current rule still rejects stays blocked, and the attempt cap is not
+        reset.
+        """
+
+        from .obsolete_workflow_gate_rearm import rearm
+
+        try:
+            return rearm(self, task)
+        except Exception:
+            return None
+
+    def _restore_substituted_workflow_block(self, task):
+        """Repair a real command substitution and complete it only with evidence.
+
+        The original diff stays rejected. A removed run or uses command is
+        inserted again, a repair task records that restoration, and the parent
+        completes only after its own validation command exits 0.
+        """
+
+        from .workflow_command_restoration import restore_blocked_task
+
+        try:
+            return restore_blocked_task(self, task)
+        except Exception as exc:
+            sys.stderr.write(
+                "workflow_command_restoration failed: "
+                f"{type(exc).__name__}: {exc}\n"
+            )
+            return None
+
     def reconcile_recoverable_portal_failure_rearms(
         self, *, recovery_source_validator: Callable[[], Mapping[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
@@ -74611,6 +74668,14 @@ class DatabaseImplementationDaemon:
             known_validation_rearm = self._rearm_known_native_validation_failure(task)
             if known_validation_rearm is not None:
                 rearmed.append(known_validation_rearm)
+                continue
+            obsolete_gate_rearm = self._rearm_obsolete_workflow_gate_block(task)
+            if obsolete_gate_rearm is not None:
+                rearmed.append(obsolete_gate_rearm)
+                continue
+            restored_commands = self._restore_substituted_workflow_block(task)
+            if restored_commands is not None:
+                rearmed.append(restored_commands)
                 continue
             body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
             control_receipt = body.get("completion_receipt")
@@ -74920,9 +74985,249 @@ class DatabaseImplementationDaemon:
             callback = _database_daemon_load_json(row[1])
             if callback.get("callback_state") == "started_outcome_unknown":
                 from .fenced_candidate_retirement import permits_candidate_claim
-                if not permits_candidate_claim(self,str(row[0]),str(callback.get("attempt_id") or "")):
-                    excluded.add(str(row[0]))
+                task_cid = str(row[0])
+                attempt_id = str(callback.get("attempt_id") or "")
+                if permits_candidate_claim(self, task_cid, attempt_id):
+                    continue
+                if self._closed_candidate_retry_permits_successor(task_cid, attempt_id):
+                    continue
+                if self._superseded_candidate_callback_permits_successor(task_cid, attempt_id):
+                    continue
+                if self._closed_rearm_yields_unknown_callback(task_cid, attempt_id):
+                    continue
+                excluded.add(task_cid)
         return excluded
+
+    def _superseded_candidate_callback_permits_successor(self, task_cid: str, attempt_id: str) -> bool:
+        """True when a newer closed candidate retry replaced this receipt.
+
+        The unknown callback stays stored. After the next gate miss, the
+        control receipt names the newer attempt, so the successor permit
+        refuses this older attempt on ``attempt_id`` alone. That stale intent
+        must not hide the ready task. This attempt still has to carry the
+        same closed proof and a terminal claim. Any other unknown callback
+        keeps excluding the task.
+        """
+
+        from .database_portal_bridge import closed_candidate_retry_permits_successor_claim
+
+        task = self.task_source.get(task_cid)
+        body = task.body if task is not None and isinstance(getattr(task, "body", None), Mapping) else {}
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return False
+        later = str(receipt.get("attempt_id") or "")
+        if not later or later == attempt_id:
+            return False
+        if not self._closed_candidate_retry_permits_successor(task_cid, later):
+            return False
+        attempt = self.get_attempt(attempt_id)
+        if attempt is None:
+            return False
+        renamed = dict(receipt)
+        renamed["attempt_id"] = attempt_id
+        effect = self._require_connection().execute(
+            "SELECT 1 FROM effect_claims WHERE attempt_id = ? LIMIT 1",
+            [attempt_id],
+        ).fetchone()
+        claim = self.coordinator.get_task_claim(attempt.claim_id) if attempt.claim_id else None
+        claim_state = ""
+        if claim is not None:
+            claim_state = str(getattr(getattr(claim, "state", ""), "value", claim.state) or "")
+        return closed_candidate_retry_permits_successor_claim(
+            task_cid=task_cid,
+            attempt_id=attempt_id,
+            attempt_status=str(getattr(attempt, "status", "") or ""),
+            attempt_task_cid=str(getattr(attempt, "task_cid", "") or ""),
+            attempt_owner_session_id=str(getattr(attempt, "owner_session_id", "") or ""),
+            owner_session_id=str(self.owner_session_id or ""),
+            phases=self.phase_history(attempt_id),
+            effect_claim_present=effect is not None,
+            task_status=str(getattr(task, "status", "") or ""),
+            control_receipt=renamed,
+            claim_state=claim_state,
+        )
+
+    def _release_accepted_closed_candidate_retry_claims(self) -> list[str]:
+        """Release an accepted claim after a durable candidate-gate retry.
+
+        The successor permit admits the next claim only once this claim is
+        released, expired, or superseded. Persisting the retry used to leave
+        the claim accepted for the rest of the provider lease, and the unknown
+        callback then hid the ready task. This releases that claim only. It
+        does not rewrite the callback or admit any other failure.
+        """
+
+        rows = self._require_connection().execute(
+            """SELECT attempt_id FROM database_task_attempts
+               WHERE owner_session_id = ? AND status = 'failed'
+               ORDER BY started_at_ms DESC LIMIT ?""",
+            [self.owner_session_id, TASK_SOURCE_QUERY_LIMIT],
+        ).fetchall()
+        released: list[str] = []
+        for row in rows:
+            attempt_id = str(row[0] if not isinstance(row, Mapping) else row.get("attempt_id") or "")
+            attempt = self.get_attempt(attempt_id)
+            if attempt is None or str(attempt.status or "") != "failed":
+                continue
+            if str(attempt.owner_session_id or "") != str(self.owner_session_id or ""):
+                continue
+            claim = self.coordinator.get_task_claim(attempt.claim_id)
+            if claim is None:
+                continue
+            state = str(getattr(getattr(claim, "state", ""), "value", claim.state) or "")
+            if state != "accepted":
+                continue
+            if not self._closed_candidate_retry_permits_successor(
+                str(attempt.task_cid), attempt_id, claim_state="released",
+            ):
+                continue
+            self._protect_attempt_claim(attempt, claim)
+            reason = ""
+            for phase in self.phase_history(attempt_id):
+                if str(phase.get("phase") or "") != "failed":
+                    continue
+                body = phase.get("body")
+                if isinstance(body, Mapping):
+                    reason = str(body.get("reason") or "")
+            self.coordinator.release(
+                claim.as_fenced_lease(),
+                reason=f"database_portal_retry:{attempt_id}:{reason}"[:256],
+                expected_fencing_token=int(attempt.fencing_token),
+                expected_fence_epoch=int(attempt.fence_epoch),
+                now_ms=self._now_ms(),
+            )
+            released.append(attempt_id)
+        return released
+
+    def _closed_rearm_yields_unknown_callback(self, task_cid: str, attempt_id: str) -> bool:
+        """Let a closed operator rearm claim past stale unknown callbacks.
+
+        The callback rows stay unknown. This admits only failed attempts of
+        the rearmed task that have a released claim and no effect claim.
+        """
+
+        from .obsolete_workflow_gate_rearm import (
+            stale_unknown_callback_yields_to_closed_rearm,
+        )
+
+        task = self.task_source.get(task_cid)
+        body = getattr(task, "body", None) if task is not None else None
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        attempt = self.get_attempt(attempt_id)
+        if attempt is None or not isinstance(receipt, Mapping):
+            return False
+        effect = self._require_connection().execute(
+            "SELECT 1 FROM effect_claims WHERE attempt_id = ? LIMIT 1",
+            [attempt_id],
+        ).fetchone()
+        claim = (
+            self.coordinator.get_task_claim(str(getattr(attempt, "claim_id", "") or ""))
+            if getattr(attempt, "claim_id", None)
+            else None
+        )
+        claim_state = ""
+        if claim is not None:
+            claim_state = str(getattr(getattr(claim, "state", ""), "value", claim.state) or "")
+        settlement_id = str(receipt.get("settlement_id") or "")
+        rearm_settlement_id = ""
+        if settlement_id:
+            rows = self._require_connection().execute(
+                "SELECT attempt_id FROM database_task_attempts "
+                "WHERE task_cid = ? AND status = 'failed'",
+                [task_cid],
+            ).fetchall()
+            for row in rows:
+                candidate = self.get_attempt(str(row[0]))
+                if candidate is None:
+                    continue
+                try:
+                    phase = self._portal_failure_phase_receipt(candidate)
+                except Exception:
+                    continue
+                if not isinstance(phase, Mapping) or phase.get("settlement_id") != settlement_id:
+                    continue
+                settled_claim = self.coordinator.get_task_claim(
+                    str(getattr(candidate, "claim_id", "") or "")
+                )
+                if settled_claim is None:
+                    break
+                try:
+                    observed = self.coordinator.observe_rearmed_failed_task_claim(
+                        settled_claim,
+                        failure_receipt=dict(phase),
+                    )
+                except Exception:
+                    break
+                if isinstance(observed, Mapping):
+                    rearm_settlement_id = str(observed.get("failure_settlement_id") or "")
+                break
+        return stale_unknown_callback_yields_to_closed_rearm(
+            task_status=str(getattr(task, "status", "") or ""),
+            control_receipt=receipt,
+            attempt_status=str(getattr(attempt, "status", "") or ""),
+            attempt_task_cid=str(getattr(attempt, "task_cid", "") or ""),
+            task_cid=task_cid,
+            attempt_owner_session_id=str(getattr(attempt, "owner_session_id", "") or ""),
+            owner_session_id=str(self.owner_session_id or ""),
+            effect_claim_present=effect is not None,
+            claim_state=claim_state,
+            rearm_settlement_id=rearm_settlement_id,
+        )
+
+    def _closed_candidate_retry_permits_successor(
+        self,
+        task_cid: str,
+        attempt_id: str,
+        *,
+        claim_state: str | None = None,
+    ) -> bool:
+        """True when a closed candidate-gate miss may take a new claim.
+
+        This does not rewrite the unknown callback or the expired claim. It
+        only stops that stale intent from hiding a retry the failed phase and
+        the canonical control receipt already admitted. ``claim_state`` lets a
+        release check the proof before the live claim moves.
+        """
+
+        from .database_portal_bridge import closed_candidate_retry_permits_successor_claim
+
+        attempt = self.get_attempt(attempt_id)
+        if attempt is None:
+            return False
+        phases = self.phase_history(attempt_id)
+        effect = self._require_connection().execute(
+            "SELECT 1 FROM effect_claims WHERE attempt_id = ? LIMIT 1",
+            [attempt_id],
+        ).fetchone()
+        task = self.task_source.get(task_cid)
+        receipt = None
+        status = ""
+        if task is not None:
+            status = str(task.status or "")
+            body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
+            raw_receipt = body.get("completion_receipt")
+            receipt = raw_receipt if isinstance(raw_receipt, Mapping) else None
+        observed_state = ""
+        if claim_state is None:
+            claim_id = str((receipt or {}).get("claim_id") or getattr(attempt, "claim_id", "") or "")
+            if claim_id:
+                claim = self.coordinator.get_task_claim(claim_id)
+                if claim is not None:
+                    observed_state = str(getattr(getattr(claim, "state", ""), "value", claim.state) or "")
+        return closed_candidate_retry_permits_successor_claim(
+            claim_state=claim_state if claim_state is not None else observed_state,
+            task_cid=task_cid,
+            attempt_id=attempt_id,
+            attempt_status=str(getattr(attempt, "status", "") or ""),
+            attempt_task_cid=str(getattr(attempt, "task_cid", "") or ""),
+            attempt_owner_session_id=str(getattr(attempt, "owner_session_id", "") or ""),
+            owner_session_id=str(self.owner_session_id or ""),
+            phases=phases,
+            effect_claim_present=effect is not None,
+            task_status=status,
+            control_receipt=receipt,
+        )
 
     # -- claim / attempt ----------------------------------------------------
 
@@ -75373,6 +75678,11 @@ class DatabaseImplementationDaemon:
         self._last_orphan_claim_reconciliations = tuple(orphan_reconciliations)
         if orphan_reconciliations:
             self.sync_ready_tasks_into_coordination()
+        # A closed candidate-gate retry used to leave its claim accepted until
+        # the provider lease elapsed. The ready projection then listed the
+        # task while claim selection reported no_ready_tasks. Release that
+        # claim before exclusions so the same pass can take the successor.
+        self._release_accepted_closed_candidate_retry_claims()
         excluded = {
             str(task_cid)
             for task_cid in exclude_task_cids
@@ -76321,6 +76631,62 @@ class DatabaseImplementationDaemon:
         self._record_event("native_provider_failure_observed", attempt_id=attempt.attempt_id,
                            task_cid=attempt.task_cid, body=receipt)
 
+    def _custody_gap_census_clear(self) -> bool:
+        """Reap zombies, then require this process's child census to be empty.
+
+        A live child still blocks settlement. The caller may claim
+        ``subreaper_children_absent`` only after this returns True.
+        """
+
+        from .native_cli_subreaper import _enable_child_subreaper, _reap_zombie_children
+        try:
+            if not _enable_child_subreaper():
+                return False
+            _reap_zombie_children()
+            return PortalImplementationDaemon._database_provider_children_empty()
+        except (OSError, RuntimeError, ValueError):
+            return False
+
+    def _custody_gap_diagnostics(self, attempt_id: str) -> list[dict[str, Any]] | None:
+        from .bridge_failure_diagnostics import EVENT, validate_bridge_failure_diagnostic
+        rows = self._require_connection().execute(
+            "SELECT body_json FROM daemon_execution_events "
+            "WHERE event_type = ? AND attempt_id = ? ORDER BY recorded_at_ms",
+            [EVENT, attempt_id],
+        ).fetchall()
+        diagnostics: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                value = json.loads(row[0])
+            except (TypeError, ValueError):
+                return None
+            diagnostic = validate_bridge_failure_diagnostic(value)
+            if diagnostic is None:
+                return None
+            diagnostics.append(diagnostic)
+        return diagnostics
+
+    def _settle_custody_gap_known_validation_failure(self, attempt, bridge, idempotency_key: str) -> bool:
+        """Settle one sealed validation failure whose custody slot was empty.
+
+        This does not rewrite an unknown callback that lacks the original
+        custody-gap diagnostic, and it does not run when any live child
+        remains. The existing terminal settlement still owns the claim release.
+        """
+
+        if not self._custody_gap_census_clear():
+            return False
+        diagnostics = self._custody_gap_diagnostics(attempt.attempt_id)
+        if not diagnostics:
+            return False
+        native_exit = bridge.custody_gap_validation_exit_receipt(
+            attempt, diagnostics, census_empty=True)
+        if native_exit is None:
+            return False
+        self._settle_native_provider_failure(
+            attempt, native_exit=native_exit, idempotency_key=idempotency_key)
+        return True
+
     def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
@@ -76343,6 +76709,65 @@ class DatabaseImplementationDaemon:
                 or binding != self._control_claim_binding(claim, task)
             ):
                 raise DatabaseImplementationAuthorityError("provider requires exact owner-admitted task and control binding")
+
+    def _replay_sealed_candidate_gate_rejection(self, attempt, bridge):
+        """Raise the live candidate outcome only for one sealed gate rejection.
+
+        A stored unknown callback is not enough. The portal projection has to
+        prove the same finished candidate miss ``run_provider`` would classify,
+        with no effect claim and no live provider child. Retry budget still
+        uses the bridge ceiling, so the last allowed attempt blocks instead of
+        opening another one.
+        """
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_CANDIDATE_RETRY_REASONS,
+            DatabasePortalBridgeError,
+            DatabasePortalCandidateRetry,
+            DatabasePortalExecutionBridge,
+            _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT,
+        )
+
+        if type(bridge) is not DatabasePortalExecutionBridge:
+            return None
+        if not self._custody_gap_census_clear():
+            return None
+        if self.effect_claim_recorded(
+            attempt.attempt_id, idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is not None:
+            return None
+        rejection = bridge.sealed_candidate_gate_rejection(attempt)
+        if type(rejection) is not dict:
+            return None
+        reason = rejection.get("reason")
+        portal_attempt = rejection.get("portal_attempt")
+        attempt_number = getattr(attempt, "attempt_number", None)
+        max_attempts = getattr(bridge, "max_task_attempts", None)
+        if (
+            type(reason) is not str
+            or reason not in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS
+            or type(portal_attempt) is not int
+            or not 1 <= portal_attempt < _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT
+            or type(attempt_number) is not int
+            or type(max_attempts) is not int
+        ):
+            return None
+        bounded_attempt = max(attempt_number, portal_attempt)
+        if 0 < bounded_attempt < max_attempts:
+            return DatabasePortalCandidateRetry(reason)
+        return DatabasePortalBridgeError(reason)
+
+    def _sealed_candidate_exhaustion_is_terminal(self, attempt, exc) -> bool:
+        """True only when this error is the sealed budget-exhausted rejection."""
+
+        from .database_portal_bridge import DatabasePortalBridgeError
+
+        if type(exc) is not DatabasePortalBridgeError:
+            return False
+        official = self._resolve_native_portal_provider_callback(self._provider_fn, attempt)
+        bridge = getattr(official, "__self__", None)
+        replay = self._replay_sealed_candidate_gate_rejection(attempt, bridge)
+        return type(replay) is DatabasePortalBridgeError and str(replay) == str(exc)
 
     def _run_provider_impl(
         self,
@@ -76378,7 +76803,11 @@ class DatabaseImplementationDaemon:
                 self._require_native_provider_failure(attempt, prior, key)
                 raise DatabasePortalBridgeError("portal_provider_failed")
             if prior.get("callback_state") == "started_outcome_unknown":
-                from .database_portal_bridge import DatabasePortalBridgeDeferred, DatabasePortalExecutionBridge
+                from .database_portal_bridge import (
+                    DatabasePortalBridgeDeferred,
+                    DatabasePortalBridgeError,
+                    DatabasePortalExecutionBridge,
+                )
 
                 official = self._resolve_native_portal_provider_callback(provider_fn or self._provider_fn, attempt)
                 bridge = getattr(official, "__self__", None)
@@ -76389,6 +76818,12 @@ class DatabaseImplementationDaemon:
                 if accepted is None:
                     if dependency_preflight_retry.settle(self, attempt, bridge, prior, key):
                         raise DatabasePortalBridgeDeferred(dependency_preflight_retry.REASON)
+                    if (type(bridge) is DatabasePortalExecutionBridge
+                            and self._settle_custody_gap_known_validation_failure(attempt, bridge, key)):
+                        raise DatabasePortalBridgeError("portal_provider_failed")
+                    replay = self._replay_sealed_candidate_gate_rejection(attempt, bridge)
+                    if replay is not None:
+                        raise replay
                     raise DatabasePortalBridgeDeferred("provider_callback_outcome_unknown")
                 bridge._require_accepted_provider(attempt, accepted)
                 self._protect_attempt_write(attempt)
@@ -78911,15 +79346,20 @@ class DatabaseImplementationDaemon:
             if callback is not None and callback.get("callback_state") == "started_outcome_unknown":
                 # A bridge exception cannot settle a dispatch intent. Native
                 # callback/effect reconciliation must supply that evidence.
-                diagnostic = self._observe_bridge_failure(
-                    attempt, exc, callback, phase="unknown_callback")
-                return {
-                    "resumed": True, "deferred": True,
-                    "reason": "provider_callback_outcome_unknown",
-                    "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
-                    "status": "running",
-                    "bridge_failure_diagnostic": diagnostic,
-                }
+                # One exception: a sealed finished candidate-gate rejection
+                # whose retry budget is already exhausted. That projection is
+                # the missing outcome, and it blocks this attempt instead of
+                # deferring for the rest of the lease.
+                if not self._sealed_candidate_exhaustion_is_terminal(attempt, exc):
+                    diagnostic = self._observe_bridge_failure(
+                        attempt, exc, callback, phase="unknown_callback")
+                    return {
+                        "resumed": True, "deferred": True,
+                        "reason": "provider_callback_outcome_unknown",
+                        "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
+                        "status": "running",
+                        "bridge_failure_diagnostic": diagnostic,
+                    }
             if operator_session_stop_failure(exc) or self._attempt_operator_stop_projection(
                 attempt
             ):

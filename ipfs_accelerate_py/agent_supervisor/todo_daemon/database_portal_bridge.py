@@ -1847,6 +1847,25 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def _close_portal_runtime_after_provider(daemon: Any) -> None:
+    """Close the portal runtime without masking the provider outcome.
+
+    A dependency-preflight checkpoint close waits on its own writer lock and
+    keeps the store open when that wait expires. That timeout is a retry of
+    the checkpoint, not an unknown provider effect. Any other close error
+    still propagates.
+    """
+
+    close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
+    if not callable(close):
+        return
+    try:
+        close()
+    except TimeoutError as exc:
+        if "dependency preflight checkpoint close deadline elapsed" not in str(exc):
+            raise
+
+
 class DatabasePortalExecutionBridge:
     """Run one database claim through a private Portal execution projection.
 
@@ -11208,6 +11227,193 @@ class DatabasePortalExecutionBridge:
         return (len(kept) == 1
                 and _canonical_json({key: kept[0].get(key) for key in retained}) == _canonical_json(retained))
 
+    @staticmethod
+    def custody_gap_diagnostics_admit_replay(diagnostics: Any) -> bool:
+        """True when telemetry shows custody was never stored for this attempt.
+
+        A missing observation is the later deferral loop and does not erase
+        the original gap. Any other native-exit denial, a verified exit, or a
+        terminal diagnostic refuses the replay. The observation itself is
+        not settlement authority.
+        """
+
+        if type(diagnostics) is not list or not diagnostics:
+            return False
+        # A busy supervisor can refuse to store the exit because its thread
+        # list changed, or because a child was still present. Both denials
+        # mean the one-shot token was not kept. Settlement still requires a
+        # fresh empty census and the sealed validation failure. Other native
+        # exit denials stay unknown.
+        native_exit_denials = {"custody_not_established", "child_census_not_empty_or_unstable"}
+        continuation = (
+            ("bridge_join", "denied", "native_exit_unavailable"),
+            ("capability_take", "denied", "not_issued"),
+        )
+        saw_gap = False
+        for item in diagnostics:
+            if type(item) is not dict or item.get("phase") != "unknown_callback":
+                return False
+            if item.get("reason_code") not in {"portal_provider_failed", "other"}:
+                return False
+            if any(item.get(key) is not False for key in (
+                    "completion_authority", "retry_authority", "settlement_authority")):
+                return False
+            callback = item.get("callback")
+            native = callback.get("native_exit") if type(callback) is dict else None
+            if (type(callback) is not dict or callback.get("state") != "started_outcome_unknown"
+                    or type(native) is not dict or native.get("present") is not False):
+                return False
+            custody = item.get("native_provider_custody_observation")
+            if custody is None:
+                continue
+            from .native_provider_custody_observation import validate_native_provider_custody_observation
+            validated = validate_native_provider_custody_observation(custody)
+            if validated is None:
+                return False
+            checks = tuple((check["stage"], check["status"], check["reason_code"])
+                           for check in validated["checks"])
+            if (len(checks) < 2 or checks[0] != ("issuance", "passed", "eligible")
+                    or checks[1][0:2] != ("native_exit", "denied")
+                    or checks[1][2] not in native_exit_denials
+                    or checks[2:] not in {(), continuation[:1], continuation}):
+                return False
+            saw_gap = True
+        return saw_gap
+
+    def _bind_sealed_attempt_portal_state(self, paths: DatabasePortalAttemptPaths) -> None:
+        """Read provider state from this attempt's sealed database.
+
+        The portal factory binds ``portal-state.duckdb`` only in the process
+        that ran the provider. A restarted supervisor has no process-local
+        binding, and the attempt does not keep ``portal-task-state.json``.
+        An unbound read falls through to an implicit lane database and cannot
+        see the sealed validation failure. A symlink, an empty file, or a
+        file that is not a direct child of the sealed attempt directory is
+        left unbound.
+        """
+
+        database = paths.root / "portal-state.duckdb"
+        try:
+            identity = database.lstat()
+            same_directory = database.parent.resolve() == paths.root.resolve()
+        except OSError:
+            return
+        if (
+            stat.S_ISLNK(identity.st_mode)
+            or not stat.S_ISREG(identity.st_mode)
+            or identity.st_size <= 0
+            or identity.st_uid != os.getuid()
+            or not same_directory
+        ):
+            return
+        from .portal_task_state_control_plane import bind_task_state_control_plane
+
+        bind_task_state_control_plane(paths.state, os.fspath(database))
+
+    def custody_gap_validation_exit_receipt(self, attempt: Any, diagnostics: Sequence[Mapping[str, Any]], *, census_empty: bool) -> dict[str, Any] | None:
+        """Rebuild one native exit after a stored custody gap.
+
+        Issuance can be eligible only when the provider process already
+        returned. For a preserved validation failure, that same gate admits
+        eligibility solely when the provider process itself exited 0 and the
+        sealed result carries the nonzero validation status. The one-shot
+        Popen token was refused because its custody slot was empty, so this
+        replay requires that diagnostic, a sealed rejected candidate, and a
+        caller-proved empty subreaper census. A historical
+        child-census denial is not proof that the census is empty now.
+        It does not accept a forged
+        ``run_once`` result or a patched exit that never recorded the gap.
+        """
+
+        if census_empty is not True or not self.custody_gap_diagnostics_admit_replay(diagnostics):
+            return None
+        try:
+            from ..runtime.event_log import _event_identity
+            paths = self._paths(attempt)
+            self._seal_attempt_directory(paths, attempt_id=str(attempt.attempt_id), create=False)
+            binding = self._strict_binding(paths.binding)
+            for field in ("attempt_id", "claim_id", "task_cid", "task_alias"):
+                if binding.get(field) != str(getattr(attempt, field)):
+                    return None
+            self._verify_projection(paths, binding)
+            records, events_digest = _accepted_source_events(paths.events)
+            previous = ""
+            for sequence, event in enumerate(records, 1):
+                if (event.get("sequence") != sequence or event.get("previous_event_id") != previous
+                        or event.get("event_id") != _event_identity(event)):
+                    return None
+                previous = event["event_id"]
+            if any(event.get("type") in {"merge_started", "merge_finished", "task_completed"} for event in records):
+                return None
+            finished = [event for event in records if event.get("type") == "implementation_finished"]
+            if len(finished) != 1:
+                return None
+            implementation = dict(finished[0])
+            merge = implementation.get("merge_result")
+            if type(merge) is dict and "queued" in merge and merge.get("queued") is None:
+                implementation["merge_result"] = {**merge, "queued": False}
+            validation = implementation.get("validation_result")
+            returncode = implementation.get("returncode")
+            preservation = implementation.get("failed_preservation_result")
+            portal_attempt = implementation.get("attempt")
+            if (type(validation) is not dict or validation.get("attempted") is not True
+                    or validation.get("passed") is not False or validation.get("returncode") != returncode
+                    or type(returncode) is not int or not -255 <= returncode <= 255 or returncode == 0
+                    or type(preservation) is not dict or preservation.get("preserved") is not True
+                    or implementation.get("provider_dispatched") is not True
+                    or implementation.get("attempt_consumed") is not True
+                    or implementation.get("lifecycle_finalize", {}).get("finalized") is not True
+                    or implementation.get("task_id") != binding["task_alias"]
+                    or type(portal_attempt) is not int
+                    or not 1 <= portal_attempt < _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT
+                    or type(implementation.get("canonical_task_cid")) is not str
+                    or not implementation["canonical_task_cid"]):
+                return None
+            self._bind_sealed_attempt_portal_state(paths)
+            state_bytes, state_target_digest = self._native_provider_state(paths)
+            state = json.loads(state_bytes, object_pairs_hook=_reject_duplicate_control_keys)
+            if (type(state) is not dict or state.get("implementation_in_progress") is not False
+                    or state.get("active_provider_runner") != {}
+                    or type(state.get("active_attempt")) is not int or state["active_attempt"] != 0
+                    or any(state.get(name) not in (None, "") for name in (
+                        "active_task_id", "active_task_cid", "active_task_key",
+                        "active_branch", "active_worktree_path", "active_log_path"))
+                    or state.get("last_implementation_task_id") != binding["task_alias"]
+                    or state.get("last_implementation_task_cid") != implementation["canonical_task_cid"]
+                    or state.get("last_implementation_returncode") != returncode
+                    or not self._native_failed_validation_checkpoint_matches(implementation, state, records)):
+                return None
+            if not self.protected_path_failure_rearm_ready(attempt):
+                return None
+            if type(binding.get("binding_id")) is not str or re.fullmatch(r"sha256:[0-9a-f]{64}", binding["binding_id"]) is None:
+                return None
+            # Provider exit 0 is not copied from the diagnostic. It is the
+            # only process status that can make issuance eligible together
+            # with this preserved, attempted, failed validation result.
+            receipt = {
+                "schema": "database-native-provider-exit@2",
+                **{key: getattr(attempt, key) for key in (
+                    "attempt_id", "task_cid", "task_alias", "claim_id", "lease_id",
+                    "owner_session_id", "fencing_token", "fence_epoch")},
+                "binding_id": binding["binding_id"],
+                "portal_attempt": portal_attempt,
+                "returncode": returncode,
+                "provider_returncode": 0,
+                "reaped": True,
+                "process_group_absent": True,
+                "subreaper_children_absent": True,
+                "lifecycle_finalized": True,
+                "events_digest": events_digest,
+                "state_digest": _sha256_bytes(state_bytes),
+                "state_target_digest": state_target_digest,
+                "completion_authority": False,
+                "automatic_retry_admitted": False,
+            }
+            receipt["receipt_id"] = content_identity(receipt)
+            return receipt
+        except Exception:
+            return None
+
     def _native_provider_exit_failure(self, *, attempt, paths, binding, daemon,
                                       authority, implementation, summary):
         """Join actual child custody to this sealed, durably finished projection."""
@@ -11720,9 +11926,93 @@ class DatabasePortalExecutionBridge:
                 merge_request_loader=merge_request_loader,
             )
         finally:
-            close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
-            if callable(close):
-                close()
+            _close_portal_runtime_after_provider(daemon)
+
+    def sealed_candidate_gate_rejection(self, attempt: Any) -> dict[str, Any] | None:
+        """Replay one finished candidate-gate rejection from this attempt.
+
+        An unknown callback is not evidence. The sealed event log must be one
+        chained projection with a single ``implementation_finished``, no merge
+        or completion, and idle portal state at the same nonzero returncode.
+        The reason is the live candidate classifier. A declared validation
+        failure, an unfinished projection, and any other callback return None.
+        """
+
+        try:
+            from ..runtime.event_log import _event_identity
+
+            paths = self._paths(attempt)
+            self._seal_attempt_directory(paths, attempt_id=str(attempt.attempt_id), create=False)
+            binding = self._strict_binding(paths.binding)
+            for field in ("attempt_id", "claim_id", "task_cid", "task_alias"):
+                if binding.get(field) != str(getattr(attempt, field)):
+                    return None
+            self._verify_projection(paths, binding)
+            records, _events_digest = _accepted_source_events(paths.events)
+            previous = ""
+            for sequence, event in enumerate(records, 1):
+                if (
+                    event.get("sequence") != sequence
+                    or event.get("previous_event_id") != previous
+                    or event.get("event_id") != _event_identity(event)
+                ):
+                    return None
+                previous = event["event_id"]
+            if any(event.get("type") in {"merge_started", "merge_finished", "task_completed"} for event in records):
+                return None
+            finished = [event for event in records if event.get("type") == "implementation_finished"]
+            if len(finished) != 1:
+                return None
+            implementation = dict(finished[0])
+            reason = self._candidate_retry_reason(implementation)
+            returncode = implementation.get("returncode")
+            portal_attempt = implementation.get("attempt")
+            validation = implementation.get("validation_result")
+            merge = implementation.get("merge_result")
+            board = implementation.get("board_completion")
+            finalize = implementation.get("lifecycle_finalize")
+            if (
+                not reason
+                or type(returncode) is not int
+                or not -255 <= returncode <= 255
+                or returncode == 0
+                or type(portal_attempt) is not int
+                or not 1 <= portal_attempt < _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT
+                or type(validation) is not dict
+                or validation.get("returncode") != returncode
+                or type(merge) is not dict
+                or merge.get("merged") is not False
+                or merge.get("queued") is True
+                or type(board) is not dict
+                or board.get("complete") is not False
+                or type(finalize) is not dict
+                or finalize.get("finalized") is not True
+                or implementation.get("task_id") != binding.get("task_alias")
+                or type(implementation.get("canonical_task_cid")) is not str
+                or not implementation["canonical_task_cid"]
+            ):
+                return None
+            self._bind_sealed_attempt_portal_state(paths)
+            state_bytes, _state_target_digest = self._native_provider_state(paths)
+            state = json.loads(state_bytes, object_pairs_hook=_reject_duplicate_control_keys)
+            if (
+                type(state) is not dict
+                or state.get("implementation_in_progress") is not False
+                or state.get("active_provider_runner") != {}
+                or type(state.get("active_attempt")) is not int
+                or state["active_attempt"] != 0
+                or any(state.get(name) not in (None, "") for name in (
+                    "active_task_id", "active_task_cid", "active_task_key",
+                    "active_branch", "active_worktree_path", "active_log_path",
+                ))
+                or state.get("last_implementation_task_id") != binding["task_alias"]
+                or state.get("last_implementation_task_cid") != implementation["canonical_task_cid"]
+                or state.get("last_implementation_returncode") != returncode
+            ):
+                return None
+            return {"reason": reason, "portal_attempt": portal_attempt, "returncode": returncode}
+        except Exception:
+            return None
 
     def recover_provider_callback(self, attempt: Any) -> Mapping[str, Any] | None:
         """Read accepted Native work, or resume one fenced candidate checkout.
@@ -12047,6 +12337,73 @@ DATABASE_PORTAL_CANDIDATE_RETRY_REASONS: Final[frozenset[str]] = frozenset(
         "no_changes",
     }
 )
+
+
+def closed_candidate_retry_permits_successor_claim(
+    *,
+    task_cid: str,
+    attempt_id: str,
+    attempt_status: str,
+    attempt_task_cid: str,
+    attempt_owner_session_id: str,
+    owner_session_id: str,
+    phases: Sequence[Mapping[str, Any]],
+    effect_claim_present: bool,
+    task_status: str,
+    control_receipt: Mapping[str, Any] | None,
+    claim_state: str,
+) -> bool:
+    """Admit one successor after a closed candidate-gate miss.
+
+    The original callback stays ``started_outcome_unknown``. That row is the
+    pre-outcome intent, not evidence of an uncommitted provider or effect
+    phase. A successor is claimable only when the failed phase, the retrying
+    control receipt, and a terminal coordination claim all name this attempt,
+    and no effect claim or provider/effect phase exists.
+    """
+
+    if (
+        not task_cid
+        or not attempt_id
+        or attempt_status != "failed"
+        or attempt_task_cid != task_cid
+        or not owner_session_id
+        or attempt_owner_session_id != owner_session_id
+        or effect_claim_present
+        or str(task_status or "").strip().lower() != "retrying"
+        or not isinstance(control_receipt, Mapping)
+        or claim_state not in {"expired", "released", "superseded"}
+    ):
+        return False
+    failed_bodies: list[Mapping[str, Any]] = []
+    for phase in phases:
+        name = str(phase.get("phase") or "")
+        if name in {"provider", "effect"}:
+            return False
+        if name == "failed":
+            body = phase.get("body")
+            if not isinstance(body, Mapping):
+                return False
+            failed_bodies.append(body)
+    if len(failed_bodies) != 1:
+        return False
+    body = failed_bodies[0]
+    reason = body.get("reason")
+    if (
+        body.get("schema") != "database-bounded-portal-retry@1"
+        or reason not in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS
+        or body.get("pre_effect") is not False
+        or body.get("provider_dispatched") is not True
+        or body.get("attempt_consumed") is not True
+        or body.get("retry_budget_exhausted") is not False
+        or control_receipt.get("operation") != "database_portal_retry"
+        or control_receipt.get("attempt_id") != attempt_id
+        or control_receipt.get("task_cid") not in (None, "", task_cid)
+        or control_receipt.get("reason") != reason
+        or control_receipt.get("owner_session_id") != owner_session_id
+    ):
+        return False
+    return True
 
 
 DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
