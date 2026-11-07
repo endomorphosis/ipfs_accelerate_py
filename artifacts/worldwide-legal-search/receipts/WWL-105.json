@@ -1,0 +1,54 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-105",
+  "title": "Verify watchdog persistence restart and guardian behavior",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G090",
+  "subgoal_id": "WWL-G090.S2",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_watchdog",
+  "depends_on": ["WWL-103", "WWL-104"],
+  "restart_journal": "watchdog/restart-journal.json",
+  "loop_state": "watchdog/state.json",
+  "loop_unit": "worldwide-legal-search-watchdog.service",
+  "guardian_restart_bound": 3,
+  "guardian_window_seconds": 1800,
+  "hold_markers": ["HOLD", "STOP", "OPERATOR_STOP"],
+  "survives_restart": [
+    "deduplication",
+    "cooldown",
+    "attempt_accounting",
+    "stop_hold"
+  ],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "test/api/test_worldwide_legal_search_watchdog_restart.py",
+    "docs/worldwide/host-operation.md",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_watchdog.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-105.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_watchdog_restart.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_watchdog_restart.py", "-q"],
+    "result": "12 passed",
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "Restarting the loop and the supervisor reloads watchdog/state.json and watchdog/restart-journal.json. The same in-flight action stays the only writer. A lower attempt count, an earlier cooldown, a dropped action, or a missing sealed HOLD, STOP, or OPERATOR_STOP marker is refused.",
+    "The journal records counters only when the loop state file is already present at publish. Resume still requires that file. A later higher counter is kept. Restart does not charge another attempt.",
+    "The optional guardian renders a user unit and starts only worldwide-legal-search-watchdog.service. It does not install or enable the unit. A hold marker, a foreign unit, a live main process, or three starts inside 1800 seconds refuse the start. A refused start does not spend the budget. A start that is attempted stays charged when systemctl fails.",
+    "The rendered unit uses /usr/bin/python3.12. Tests inject systemctl show and start. They do not contact the operator's user systemd or write the operator's home unit.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The restart suite was executed with the workspace virtualenv that provides pytest 9.1.1. A later local repeat of the same argv exited 0 with 12 skips whose reason was pytest AST seal matches.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}

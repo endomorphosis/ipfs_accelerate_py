@@ -1,0 +1,58 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-100",
+  "title": "Define meaningful progress and durable incident identity",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G090",
+  "subgoal_id": "WWL-G090.S1",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_progress",
+  "progress_definition": [
+    "canonical task transition",
+    "validation stage advance",
+    "verified merge",
+    "accepted artifact change"
+  ],
+  "not_progress": [
+    "log growth",
+    "heartbeat updates",
+    "pid changes",
+    "repeated same-stage retries",
+    "unaccepted artifact churn",
+    "unverified merge entry"
+  ],
+  "incident_identity_fields": ["run_id", "task_id", "canonical_stage", "normalized_defect"],
+  "incident_identity_excludes": ["pid", "attempt", "heartbeat", "log_text"],
+  "budgets": {
+    "task": 3,
+    "validation": 3,
+    "merge": 3,
+    "provider": 4,
+    "repair": 2,
+    "recover": 2
+  },
+  "budget_reset_by_noise": false,
+  "progress_reset_by_noise": false,
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_progress.py",
+    "test/api/test_worldwide_legal_search_progress.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-100.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_progress.py",
+    "-q"
+  ],
+  "limitations": [
+    "The ledger records progress and incident budgets. It does not admit tasks, start repairs, restart processes, or write native task status.",
+    "An observation cannot refund a spent incident budget or grant completion authority. A new stage or defect opens a separate incident; the previous incident keeps its spent counts.",
+    "Unverified entry into the merge stage is recorded and does not move the progress cursor.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The progress suite was executed with the workspace virtualenv that provides pytest 9.1.1.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}

@@ -30,6 +30,7 @@ from ..merge.worktree_lifecycle import (
     read_process_birth,
 )
 from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
+from .core import _process_identity_snapshot
 
 
 SUPERVISED_CHILD_IDENTITY_SCHEMA = (
@@ -1042,7 +1043,8 @@ class ProcessGroupCancelled(RuntimeError):
 class ProcessGroupCleanupUnverified(RuntimeError):
     """The owned process group has not been proved absent after cleanup."""
 
-    def __init__(self) -> None:
+    def __init__(self, reason: str = "process_group_cleanup_unverified") -> None:
+        self.reason = reason if isinstance(reason, str) and reason.isidentifier() else "process_group_cleanup_unverified"
         super().__init__("process group cleanup unverified")
 
 
@@ -1510,6 +1512,16 @@ def run_process_group_stream(
     def group_alive() -> bool:
         try:
             os.killpg(process.pid, 0)
+            if sys.platform == "linux":
+                # killpg(..., 0) also succeeds for an unreaped orphan zombie.
+                # Reuse the strict native identity census: only an observed,
+                # nonempty all-zombie group proves no member can execute.
+                # Unavailable/empty observations retain the existing fence.
+                snapshot = _process_identity_snapshot()
+                if snapshot.available:
+                    members = [record for record in dict(snapshot.processes).values() if record[2] == process.pid]
+                    if members and all(record[0] == "Z" for record in members):
+                        return False
             return True
         except OSError as error:
             if error.errno == errno.ESRCH:

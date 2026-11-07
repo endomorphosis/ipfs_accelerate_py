@@ -114,6 +114,47 @@ def _kill_and_reap_orphans() -> None:
             time.sleep(_TERMINATION_POLL_SECONDS)
 
 
+def _process_is_zombie(process_id: int) -> bool:
+    """True only for a direct child whose /proc state is Z.
+
+    ``stat`` keeps the command name in parentheses, and that name may itself
+    contain spaces or parentheses. The state field is the token after the
+    last closing parenthesis. A missing proc entry is not a zombie.
+    """
+
+    try:
+        stat = Path(f"/proc/{process_id}/stat").read_text(encoding="ascii")
+    except OSError:
+        return False
+    end = stat.rfind(")")
+    if end < 0 or end + 2 >= len(stat):
+        return False
+    fields = stat[end + 2:].split()
+    return bool(fields) and fields[0] == "Z"
+
+
+def _reap_zombie_children() -> None:
+    """Collect direct zombie children. Live children keep running.
+
+    A subreaper census treats unreaped ``find | head`` leftovers as live
+    children and then refuses to store provider custody. Waiting with
+    ``WNOHANG`` only on state ``Z`` removes those leftovers. It does not
+    signal, and it does not wait on a live preexisting child.
+    """
+
+    try:
+        children = _direct_child_pids()
+    except (OSError, ValueError):
+        return
+    for process_id in children:
+        if not _process_is_zombie(process_id):
+            continue
+        try:
+            os.waitpid(process_id, os.WNOHANG)
+        except ChildProcessError:
+            pass
+
+
 def _reap_exited_adopted_children(command_pid: int) -> None:
     """Reap completed adoptees without consuming the Popen leader's status.
 

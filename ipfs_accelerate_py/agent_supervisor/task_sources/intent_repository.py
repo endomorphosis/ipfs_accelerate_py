@@ -3011,8 +3011,14 @@ class IntentRepository:
         The default preserves the existing logical read-session API. Explicit
         read_only=True opens a physical read-only embedded handle and refuses a
         borrowed writer/Quack connection. Nested default calls may reuse that
-        stronger outer handle. This remains connection reuse, not a frozen SQL
-        snapshot; callers retain native admission and drift checks.
+        stronger outer handle. Otherwise nested sessions borrow the outer
+        connection, and an externally bound connection stays owned by its
+        caller. Different threads never share it. This remains connection
+        reuse, not a frozen SQL snapshot. Callers retain native admission and
+        drift checks. Repository writes in the session thread are refused
+        before any SQL. The outer context owns physical close, including when
+        close() marks the repository closed while an observation is still
+        unwinding.
         """
         self._require_open()
         if type(read_only) is not bool:
@@ -3025,9 +3031,15 @@ class IntentRepository:
             yield self
             return
         if read_only:
+            owns_connection = True
             connection = open_duckdb_connection(self._open_target, read_only=True, prefer_quack=False)
         else:
-            connection = open_duckdb_connection(self._open_target)
+            owns_connection = self._bound_connection is None
+            connection = (
+                open_duckdb_connection(self._open_target)
+                if owns_connection
+                else self._bound_connection
+            )
         try:
             self._require_open()
             self._read_session_state.connection = connection
@@ -3037,19 +3049,20 @@ class IntentRepository:
             # Clear both before close, including an exceptional body or close.
             self._read_session_state.connection = None
             self._read_session_state.read_only = False
-            connection.close()
+            if owns_connection:
+                connection.close()
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         self._require_open()
-        if self._bound_connection is not None:
-            yield self._bound_connection
-            return
         session_connection = getattr(self._read_session_state, "connection", None)
         if session_connection is not None:
             if write:
                 raise IntentRepositoryError("writes are forbidden inside a read session")
             yield session_connection
+            return
+        if self._bound_connection is not None:
+            yield self._bound_connection
             return
         # Match DuckDBTaskSource / StateTransaction durability: begin with SQL,
         # commit/rollback with SQL, and always close the adapter explicitly.
@@ -4675,6 +4688,21 @@ class IntentRepository:
         limit: int = DEFAULT_PAGE_LIMIT,
         offset: int = 0,
     ) -> tuple[Mapping[str, Any], ...]:
+        # Hydration calls get_task for every row. Borrow one native adapter
+        # across the bounded page rather than re-admitting the database for
+        # every task. This remains a live read, without transaction authority.
+        with self.read_session():
+            return self._list_tasks_in_read_session(
+                status=status, limit=limit, offset=offset
+            )
+
+    def _list_tasks_in_read_session(
+        self,
+        *,
+        status: str | Iterable[str] | None,
+        limit: int,
+        offset: int,
+    ) -> tuple[Mapping[str, Any], ...]:
         selected = _bounded_limit(limit)
         off = _nonneg_int(offset, noun="offset")
         statuses: tuple[str, ...]
@@ -5056,6 +5084,97 @@ class IntentRepository:
             if not current:
                 missing.append(f"criterion:{criterion or item.get('ordinal')}")
         return (not missing), tuple(missing)
+
+    def replace_retrying_rearm_receipt(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_operation: str,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        """Replace one open retrying rearm receipt without a new revision.
+
+        The coordination fence accepts this row only at
+        ``control_expected_revision + 2``. A later status CAS would move the
+        revision off that value, so the receipt is closed in place.
+        """
+
+        tcid = _identifier(task_cid, noun="task_cid")
+        expected = _positive_int(expected_revision, noun="expected_revision")
+        operation = str(expected_operation or "")
+        if operation != "obsolete_workflow_gate_rearm":
+            raise IntentRepositoryError(
+                "retrying rearm receipt close is not the open workflow receipt"
+            )
+        if set(receipt) != {"operation", "settlement_id"}:
+            raise IntentRepositoryError("closed rearm receipt is not exact")
+        if receipt.get("operation") != "operator_control_plane_repair":
+            raise IntentRepositoryError("closed rearm receipt operation is wrong")
+        settlement = receipt.get("settlement_id")
+        if (
+            not isinstance(settlement, str)
+            or not settlement
+            or settlement != settlement.strip()
+            or len(settlement) > 256
+        ):
+            raise IntentRepositoryError("closed rearm receipt has no settlement")
+        replacement = {
+            "operation": "operator_control_plane_repair",
+            "settlement_id": settlement,
+        }
+        now = _utc_iso()
+        with self._connection(write=True) as connection:
+            row = connection.execute(
+                """
+                SELECT task_cid, status, revision, body_json
+                FROM tasks WHERE task_cid = ? OR task_alias = ?
+                ORDER BY task_cid LIMIT 2
+                """,
+                [tcid, tcid],
+            ).fetchall()
+            if len(row) != 1:
+                raise IntentRepositoryIntegrityError(
+                    "retrying rearm receipt task lookup is not exact"
+                )
+            resolved_cid = str(row[0][0])
+            if str(row[0][1]) != "retrying" or int(row[0][2]) != expected:
+                return False
+            body_map = _decode_json(row[0][3], noun="task body")
+            if not isinstance(body_map, dict):
+                return False
+            current = body_map.get("completion_receipt")
+            if (
+                not isinstance(current, Mapping)
+                or current.get("operation") != operation
+            ):
+                return False
+            if dict(current) == replacement:
+                return True
+            body_map = dict(body_map)
+            body_map["completion_receipt"] = replacement
+            encoded = _canonical(body_map, noun="task body")
+            updated = connection.execute(
+                """
+                UPDATE tasks SET body_json = ?, updated_at = ?
+                WHERE task_cid = ? AND revision = ? AND status = 'retrying'
+                RETURNING task_cid
+                """,
+                [encoded, now, resolved_cid, expected],
+            ).fetchall()
+            revised = connection.execute(
+                """
+                UPDATE task_revisions SET body_json = ?
+                WHERE task_cid = ? AND revision = ? AND status = 'retrying'
+                RETURNING task_cid
+                """,
+                [encoded, resolved_cid, expected],
+            ).fetchall()
+            if len(updated) != 1 or len(revised) != 1:
+                raise IntentRepositoryConflictError(
+                    "retrying rearm receipt close did not match one current row"
+                )
+            return True
 
     def cas_task_status(
         self,

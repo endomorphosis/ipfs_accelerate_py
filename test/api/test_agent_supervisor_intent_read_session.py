@@ -85,6 +85,64 @@ def test_source_reads_and_nested_sessions_open_and_close_once(counted_repo):
     assert len(connections) == 2 and connections[1].closes == 1
 
 
+def test_unscoped_task_page_hydrates_all_rows_on_one_connection(counted_repo):
+    repo, connections = counted_repo
+    for ordinal in range(1, 9):
+        repo.upsert_task(
+            task_cid=f"task:{ordinal}", task_alias=f"T{ordinal}",
+            goal_cid="goal:a", plan_cid="plan:a", ordinal=ordinal,
+        )
+    connections.clear()
+    tasks = repo.list_tasks(status="ready", limit=5, offset=2)
+    assert len(tasks) == 5
+    assert [task["task_alias"] for task in tasks] == [f"T{i}" for i in range(2, 7)]
+    assert all(task["status"] == "ready" for task in tasks)
+    assert len(connections) == 1 and connections[0].closes == 1
+
+
+def test_unscoped_source_snapshot_reuses_one_connection(counted_repo):
+    repo, connections = counted_repo
+    source = DatabaseTaskSource(intent=repo)
+    snapshot = source.snapshot()
+    assert snapshot.task_count == 1
+    assert snapshot.plan_root_cid == "plan:a"
+    assert snapshot.terminal is False
+    assert len(connections) == 1 and connections[0].closes == 1
+    assert not any(
+        sql.strip().upper().startswith(("BEGIN", "COMMIT", "ROLLBACK"))
+        for sql in connections[0].statements
+    )
+
+
+def test_bound_session_borrows_owner_connection_and_refuses_writes(
+    counted_repo, monkeypatch
+):
+    repo, connections = counted_repo
+    with repo._connection(write=False) as owner_connection:
+        bound = module.IntentRepository(bound_connection=owner_connection)
+
+        def unexpected_open(target):
+            pytest.fail(f"bound observation attempted another admission: {target}")
+
+        monkeypatch.setattr(module, "open_duckdb_connection", unexpected_open)
+        with bound.read_session():
+            with bound.read_session():
+                assert len(bound.list_tasks()) == 1
+                assert DatabaseTaskSource(intent=bound).snapshot().task_count == 1
+            before = len(owner_connection.statements)
+            with pytest.raises(module.IntentRepositoryError, match="writes are forbidden"):
+                bound.cas_task_status(
+                    task_cid="A", expected_revision=1, new_status="in_progress"
+                )
+            assert len(owner_connection.statements) == before
+        bound.close()
+        assert owner_connection.closes == 0
+        assert owner_connection.execute(
+            "SELECT status FROM tasks WHERE task_cid = ?", ["task:a"]
+        ).fetchone()[0] == "ready"
+    assert len(connections) == 1 and connections[0].closes == 1
+
+
 def test_writes_in_read_session_are_refused_before_sql(counted_repo):
     repo, connections = counted_repo
     before = repo.snapshot()

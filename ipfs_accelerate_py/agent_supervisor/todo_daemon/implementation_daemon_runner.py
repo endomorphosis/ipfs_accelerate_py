@@ -6,7 +6,9 @@ import argparse
 import logging
 import math
 import os
+import hashlib
 import signal
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -1200,6 +1202,9 @@ def bind_database_portal_execution_from_args(
     configured_board_live_admission: (
         ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
+    task_repo_root_resolver: Callable[[str], Path] | None = None,
+    provider_handoff_binder: Callable[..., Any] | None = None,
+    candidate_reconciliation_loader: Callable[..., Any] | None = None,
 ) -> object | None:
     """Bind real Portal execution to a database daemon in production mode.
 
@@ -1210,6 +1215,19 @@ def bind_database_portal_execution_from_args(
 
     if not bool(getattr(parsed, "implement", False)):
         return None
+    if task_repo_root_resolver is not None:
+        return _bind_repository_routed_database_portal_execution(
+            daemon, parsed, repo_root=repo_root,
+            portal_daemon_class=portal_daemon_class,
+            task_repo_root_resolver=task_repo_root_resolver,
+            default_worktree_submodule_paths=default_worktree_submodule_paths,
+            default_implementation_protected_paths=default_implementation_protected_paths,
+            default_objective_path=default_objective_path,
+            default_objective_bundle_dir=default_objective_bundle_dir,
+            configured_board_live_admission=configured_board_live_admission,
+            provider_handoff_binder=provider_handoff_binder,
+            candidate_reconciliation_loader=candidate_reconciliation_loader,
+        )
     from .database_portal_bridge import DatabasePortalExecutionBridge
 
     binder = getattr(daemon, "bind_execution_callbacks", None)
@@ -1375,6 +1393,8 @@ def bind_database_portal_execution_from_args(
         prior_attempt_authority=(
             daemon.authorize_superseded_portal_attempt_binding
         ),
+        provider_handoff_binder=provider_handoff_binder,
+        candidate_reconciliation_loader=candidate_reconciliation_loader,
     )
     binder(
         provider_fn=bridge.run_provider,
@@ -1383,6 +1403,93 @@ def bind_database_portal_execution_from_args(
     )
     _mirror_database_portal_execution_binding(configured_board_admission_cid)
     return bridge
+
+
+class _RepositoryRoutedPortalBridge:
+    """Route every execution/effect/validation gate to the admitted task repo.
+
+    Routing only the Portal constructor leaves the outer bridge's merge and
+    checkout checks bound to the wrong repository. Keep a complete native
+    bridge per root and select the same one for all phases of an attempt.
+    """
+
+    def __init__(self, resolver: Callable[[str], Path], factory: Callable[[Path], Any], *, attempt_root: Path, max_task_attempts: int):
+        self._resolver, self._factory = resolver, factory
+        self._bridges: dict[str, Any] = {}
+        self.attempt_root = attempt_root
+        self.max_task_attempts = max_task_attempts
+
+    def _for_attempt(self, attempt: Any) -> Any:
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        if not alias:
+            raise ValueError("repository-routed execution needs a stable task alias")
+        raw = Path(self._resolver(alias))
+        if not raw.is_absolute():
+            raise ValueError("task repository resolver must return an absolute root")
+        root = raw.resolve(strict=True)
+        if not root.is_dir():
+            raise ValueError("task repository is not a directory")
+        key = str(root)
+        if key not in self._bridges:
+            self._bridges[key] = self._factory(root)
+        return self._bridges[key]
+
+    def run_provider(self, attempt: Any) -> Any:
+        return self._for_attempt(attempt).run_provider(attempt)
+
+    def apply_effect(self, attempt: Any, result: Any) -> Any:
+        return self._for_attempt(attempt).apply_effect(attempt, result)
+
+    def validate_effect(self, attempt: Any, result: Any) -> Any:
+        return self._for_attempt(attempt).validate_effect(attempt, result)
+
+    def _paths(self, attempt: Any) -> Any:
+        return self._for_attempt(attempt)._paths(attempt)
+
+    def zero_provider_failure_rearm_ready(self, attempt: Any) -> bool:
+        return self._for_attempt(attempt).zero_provider_failure_rearm_ready(attempt)
+
+    def protected_path_failure_rearm_ready(self, attempt: Any) -> bool:
+        return self._for_attempt(attempt).protected_path_failure_rearm_ready(attempt)
+
+
+def _bind_repository_routed_database_portal_execution(
+    daemon: Any, parsed: argparse.Namespace, *, repo_root: Path,
+    portal_daemon_class: type, task_repo_root_resolver: Callable[[str], Path],
+    **defaults: Any,
+) -> _RepositoryRoutedPortalBridge:
+    from types import SimpleNamespace
+
+    root = repo_root.resolve(strict=True)
+
+    def build(selected_root: Path) -> Any:
+        child = argparse.Namespace(**vars(parsed))
+        if selected_root != root or not getattr(child, "merge_target_branch", ""):
+            branch = subprocess.run(["git", "-C", str(selected_root), "symbolic-ref", "--quiet", "--short", "HEAD"], capture_output=True, text=True, timeout=30, check=False)
+            if branch.returncode or not branch.stdout.strip():
+                raise ValueError("task repository must have an admitted branch")
+            child.merge_target_branch = branch.stdout.strip()
+        if selected_root != root:
+            namespace = hashlib.sha256(str(selected_root).encode()).hexdigest()[:16]
+            for field in ("worktree_root", "merge_queue_dir"):
+                value = getattr(child, field, None)
+                if value is not None:
+                    setattr(child, field, Path(value) / namespace)
+            child.implementation_protected_path = [str(path) for path in (getattr(child, "implementation_protected_path", ()) or ()) if (selected_root / str(path)).is_file()]
+        proxy = SimpleNamespace(
+            task_source=daemon.task_source,
+            authorize_superseded_portal_attempt_binding=daemon.authorize_superseded_portal_attempt_binding,
+            bind_execution_callbacks=lambda **_callbacks: None,
+        )
+        return bind_database_portal_execution_from_args(proxy, child, repo_root=selected_root, portal_daemon_class=portal_daemon_class, **defaults)
+
+    routed = _RepositoryRoutedPortalBridge(
+        task_repo_root_resolver, build,
+        attempt_root=Path(parsed.state_dir).absolute() / f"{parsed.state_prefix or 'database'}_database_portal_attempts",
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0)),
+    )
+    daemon.bind_execution_callbacks(provider_fn=routed.run_provider, effect_fn=routed.apply_effect, validation_fn=routed.validate_effect)
+    return routed
 
 
 def build_portal_implementation_daemon_from_args(

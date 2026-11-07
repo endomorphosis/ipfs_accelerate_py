@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 
 @pytest.mark.parametrize("pooled", [False, True])
 def test_failed_validation_does_not_spawn_unbound_database_repair(tmp_path, monkeypatch, pooled):
-    database, bridge, portals = _native_chain(tmp_path, monkeypatch, pooled=pooled)
+    database, bridge, portals = _native_chain(tmp_path, monkeypatch, pooled=pooled, valid_contract=True)
     dispatches = tmp_path / "authored-dispatches.jsonl"
     # The native provider child succeeds as a process but leaves invalid Python.
     # A second invocation would repair it; the old inline path must not obtain
@@ -26,7 +26,7 @@ def test_failed_validation_does_not_spawn_unbound_database_repair(tmp_path, monk
         "prior = dispatches.read_text().splitlines() if dispatches.exists() else []\n"
         "with dispatches.open('a') as stream:\n"
         "    stream.write(json.dumps({'workspace': str(Path.cwd()), 'round': len(prior)}) + '\\n')\n"
-        "Path('result.py').write_text('VALUE = (\\n' if not prior else 'VALUE = 1\\n')\n"
+        "Path('result.py').write_text('VALUE = 1\\n' if not prior else 'VALUE = 2\\n')\n"
     )
     try:
         summary = database.run_once()
@@ -52,9 +52,42 @@ def test_failed_validation_does_not_spawn_unbound_database_repair(tmp_path, monk
         assert Path(calls[0]["workspace"]) != tmp_path / "repository"
         assert (tmp_path / "repository/result.py").read_text() == "VALUE = 0\n"
         assert len(portals) == 1
-        # This test does not grant failure settlement or retry authority to a
-        # successful first child whose later validation failed.
-        assert database.task_source.get(attempt.task_cid).status != "completed"
+        # Native owns actual child reaping and the retained failed-validation
+        # event. It may settle this failure without success or retry rights.
+        assert attempt.status == "failed"
+        assert database.task_source.get(attempt.task_cid).status == "blocked"
+        receipt = database.provider_invocation_recorded(attempt.attempt_id,
+            idempotency_key="provider:" + attempt.attempt_id)
+        assert receipt["callback_state"] == "failed_outcome_settled"
+        assert receipt["native_exit"]["schema"] == "database-native-provider-exit@2"
+        assert receipt["native_exit"]["provider_returncode"] == 0
+        assert receipt["native_exit"]["returncode"] != 0
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.bridge_failure_diagnostics import observe_bridge_failure
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DatabasePortalBridgeError
+        diagnostic = observe_bridge_failure(DatabasePortalBridgeError("portal_provider_failed"),receipt,phase="terminal_failure")
+        assert diagnostic["callback"]["native_exit"]["present"] is True
+        assert diagnostic["callback"]["native_exit"]["returncode"] == receipt["native_exit"]["returncode"]
+        assert diagnostic["settlement_authority"] is False
+        assert receipt["native_exit"]["automatic_retry_admitted"] is False
+        # Rejected validation work is never accepted from source hashes alone.
+        from copy import deepcopy
+        state = json.loads(bridge._native_provider_state(bridge._paths(attempt))[0])
+        assert bridge._native_failed_checkpoint_matches(result,state,events)
+        for mutation in ("commit","validation","merge","retention","event"):
+            changed, changed_state, changed_events = deepcopy((result,state,events))
+            if mutation == "commit":
+                changed["implementation_commit"] = ""
+                changed_state["last_implementation_commit"] = ""
+            elif mutation == "validation":
+                changed["validation_result"]["passed"] = True
+            elif mutation == "merge":
+                changed["merge_result"]["queued"] = True
+            elif mutation == "retention":
+                changed["failed_preservation_result"]["preserved"] = False
+            else:
+                changed_events = [event for event in changed_events if event["type"] != "failed_validation_worktree_preserved"]
+            assert not bridge._native_failed_checkpoint_matches(changed,changed_state,changed_events)
+        assert database.claim_next() is None
     finally:
         database.close()
 

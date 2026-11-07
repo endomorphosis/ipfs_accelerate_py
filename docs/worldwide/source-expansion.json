@@ -1,0 +1,98 @@
+{
+  "access_status_kinds": {
+    "401": "credentials",
+    "403": "permission",
+    "408": "source-outage",
+    "429": "source-outage",
+    "500": "source-outage",
+    "502": "source-outage",
+    "503": "source-outage",
+    "504": "source-outage"
+  },
+  "admission_schema": "worldwide-legal-search.source-expansion-admission@1",
+  "blocker_kinds": [
+    "dependency-running",
+    "software-defect",
+    "source-outage",
+    "gated-input",
+    "credentials",
+    "permission",
+    "hold",
+    "exhausted-budget"
+  ],
+  "child_id_pattern": "^WWL-SRC-[0-9a-f]{16}-(?:normalize|index|geo|publish|verify)-[0-9]{4}$",
+  "child_schema": "worldwide-legal-search.source-child@1",
+  "completion_authority": false,
+  "depends_on": [
+    "WWL-016",
+    "WWL-047",
+    "WWL-081"
+  ],
+  "execution_completed": false,
+  "goal_id": "WWL-G020",
+  "inventory_schema": "worldwide-legal-search.source-inventory@1",
+  "join_schema": "worldwide-legal-search.source-expansion-join@1",
+  "join_task_id": "WWL-017",
+  "journal_schema": "wwl.watchdog.restart-journal@1",
+  "levels": [
+    "national",
+    "regional",
+    "local",
+    "supranational",
+    "unknown"
+  ],
+  "max_children": 64,
+  "max_units": 12,
+  "namespace": "worldwide-legal-search-v1",
+  "native_api": "ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source.DatabaseTaskSource",
+  "parent_task_id": "WWL-018",
+  "phases": [
+    {
+      "grain": "source",
+      "id": "normalize",
+      "title": "normalize"
+    },
+    {
+      "grain": "config",
+      "id": "index",
+      "title": "index"
+    },
+    {
+      "grain": "jurisdiction",
+      "id": "geo",
+      "title": "geography"
+    },
+    {
+      "grain": "shard",
+      "id": "publish",
+      "title": "immutable publication"
+    },
+    {
+      "grain": "split",
+      "id": "verify",
+      "title": "verification"
+    }
+  ],
+  "preserved_journal_keys": [
+    "actions",
+    "guardian_restarts",
+    "sealed_hold_markers",
+    "loop_policy_digest"
+  ],
+  "preserved_state_keys": [
+    "actions",
+    "repairs",
+    "incidents",
+    "budgets",
+    "progress_token",
+    "policy_digest"
+  ],
+  "readiness_schema": "wwl.watchdog.ready@1",
+  "root_goal_id": "WWL-G000",
+  "schema": "worldwide-legal-search.source-expansion@1",
+  "self_certified_completion": false,
+  "subgoal_id": "WWL-G020.S2",
+  "task_id": "WWL-018",
+  "title": "Expand the inventory into bounded native source child tasks",
+  "watchdog_state_schema": "wwl.watchdog.state@1"
+}

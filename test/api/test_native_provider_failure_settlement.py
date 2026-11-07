@@ -165,7 +165,7 @@ raise SystemExit(runner.main())
     return capture
 
 
-def _native_chain(tmp_path, monkeypatch, *, partial_edit=False, pooled=False, postdecode=False):
+def _native_chain(tmp_path, monkeypatch, *, partial_edit=False, pooled=False, postdecode=False, valid_contract=False):
     repository = tmp_path / "repository"
     branch = _repository(repository)
     script = tmp_path / "router_timeout.py"
@@ -199,6 +199,13 @@ runner.run(prompt="Repair the fixture", provider="codex_cli", model="fixture", t
     population["tasks"][0].update(body={"completion": "auto", "track": "implementation"},
         outputs=["result.py"], validations=["python -m py_compile result.py"],
         acceptance=["result.py passes validation"])
+    if valid_contract:
+        population["tasks"][0]["outputs"] = [{"path":"result.py"}]
+        population["tasks"][0].pop("validations")
+        (repository / "test_result.py").write_text("import result\ndef test_actual_result():\n    assert result.VALUE == 2\n")
+        subprocess.run(["git","add","test_result.py"],cwd=repository,check=True)
+        subprocess.run(["git","commit","-qm","Declare the semantic validation fixture"],cwd=repository,check=True)
+        population["tasks"][0]["validation"] = ["python3 -m pytest -q test_result.py"]
     database.materialize_population(population)
     portals = []
     def factory(paths, alias):

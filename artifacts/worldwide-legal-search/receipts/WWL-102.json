@@ -1,0 +1,57 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-102",
+  "title": "Bind automatic isolated supervisor repair and validated promotion",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G090",
+  "subgoal_id": "WWL-G090.S2",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_repair",
+  "depends_on": ["WWL-101", "WWL-003"],
+  "router": "ipfs_accelerate_py.llm_router",
+  "primary_provider": "grok_cli",
+  "primary_model": "grok-4.7",
+  "fallback_policy": "grok_quota_auth_or_unavailable",
+  "repair_limit": 2,
+  "campaign_repair_cap": 8,
+  "repair_contract": [
+    "one reproduced defect opens one repair task; pid and attempt do not open a second writer",
+    "Grok is bound through ipfs_accelerate_py.llm_router and is not launched by this adapter",
+    "edits land only in a campaign-owned repair worktree",
+    "the only editable paths are the new reproducer and the reproduced source frames",
+    "regressions and the canary gate promotion; the canary cannot promote itself",
+    "promotion is a native merge receipt, then reload and fence",
+    "rollback evidence is retained and a checkpoint cannot refund a spent repair"
+  ],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "test/api/test_worldwide_legal_search_repair.py",
+    "docs/worldwide/repair-contract.md",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_repair.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-102.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_repair.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_repair.py", "-q"],
+    "result": "9 passed",
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "The adapter binds the canonical llm_router explicit-agent argv and applies admitted edits in the repair worktree. It does not launch Grok, Codex, or a hosted model.",
+    "Native merge and reload are checked from their receipts. This adapter does not invent a git commit or restart a lane by itself.",
+    "The repair budget is DEFAULT_LIMITS['repair'] from the WWL-100 progress ledger, which is 2. The campaign cap is 8 opened writers. A checkpoint cannot refund either count.",
+    "Unknown effects, holds, and deadlines admit no repair mutation. A canary cannot set validated promotion or grant completion authority.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The repair suite was executed with the workspace virtualenv that provides pytest 9.1.1.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-003",
+  "title": "Bind and canary the exact Grok emergency Codex route",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G010",
+  "subgoal_id": "WWL-G010.S2",
+  "router": "ipfs_accelerate_py.llm_router",
+  "primary_provider": "grok_cli",
+  "primary_model": "grok-4.7",
+  "fallback_provider": "codex_cli",
+  "fallback_model": "resolve from admitted existing Codex configuration",
+  "fallback_policy": "grok_quota_auth_or_unavailable",
+  "unchanged_workspace_required": true,
+  "unknown_effects_require_reconciliation": true,
+  "mandatory_routine_codex_review": false,
+  "typed_pre_effect_fallback": true,
+  "route_telemetry": true,
+  "ambiguous_effects_block_fallback": true,
+  "live_canary": "admitted-tiny",
+  "hosted_model_invocations": 0,
+  "paid_provider_calls": 0,
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "test/api/test_worldwide_legal_search_provider_route.py",
+    "docs/worldwide/provider-bindings.md",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-003.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_provider_route.py",
+    "-q"
+  ],
+  "limitations": [
+    "The admitted live canary is one local non-charging fallback process and does not call a hosted Grok or Codex model.",
+    "Codex model and reasoning effort remain deployment configuration resolved by the existing provider adapter.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}
