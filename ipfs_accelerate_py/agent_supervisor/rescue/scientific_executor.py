@@ -807,6 +807,81 @@ def load_explicit_catalogue_parser(reference):
         raise
 
 
+def _catalogue_race_owned_artifact(attempt_binding,row):
+    """Read one archived OWNED DATA row, without changing code-reader policy.
+
+    Ordinary historical data may be empty or group-writable. Every read still
+    binds its literal relative path, released attempt identity, manifest inode,
+    byte count and digest, and stable owned single-link FD/path identities.
+    """
+    h=health_owner()
+    need(type(attempt_binding)is dict and set(attempt_binding)=={'path','device','inode'}
+         and type(attempt_binding['path'])is str
+         and type(attempt_binding['device'])is int and attempt_binding['device']>=0
+         and type(attempt_binding['inode'])is int and attempt_binding['inode']>0,
+         'owned_data_attempt_binding_shape')
+    attempt=Path(attempt_binding['path'])
+    need(attempt.is_absolute()and str(attempt)==attempt_binding['path']
+         and attempt.resolve(strict=True)==attempt,'owned_data_attempt_path')
+    root_before=attempt.lstat()
+    need(stat.S_ISDIR(root_before.st_mode)and root_before.st_uid==os.geteuid()
+         and(root_before.st_dev,root_before.st_ino)==(attempt_binding['device'],attempt_binding['inode']),
+         'owned_data_attempt_identity')
+    need(type(row)is dict and set(row)=={'path','bytes','sha256','device','inode'}
+         and type(row['path'])is str and bool(row['path']) and '\x00'not in row['path']
+         and not Path(row['path']).is_absolute()
+         and all(part not in('','.','..')for part in row['path'].split('/'))
+         and type(row['bytes'])is int and 0<=row['bytes']<=h.MAX_JSON
+         and type(row['device'])is int and row['device']>=0
+         and type(row['inode'])is int and row['inode']>0
+         and type(row['sha256'])is str and len(row['sha256'])==64
+         and set(row['sha256'])<=set('0123456789abcdef'),
+         'owned_data_manifest_row')
+    path=attempt/row['path']
+    need(path.resolve(strict=True)==path and attempt in path.parents,
+         'owned_data_relative_attempt_path')
+    stamp=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_uid,
+        value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+    directory_flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC
+    directories=[];fd=None
+    try:
+        root_fd=os.open(attempt,directory_flags)
+        directories.append((root_fd,attempt,root_before))
+        need(stamp(os.fstat(root_fd))==stamp(root_before),'owned_data_attempt_changed_before_open')
+        parent_fd=root_fd;parent_path=attempt
+        parts=row['path'].split('/')
+        for part in parts[:-1]:
+            parent_path=parent_path/part
+            next_fd=os.open(part,directory_flags,dir_fd=parent_fd)
+            before=os.fstat(next_fd);directories.append((next_fd,parent_path,before))
+            need(stat.S_ISDIR(before.st_mode)and before.st_uid==os.geteuid()
+                 and stamp(before)==stamp(parent_path.lstat()),'owned_data_parent_identity')
+            parent_fd=next_fd
+        fd=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|os.O_CLOEXEC,dir_fd=parent_fd)
+        first=os.fstat(fd)
+        need(stat.S_ISREG(first.st_mode)and first.st_uid==os.geteuid()and first.st_nlink==1
+             and not first.st_mode&0o002 and 0<=first.st_size<=h.MAX_JSON
+             and first.st_size==row['bytes']
+             and(first.st_dev,first.st_ino)==(row['device'],row['inode']),
+             'owned_data_manifest_fd_identity_or_permissions')
+        chunks=[];left=first.st_size
+        while left:
+            part=os.read(fd,min(left,65536));need(bool(part),'owned_data_truncated')
+            chunks.append(part);left-=len(part)
+        need(os.read(fd,1)==b'','owned_data_grew');last=os.fstat(fd)
+        need(stamp(first)==stamp(last)==stamp(path.lstat()),'owned_data_changed_during_read')
+        for directory_fd,directory_path,before in directories:
+            need(stamp(before)==stamp(os.fstat(directory_fd))==stamp(directory_path.lstat()),
+                 'owned_data_parent_changed_during_read')
+        raw=b''.join(chunks)
+        need(len(raw)==row['bytes']and hashlib.sha256(raw).hexdigest()==row['sha256'],
+             'owned_data_manifest_bytes_or_digest')
+        return raw
+    finally:
+        if fd is not None:os.close(fd)
+        for directory_fd,_,_ in reversed(directories):os.close(directory_fd)
+
+
 def catalogue_race_native_owner_qualification(reference,owner):
     """Port of the shared exact Owner128 reader; receipts are DATA, never code.
 
@@ -913,16 +988,20 @@ def catalogue_race_native_owner_qualification(reference,owner):
     observed_files={str(path.relative_to(attempt)) for path in attempt.rglob('*') if path.is_file()}
     need(observed_files=={row['path'] for row in durability['files']}|{'logs/validation-durability.json'},
          'Owner128 complete ordinary durable file population differs')
+    need(record['attempt_directory'].get('path')==str(attempt)
+         and type(durability['files'])is list and len(durability['files'])<=20000
+         and len({row['path']for row in durability['files']})==len(durability['files']),
+         'Owner128 exact released attempt and unique bounded manifest paths required')
+    junit_raw=None
     for row in durability['files']:
-        path=attempt/row['path'];info=path.lstat()
-        need(descriptor(path)=={key:dict(row,path=str(path))[key] for key in ('path','bytes','sha256')}
-             and (info.st_dev,info.st_ino)==(row['device'],row['inode']),
-             'Owner128 recorded ordinary file bytes or inode differs')
+        archived=_catalogue_race_owned_artifact(record['attempt_directory'],row)
+        if row['path']=='exports/test-results.xml':junit_raw=archived
     need(sum(row['bytes'] for row in durability['files'])+len(raw(attempt/'logs/validation-durability.json'))
              ==record['final_attempt_bytes']==record['final_total_charged_bytes']
          and 0<record['final_attempt_bytes']<=record['storage_bytes'],
          'Owner128 released record must bind the complete original durable ordinary byte count')
-    junit=ET.fromstring(raw(attempt/'exports/test-results.xml'))
+    need(junit_raw is not None,'Owner128 JUnit must be bound in the original OWNED manifest')
+    junit=ET.fromstring(junit_raw)
     need({key:sum(int(suite.get(key,'0')) for suite in junit.findall('.//testsuite'))
              for key in ('tests','failures','errors','skipped')}==observation['JUnit'],
          'original Owner128 JUnit must contain128 actual cases with zero failures/errors/skips')
