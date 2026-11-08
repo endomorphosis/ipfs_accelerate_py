@@ -610,6 +610,63 @@ def _catalogue_race_current_progress(bundle, recognition, profile, fresh):
     return fresh
 
 
+def _catalogue_race_event_evidence_data(reference):
+    """Read only event-authenticated observational DATA, never code or control.
+
+    The external-progress caller has already joined these exact descriptors to
+    the original evidence and completion events. Group-write DATA is retained;
+    every byte, file identity and unaliased parent chain must authenticate.
+    """
+    h=health_owner();h._keys(reference,{'path','bytes','sha256'},'catalogue_race_event_DATA_descriptor_shape')
+    need(h._integer(reference['bytes'],0,h.MAX_JSON) and
+         type(reference['sha256'])is str and len(reference['sha256'])==64 and
+         set(reference['sha256'])<=set('0123456789abcdef'),'catalogue_race_event_DATA_descriptor_bounds')
+    path=h._path(reference['path'])
+    need(path.is_absolute() and len(path.parts)<=128 and len(str(path).encode())<=4096,
+         'catalogue_race_event_DATA_path_bound')
+    stamp=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,
+                    s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    directory_identity=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+    opened=[];links=[];fd=None
+    try:
+        rootfd=os.open(path.anchor,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
+        opened.append(rootfd);root_info=os.fstat(rootfd)
+        need(stat.S_ISDIR(root_info.st_mode),'catalogue_race_event_DATA_root_not_directory')
+        parentfd=rootfd
+        for component in path.parts[1:-1]:
+            named=os.stat(component,dir_fd=parentfd,follow_symlinks=False)
+            need(stat.S_ISDIR(named.st_mode),'catalogue_race_event_DATA_parent_alias')
+            childfd=os.open(component,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=parentfd)
+            opened.append(childfd);actual=os.fstat(childfd)
+            need(directory_identity(named)==directory_identity(actual),'catalogue_race_event_DATA_parent_changed')
+            links.append((parentfd,component,childfd,directory_identity(actual)));parentfd=childfd
+        fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|os.O_CLOEXEC,dir_fd=parentfd)
+        first=os.fstat(fd)
+        need(stat.S_ISREG(first.st_mode) and first.st_uid==os.geteuid() and first.st_nlink==1 and
+             not stat.S_IMODE(first.st_mode)&0o002 and first.st_size==reference['bytes'],
+             'catalogue_race_event_DATA_file_unsafe')
+        chunks=[];left=reference['bytes']
+        while left:
+            chunk=os.read(fd,min(left,1024**2));need(chunk,'catalogue_race_event_DATA_truncated')
+            chunks.append(chunk);left-=len(chunk)
+        raw=b''.join(chunks)
+        need(os.read(fd,1)==b'' and stamp(first)==stamp(os.fstat(fd))==
+             stamp(os.stat(path.name,dir_fd=parentfd,follow_symlinks=False)) and
+             len(raw)==reference['bytes'] and hashlib.sha256(raw).hexdigest()==reference['sha256'],
+             'catalogue_race_event_DATA_changed')
+        for parent,component,child,identity in links:
+            need(directory_identity(os.fstat(child))==identity and
+                 directory_identity(os.stat(component,dir_fd=parent,follow_symlinks=False))==identity,
+                 'catalogue_race_event_DATA_parent_changed')
+        need(directory_identity(os.fstat(rootfd))==directory_identity(root_info) and
+             directory_identity(os.stat(path.anchor,follow_symlinks=False))==directory_identity(root_info) and
+             h._path(reference['path'])==path,'catalogue_race_event_DATA_path_changed')
+        return raw
+    finally:
+        if fd is not None:os.close(fd)
+        for directory in reversed(opened):os.close(directory)
+
+
 def _catalogue_race_external_progress(reference, recognition, proof, result, *, boundary_observation):
     """Reconcile only events observed in the accepted original same-txn read.
 
@@ -688,7 +745,9 @@ def _catalogue_race_external_progress(reference, recognition, proof, result, *, 
         need(receipt.get('manifest')==payload.get('manifest')==refs['manifest_ref']
              and receipt.get('report')==payload.get('report')==refs['report_ref'],
              'catalogue_race_external_evidence_descriptor_join')
-        h._bound(refs['manifest_ref']);report=h._document(refs['report_ref'])
+        _catalogue_race_event_evidence_data(refs['manifest_ref'])
+        report=h._decode(_catalogue_race_event_evidence_data(refs['report_ref']))
+        need(type(report)is dict,'catalogue_race_external_report_not_object')
         need(report.get('manifest')==refs['manifest_ref']and report.get('task_cid')==cid,
              'catalogue_race_independent_completion_report_join')
     return {'event_window':events,'task_changes':changes,'health_or_task_credit':False}
@@ -985,7 +1044,8 @@ def catalogue_race_native_owner_qualification(reference,owner):
          and durability['request_sha256']==accepted['request']['sha256']
          and durability['reservation_id']==record['reservation_id'],
          'Owner128 original OWNED concrete durability join required')
-    observed_files={str(path.relative_to(attempt)) for path in attempt.rglob('*') if path.is_file()}
+    observed_files={str(path.relative_to(attempt)) for path in _bounded_proof_walk(attempt,
+        max_entries=40002,max_directories=20001,max_pending=20001) if path.is_file()}
     need(observed_files=={row['path'] for row in durability['files']}|{'logs/validation-durability.json'},
          'Owner128 complete ordinary durable file population differs')
     need(record['attempt_directory'].get('path')==str(attempt)
@@ -1642,10 +1702,43 @@ def relocate(value, seed, root):
     return value
 
 
+def _bounded_proof_walk(root, *, max_entries, max_directories, max_pending):
+    """Bounded iterative replacement for the three proof rglob walks.
+
+    Each directory buffer is populated incrementally under finite limits, then
+    its iterator closes before yielding/descending. Read errors discard that
+    buffer, retaining Path.rglob's suppression without an unbounded list().
+    Each caller keeps its original symlink/hardlink, DATA permission, file/byte
+    and hash predicates. No directory-mtime snapshot, lock or write is added.
+    """
+    need(all(type(value)is int and value>0 for value in
+             (max_entries,max_directories,max_pending)),'proof_scan_bounds')
+    pending=[Path(root)];entries=0;directories=1
+    while pending:
+        directory=pending.pop();buffer=[];subdirectories=[]
+        try:
+            with os.scandir(directory) as iterator:
+                for child in iterator:
+                    entries+=1;need(entries<=max_entries,'proof_scan_entry_bound')
+                    path=directory/child.name
+                    try:info=child.stat(follow_symlinks=False)
+                    except OSError:info=None
+                    if info is not None and stat.S_ISDIR(info.st_mode):
+                        directories+=1
+                        need(directories<=max_directories,'proof_scan_directory_bound')
+                        need(len(pending)+len(subdirectories)<max_pending,'proof_scan_pending_bound')
+                        subdirectories.append(path)
+                    buffer.append(path)
+        except OSError:
+            continue
+        pending.extend(subdirectories)
+        yield from buffer
+
+
 def check_proof_budget(root, maximum, *, reserve_bytes=0, reserve_files=0):
     need(type(reserve_bytes)is int and reserve_bytes>=0 and type(reserve_files)is int and reserve_files>=0, 'proof_reserve_shape')
     total = count = 0
-    for path in root.rglob('*'):
+    for path in _bounded_proof_walk(root,max_entries=40000,max_directories=20000,max_pending=20000):
         info = path.lstat()
         need(not stat.S_ISLNK(info.st_mode), 'proof_symlink')
         if stat.S_ISDIR(info.st_mode):
@@ -2410,7 +2503,7 @@ def _generation_census(reference):
             expected[rel]=pin;total+=row['bytes']
             need(len(expected)<=22337 and total<=2*1024**3,'generation_retained_population_bound')
     observed=set();directories=[('.',stat.S_IMODE(root.lstat().st_mode))]
-    for path in root.rglob('*'):
+    for path in _bounded_proof_walk(root,max_entries=44674,max_directories=22337,max_pending=22337):
         info=path.lstat();need(not stat.S_ISLNK(info.st_mode),'generation_retained_symlink')
         if stat.S_ISDIR(info.st_mode):
             need(info.st_uid==os.geteuid() and not info.st_mode&0o022,'generation_retained_directory_identity')
