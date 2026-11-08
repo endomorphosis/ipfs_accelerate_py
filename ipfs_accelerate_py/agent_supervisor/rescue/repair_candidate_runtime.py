@@ -218,14 +218,100 @@ def parse_runtime_policy(worker: Mapping[str, Any], policy: candidate.CandidateP
                          _integer(value["checkout_timeout_seconds"], 30, "checkout wait"), retry)
 
 
-def candidate_runtime_preflight(config: Mapping[str, Any]) -> str | None:
+def _candidate_board_scope(config, board, policy, commands) -> str | None:
+    """Authenticate the enrolled board, without inferring it from fleet layout.
+
+    This is an admission fence for the supported initial-profile bootstrap.
+    It grants no epoch, candidate, scientific scope, or provider permission.
+    The original owner still authenticates every frozen candidate afterwards.
+    """
+    epoch = require_current_authorization(config, board)
+    if epoch is None:
+        return "repair_candidate_board_unbound"
+    expected = (board["id"], epoch.value["candidate_policy_sha256"])
+    coverages = []
+    for command in commands:
+        policies = set()
+        for argv in (command.argv, command.verify_argv):
+            _need(argv.count("--policy") == argv.count("--policy-sha256") == 1,
+                  "explicit pinned public owner policy required for board coverage")
+            index, hash_index = argv.index("--policy"), argv.index("--policy-sha256")
+            _need(index + 1 < len(argv) and hash_index + 1 < len(argv),
+                  "complete owner policy arguments required")
+            policies.add((argv[index + 1], argv[hash_index + 1]))
+        _need(len(policies) == 1, "owner and verifier policy differ")
+        path, sha = next(iter(policies))
+        refs = [ref for ref in command.source_descriptors if ref["path"] == path]
+        _need(len(refs) == 1 and refs[0]["sha256"] == sha,
+              "board owner policy is not source-pinned")
+        owner = _json(_checked(refs[0]))
+        _need(owner.get("schema") == "agent-supervisor/repair-public-owner-policy@2",
+              "unsupported owner board-coverage metadata")
+        anchor = _json(_checked(owner["adoption"]))
+        _need(anchor.get("schema") == "agent-supervisor/repair-initial-profile-bootstrap@1",
+              "explicit enrolled board coverage is unavailable")
+        projection = anchor["expected_config_projection"]
+        _need(type(projection) is dict, "closed bootstrap config projection required")
+        rows = projection["boards"]
+        _need(type(rows) is list and 0 < len(rows) <= 128
+              and all(type(row) is dict and type(row.get("id")) is str for row in rows)
+              and len({row["id"] for row in rows}) == len(rows),
+              "finite unique bootstrap board population required")
+        coverage = set()
+        for row in rows:
+            authorized = row.get("repair_authorization_epoch")
+            if authorized is None:
+                continue
+            _need(type(authorized) is dict
+                  and authorized.get("board_id") == row["id"]
+                  and type(authorized.get("candidate_policy_sha256")) is str
+                  and _SHA.fullmatch(authorized["candidate_policy_sha256"]) is not None,
+                  "explicit bootstrap board epoch required")
+            coverage.add((row["id"], authorized["candidate_policy_sha256"]))
+            if row["id"] == board["id"]:
+                _need(authorized == epoch.value
+                      and authorized["board_namespace"] == policy.namespace,
+                      "live board epoch differs from its immutable enrollment")
+        coverages.append(coverage)
+    # A fleet profile/unit name is deliberately not treated as board authority.
+    if not coverages or expected not in set.intersection(*coverages):
+        return "repair_candidate_board_unbound"
+    return None
+
+
+def candidate_board_scope_preflight(config: Mapping[str, Any], board: Mapping[str, Any]) -> str | None:
+    """Small read-only scope check before queue writes or coding admission.
+
+    Legacy configurations which do not claim a productive-candidate route keep
+    their previous behavior. Unknown coverage in an explicit route fails closed.
+    Full source/runtime preflight is still repeated immediately before launch.
+    """
+    worker = config["repair_worker"]
+    if not any(key in worker for key in ("candidate_policy", "candidate_runtime")):
+        return None
+    try:
+        policy = candidate.parse_candidate_policy(worker)
+        _need(policy is not None and policy.state_root == Path(config["state_dir"]),
+              "candidate scope policy differs from fleet state")
+        value = worker["candidate_runtime"]
+        commands = tuple(_owner(value[key], stage) for key, stage in
+                         (("validation_owner", "validation"), ("adoption_owner", "adoption")))
+        return _candidate_board_scope(config, board, policy, commands)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return "repair_candidate_board_scope_unavailable:" + type(error).__name__
+
+
+def candidate_runtime_preflight(config: Mapping[str, Any], *, board: Mapping[str, Any] | None = None) -> str | None:
     """Pure configuration/source preflight for the outer worker before coding charge."""
     try:
         policy = candidate.parse_candidate_policy(config["repair_worker"])
         if policy is None:
             return None
         _need(policy.state_root == Path(config["state_dir"]), "candidate protected state differs from fleet state")
-        parse_runtime_policy(config["repair_worker"], policy)
+        runtime = parse_runtime_policy(config["repair_worker"], policy)
+        if board is not None:
+            return _candidate_board_scope(config, board, policy,
+                (runtime.validation_owner, runtime.adoption_owner))
     except (OSError, ValueError, KeyError, TypeError) as error:
         return "repair_candidate_owner_unavailable:" + type(error).__name__
     return None
@@ -374,6 +460,9 @@ class CandidateRuntime:
         _need(self.policy is not None, "isolated candidate policy required")
         self.runtime_policy = parse_runtime_policy(config["repair_worker"], self.policy)
         _need(self.policy.state_root == Path(config["state_dir"]), "protected fleet state differs")
+        scope = _candidate_board_scope(config, board, self.policy,
+            (self.runtime_policy.validation_owner, self.runtime_policy.adoption_owner))
+        _need(scope is None, scope or "candidate board scope unavailable")
         _need(type(token) is str and _TOKEN.fullmatch(token) is not None, "exact attempt token required")
         _need(job_path == repair_job_directory(self.policy.state_root, board) / "job.json",
               "job does not belong to the original queue")

@@ -33,7 +33,9 @@ from .fleet_watchdog import (
 from .fleet_watchdog import repair_hold_paths as hold_paths
 from .recovery_policy import recovery_denial
 from .systemd_heartbeat import SystemdHeartbeat
-from .repair_authorization import repair_job_directory, require_current_authorization
+from .repair_authorization import (
+    RepairAuthorizationWait, repair_job_directory, require_current_authorization,
+)
 
 _SERVICE_HEARTBEAT = None
 CANDIDATE_PENDING = frozenset({"candidate_ready", "validation_pending", "adoption_pending",
@@ -676,6 +678,22 @@ def repair_launch_failed_immediately(job: dict[str, Any], now: float) -> bool:
     return 0 <= finished - started <= 60 and now >= finished + 300
 
 
+def _candidate_scope_denial(config: dict[str, Any], board: dict[str, Any]) -> dict[str, Any] | None:
+    """Keep an unbound productive board out of the queue/provider path."""
+    worker = config["repair_worker"]
+    if not any(key in worker for key in ("candidate_policy", "candidate_runtime")):
+        return None
+    try:
+        from .repair_candidate_runtime import candidate_board_scope_preflight
+        reason = candidate_board_scope_preflight(config, board)
+    except ImportError:
+        reason = "repair_candidate_runtime_unavailable"
+    if reason:
+        return {"status": "repair_scope_wait", "board_id": board["id"],
+                "reason": reason, "coding_attempts_incremented": False}
+    return None
+
+
 def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
     limits = _repair_limits(config)
     incident = read_json(incident_path)
@@ -697,6 +715,9 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
                 or not infrastructure_repair_allowed(board, observation, time.time())):
             return {"status": "policy_wait", "board_id": board_id,
                     "reason": "infrastructure_repair_not_authorized"}
+    scope_denial = _candidate_scope_denial(config, board)
+    if scope_denial:
+        return scope_denial
     epoch = require_current_authorization(config, board, incident=incident)
     directory = repair_job_directory(Path(config["state_dir"]), board)
     with lock(directory / "queue.lock") as acquired:
@@ -1354,6 +1375,8 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
         job = read_json(path)
         if job.get("status") not in {"queued", "running"}:
             continue
+        if _candidate_scope_denial(config, board):
+            continue  # An unbound board cannot starve independent admitted work.
         if (hold_paths(board) or board_is_complete(config, board["id"])
                 or board_wait_stall(config, board["id"])):
             continue
@@ -1383,6 +1406,11 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
     waiting, held, escalated, candidates = [], [], [], []
     for board in config["boards"]:
         job = read_json(_repair_job_path(config, board))
+        if job.get("status") in CANDIDATE_PENDING | {"queued", "running"}:
+            scope_denial = _candidate_scope_denial(config, board)
+            if scope_denial:
+                held.append(scope_denial)
+                continue
         if job.get("status") in CANDIDATE_PENDING:
             candidates.append({"board_id": board["id"], "status": job["status"],
                                "attempts": job.get("attempts"),
@@ -1731,7 +1759,7 @@ def candidate_dispatch_preflight(config: dict[str, Any], board: dict[str, Any]) 
         value = config.get("_config_path")
         if not isinstance(value, str) or not Path(value).is_absolute() or not Path(value).is_file():
             return "repair_candidate_config_path_required"
-        return candidate_runtime_preflight(config)
+        return candidate_runtime_preflight(config, board=board)
     except ImportError:
         return "repair_candidate_runtime_unavailable"
     except (OSError, ValueError, KeyError, TypeError):
@@ -1758,6 +1786,8 @@ def next_pending_candidate(config: dict[str, Any], now: float):
         due = job.get("candidate_next_resume_at", 0)
         if type(due) not in (int, float) or not math.isfinite(due) or due > now:
             continue
+        if _candidate_scope_denial(config, board):
+            continue  # Unbound pending work cannot monopolize the worker.
         # Constructor failures have no original frozen candidate to resume.
         if not _candidate_resume_ready(config, board, job):
             continue
@@ -1919,6 +1949,9 @@ def resume_pending_candidate(config: dict[str, Any], board: dict[str, Any], path
     if configured is None or observation_only(configured) or hold_paths(configured) or _recovery_denial(config, configured):
         return {"status": "candidate_recovery_wait", "board_id": board["id"]}
     board = configured
+    scope_denial = _candidate_scope_denial(config, board)
+    if scope_denial:
+        return scope_denial
     job = read_json(path)
     if next_pending_candidate({**config, "boards": [board]}, time.time()) != (board, path):
         return {"status": "candidate_recovery_wait", "board_id": board["id"]}
@@ -1992,6 +2025,10 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         board = configured
     limit = limits[board["id"]]  # A copied board cannot remove policy or its cap.
     policy = dict(config["repair_worker"])
+    if not hold_paths(board):
+        scope_denial = _candidate_scope_denial(config, configured)
+        if scope_denial:
+            return scope_denial
     if read_json(path).get("status") in CANDIDATE_PENDING:
         return resume_pending_candidate(config, board, path)
     if hold_paths(board):
@@ -2347,10 +2384,17 @@ def main(argv: list[str] | None = None) -> int:
                     result = queue_status(config, time.time())
                 write_json(root / "repair-worker.json", dict(result, observed_at=time.time()))
                 print(json.dumps(result), flush=True)
-                _heartbeat().notify_due()
+            except RepairAuthorizationWait as exc:
+                policy_wait = exc.policy_wait_result()
+                write_json(root / "repair-worker.json", dict(policy_wait, observed_at=time.time()))
+                print(json.dumps(policy_wait), flush=True)
             except Exception as exc:
                 write_json(root / "repair-worker.json", {"status": "error", "observed_at": time.time(),
                                                         "error": f"{type(exc).__name__}: {exc}"})
+            finally:
+                # A completed policy/error iteration is main-process liveness,
+                # never authorization, successful repair or a renewed deadline.
+                _heartbeat().notify_due()
             if args.once:
                 break
             stop.wait(30)

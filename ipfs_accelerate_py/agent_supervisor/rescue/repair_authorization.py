@@ -99,6 +99,25 @@ class AuthorizationEpoch:
     directory: Path
 
 
+class RepairAuthorizationWait(ValueError):
+    """Expected finite authorization boundary; observation grants no new work."""
+
+    def __init__(self, epoch: AuthorizationEpoch, *, reason: str):
+        super().__init__("repair epoch is not current")
+        self.reason = reason
+        self.board_id = epoch.value["board_id"]
+        self.epoch_id = epoch.value["epoch_id"]
+        self.not_before_observed_at = epoch.value["not_before_observed_at"]
+        self.expires_at = epoch.value["expires_at"]
+
+    def policy_wait_result(self) -> dict:
+        return {"status": "policy_wait", "board_id": self.board_id,
+                "reason": self.reason, "repair_epoch_id": self.epoch_id,
+                "not_before_observed_at": self.not_before_observed_at,
+                "expires_at": self.expires_at,
+                "coding_attempts_incremented": False}
+
+
 def parse_authorization_epoch(state_root: Path, board: dict) -> AuthorizationEpoch | None:
     value = board.get("repair_authorization_epoch")
     if value is None:
@@ -220,8 +239,12 @@ def require_current_authorization(config: dict, board: dict, *, incident=None,
         raise ValueError("original epoch attempts are invalid or exhausted")
     validate_source_successors(epoch, policy, existing_job.get("repair_source_successors", []), spent)
     current = time.time() if now is None else now
-    if type(current) not in (int, float) or not value["not_before_observed_at"] <= current < value["expires_at"]:
+    if type(current) not in (int, float) or not math.isfinite(current):
         raise ValueError("repair epoch is not current")
+    if not value["not_before_observed_at"] <= current < value["expires_at"]:
+        raise RepairAuthorizationWait(epoch, reason=(
+            "repair_authorization_expired" if current >= value["expires_at"]
+            else "repair_authorization_not_yet_valid"))
     prior = json_object(checked_descriptor(value["prior_job"]))
     if (prior.get("board_id") != board["id"] or prior.get("status") != "verified_healthy"
             or prior.get("escalation_reason") != "repair_budget_exhausted"
