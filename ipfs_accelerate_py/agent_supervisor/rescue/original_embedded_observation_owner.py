@@ -126,8 +126,8 @@ def validate_import_git_binding(c,*,actor_path=None):
     expected_tree=['ls-tree','-r','-z',capsule['source_head'],'--','ipfs_accelerate_py',
         'scripts/ops/agent_supervisor/configured_board_scheduler.py',
         'scripts/ops/agent_supervisor/implementation_supervisor_entry.py']
-    need(capsule['ls_tree_tail']==expected_tree and capsule['scope']==
-         'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies',
+    need(capsule['ls_tree_tail']==expected_tree and capsule['scope'] in
+         (ARCHIVED_IMPORT_SCOPE,READ_ONLY_IMPORT_SCOPE),
          'original immutable HEAD read scope required')
     blobs=capsule['blobs'];need(type(blobs)is list and 1<=len(blobs)<=2048,'finite original HEAD blob population required')
     required_sql={'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql'}

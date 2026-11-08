@@ -5,6 +5,7 @@ The enclosing original owner creates and closes every native/storage grant.
 """
 from __future__ import annotations
 import argparse
+from contextlib import nullcontext
 import hashlib
 import importlib
 import inspect
@@ -34,6 +35,8 @@ GUARD_SHA = '141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e'
 PLAN_FIELDS = frozenset({'schema','operation','accelerate_root','task_scope','native_metadata_cli'})
 CLI_FIELDS = frozenset({'schema','runtime_root','cwd','attempt_directory','temporary_directory',
     'project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git'})
+ARCHIVED_IMPORT_SCOPE = 'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies'
+READ_ONLY_IMPORT_SCOPE = 'read-only normal import checks clean HEAD/tree without archiving a control-plane capsule; implementation is forbidden'
 BINDING_FIELDS = frozenset({'schema','database_preimage','task_scope','plan_root_cid',
     'repository_tree_id','observer_source','source_schema'})
 
@@ -224,8 +227,8 @@ def validate_import_git_binding(c):
     expected_tree=['ls-tree','-r','-z',capsule['source_head'],'--','ipfs_accelerate_py',
         'scripts/ops/agent_supervisor/configured_board_scheduler.py',
         'scripts/ops/agent_supervisor/implementation_supervisor_entry.py']
-    need(capsule['ls_tree_tail']==expected_tree and capsule['scope']==
-         'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies',
+    need(capsule['ls_tree_tail']==expected_tree and capsule['scope'] in
+         (ARCHIVED_IMPORT_SCOPE,READ_ONLY_IMPORT_SCOPE),
          'original immutable HEAD read scope required')
     blobs=capsule['blobs'];need(type(blobs)is list and 1<=len(blobs)<=2048,'finite original HEAD blob population required')
     required_sql={'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0003_state_server_restart_identity.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0002_causal_event_federation_core.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0004_hash_observations.sql', 'ipfs_accelerate_py/agent_supervisor/task_sources/sql/0005_tasks_index_repair.sql'}
@@ -274,6 +277,10 @@ def authorize_native_control_popen(argv,args,kwargs,plan):
     prefix=['git','-c','core.quotepath=false','-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null']
     need(list(argv[:7])==prefix,'exact original import Git prefix required')
     tail=list(argv[7:]);batch=tail==['cat-file','--batch']
+    if capsule['scope']==READ_ONLY_IMPORT_SCOPE:
+        need(tail in [['rev-parse','--verify','HEAD^{commit}'],['rev-parse','--verify','HEAD^{tree}'],
+            ['rev-parse','--show-toplevel'],['status','--porcelain=v1','-z','--untracked-files=all']],
+            'read-only observation import does not archive HEAD blobs')
     environment={name:value for name,value in os.environ.items() if not name.startswith('GIT_')}
     environment.update(GIT_CONFIG_NOSYSTEM='1',GIT_CONFIG_GLOBAL='/dev/null',GIT_TERMINAL_PROMPT='0',
         GIT_NO_REPLACE_OBJECTS='1',GIT_OPTIONAL_LOCKS='0',GIT_NO_LAZY_FETCH='1',LC_ALL='C',LANG='C')
@@ -326,6 +333,23 @@ def require_original_import_capability(daemon,c):
     route,_=module_owner('ipfs_accelerate_py.agent_implementation_route',
         'ipfs_accelerate_py/agent_implementation_route.py',c)
     binding=validate_import_git_binding(c)
+    if binding['scope']==READ_ONLY_IMPORT_SCOPE:
+        getter=route.current_agent_implementation_read_only_import_scope
+        need(type(getter)is types.FunctionType and getter.__globals__ is route.__dict__
+             and getter.__code__.co_filename==str(RUNTIME/'ipfs_accelerate_py/agent_implementation_route.py'),
+             'original process-local read-only import scope required')
+        scope=getter();witness=getattr(daemon,'_IMPORTED_READ_ONLY_CONTROL_PLANE',None)
+        need(type(scope)is route.AgentImplementationReadOnlyImportScope
+             and scope.source_root==RUNTIME and scope.source_head==binding['source_head']
+             and getattr(daemon,'_IMPORTED_READ_ONLY_CONTROL_PLANE_IMPORT',None) is True
+             and type(witness)is dict and set(witness)=={'schema','source_root','source_head','source_tree'}
+             and witness['schema']=='agent-implementation-read-only-import@1'
+             and witness['source_root']==str(RUNTIME) and witness['source_head']==binding['source_head']
+             and type(witness['source_tree'])is str and re.fullmatch(r'[0-9a-f]{40}',witness['source_tree'])
+             and all(getattr(daemon,key,'absent') is None for key in (
+                 '_IMPORTED_CONTROL_PLANE_CAPSULE','_IMPORTED_CONTROL_PLANE_LAUNCH','_IMPORTED_CONTROL_PLANE_TEMP_ROOT')),
+             'genuine current read-only normal import without a capsule required')
+        return dict(witness)
     capsule=getattr(daemon,'_IMPORTED_CONTROL_PLANE_CAPSULE',None)
     launch=getattr(daemon,'_IMPORTED_CONTROL_PLANE_LAUNCH',None)
     need(type(capsule)is route.AgentImplementationControlPlanePin
@@ -339,6 +363,25 @@ def require_original_import_capability(daemon,c):
          and verify.__code__.co_filename==str(RUNTIME/'ipfs_accelerate_py/agent_implementation_route.py')
          and verify(capsule,launch.descriptor)==launch.executable_path,
          'original sealed control-plane verifier did not confirm current capability')
+
+
+
+def import_original_daemon(c):
+    """Use a process-local restriction before the normal source-guarded import."""
+    binding=validate_import_git_binding(c)
+    if binding['scope']==READ_ONLY_IMPORT_SCOPE:
+        importlib.import_module('ipfs_accelerate_py.agent_implementation_route')
+        route,_=module_owner('ipfs_accelerate_py.agent_implementation_route',
+            'ipfs_accelerate_py/agent_implementation_route.py',c)
+        context=route.agent_implementation_read_only_import_scope(
+            source_root=RUNTIME,source_head=binding['source_head'])
+    else:
+        context=nullcontext()
+    with context:
+        daemon=importlib.import_module(CLI_MODULE)
+        module_owner(CLI_MODULE,RUNNER_REL,c)
+        witness=require_original_import_capability(daemon,c)
+    return daemon,witness
 
 
 def authorize_native_control_fd_event(event,args,plan):
@@ -386,16 +429,18 @@ def main():
     source=daemon=None
     try:
         retained=capsule_reuse_binding(c)
-        if retained is None:
-            daemon_module=importlib.import_module(CLI_MODULE)
-        else:
+        if retained is not None:
             route=importlib.import_module('ipfs_accelerate_py.agent_implementation_route')
             module_owner('ipfs_accelerate_py.agent_implementation_route','ipfs_accelerate_py/agent_implementation_route.py',c)
             accepted=route.AgentImplementationControlPlanePin(**retained['accepted_pin'])
             with route.agent_implementation_control_plane_capture_context(source_root=RUNTIME,accepted_pin=accepted):
                 daemon_module=importlib.import_module(CLI_MODULE)
-        module_owner(CLI_MODULE,RUNNER_REL,c)
-        require_original_import_capability(daemon_module,c)
+            module_owner(CLI_MODULE,RUNNER_REL,c)
+            require_original_import_capability(daemon_module,c)
+        else:
+            daemon_module,import_witness=import_original_daemon(c)
+            if import_witness is not None:
+                save(attempt/'exports/native-cli-read-only-import-witness.json',import_witness)
         helper=importlib.import_module(HELPER_MODULE);module_owner(HELPER_MODULE,HELPER_REL,c)
         source_module=importlib.import_module(SOURCE_MODULE);module_owner(SOURCE_MODULE,SOURCE_REL,c)
         binding=c['observation_binding']

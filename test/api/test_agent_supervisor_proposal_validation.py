@@ -585,6 +585,161 @@ def test_declared_validation_config_authority_allows_additions_only() -> None:
     )
 
 
+def test_removing_continue_on_error_true_is_not_validation_weakening() -> None:
+    before = (
+        "jobs:\n"
+        "  build:\n"
+        "    steps:\n"
+        "      - name: Type check\n"
+        "        run: npx tsc --noEmit\n"
+        "        continue-on-error: true\n"
+        "      - name: Build\n"
+        "        run: npm run build\n"
+    )
+    policy = _policy(
+        allowed_paths=(".github/workflows/",),
+        task_owned_paths=(".github/workflows/",),
+        allow_validation_config_changes=True,
+    )
+    strengthened = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                ".github/workflows/deploy.yml",
+                before=before,
+                after=before.replace("        continue-on-error: true\n", "")
+                + "      - name: Unit tests\n        run: npm test -- --runInBand\n",
+            )
+        ),
+        policy=policy,
+    )
+    swapped = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                ".github/workflows/deploy.yml",
+                before=before,
+                after=before.replace(
+                    "continue-on-error: true", "continue-on-error: false"
+                ),
+            )
+        ),
+        policy=policy,
+    )
+    dropped_gate = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                ".github/workflows/deploy.yml",
+                before=before,
+                after=before.replace("        run: npx tsc --noEmit\n", ""),
+            )
+        ),
+        policy=policy,
+    )
+
+    assert strengthened.accepted
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(swapped)
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        dropped_gate
+    )
+
+
+def test_workflow_command_preservation_allows_non_additive_strengthening() -> None:
+    before = (
+        "name: Deploy\n"
+        "jobs:\n"
+        "  build:\n"
+        "    steps:\n"
+        "      - name: Type check\n"
+        "        run: npx tsc --noEmit\n"
+        "      - name: Unit\n"
+        "        run: npm test -- --runInBand\n"
+        "      - uses: actions/checkout@v4\n"
+        "  deploy:\n"
+        "    needs: build\n"
+        "    steps:\n"
+        "      - run: npm run build\n"
+    )
+    after = (
+        "name: Deploy\n"
+        "# preview evidence binds the commit\n"
+        "jobs:\n"
+        "  build:\n"
+        "    steps:\n"
+        "      - name: Release audit\n"
+        "        run: node scripts/worldwide/audit.mjs release-candidate\n"
+        "      - name: Typecheck\n"
+        "        run: npx tsc --noEmit --pretty false --incremental false\n"
+        "      - name: Unit\n"
+        "        run: npm test -- --runInBand\n"
+        "      - uses: actions/checkout@v4\n"
+        "  deploy:\n"
+        "    if: success()\n"
+        "    steps:\n"
+        "      - run: npm run build\n"
+        "      - name: Static contract\n"
+        "        run: |\n"
+        "          node --input-type=module << 'EOF'\n"
+        "          console.log('ok')\n"
+        "          EOF\n"
+        "    needs: build\n"
+    )
+    policy = _policy(
+        allowed_paths=(".github/workflows/", "pyproject.toml"),
+        task_owned_paths=(".github/workflows/", "pyproject.toml"),
+        allow_validation_config_changes=True,
+    )
+    preserved = validate_implementation_proposal(
+        _proposal(
+            _entry(".github/workflows/deploy.yml", before=before, after=after)
+        ),
+        policy=policy,
+    )
+    swallowed = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                ".github/workflows/deploy.yml",
+                before=before,
+                after=before.replace(
+                    "run: npm test -- --runInBand",
+                    "run: npm test -- --runInBand || true",
+                ),
+            )
+        ),
+        policy=policy,
+    )
+    shortened = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                ".github/workflows/deploy.yml",
+                before=before,
+                after=before.replace("run: npx tsc --noEmit", "run: npx tsc"),
+            )
+        ),
+        policy=policy,
+    )
+    pyproject_before = "[project]\nname = 'fixture'\n"
+    reordered = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                "pyproject.toml",
+                before=pyproject_before,
+                after="name = 'fixture'\n[project]\n",
+            )
+        ),
+        policy=policy,
+    )
+
+    assert preserved.accepted
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        swallowed
+    )
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        shortened
+    )
+    assert ProposalFindingCode.VALIDATION_WEAKENING_FORBIDDEN in _finding_codes(
+        reordered
+    )
+
+
 def test_task_owned_workflow_add_is_admitted_without_global_config_flag() -> None:
     path = ".github/workflows/mcplusplus-1.0-gap-closure.yml"
     policy = _policy(

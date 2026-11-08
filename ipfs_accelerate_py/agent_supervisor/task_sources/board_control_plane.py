@@ -26,6 +26,7 @@ import json
 import math
 import os
 import re
+import stat
 import subprocess
 import time
 from collections.abc import Mapping, Sequence
@@ -410,6 +411,62 @@ def agent_supervisor_home() -> Path:
 
 
 _LEGACY_PLATFORM_ADOPTED = False
+MANAGED_STATE_ROOT_MARKER: Final = ".agent-supervisor-managed-state.json"
+MANAGED_STATE_ROOT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/managed-state-root@1"
+
+
+def is_managed_state_root(root: Path | str) -> bool:
+    """Recognize an explicit owned custody boundary, never a name heuristic."""
+    directory = Path(root).resolve()
+    marker = directory / MANAGED_STATE_ROOT_MARKER
+    try:
+        if directory.stat().st_uid != os.getuid():
+            return False
+        descriptor = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1 or before.st_mode & 0o022 or before.st_size > 4096:
+                return False
+            value = json.loads(stream.read(4097))
+            after = os.fstat(stream.fileno())
+        return (
+            (before.st_ino, before.st_size, before.st_mtime_ns) == (after.st_ino, after.st_size, after.st_mtime_ns)
+            and isinstance(value, dict) and value.get("schema") == MANAGED_STATE_ROOT_SCHEMA
+            and value.get("root_path") == str(directory) and value.get("owner_uid") == os.getuid()
+            and isinstance(value.get("owner_id"), str) and bool(value["owner_id"].strip())
+        )
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def register_managed_state_root(root: Path | str, *, owner_id: str) -> Path:
+    """Declare explicit state custody before native databases are created.
+
+    A valid marker excludes exactly this directory and descendants from the
+    legacy relocation scanner. Existing different or malformed declarations
+    are never overwritten; this is not a global migration-disable switch.
+    """
+    if not isinstance(owner_id, str) or not owner_id.strip() or len(owner_id) > 256:
+        raise BoardControlPlaneError("managed state owner identity is invalid")
+    directory = Path(root).expanduser().absolute()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if directory.resolve() != directory or directory.stat().st_uid != os.getuid():
+        raise BoardControlPlaneError("managed state root ownership or path is unsafe")
+    marker = directory / MANAGED_STATE_ROOT_MARKER
+    payload = {"schema": MANAGED_STATE_ROOT_SCHEMA, "root_path": str(directory), "owner_uid": os.getuid(), "owner_id": owner_id}
+    try:
+        descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        if not is_managed_state_root(directory):
+            raise BoardControlPlaneError("existing managed state marker is invalid")
+        if json.loads(marker.read_text())["owner_id"] != owner_id:
+            raise BoardControlPlaneError("managed state root belongs to another owner")
+        return marker
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        stream.write(_canonical_json(payload) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    return marker
 
 
 def adopt_legacy_platform_databases() -> int:
@@ -417,7 +474,8 @@ def adopt_legacy_platform_databases() -> int:
 
     The destination keeps the relative path under
     ``<agent_supervisor_home>/legacy-platform-state``. Locked files and the
-    extra-gate ``control.duckdb`` owner stay where they are. The scan runs
+    extra-gate ``control.duckdb`` owner and explicitly registered managed
+    state subtrees stay where they are. The scan runs
     once per process.
     """
 
@@ -435,13 +493,16 @@ def adopt_legacy_platform_databases() -> int:
         if not legacy_root.is_dir():
             continue
         for directory, dirnames, filenames in os.walk(legacy_root):
+            current = Path(directory)
+            if is_managed_state_root(current):
+                dirnames[:] = []
+                continue
             dirnames[:] = [
                 name
                 for name in dirnames
                 if name not in {".git", "node_modules", "__pycache__"}
                 and name != "sidecar-quarantine"
             ]
-            current = Path(directory)
             for name in filenames:
                 if not name.endswith(".duckdb"):
                     continue

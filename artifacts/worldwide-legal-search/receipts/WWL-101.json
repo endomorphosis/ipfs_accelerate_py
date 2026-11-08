@@ -1,0 +1,54 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-101",
+  "title": "Bind bounded deterministic recovery and lifecycle ownership",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G090",
+  "subgoal_id": "WWL-G090.S1",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_recovery",
+  "depends_on": ["WWL-100"],
+  "recovery_contract": [
+    "pid birth is taken from the process probe and a reused pid is not the same worker",
+    "process generation and lease generation must both match the durable lifecycle",
+    "a stale claim is released without disturbing a live owner",
+    "a dead worker is fenced and its generation advances only when effects are known",
+    "an idle runnable queue wakes only after its deadline and does not mask a dead worker",
+    "unknown effects stay unknown and block requeue and rebind",
+    "holds and deadlines admit no lifecycle mutation",
+    "the durable recover budget is the campaign limit of 2 and a checkpoint cannot refund it"
+  ],
+  "recover_limit": 2,
+  "hold_markers": ["HOLD", "STOP", "OPERATOR_STOP"],
+  "effect_statuses": ["unknown", "known_none", "applied"],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_recovery.py",
+    "test/api/test_worldwide_legal_search_recovery.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-101.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_recovery.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_recovery.py", "-q"],
+    "result": "11 passed",
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "Recovery decides lifecycle ownership. It does not signal processes, start systemd units, call a provider, or write native task status.",
+    "An unknown effect stays unknown. Recovery will not mark it applied, requeue its task, or bind a replacement worker over that generation.",
+    "The recover budget is DEFAULT_LIMITS['recover'] from the WWL-100 progress ledger, which is 2. A bound ledger with any other recover limit is refused. Noise, retries, and checkpoints do not refund a spent incident.",
+    "A hold or a deadline that has already arrived records the refusal and leaves generations, claims, effects, and the runnable queue unchanged.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The recovery suite was executed with the workspace virtualenv that provides pytest 9.1.1.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}

@@ -43,6 +43,7 @@ _SHELL_META = set(";|&$`<>\n")
 _COMPLETABLE_STATUSES = frozenset({"pending", "ready", "in_progress"})
 _ATTEMPT_LIMIT = 3
 _GATE_WITHHELD_EXIT = 75
+_UNJUDGED_NATIVE_EXIT = 76
 _RESOURCE_RETRY_LIMIT = 6
 _RESOURCE_RETRY_BASE_MS = 30_000
 _EXHAUSTED_RETRY_MS = 900_000
@@ -338,6 +339,13 @@ def _finish_execution_progress(
                         resource_refusals=int(progress.get("resource_refusals") or 0) + 1)
     elif code == _GATE_WITHHELD_EXIT:
         progress.update(state="gate_withheld", gate_refusals=int(progress.get("gate_refusals") or 0) + 1)
+    elif code == _UNJUDGED_NATIVE_EXIT:
+        # A sealed call that did not finish is not a judged proof failure.
+        # Leave the task unresolved and keep the semantic budget open.
+        progress.update(state="unjudged_native", semantic_failures=0,
+                        unresolved_prior_failure=True,
+                        unresolved_prior_failure_reason="unjudged_native_not_a_semantic_failure")
+        progress.pop("escalated", None)
     elif code:
         progress.update(state="failed", semantic_failures=int(progress.get("semantic_failures") or 0) + 1,
                         unresolved_prior_failure=True,
@@ -576,6 +584,10 @@ def _command_contract(
         payload["retry_on_changed_evidence"] = str(fields["retry_on_changed_evidence"])
     if str(fields.get("semantic_failure_limit") or "").strip():
         payload["semantic_failure_limit"] = semantic_failure_limit(fields)
+    if str(fields.get("retry_unjudged_native") or "").strip():
+        # Preserve contracts that never opted in. The field is part of the
+        # contract only when the task declares it.
+        payload["retry_unjudged_native"] = str(fields["retry_unjudged_native"])
     execution_inputs = str(fields.get("execution_inputs") or "").strip()
     if execution_inputs:
         # Absent/blank declarations must retain legacy fingerprints and retry
@@ -667,7 +679,7 @@ def _attempt_backoff_ids(
     for item in skipped:
         text = str(item)
         task_id, separator, reason = text.partition(":")
-        if not separator or reason != "attempts_exhausted" or not task_id:
+        if not separator or reason not in {"attempts_exhausted", "unjudged_native_backoff"} or not task_id:
             return []
         try:
             due = int(retry_after.get(task_id, 0) or 0)
@@ -1492,6 +1504,16 @@ def semantic_failure_limit(fields: Mapping[str, str]) -> int:
     return limit
 
 
+def _retry_unjudged_native(fields: Mapping[str, str]) -> bool:
+    """True when an unjudged native result may run the producer again.
+
+    Exit 76 is not a semantic failure and not an admission lock. Tasks that
+    do not opt in keep the validation-only retry used for exit 75.
+    """
+
+    return str(fields.get("retry_unjudged_native") or "").casefold() == "true"
+
+
 def _recovery_protected_scripts(command: Sequence[str], validation: Sequence[str] | None,
                                 recovery: Sequence[str], *, repo_root: Path) -> dict[str, str | None]:
     result = {}
@@ -1683,6 +1705,28 @@ def _transient_resource_refusal(log_path: Path, start: int, task_id: str) -> str
     # The child's write may fail even though the parent successfully opened its
     # log earlier. This reports our actual measurement, not a fabricated errno.
     return measured_pressure()
+
+
+def _surface_gate_wait(waits: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Report the gate that was probed, not a higher-priority task that only cooled down.
+
+    A cooldown record stays in the wait list so its backpressure remains visible.
+    The lane status follows the first fresh probe. When every selected task is
+    cooling, it follows the earliest retry. A single cooling task is unchanged.
+    """
+
+    fresh = [item for item in waits if not item.get("cooldown_only")]
+    chosen_source = fresh[0] if fresh else min(
+        waits, key=lambda item: int(item.get("next_retry_at_ms") or 0))
+    chosen = dict(chosen_source)
+    chosen.pop("cooldown_only", None)
+    reasons: list[str] = []
+    for item in waits:
+        for reason in item.get("backpressure_reasons") or []:
+            if reason not in reasons:
+                reasons.append(reason)
+    chosen["backpressure_reasons"] = reasons
+    return chosen
 
 
 def run_resume_cycle(
@@ -2276,12 +2320,14 @@ def run_resume_cycle(
                 "repair_packet": str(packet) if packet.is_file() else "",
                 "next_retry_at_ms": int(gate_record["next_retry_at_ms"]),
                 "busy": False, "work_complete": False, "completion_authority": False,
+                "cooldown_only": True,
             })
             continue
         # Some explicitly registered tasks expose a cheap external resource
         # guard as declared evidence. A changed guard must admit the producer
         # again: its validator cannot manufacture the missing execution.
         # Default lanes keep their existing validation-only retry policy.
+        unjudged_retry = False
         if same_source and validation is not None and not retry_changed_evidence:
             # A producer that already refused has evidence to inspect. Re-run
             # its acceptance check cheaply before another expensive capture,
@@ -2303,7 +2349,15 @@ def run_resume_cycle(
             held = hold_result()
             if held:
                 return held
-            if validation_code != 0:
+            if validation_code == _UNJUDGED_NATIVE_EXIT and _retry_unjudged_native(fields):
+                # The sealed call did not judge the draft. Retry the producer
+                # after the exhausted-attempt backoff, and do not record this
+                # as an admission fixed point.
+                if int(retry_after.get(task_id) or 0) > now_ms:
+                    skipped.append(f"{task_id}:unjudged_native_backoff")
+                    continue
+                unjudged_retry = True
+            elif validation_code != 0:
                 gate_waits.append(gate_result(
                     task_id, fields, command, validation,
                     probe_only=True, validation_exit_code=validation_code,
@@ -2334,8 +2388,10 @@ def run_resume_cycle(
                 with open_command_log(log_path, f"retry rearmed {task_id}: command contract changed\n"):
                     pass
         progress = (fixed_points.get(task_id) or {}).get("execution_progress") or {}
-        if (recovery_blocked or (progress.get("contract") == _command_contract(fields, command, validation, repo_root=repo_root)
-                and int(progress.get("semantic_failures") or 0) >= failure_limit)):
+        unjudged_progress = (progress.get("state") == "unjudged_native"
+                             or progress.get("last_exit_code") == _UNJUDGED_NATIVE_EXIT)
+        if (not unjudged_retry and not unjudged_progress and (recovery_blocked or (progress.get("contract") == _command_contract(fields, command, validation, repo_root=repo_root)
+                and int(progress.get("semantic_failures") or 0) >= failure_limit))):
             # A successful producer must not run again merely because the
             # old implicit 300s validator ceiling cut off its acceptance. Admit
             # one durable validation-only review under the explicit task cap.
@@ -2386,6 +2442,14 @@ def run_resume_cycle(
             )
         ):
             skipped.append(f"{task_id}:attempts_exhausted")
+            continue
+        if (
+            _retry_unjudged_native(fields)
+            and not unjudged_retry
+            and int(retry_after.get(task_id) or 0) > now_ms
+            and unjudged_progress
+        ):
+            skipped.append(f"{task_id}:unjudged_native_backoff")
             continue
         timeout = _task_timeout(fields)
         if exhausted or missing_module_repair_pending(
@@ -2528,6 +2592,25 @@ def run_resume_cycle(
                                        contract=_command_contract(fields, command, validation, repo_root=repo_root),
                                        now_ms=int(time.time() * 1000))
             save_attempts()
+            if validation_code == _UNJUDGED_NATIVE_EXIT and _retry_unjudged_native(fields):
+                retry_after[task_id] = int(time.time() * 1000) + _EXHAUSTED_RETRY_MS
+                save_attempts()
+                return {
+                    "state": "degraded",
+                    "phase": "unjudged_native_wait",
+                    "active_task_id": task_id,
+                    "terminal_reason": "",
+                    "backpressure_reasons": [f"{task_id}:unjudged_native_backoff"],
+                    "next_retry_at_ms": retry_after[task_id],
+                    "busy": False,
+                    "work_complete": False,
+                    "completion_authority": False,
+                }
+            if validation_code == _UNJUDGED_NATIVE_EXIT:
+                gate_waits.append(gate_result(
+                    task_id, fields, command, validation, validation_exit_code=validation_code,
+                ))
+                continue
             if validation_code == _GATE_WITHHELD_EXIT:
                 gate_waits.append(gate_result(task_id, fields, command, validation))
                 continue
@@ -2665,7 +2748,7 @@ def run_resume_cycle(
             "completion_authority": False,
         }
     if gate_waits and len(gate_waits) == len(selected):
-        return gate_waits[0]
+        return _surface_gate_wait(gate_waits)
     if allow_bounded_implement:
         for task_id in selected:
             if task_id in invalid_validators:
@@ -2959,7 +3042,7 @@ def run_resume_cycle(
                 "terminal_reason": "unchanged_semantic_failure_budget_exhausted", "backpressure_reasons": skipped[:32],
                 "busy": False, "work_complete": False, "completion_authority": False}
     if gate_waits:
-        return gate_waits[0]
+        return _surface_gate_wait(gate_waits)
     return {
         "state": "blocked",
         "phase": "deterministic_resume_unavailable",

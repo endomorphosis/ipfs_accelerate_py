@@ -162,7 +162,8 @@ def observe_bridge_failure(failure, callback, *, phase):
     truncated = truncated or isinstance(current, BaseException)
     callback = callback if type(callback) is dict else {}
     native = callback.get("native_exit")
-    native = native if type(native) is dict and native.get("schema") == "database-native-provider-exit@1" else None
+    native = native if type(native) is dict and native.get("schema") in {
+        "database-native-provider-exit@1", "database-native-provider-exit@2"} else None
     result = getattr(failure, "result", None)
     implementation = result.get("implementation") if type(result) is dict else None
     child = implementation.get("child_reported_router_failure") if type(implementation) is dict else None

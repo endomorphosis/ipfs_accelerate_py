@@ -378,3 +378,205 @@ def test_normal_external_import_resolution_failure_is_permanent(tmp_path, monkey
             worker.need(not guard.denials, "caught origin failure remains a permanent denial")
     finally:
         sys.modules.pop(name, None)
+
+
+@pytest.fixture
+def productive_installer():
+    # Normal maintained-module import; the qualification must declare its real
+    # source and package origins. This does not import an operator workspace.
+    from scripts.ops.agent_supervisor import install_fleet_watchdog
+    return install_fleet_watchdog
+
+
+def dual_profile_fixture(selected="legal-ir", reverse=False):
+    engineering = {"id": "legal-ir", "max_repair_attempts": 3,
+        "hold_files": ["/unchanged/engineering/HOLD"],
+        "recovery_policy": {"max_actions_per_window": 3, "window_seconds": 86400},
+        "service_fleet_binding": {"board_namespace": "legal-ir-autoencoder-v1"},
+        "retained_history": {"unknown": True, "attempts": 3}}
+    scientific = {"id": "legal-ir-scientific", "max_repair_attempts": 3,
+        "hold_files": ["/unchanged/science/OPERATOR_STOP"],
+        "native_catalogue_binding": {"board_namespace": "legal-ir-span-graph-lean-refinement-20261016",
+            "population_sha256": "c" * 64},
+        "retained_history": {"unknown": True, "automatic_retry": False}}
+    boards = [engineering, scientific]
+    if reverse:
+        boards.reverse()
+    old = {"schema": "agent-supervisor/fleet-watchdog-config@1", "state_dir": "/private/fleet-state",
+        "boards": boards, "runtime_release": "/private/old-release", "poll_seconds": 60,
+        "repair_worker": {"job_unit": "private-existing-job.service", "timeout_seconds": 2400,
+            "implementation_route": {"primary_model_id": "grok-4.7", "fallback_trigger": "primary_quota_exhausted"}}}
+    contract = {"prior_job": {"path": "/private/fleet-state/repairs/" + selected + "/job.json"}}
+    bindings = {"candidate_policy": {"namespace": "private_fixture", "allowed_paths": ["subject.py"]},
+        "candidate_runtime": {"private_fixture_only": True},
+        "authorization_epoch": {"board_id": selected, "max_attempts": 3, "epoch_id": "explicit-new-epoch"},
+        "source_snapshot": {"private_fixture_only": True}}
+    return old, contract, bindings
+
+
+@pytest.mark.parametrize("selected", ["legal-ir", "legal-ir-scientific"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_initial_repair_bindings_preserve_both_namespaces_and_spent_history(productive_installer, selected, reverse):
+    installer = productive_installer
+    old, contract, bindings = dual_profile_fixture(selected, reverse)
+    before = auth.canonical(old)
+    board_id = installer._repair_upgrade_board_id(old, contract, bindings)
+    observed = installer._repair_initial_configuration(old, board_id, bindings)
+    expected = json.loads(before)
+    expected["repair_worker"]["candidate_policy"] = bindings["candidate_policy"]
+    expected["repair_worker"]["candidate_runtime"] = bindings["candidate_runtime"]
+    next(board for board in expected["boards"] if board["id"] == selected)["repair_authorization_epoch"] = bindings["authorization_epoch"]
+    assert auth.canonical(observed) == auth.canonical(expected)
+    assert auth.canonical(old) == before
+    untouched = "legal-ir-scientific" if selected == "legal-ir" else "legal-ir"
+    assert installer.encoded_json(next(b for b in observed["boards"] if b["id"] == untouched)) == installer.encoded_json(next(b for b in old["boards"] if b["id"] == untouched))
+    assert next(b for b in observed["boards"] if b["id"] == "legal-ir")["retained_history"]["attempts"] == 3
+    bindings["candidate_policy"]["allowed_paths"].append("must-not-leak.py")
+    assert observed["repair_worker"]["candidate_policy"]["allowed_paths"] == ["subject.py"]
+
+
+@pytest.mark.parametrize("failure", ["duplicate", "foreign", "missing_selected", "foreign_prior", "state_escape", "crossed_epoch", "boolean_id"])
+def test_repair_upgrade_refuses_ambiguous_or_crossed_board_selection(productive_installer, failure):
+    old, contract, bindings = dual_profile_fixture()
+    if failure == "duplicate":
+        old["boards"][1] = dict(old["boards"][0])
+    elif failure == "foreign":
+        old["boards"][1]["id"] = "unprovided-board"
+    elif failure == "missing_selected":
+        old["boards"] = [old["boards"][1]]
+    elif failure == "foreign_prior":
+        contract["prior_job"]["path"] = "/private/fleet-state/repairs/foreign/job.json"
+    elif failure == "state_escape":
+        contract["prior_job"]["path"] = "/private/other-state/repairs/legal-ir/job.json"
+    elif failure == "crossed_epoch":
+        bindings["authorization_epoch"]["board_id"] = "legal-ir-scientific"
+    else:
+        old["boards"][0]["id"] = True
+    before = auth.canonical(old)
+    with pytest.raises(ValueError):
+        productive_installer._repair_upgrade_board_id(old, contract, bindings)
+    assert auth.canonical(old) == before
+
+
+@pytest.mark.parametrize("failure", ["policy", "runtime", "selected_epoch"])
+def test_initial_repair_bindings_do_not_replace_existing_authority(productive_installer, failure):
+    old, contract, bindings = dual_profile_fixture()
+    if failure == "policy":
+        old["repair_worker"]["candidate_policy"] = {"existing": True}
+    elif failure == "runtime":
+        old["repair_worker"]["candidate_runtime"] = {"existing": True}
+    else:
+        old["boards"][0]["repair_authorization_epoch"] = {"existing": True}
+    before = auth.canonical(old)
+    with pytest.raises(ValueError):
+        productive_installer._repair_initial_configuration(old, "legal-ir", bindings)
+    assert auth.canonical(old) == before
+
+
+def test_legacy_single_board_selection_remains_supported(productive_installer):
+    old, contract, bindings = dual_profile_fixture()
+    old["boards"] = old["boards"][:1]
+    assert productive_installer._repair_upgrade_board_id(old, contract, bindings) == "legal-ir"
+    result = productive_installer._repair_initial_configuration(old, "legal-ir", bindings)
+    assert len(result["boards"]) == 1 and old["boards"][0].get("repair_authorization_epoch") is None
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_source_upgrade_board_selection_does_not_mutate_any_namespace(productive_installer, reverse):
+    old, contract, _ = dual_profile_fixture(reverse=reverse)
+    before = auth.canonical(old)
+    assert productive_installer._repair_upgrade_board_id(old, contract, None) == "legal-ir"
+    assert auth.canonical(old) == before
+
+
+# These real private files exercise publication/path parsing only. They do not
+# execute Git, the native owner, a provider, or an isolated coding attempt.
+def _registry_scope(tmp_path, namespace="ptr_lane_3"):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate as candidate
+    source = tmp_path / "candidate-source"; source.mkdir()
+    state = tmp_path / "candidate-state"; state.mkdir()
+    subject = source / "subject.py"; subject.write_text("private_parser_fixture = True\n")
+    candidate_value = {"schema": candidate.POLICY_SCHEMA,
+        "repository_root": str(source), "state_root": str(state), "namespace": namespace,
+        "base_commit": "a" * 40, "source_paths": ["subject.py"], "allowed_paths": ["subject.py"],
+        "max_source_bytes": 1024, "max_candidate_bytes": 4096, "max_files": 4, "git_timeout_seconds": 10}
+    parsed = candidate.parse_candidate_policy({"candidate_policy": candidate_value})
+    trusted = tmp_path / "trusted.py"; trusted.write_text("# Private trusted source descriptor fixture.\n")
+    trusted_pin = owners.descriptor(trusted)
+    policy = {"source_descriptors": [], "validation": {
+        "attempt_root": str(state / "validation"), "trusted_tests": [trusted_pin],
+        "pytest_module": trusted_pin, "import_sources": [],
+        "selected_checks": [str(trusted) + "::private_parser_fixture"]}}
+    frozen = {"binding": {"namespace": parsed.namespace, "board_id": "legal-ir",
+        "attempt_id": "c" * 32, "candidate_root": str(source)},
+        "source_commitment": "d" * 64,
+        "manifest": {"subject.py": {k: v for k, v in owners.descriptor(subject).items() if k != "path"}},
+        "changed_paths": ["subject.py"]}
+    frozen["manifest"]["subject.py"]["executable"] = False
+    invocation = tmp_path / "invocation"; invocation.mkdir()
+    policy_pin = put(tmp_path / "owner-policy.json", policy)
+    freeze_pin = put(tmp_path / "candidate-ready.json", frozen)
+    return parsed, policy, policy_pin, frozen, freeze_pin, source, invocation
+
+
+@pytest.mark.parametrize("namespace", ["ptr_lane_0", "ptr_lane_3", "ptr_lane_" + "1" * 55],
+    ids=["lane-zero", "actual-lane-three", "maximum-canonical-lane"])
+def test_public_registry_accepts_actual_candidate_policy_lane_without_rewriting_it(tmp_path, namespace):
+    parsed, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path, namespace)
+    before = auth.canonical(frozen)
+    plan = owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    assert plan["attempt_directory"] == str(Path(policy["validation"]["attempt_root"]) / parsed.namespace / "legal-ir" / ("c" * 32))
+    assert owners.validation_control_directory(policy, frozen) == Path(policy["validation"]["attempt_root"]) / "control-requests/legal_ir_unattended_repair/legal-ir" / ("c" * 32)
+    assert auth.canonical(frozen) == before and not Path(plan["attempt_directory"]).exists()
+    assert not (Path(policy["validation"]["attempt_root"]) / "control-requests").exists()
+
+
+@pytest.mark.parametrize("namespace", ["legal_ir_unattended_repair", "ptr_lane_3"], ids=["legacy-history", "canonical-lane"])
+def test_public_registry_preserves_original_published_request_reader(tmp_path, namespace):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    frozen["binding"]["namespace"] = namespace
+    freeze_pin = put(Path(freeze_pin["path"]), frozen)
+    plan = owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    put(invocation / "validation-plan.json", plan)
+    local = put(invocation / "execution-request.json", {"private_metadata_fixture": True})
+    pin = owners.publish_validation_request(policy, frozen, invocation, local)
+    assert pin["path"] == str(Path(policy["validation"]["attempt_root"]) / "control-requests/legal_ir_unattended_repair/legal-ir" / ("c" * 32) / "execution-request.json")
+    assert owners.original_execution_request(invocation) == pin
+    assert owners.checked_descriptor(pin) == owners.checked_descriptor(local)
+    assert not Path(plan["attempt_directory"]).exists()
+
+
+@pytest.mark.parametrize("namespace", ["", "ptr_lane_", "ptr_lane_-1", "ptr_lane_3/elsewhere", "../ptr_lane_3", "/ptr_lane_3", "ptr_lane_3/../x", "ptr_lane_" + "1" * 56, True, 3],
+    ids=["empty", "missing-index", "negative", "separator", "parent", "absolute", "traversal", "oversized", "boolean", "integer"])
+def test_public_registry_rejects_invalid_lane_before_plan_or_publication(tmp_path, namespace):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    frozen["binding"]["namespace"] = namespace
+    before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
+    # Missing later plan inputs deliberately prove the closed path check runs
+    # first; rejection may not read a source manifest or build any output path.
+    incomplete = {"validation": {"attempt_root": policy["validation"]["attempt_root"]}}
+    with pytest.raises(ValueError, match="namespace/board/attempt"):
+        owners.validation_plan(incomplete, policy_pin, frozen, freeze_pin, source, invocation)
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")) == before
+
+
+@pytest.mark.parametrize("field,value", [("board_id", "legal-ir-scientific"), ("board_id", "../legal-ir"),
+    ("attempt_id", "c" * 31), ("attempt_id", "C" * 32), ("attempt_id", "../" + "c" * 32), ("attempt_id", True)],
+    ids=["other-board", "board-traversal", "short-attempt", "uppercase-attempt", "attempt-traversal", "boolean-attempt"])
+def test_public_registry_rejects_crossed_board_or_attempt_without_mutation(tmp_path, field, value):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    frozen["binding"][field] = value
+    before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
+    with pytest.raises(ValueError, match="namespace/board/attempt"):
+        owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")) == before
+
+
+@pytest.mark.parametrize("root", ["relative-root", "/tmp/../escaped-control-root"], ids=["relative", "parent-component"])
+def test_public_registry_rejects_noncanonical_root_before_source_plan(tmp_path, root):
+    _, policy, policy_pin, frozen, freeze_pin, source, invocation = _registry_scope(tmp_path)
+    policy["validation"]["attempt_root"] = root
+    before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
+    with pytest.raises(ValueError, match="canonical original control registry root"):
+        owners.validation_plan(policy, policy_pin, frozen, freeze_pin, source, invocation)
+    assert sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")) == before

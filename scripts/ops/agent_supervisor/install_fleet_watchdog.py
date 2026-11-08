@@ -728,6 +728,119 @@ def render_control_owner_commands(policy_pin: dict, *, validation_timeout_second
              "original owner deadline cannot accommodate the explicit pre-D source probe and cleanup")
         result["validation_admission_retry"] = profile
     return result
+def _repair_upgrade_board_id(old: dict, contract: dict, initial_bindings: dict | None) -> str:
+    """Select one existing board from its explicit retained-job path.
+
+    The original single engineering board and the existing engineering/science
+    pair are supported in either order. An initial finite epoch must name the
+    same selected board. Selection grants no epoch, retry or task authority.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    boards = old.get("boards")
+    need(type(boards) is list and 1 <= len(boards) <= 2
+         and all(type(board) is dict and type(board.get("id")) is str for board in boards),
+         "existing legal-ir board population required")
+    identifiers = [board["id"] for board in boards]
+    need(len(set(identifiers)) == len(identifiers)
+         and (identifiers == ["legal-ir"] or set(identifiers) == {"legal-ir", "legal-ir-scientific"}),
+         "exact existing legal-ir namespaces required")
+    state = Path(old["state_dir"])
+    prior = contract.get("prior_job")
+    need(type(prior) is dict and type(prior.get("path")) is str,
+         "explicit retained board job required")
+    selected = [identifier for identifier in identifiers
+                if prior["path"] == str(state / "repairs" / identifier / "job.json")]
+    need(len(selected) == 1, "retained job does not select an exact configured board")
+    board_id = selected[0]
+    if initial_bindings is not None:
+        epoch = initial_bindings.get("authorization_epoch") if type(initial_bindings) is dict else None
+        need(type(epoch) is dict and type(epoch.get("board_id")) is str
+             and epoch["board_id"] == board_id, "finite epoch and retained job select different boards")
+    return board_id
+
+
+def _repair_initial_configuration(old: dict, board_id: str, bindings: dict) -> dict:
+    """Bind shared repair owners and only the selected board's finite epoch.
+
+    Candidate policy/runtime remain fleet-wide, as in the existing worker.
+    Both board observations, holds, namespace bindings and spent history stay
+    exact; only the selected board receives the supplied explicit epoch.
+    The original authorization and runtime parsers still validate the result.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    need(type(bindings) is dict and set(bindings) == {
+        "candidate_policy", "candidate_runtime", "authorization_epoch", "source_snapshot"},
+        "one explicit initial policy/runtime/epoch binding required")
+    worker = old.get("repair_worker")
+    need(type(worker) is dict and "candidate_policy" not in worker and "candidate_runtime" not in worker,
+         "existing productive authority requires a separate reviewed transition")
+    selected = [board for board in old["boards"] if board["id"] == board_id]
+    epoch = bindings["authorization_epoch"]
+    need(len(selected) == 1 and "repair_authorization_epoch" not in selected[0]
+         and type(epoch) is dict and epoch.get("board_id") == board_id,
+         "existing or crossed selected epoch requires a separate reviewed transition")
+    config = json.loads(json.dumps(old))
+    config["repair_worker"]["candidate_policy"] = json.loads(json.dumps(bindings["candidate_policy"]))
+    config["repair_worker"]["candidate_runtime"] = json.loads(json.dumps(bindings["candidate_runtime"]))
+    for board in config["boards"]:
+        if board["id"] == board_id:
+            board["repair_authorization_epoch"] = json.loads(json.dumps(epoch))
+    need([board["id"] for board in config["boards"]] == [board["id"] for board in old["boards"]],
+         "repair binding changed board order or population")
+    for before, after in zip(old["boards"], config["boards"]):
+        expected = dict(before)
+        if before["id"] == board_id:
+            expected["repair_authorization_epoch"] = epoch
+        need(encoded_json(after) == encoded_json(expected), "repair binding changed unrelated board data")
+    return config
+
+
+
+def _repair_release_command_environments(config: dict, release: Path, source: Path) -> dict:
+    """Bind declared board commands to the selected immutable package first."""
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    need(all(path.is_absolute() and ".." not in path.parts for path in (release, source)),
+         "absolute selected release/source roots required")
+    value = json.loads(json.dumps(config))
+    need(type(value.get("boards")) is list, "declared board command population required")
+    need(type(value.get("repair_worker")) is dict, "declared repair worker required")
+    value["repair_worker"]["cwd"] = str(release)
+    pythonpath = os.pathsep.join((str(release), str(source)))
+    for board in value["boards"]:
+        for key in ("probe", "repair"):
+            if key not in board:
+                continue
+            command = board[key]
+            need(type(command) is dict and type(command.get("argv")) is list
+                 and command["argv"] and all(type(arg) is str for arg in command["argv"]),
+                 "ordinary declared board command required")
+            env = command.get("env", {})
+            need(type(env) is dict and all(type(k) is str and type(v) is str for k, v in env.items()),
+                 "ordinary declared board command environment required")
+            command["env"] = {**env, "PYTHONPATH": pythonpath}
+    return value
+
+
+
+def _repair_release_liveness_identity(config: dict, release: Path, watchdog_source: dict) -> dict:
+    """Keep an existing liveness declaration bound to its selected release."""
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor
+    value = json.loads(json.dumps(config))
+    if "liveness_identity" not in value:
+        return value
+    identity = value["liveness_identity"]
+    need(type(identity) is dict and set(identity) == {"schema", "deployment_id", "source_sha256"} and identity.get("schema") == "agent-supervisor/watchdog-liveness-profile@1",
+         "supported existing liveness identity required")
+    need(type(watchdog_source) is dict and set(watchdog_source) == {"path", "bytes", "sha256"}
+         and watchdog_source["path"] == str(release / "ipfs_accelerate_py/agent_supervisor/rescue/fleet_watchdog.py")
+         and type(watchdog_source["bytes"]) is int and type(watchdog_source["sha256"]) is str
+         and re.fullmatch(r"[0-9a-f]{64}", watchdog_source["sha256"]),
+         "exact selected immutable watchdog source required")
+    need(len(checked_descriptor(watchdog_source)) <= 4 * 1024**2, "finite immutable watchdog Python source required")
+    value["liveness_identity"] = {**identity, "deployment_id": release.name,
+                                 "source_sha256": watchdog_source["sha256"]}
+    return value
 
 
 SCIENTIFIC_GIT_BINDING_SCHEMA = "agent-supervisor/scientific-git-executor-binding@1"
@@ -1170,7 +1283,6 @@ def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: di
         owner_close()
 
 
-
 def _repair_scientific_profile(binding: dict, release: Path, git_binding: dict | None = None) -> dict:
     """Call the existing metadata parser from its actual immutable release file."""
     import hashlib
@@ -1216,7 +1328,6 @@ def _repair_scientific_profile(binding: dict, release: Path, git_binding: dict |
             del sys.modules[name]
 
 
-
 def _repair_scientific_configuration(config: dict, binding: dict, release: Path, git_binding: dict | None = None) -> dict:
     """Compose one explicit scientific profile without granting runtime authority."""
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
@@ -1232,7 +1343,7 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path,
     need(declared_git is None or declared_git == git_binding,
          "existing scientific Git binding cannot be silently changed or removed")
     if git_binding is not None:
-        need(board.get("native_executor_binding") in (None, binding),
+        need(declared_git is None or board.get("native_executor_binding") in (None, binding),
              "scientific Git binding cannot replace another producer profile")
         board["native_executor_git_binding"] = json.loads(json.dumps(git_binding))
     catalogue = board.get("native_catalogue_binding")
@@ -1272,7 +1383,6 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path,
         probe["argv"].extend((flag, argument))
     board["native_executor_binding"] = json.loads(json.dumps(binding))
     return value
-
 
 
 def prepare_existing_repair_configuration(source: Path, contract: dict, bindings: dict, *, scientific_executor_binding: dict | None = None, scientific_executor_git_binding: dict | None = None) -> dict:
@@ -1416,6 +1526,7 @@ def prepare_repair_upgrade(source: Path, contract: dict, source_commitment: str,
         config = _repair_scientific_configuration(config, scientific_executor_binding, release, scientific_executor_git_binding)
     sources = {name: descriptor(release / PACKAGE_MODULES[name] if name in PACKAGE_MODULES else
         release / "ipfs_accelerate_py/agent_supervisor/rescue" / (name + ".py")) for name in contents}
+    config = _repair_release_liveness_identity(config, release, sources["fleet_watchdog"])
     commitment_path = release / "repair-source-commitment.json"
     commitment = encoded_json({"schema": "agent-supervisor/repair-source-release@1",
         "source_commitment": source_commitment, "sources": sources,

@@ -125,11 +125,19 @@ def _install_fixture_gate(daemon, monkeypatch):
 
 
 @pytest.mark.parametrize("ephemeral", [True])
+@pytest.mark.parametrize("retention_event_failure", [False, True])
 def test_public_portal_pass_preserves_cleanup_uncertainty(
-    tmp_path, monkeypatch, ephemeral
+    tmp_path, monkeypatch, ephemeral, retention_event_failure
 ):
     daemon = _daemon(tmp_path, ephemeral=ephemeral)
     _install_fixture_gate(daemon, monkeypatch)
+    if retention_event_failure:
+        record = daemon._record_event
+        def unavailable_retention_event(kind, *args, **kwargs):
+            if kind == "implementation_process_custody_retained":
+                raise OSError("fixture observation store unavailable")
+            return record(kind, *args, **kwargs)
+        monkeypatch.setattr(daemon, "_record_event", unavailable_retention_event)
     captured = {}
     released = []
     reconciled = []
@@ -161,6 +169,8 @@ def test_public_portal_pass_preserves_cleanup_uncertainty(
         state.save(daemon.state_path)
         captured["runner"] = dict(state.active_provider_runner)
         captured["workspace"] = Path(kwargs["cwd"])
+        (captured["workspace"] / "README.md").write_text("retained ambiguous candidate\n")
+        captured["branch"] = subprocess.check_output(["git", "symbolic-ref", "--short", "HEAD"], cwd=captured["workspace"], text=True).strip()
         captured["lifecycle"] = daemon._active_worktree_lifecycle
         lock_path = daemon._implementation_lock_path()
         lock_metadata = json.loads(lock_path.read_bytes())
@@ -193,6 +203,8 @@ def test_public_portal_pass_preserves_cleanup_uncertainty(
         assert path.read_bytes() == body
     assert reconciled and reconciled[-1] is not None
     assert captured["workspace"].is_dir()
+    assert (captured["workspace"] / "README.md").read_text() == "retained ambiguous candidate\n"
+    assert subprocess.run(["git", "show-ref", "--verify", "refs/heads/" + captured["branch"]], cwd=daemon.repo_root, capture_output=True).returncode == 0
     if ephemeral:
         assert daemon._active_worktree_lifecycle == captured["lifecycle"]
         assert (
@@ -205,6 +217,10 @@ def test_public_portal_pass_preserves_cleanup_uncertainty(
         in {"implementation_finished", "task_completed", "implementation_exception"}
         for item in events
     )
+    retained = [item for item in events if item["type"] == "implementation_process_custody_retained"]
+    if not retention_event_failure:
+        assert retained and retained[-1]["effects_unknown"] is True
+        assert retained[-1]["completion_authority"] is False
 
 
 @pytest.mark.parametrize("ephemeral", [True])

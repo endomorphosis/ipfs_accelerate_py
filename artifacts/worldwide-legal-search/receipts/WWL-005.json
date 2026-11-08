@@ -1,0 +1,55 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-005",
+  "title": "Demonstrate canary supervision and recovery before scaling",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G010",
+  "subgoal_id": "WWL-G010.S2",
+  "depends_on": ["WWL-004", "WWL-105"],
+  "control_canary": "docs/worldwide/control-canary.json",
+  "predecessor_suites": ["fault", "blocker", "restart"],
+  "proofs": [
+    "native_admission",
+    "grok_execution",
+    "independent_validation",
+    "merge",
+    "worker_death_recovery",
+    "validated_code_repair_promotion"
+  ],
+  "hosted_model_invocations": 0,
+  "paid_provider_calls": 0,
+  "sustained_watchdog_repair_authorized": false,
+  "corpus_expansion_authorized": false,
+  "blocked_until_this_canary": ["WWL-010"],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "docs/worldwide/control-canary.json",
+    "test/api/test_worldwide_legal_search_control_canary.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-005.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_control_canary.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_control_canary.py", "-q"],
+    "result": "6 passed",
+    "exit_status": 0,
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "The small canary admits an isolated native plan, runs the admitted tiny live canary through provider_fallback_runner with typed launch_failure, and does not invoke hosted Grok or Codex. Paid provider calls and hosted model invocations stay at zero. The repair route argv names grok_cli and grok-4.7 and is not launched.",
+    "Independent validation, the git merge, worker-death recovery, and validated promotion run in temporary directories. A canary report cannot set validated_promotion. Unknown effects keep the dead worker fenced and off the runnable queue.",
+    "CampaignRuntime.publish_readiness still records control_canary_verified false and bootstrap_only true. That module is outside this task's write scope, so the host flag is not flipped. The readiness object in this canary binds component hashes and the accepted git revision while sustained watchdog repair and corpus expansion stay unauthorized. WWL-010 remains blocked.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The control-canary suite was executed with the workspace virtualenv that provides pytest 9.1.1 and Python 3.12.3. The isolated red/green reproducer uses /usr/bin/python3.12. The tiny live canary uses the interpreter that can import this package. A fresh pytest AST seal catalog reported 6 passed with exit status 0. A later repeat against the default seal catalog can exit 0 while skipping tests whose AST seal already matches.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}

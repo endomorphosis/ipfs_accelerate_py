@@ -2048,7 +2048,10 @@ def test_withheld_gate_stays_pending_and_an_exhausted_gate_can_be_rechecked(
     assert cycle["work_complete"] is False
     assert cycle["completion_authority"] is False
     assert "- Status: pending" in board.read_text(encoding="utf-8")
-    assert "VDG-060" not in attempts.read_text(encoding="utf-8")
+    saved = json.loads(attempts.read_text(encoding="utf-8"))
+    assert "VDG-060" not in saved
+    progress = saved["_validation_fixed_points"]["VDG-060"]["execution_progress"]
+    assert progress["semantic_failures"] == 0 and progress["gate_refusals"] == 1
     again = lane_resume.run_resume_cycle(**kwargs)
     assert again["phase"] == "gate_withheld"
     assert len(calls) == 2
@@ -2096,8 +2099,9 @@ def test_exhausted_hard_failure_waits_before_the_next_probe(
     waiting = lane_resume.run_resume_cycle(**kwargs)
     assert probed["phase"] == "deterministic_command_failed"
     assert probed["work_complete"] is False
-    assert waiting["state"] == "healthy"
+    assert waiting["state"] == "degraded"
     assert waiting["phase"] == "attempt_retry_wait"
+    assert waiting["next_retry_at_ms"] > 0
     assert waiting["terminal_reason"] == ""
     assert waiting["work_complete"] is False
     assert waiting["completion_authority"] is False
@@ -2523,3 +2527,34 @@ def test_backoff_expiry_still_respects_canonical_holds_and_live_owners(
     lane = supervisor._check_cycle()["reports"][0]
     assert lane["action"] == ("fenced_stop_required" if alive else "state_preserved")
     assert len(attempts) == 1
+
+
+def test_verified_progress_clock_detects_stall_despite_fresh_log_output() -> None:
+    from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import classify_progress_stall
+
+    observed = classify_progress_stall(
+        process_alive=True, heartbeat_stale=False, active_task_id="WWL-000",
+        log_age_seconds=0.1, task_transition_age_seconds=1800,
+        meaningful_progress_age_seconds=1800, quiet_seconds=900,
+    )
+    assert observed["progress_stalled"] is True
+    assert observed["evidence_basis"] == "verified_progress_clock"
+    assert observed["completion_authority"] is False
+    # A real verified transition is useful even when logging is quiet.
+    observed = classify_progress_stall(
+        process_alive=True, heartbeat_stale=False, active_task_id="WWL-000",
+        log_age_seconds=1800, task_transition_age_seconds=1800,
+        meaningful_progress_age_seconds=1, quiet_seconds=900,
+    )
+    assert observed["progress_stalled"] is False
+
+
+def test_selectable_todo_bootstrap_and_in_progress_aliases() -> None:
+    from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import selectable_pending_task_ids
+
+    board = "\n".join([
+        "## WWL-000 Bootstrap", "- Status: todo", "- Depends on: none",
+        "## WWL-001 Wait", "- Status: todo", "- Depends on: WWL-000",
+        "## WWL-002 Active", "- Status: in-progress", "- Depends on: none",
+    ])
+    assert selectable_pending_task_ids(board, task_header_prefix="## WWL-") == ["WWL-000", "WWL-002"]

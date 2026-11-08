@@ -379,10 +379,12 @@ def reconcile_native_usage_observations(receipts):
         if not available:
             subtotals['normalized_input_tokens'] = subtotals['normalized_total_tokens'] = None
     codex = _quarantine_codex(reconcile_router_cumulative_usage(codex_rows), quarantine_threads, issue)
+    from ipfs_accelerate_py.cli_runtime.grok_prompt_accounting import grok_prompt_accounting_coverage
     return {'schema':SCHEMA, 'source_scope':'supplied retained receipts only',
         'observations_received':len(receipts), 'recognized_observations':recognized,
         'duplicate_wrapper_observations':duplicates, 'codex_cumulative':codex,
         'grok_final_envelopes':{'schema':GROK_SCHEMA, 'source_scope':'native_final_envelope',
+            'coverage':grok_prompt_accounting_coverage(),
             'cache_included_in_input':False, 'rows':grok_rows, 'reported_identity_groups':len(groups),
             'ambiguous_reported_identity_groups':ambiguous,
             'missing_reported_identity_count':sum(row['reported_session_identity_sha256'] is None for row in grok_rows),

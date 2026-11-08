@@ -1,0 +1,53 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-106",
+  "title": "Implement and test native completion verification",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G090",
+  "subgoal_id": "WWL-G090.S2",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_completion",
+  "depends_on": ["WWL-105"],
+  "non_authoritative": [
+    "done_flag",
+    "zero_exit",
+    "stale_receipt",
+    "skipped_work",
+    "unresolved_source_blocker",
+    "absent_release_evidence"
+  ],
+  "future_release_required": false,
+  "live_release_consulted": false,
+  "required_release_tasks": [],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "test/api/test_worldwide_legal_search_completion.py",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_completion.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-106.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_completion.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_completion.py", "-q"],
+    "result": "61 passed",
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "The verifier judges one fixture observation. A done flag, a zero process exit, a stale receipt, skipped work, an unresolved source blocker, or absent release evidence cannot establish completion.",
+    "A verified fixture binds the accepted tree, plan revision, source revision, inventory disposition, independent validation argv and result, output hashes, merge receipt and release evidence. completion_authority and task_retry_authority stay false.",
+    "Release evidence in a fixture is not a live public deployment. This task does not require WWL-111, WWL-112, WWL-113 or WWL-114, and it does not fetch the future GitHub Pages release. An opt-out such as release_required false is ignored.",
+    "Expanded source children that are listed and then removed from the required set are skipped work. Hold, unknown effects, remaining runnable work and a self-certified receipt also fail closed.",
+    "The verifier does not execute validation commands or read the working tree. Callers supply the accepted tree and bound receipts.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. The completion suite was executed with the workspace virtualenv that provides pytest 9.1.1.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}

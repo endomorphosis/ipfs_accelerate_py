@@ -33,7 +33,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 from typing import TextIO
@@ -1403,16 +1403,29 @@ def _grok_isolation_deny_paths(
     # deny rule for the fixed in-container primary-binary destination.
     denied.add(Path("/opt/ipfs-accelerate/grok"))
 
-    directory_denies = tuple(path for path in denied if path.is_dir())
-    nonoverlapping = {
+    return _nonoverlapping_deny_paths(denied)
+
+
+def _nonoverlapping_deny_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
+    """Drop a path already hidden by a denied ancestor directory.
+
+    A read-only container rejects a file mount inside a directory mask
+    because the nested mountpoint cannot be created on that root. The
+    ancestor mask already hides the path, so the nested mount is not a
+    second boundary.
+    """
+
+    materialized = tuple(paths)
+    directories = tuple(path for path in materialized if path.is_dir())
+    kept = {
         path
-        for path in denied
+        for path in materialized
         if not any(
             path != directory and path.is_relative_to(directory)
-            for directory in directory_denies
+            for directory in directories
         )
     }
-    return tuple(sorted(nonoverlapping, key=lambda item: str(item)))
+    return tuple(sorted(kept, key=str))
 
 
 def _same_existing_file(path: Path, other: Path | None) -> bool:
@@ -1680,6 +1693,16 @@ def _workspace_symlinks_reach_denied_paths(
             for name in (*directories, *files):
                 candidate = root_path / name
                 if not candidate.is_symlink():
+                    continue
+                # A link that already lives inside a denied directory does not
+                # open a new alias from the allowed workspace. Relative links
+                # inside a pinned dependency stay covered by that directory's
+                # own deny rules.
+                parent = candidate.parent.resolve(strict=False)
+                if any(
+                    parent == denied or parent.is_relative_to(denied)
+                    for denied in sensitive
+                ):
                     continue
                 target = candidate.resolve(strict=False)
                 if any(
@@ -3094,10 +3117,14 @@ def _docker_grok_command_for_pinned_image(
 
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
-    effective_denied = set(denied_paths) | set(private_paths)
+    effective_denied_set = set(denied_paths) | set(private_paths)
     if private_policy and git_control_path is not None:
-        effective_denied.add(git_control_path)
-    for index, denied in enumerate(sorted(effective_denied, key=str)):
+        effective_denied_set.add(git_control_path)
+    # Private-path expansion lists nested files as well as the directory that
+    # already covers them. Mounting both makes runc fail with EROFS while
+    # creating the nested mountpoint. Collapse back to the ancestor mask.
+    effective_denied = _nonoverlapping_deny_paths(effective_denied_set)
+    for index, denied in enumerate(effective_denied):
         if (
             denied in {
                 sentinel,
@@ -4832,6 +4859,23 @@ def _stream_pipe(
         destination.flush()
 
 
+PROVIDER_STREAM_DRAIN_TIMEOUT_SECONDS = 5.0
+
+
+def _join_live_provider_streams(threads: Sequence[threading.Thread]) -> None:
+    """Bound post-exit pipe draining without declaring descendants fenced.
+
+    A descendant can inherit a provider pipe after its leader has exited.
+    Failure remains an unknown-effect execution error; the native parent must
+    fence its owned process tree before releasing custody or retrying.
+    """
+    deadline = time.monotonic() + PROVIDER_STREAM_DRAIN_TIMEOUT_SECONDS
+    for thread in threads:
+        thread.join(timeout=max(0.0, deadline - time.monotonic()))
+    if any(thread.is_alive() for thread in threads):
+        raise RuntimeError("provider stream drain unverified after leader exit")
+
+
 def _stream_provider_pipe_without_reserved_records(
     source: TextIO,
     destination: TextIO,
@@ -4941,8 +4985,7 @@ def _run_grok_with_typed_failure_capture(
     stdout_thread.start()
     stderr_thread.start()
     returncode = int(process.wait())
-    stdout_thread.join()
-    stderr_thread.join()
+    _join_live_provider_streams((stdout_thread, stderr_thread))
     return returncode
 
 

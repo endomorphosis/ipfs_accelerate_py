@@ -138,6 +138,37 @@ def test_typed_capture_replays_both_pipes_before_wait_finishes(
         ]
 
 
+def test_completed_leader_cannot_hang_on_inherited_open_provider_pipes(monkeypatch):
+    pipes = (os.pipe(), os.pipe())
+    completed = threading.Event()
+    errors = []
+    with (os.fdopen(pipes[0][0], "r", encoding="utf-8") as stdout,
+          os.fdopen(pipes[1][0], "r", encoding="utf-8") as stderr):
+        class Provider:
+            def wait(self):
+                return 0  # The leader exits, while a descendant retains pipes.
+        child = Provider();child.stdout, child.stderr = stdout, stderr
+        monkeypatch.setattr(runner.subprocess, "Popen", lambda *_a, **_k: child)
+        monkeypatch.setattr(runner, "PROVIDER_STREAM_DRAIN_TIMEOUT_SECONDS", 0.05)
+        monkeypatch.setattr(runner.sys, "stdout", io.StringIO())
+        monkeypatch.setattr(runner.sys, "stderr", io.StringIO())
+        def invoke():
+            try:
+                runner._run_grok_with_typed_failure_capture(["fixture-provider"], env={})
+            except RuntimeError as error:
+                errors.append(str(error))
+            finally:
+                completed.set()
+        thread = threading.Thread(target=invoke, daemon=True);thread.start()
+        try:
+            assert completed.wait(1), "leader exit remained stuck waiting for inherited pipe EOF"
+            assert errors == ["provider stream drain unverified after leader exit"]
+        finally:
+            for _, write_fd in pipes:
+                os.close(write_fd)
+            thread.join(2)
+
+
 def test_provider_progress_keeps_the_native_hard_timeout_and_reaps_child(tmp_path: Path) -> None:
     processes = []
     with (tmp_path / "provider.log").open("w") as log:

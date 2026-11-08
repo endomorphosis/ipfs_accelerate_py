@@ -1,0 +1,43 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-018",
+  "title": "Expand the inventory into bounded native source child tasks",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "goal_id": "WWL-G020",
+  "subgoal_id": "WWL-G020.S2",
+  "adapter": "ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search_source_expansion",
+  "depends_on": ["WWL-016", "WWL-047", "WWL-081"],
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "outputs": [
+    "test/api/test_worldwide_legal_search_source_expansion.py",
+    "docs/worldwide/source-expansion.json",
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search_source_expansion.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-018.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_source_expansion.py",
+    "-q"
+  ],
+  "validation": {
+    "argv": ["python3", "-m", "pytest", "test/api/test_worldwide_legal_search_source_expansion.py", "-q"],
+    "result": "7 passed",
+    "pytest": "9.1.1",
+    "interpreter": "/home/barberb/lift_coding/external/ipfs_datasets/.venv/bin/python3",
+    "python": "3.12.3"
+  },
+  "limitations": [
+    "Each source, config, split, jurisdiction and shard unit admits five ordered native tasks: normalize, index, geography, immutable publication and verification. Identities are a pure function of that unit. The bounded set is 12 units and 64 children. A partial inventory or an oversize inventory fails closed and does not truncate or skip work.",
+    "Every child binds the inventory revision and the active plan revision of WWL-018 and WWL-017. A moved inventory, a changed child contract, or a disappeared child fails closed and does not delete tasks or shrink the persisted watchdog task set.",
+    "Existing blocker records, probes and exhausted budgets stay in place. New blocked children are appended. A blocker kind change is refused. Access statuses 401, 403, 408, 429, 500, 502, 503 and 504 map onto the blocker board. An ineligible source without an explicit blocker is refused.",
+    "WWL-017 joins every required child receipt, with national, regional, local, supranational and unknown unit counts. The join preserves the parent status. A later base-plan admission sees the expanded alias set and fails closed.",
+    "The persisted watchdog task set, campaign readiness and restart journal gain the child ids when those files exist. Action, repair, incident and budget counters are not reset.",
+    "The sealed interpreter /usr/bin/python3.12 does not provide pytest on the authoritative PATH. This suite was executed with the workspace virtualenv that provides pytest 9.1.1 and Python 3.12.3. The receipt does not claim that the sealed interpreter ran pytest.",
+    "This receipt does not grant campaign completion or task completion."
+  ]
+}

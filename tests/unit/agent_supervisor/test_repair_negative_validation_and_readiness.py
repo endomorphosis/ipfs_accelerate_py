@@ -413,3 +413,55 @@ def test_actual_pytest_report_attribution_handles_lazy_syntax_and_refuses_unrela
         assert failed[0]["kind"] == "unattributed" and failed[0]["syntax_witness_indices"] == []
         with pytest.raises(ValueError):
             owners.verify_negative_semantic_report(policy, plan, report, invocation)
+
+
+def test_pure_worker_uses_owned_log_and_original_alias_free_tmp_path(tmp_path):
+    """Real original factory/fixture I/O; no nested owner or invented test run."""
+    from types import SimpleNamespace
+    import stat
+    from _pytest.tmpdir import TempPathFactory
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import validation_pytest
+    plugin_source = Path(validation_pytest.__file__).resolve(strict=True)
+    datasets_root = plugin_source.parents[3]
+    plugin_pin = worker.descriptor(plugin_source)
+    attempt = tmp_path / "actual-private-output-layout"
+    outputs = {name: attempt / name for name in ("tmp", "pytest", "exports")}
+    for directory in outputs.values():
+        directory.mkdir(mode=0o700, parents=True)
+        (directory / "retained-owner-marker").write_bytes(b"original owner output remains")
+    identities = {name: (path.stat().st_dev, path.stat().st_ino) for name, path in outputs.items()}
+    node = str(tmp_path / "test_not_executed.py") + "::test_exact_node"
+    plan = {"source_pins": {plugin_pin["path"]: plugin_pin["sha256"]}, "selected_checks": [node]}
+    arguments = worker._pure_pytest_arguments(plan, datasets_root, attempt)
+    assert arguments[arguments.index("--log-file") + 1] == str(outputs["exports"] / "pytest.log")
+    plugin = "ipfs_datasets_py.optimizers.logic_theorem_optimizer.validation_pytest"
+    assert any(arguments[index:index + 2] == ["-p", plugin] for index in range(len(arguments) - 1))
+    assert "--owned-physical-fixtures" not in arguments and arguments[-1] == node
+    basetemp = Path(arguments[arguments.index("--basetemp") + 1])
+    assert basetemp == outputs["tmp"] / "pytest" and not basetemp.exists()
+    factory = TempPathFactory(given_basetemp=basetemp, retention_count=3,
+        retention_policy="all", trace=lambda *args: None, _ispytest=True)
+    actual_base = factory.getbasetemp()
+    request = SimpleNamespace(config=SimpleNamespace(option=SimpleNamespace(basetemp=str(actual_base)),
+        _owned_physical_fixture_profile=None), node=SimpleNamespace(name="ordinary_owned_worker_case"))
+    original_fixture = validation_pytest.tmp_path.__pytest_wrapped__.obj
+    actual = original_fixture(request, factory)
+    assert actual.parent == actual_base and stat.S_IMODE(actual.stat().st_mode) == 0o700
+    assert not any(path.is_symlink() for path in actual_base.iterdir())
+    for name, directory in outputs.items():
+        assert (directory.stat().st_dev, directory.stat().st_ino) == identities[name]
+        assert (directory / "retained-owner-marker").read_bytes() == b"original owner output remains"
+    assert plugin_source.read_bytes() and worker.descriptor(plugin_source) == plugin_pin
+
+
+@pytest.mark.parametrize("damage", ["missing", "changed-hash"])
+def test_pure_worker_refuses_unbound_original_tmp_path_plugin(tmp_path, damage):
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import validation_pytest
+    plugin_source = Path(validation_pytest.__file__).resolve(strict=True)
+    pin = worker.descriptor(plugin_source)
+    plan = {"source_pins": {} if damage == "missing" else {pin["path"]: "0" * 64},
+            "selected_checks": [str(tmp_path / "not_executed.py") + "::test_not_run"]}
+    attempt = tmp_path / "uncreated-owner-attempt"
+    with pytest.raises(ValueError, match="private tmp_path plugin source"):
+        worker._pure_pytest_arguments(plan, plugin_source.parents[3], attempt)
+    assert not attempt.exists() and worker.descriptor(plugin_source) == pin

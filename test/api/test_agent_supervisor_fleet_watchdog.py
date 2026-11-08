@@ -130,7 +130,18 @@ def _native_observation(status="in_progress", *, completed=32, receipts=32,
         **changes)
 
 
-def test_native_retry_cycles_cannot_postpone_task_stall_repair(tmp_path):
+def test_native_retry_cycles_cannot_postpone_task_stall_repair(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    heals = []
+
+    def wait_for_native_owner(board, state):
+        heals.append((board, state["stall_class"]))
+        return {"status": "wait", "recipe": "native_lanes_own_independent_todos"}
+
+    # This test owns watchdog routing. Native owner transport belongs to its
+    # own tests and must not discover a host Quack endpoint from this fixture.
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal", wait_for_native_owner)
     board = _board(tmp_path)
     runner = Runner(_native_observation())
     root = tmp_path / "watch"
@@ -142,6 +153,7 @@ def test_native_retry_cycles_cannot_postpone_task_stall_repair(tmp_path):
     assert latest["health"] == "stalled"
     assert latest["last_action"] == "supervisor_heal"
     assert not [call for call in runner.calls if call["argv"][0] == "repair"]
+    assert heals == [(board, "in_progress_awaiting_effect")]
 
 
 def test_native_progress_regression_and_restoration_do_not_extend_deadline(tmp_path):

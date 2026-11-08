@@ -1,0 +1,35 @@
+{
+  "schema": "worldwide-legal-search.task-receipt@1",
+  "task_id": "WWL-002",
+  "title": "Admit goals and tasks through the native supervisor task source",
+  "namespace": "worldwide-legal-search-v1",
+  "root_goal_id": "WWL-G000",
+  "admitted_root_breadth": 10,
+  "native_default_breadth": 8,
+  "markdown_bootstrap_only": true,
+  "markdown_is_execution_authority": false,
+  "execution_completed": false,
+  "completion_authority": false,
+  "self_certified_completion": false,
+  "task_source": "DatabaseTaskSource",
+  "goal_quality_lint": "lint_objective_typed_goals",
+  "idempotent_replay": true,
+  "isolated_namespace": true,
+  "outputs": [
+    "ipfs_accelerate_py/agent_supervisor/project_adapters/worldwide_legal_search.py",
+    "test/api/test_worldwide_legal_search_admission.py",
+    "artifacts/worldwide-legal-search/receipts/WWL-002.json"
+  ],
+  "validation_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "test/api/test_worldwide_legal_search_admission.py",
+    "-q"
+  ],
+  "limitations": [
+    "Markdown goal and task boards remain bootstrap projections and are not live execution state.",
+    "This receipt does not grant campaign completion or task completion.",
+    "A moved source forest does not rematerialize admitted identities or reset native revisions."
+  ]
+}

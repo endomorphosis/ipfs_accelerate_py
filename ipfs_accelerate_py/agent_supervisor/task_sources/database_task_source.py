@@ -2992,6 +2992,12 @@ class DatabaseTaskSource:
             )
 
     def snapshot(self) -> TaskSourceSnapshot:
+        # A source observation combines intent and hydrated task reads. Reuse
+        # one admitted adapter; this is not a transaction or frozen snapshot.
+        with self._intent.read_session():
+            return self._snapshot_in_read_session()
+
+    def _snapshot_in_read_session(self) -> TaskSourceSnapshot:
         snap = self._intent.snapshot()
         terminal = True
         plan_root = self.plan_root_cid
@@ -4030,6 +4036,26 @@ class DatabaseTaskSource:
             int(record.revision),
             "retrying",
             compact,
+        )
+
+    def replace_retrying_rearm_receipt(
+        self,
+        task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
+        *,
+        expected_revision: int,
+        expected_operation: str,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        """Close one open retrying rearm receipt at its current revision."""
+
+        key = _task_key(task_cid_or_alias)
+        return bool(
+            self._intent.replace_retrying_rearm_receipt(
+                task_cid=key,
+                expected_revision=int(expected_revision),
+                expected_operation=str(expected_operation),
+                receipt=receipt,
+            )
         )
 
     def recover_typed_deferral_budget(

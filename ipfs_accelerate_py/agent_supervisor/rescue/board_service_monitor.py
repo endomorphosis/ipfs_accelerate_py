@@ -621,6 +621,14 @@ def evaluate_health(config: dict[str, Any], service: dict[str, Any], evidence: d
         native_status_at >= now - config["heartbeat_timeout_seconds"]
         and (age is None or native_status_at >= now - age - 1)
     )
+    # Empty counts from a failed task-source read do not prove an empty board.
+    # A live inactive worker cannot repair missing/invalid authority by restart;
+    # keep genuine active-worker liveness and deadline checks independent.
+    source_reason = evidence.get("selection_idle_reason")
+    if (main_pid > 0 and not evidence.get("active") and isinstance(source_reason, str)
+            and (source_reason in {"todo_read_failed", "task_source_invalid"}
+                 or source_reason.startswith("task_source_read_failed:"))):
+        return decision("task_source_unavailable", "Native task source is unavailable: " + source_reason[:128])
     recovery = evidence.get("native_recovery") or {}
     if recovery.get("expired") is True:
         if recovery.get("quiescent") is True:
