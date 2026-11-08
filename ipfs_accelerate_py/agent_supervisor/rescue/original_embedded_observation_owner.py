@@ -31,6 +31,9 @@ R = Path('/home/barberb/lift_coding/external/ipfs_datasets')
 A = Path('/home/barberb/lift_coding/external/ipfs_accelerate')
 WORKSPACE = R
 POLICY = '4662bd8fe6caf6f2c048e3d7cff7abb4d80e5c875b21e02e204b1b89371b8286'
+# Explicit request selection only; keep the original legacy constant/default.
+# The qualified successor changes only child slots20->16 and CPU-stall65->50.
+QUALIFIED_F07_POLICY = 'f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661'
 LEASE = R/'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py'
 LEASE_SHA = '42e9f07d0d458177079269d9f495f0b70512180c1adc2f7fe0bfdb05518a12f9'
 STATE = Path('/tmp/ipfs-datasets-resource-scheduler-1000.json')
@@ -55,6 +58,8 @@ PROCESS_ADMISSION_FIELDS = frozenset({'kind','argv','cwd','environment_sha256',
 PROCESS_ADMISSION_KINDS = frozenset({'readonly_profile_git','sealed_runner_probe','native_cli_subreaper','immutable_source_capsule_read'})
 FD_ADMISSION_FIELDS = frozenset({'kind','event','fd','mode','source','original_frame','payload_sha256','memfd_name'})
 ACTOR_PATH = Path(__file__).absolute().with_name('native_embedded_observation_driver.py')
+QUALIFIED_F07_ACTOR = Path('/home/barberb/lift_coding/.worktrees/legal-ir-scientific-capsule-reuse-20261031/ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py')
+QUALIFIED_F07_ACTOR_SHA = '2e9ba7653bbc0939bb41f1fbbdd14f5f0e9a51fd78577dbbb5aa044fc14e3ea6'
 SCHEMA = 'legal-ir-original-native-control-request/v1'
 FIELDS = {'schema','purpose','request_id','argv','cwd','attempt_directory','source_sha256',
           'cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds',
@@ -104,19 +109,16 @@ def write_json(path,value):
     finally:os.close(fd)
 
 
-ARCHIVED_IMPORT_SCOPE = 'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies'
-READ_ONLY_IMPORT_SCOPE = 'read-only normal import checks clean HEAD/tree without archiving a control-plane capsule; implementation is forbidden'
-
-
-def validate_import_git_binding(c):
+def validate_import_git_binding(c,*,actor_path=None):
     """Validate the retained original immutable-HEAD metadata contract only."""
+    actor_path=ACTOR_PATH if actor_path is None else actor_path
     capsule=c['import_head_capsule_Git']
     fields={'blobs','ls_tree_tail','payload_bytes','required_relative_files','route_source',
         'scope','selected_file_count','source_head','source_root','unique_blob_count'}
     need(type(capsule)is dict and set(capsule)==fields,'closed original import HEAD contract required')
-    need(capsule['source_root']==str(ACTOR_PATH.parents[3]) and type(capsule['source_head'])is str
+    need(capsule['source_root']==str(actor_path.parents[3]) and type(capsule['source_head'])is str
          and re.fullmatch(r'[0-9a-f]{40}',capsule['source_head']), 'exact import source root/HEAD required')
-    route=capsule['route_source'];path=ACTOR_PATH.parents[3]/'ipfs_accelerate_py/agent_implementation_route.py'
+    route=capsule['route_source'];path=actor_path.parents[3]/'ipfs_accelerate_py/agent_implementation_route.py'
     need(type(route)is dict and set(route)=={'path','bytes','sha256'} and route['path']==str(path)
          and type(route['bytes'])is int and 0<route['bytes']<=4*1024**2
          and type(route['sha256'])is str and re.fullmatch(r'[0-9a-f]{64}',route['sha256'])
@@ -223,6 +225,48 @@ def reuse_attempt_file_bound(attempt, *, maximum=276):
     return count
 
 
+def _validated_scheduler_policy(value):
+    selected=value['expected_scheduler_policy_sha256']
+    need(type(selected)is str and selected in (POLICY,QUALIFIED_F07_POLICY),
+         'explicit qualified scheduler policy required')
+    return selected
+
+
+def _open_original_scheduler(value,opener):
+    # Validation precedes the original opener; no live-policy discovery occurs.
+    return opener(STATE,_validated_scheduler_policy(value))
+
+
+def _new_original_parented_reservation(value,constructor,*,attempt,parent_lease,timeout_seconds):
+    return constructor(LEDGER,roots=ROOTS,attempt_directory=attempt,parent_lease=parent_lease,
+        storage_bytes=value['storage_bytes'],memory_mb=1536,cpu_slots=1,child_process_slots=8,
+        scheduler_state_path=STATE,expected_scheduler_policy_sha256=_validated_scheduler_policy(value),
+        timeout_seconds=timeout_seconds,ledger_lock_timeout_seconds=None)
+
+
+def _observation_actor(value):
+    # The f07 request explicitly retains the qualified H backend while its
+    # outer owner may move. Original R+A source leases still own that alias.
+    if _validated_scheduler_policy(value)==POLICY:
+        return ACTOR_PATH
+    actor=QUALIFIED_F07_ACTOR
+    need(type(value['argv'])is list and len(value['argv'])>=3
+         and value['argv'][2]==str(actor)
+         and type(value['source_sha256'])is dict
+         and value['source_sha256'].get(str(actor))==QUALIFIED_F07_ACTOR_SHA,
+         'explicit qualified f07 observation backend required')
+    need(pin(actor)==dict(path=str(actor),bytes=28162,sha256=QUALIFIED_F07_ACTOR_SHA),
+         'qualified f07 observation backend changed')
+    return actor
+
+
+def _parent_capacity_scheduler_policy(value,record):
+    selected=_validated_scheduler_policy(value)
+    need(type(record)is dict and record.get('scheduler_policy_sha256')==selected,
+         'admitted parent scheduler policy differs from explicit request')
+    return selected
+
+
 def request(path,digest):
     raw=regular(path)
     need(hashlib.sha256(raw).hexdigest()==digest,'request digest changed')
@@ -234,7 +278,8 @@ def request(path,digest):
          'exact integer resource bounds required')
     need({k:value[k] for k in ('cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds')}==
          {'cpu_slots':1,'memory_mb':1536,'child_process_slots':8,'storage_bytes':384*1024**2,'timeout_seconds':300},'reviewed finite control envelope required')
-    need(value['scheduler_state_path']==str(STATE) and value['expected_scheduler_policy_sha256']==POLICY
+    _validated_scheduler_policy(value)
+    need(value['scheduler_state_path']==str(STATE)
          and value['resource_ledger']==str(LEDGER),'original scheduler/ledger identity required')
     need(value['source_roots']==[str(R),str(A)],'original R and A source custody required for observation lifetime')
     argv=value['argv']
@@ -279,7 +324,8 @@ def request(path,digest):
          and type(prior['sha256']) is str and re.fullmatch(r'[0-9a-f]{64}',prior['sha256']), 'exact pre-mutation database descriptor required')
     allowed=value['allowed_subprocess_argv']
     need(type(allowed) is list and allowed==READONLY_PROFILE_GIT,'only the three original readonly Git primitives are declared statically; checked native driver owns exact sealed runner families')
-    need(len(argv)==7 and argv[2]==str(ACTOR_PATH) and argv[3]=='--plan' and argv[5]=='--plan-sha256'
+    actor_path=_observation_actor(value)
+    need(len(argv)==7 and argv[2]==str(actor_path) and argv[3]=='--plan' and argv[5]=='--plan-sha256'
          and argv[4] in pins and pins[argv[4]]==argv[6], 'only the exact pinned embedded observation actor/plan is permitted')
     need(cwd==WORKSPACE,'actual execution cwd must be the exact selected workspace')
 
@@ -289,7 +335,7 @@ def request(path,digest):
     need(type(plan) is dict and set(plan)=={'schema','operation','accelerate_root','task_scope','native_metadata_cli'}
          and plan['schema']=='native-embedded-scoped-observation-plan/v1'
          and plan['operation']=='native_embedded_scoped_observation_v1'
-         and plan['accelerate_root']==str(ACTOR_PATH.parents[3]),'closed selected normal-package observation plan required')
+         and plan['accelerate_root']==str(actor_path.parents[3]),'closed selected normal-package observation plan required')
     scope=plan['task_scope']
     need(type(scope) is list and 1<=len(scope)<=256 and all(type(x) is str
          and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}',x) for x in scope)
@@ -303,7 +349,7 @@ def request(path,digest):
     need(type(c['source_sha256']) is dict and 1<=len(c['source_sha256'])<=1024
          and all(name in pins and pins[name]==digest for name,digest in c['source_sha256'].items()),
          'driver immutable source graph differs from original owner graph')
-    validate_import_git_binding(c)
+    validate_import_git_binding(c,actor_path=actor_path)
     capsule_reuse_binding(c)
     binding=c['observation_binding']
     need(type(binding) is dict and set(binding)=={'schema','database_preimage','task_scope',
@@ -312,7 +358,7 @@ def request(path,digest):
          and binding['database_preimage']==prior and binding['task_scope']==scope,
          'exact original database/scope observation binding required')
     observer=binding['observer_source']
-    helper=ACTOR_PATH.parents[3]/'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py'
+    helper=actor_path.parents[3]/'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py'
     need(type(observer) is dict and set(observer)=={'path','bytes','sha256'}
          and observer['path']==str(helper) and type(observer['bytes']) is int
          and 0<observer['bytes']<=4*1024**2 and c['source_sha256'].get(str(helper))==observer['sha256']
@@ -332,7 +378,7 @@ def request(path,digest):
              for ref in import_plan['source_pins']), 'finite pre-body import graph must join original owner source pins')
     guard_ref=c['pre_body_guard']
     need(type(guard_ref) is dict and set(guard_ref)=={'path','bytes','sha256'}
-         and guard_ref['path']==str(ACTOR_PATH.with_name('project_import_source_guard.py'))
+         and guard_ref['path']==str(actor_path.with_name('project_import_source_guard.py'))
          and guard_ref['sha256']=='141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e'
          and c['source_sha256'].get(guard_ref['path'])==guard_ref['sha256']
          and pin(guard_ref['path'])==guard_ref,'exact original before-body guard required')
@@ -399,6 +445,7 @@ def _seal_parent_capacity_fd(descriptor, *, owner, value, request_path,
          and all(type(part) is str and part for part in token.values())
          and token['state_path'] == str(STATE), 'original parent token required')
     snapshot = owner.to_dict(); record = snapshot['record']
+    selected_policy = _parent_capacity_scheduler_policy(value,record)
     need(snapshot['status'] == 'active' and record['status'] == 'active'
          and record['owner_pid'] == os.getpid()
          and record['native_lease_id'] == token['lease_id']
@@ -412,7 +459,7 @@ def _seal_parent_capacity_fd(descriptor, *, owner, value, request_path,
     payload = {'schema': PARENT_CAPACITY_SCHEMA, 'authority': PARENT_CAPACITY_AUTHORITY,
         'owner_identity': owner_state, 'child_identity': {'pid': child_pid, 'birth': child_birth},
         'owner_uid': os.geteuid(), 'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
-        'native_lease_token': token, 'scheduler_policy_sha256': POLICY,
+        'native_lease_token': token, 'scheduler_policy_sha256': selected_policy,
         'disk_ledger_path': str(LEDGER), 'disk_reservation_id': snapshot['reservation_id'],
         'expected_phase_lease_id': record['parent_lease_id'], 'storage_roots': [str(root) for root in ROOTS],
         'request_pin': pin(request_path), 'expected_request_sha256': pin(request_path)['sha256'],
@@ -494,6 +541,7 @@ def _admit_parent_capacity_io(event, arguments, *, accelerate_root, source_map, 
 
 def child_main(args):
     value,raw=request(args.request,args.expected_request_sha256)
+    actor_path=_observation_actor(value)
     # No numerical/native import or productive write before original attachment.
     need(sys.stdin.buffer.read(1)==b'1','original startup barrier not released')
     _check_inherited_parent_capacity_fd()
@@ -504,15 +552,15 @@ def child_main(args):
     actual_popen=subprocess.Popen
     reuse_mode=False  # Set from the exact pinned plan below.
     spawn_lock=threading.RLock();pending_spawn={};spawn_index=0
-    driver_raw=regular(ACTOR_PATH)
-    need(hashlib.sha256(driver_raw).hexdigest()==value['source_sha256'][str(ACTOR_PATH)],'guarded driver source changed')
+    driver_raw=regular(actor_path)
+    need(hashlib.sha256(driver_raw).hexdigest()==value['source_sha256'][str(actor_path)],'guarded driver source changed')
     driver=types.ModuleType('_exact_native_metadata_execution_driver')
-    driver.__file__=str(ACTOR_PATH);sys.modules[driver.__name__]=driver
-    exec(compile(driver_raw,str(ACTOR_PATH),'exec',dont_inherit=True),driver.__dict__)
+    driver.__file__=str(actor_path);sys.modules[driver.__name__]=driver
+    exec(compile(driver_raw,str(actor_path),'exec',dont_inherit=True),driver.__dict__)
     authorize=driver.authorize_native_control_popen
     authorize_fd=driver.authorize_native_control_fd_event
-    need(authorize.__globals__ is driver.__dict__ and authorize.__code__.co_filename==str(ACTOR_PATH)
-         and authorize_fd.__globals__ is driver.__dict__ and authorize_fd.__code__.co_filename==str(ACTOR_PATH),
+    need(authorize.__globals__ is driver.__dict__ and authorize.__code__.co_filename==str(actor_path)
+         and authorize_fd.__globals__ is driver.__dict__ and authorize_fd.__code__.co_filename==str(actor_path),
          'exact source-bound driver admission functions required')
     plan_path=Path(value['argv'][4]);plan=decode(regular(plan_path))
     need(hashlib.sha256(regular(plan_path)).hexdigest()==value['argv'][6],'driver plan changed')
@@ -721,7 +769,7 @@ def child_main(args):
                 'schema':'legal-ir-control-allowed-subprocess-events/v1',
                 'request_sha256':args.expected_request_sha256,'events':allowed_events,'denied_events':denied,
                 'declared_subprocesses':len(allowed),'write_events':write_events,'mkdir_events':mkdir_events,
-                'fd_admissions':fd_events,'parent_capacity_io_admissions':parent_io_events,'process_admission_driver':pin(ACTOR_PATH),
+                'fd_admissions':fd_events,'parent_capacity_io_admissions':parent_io_events,'process_admission_driver':pin(actor_path),
                 'scope':'normal SDK import Git reads only; original owner retains actual PID/birth custody; no task/provider subprocesses',
                 'writable_publication_outputs':sorted(publication),
                 'filesystem_audit_scope':'Python audit denies external writes; original embedded read-session performs SELECT-only reads; native DB adapter is not a kernel sandbox',
@@ -781,6 +829,7 @@ def main():
     if args._child:
         child_main(args);return 0
     value,raw=request(args.request,args.expected_request_sha256)
+    actor_path=_observation_actor(value)
     reuse_mode=decode(regular(value['argv'][4]))['native_metadata_cli']['schema']=='native-embedded-scoped-observation-cli/v3'
     os.environ.pop(PARENT_CAPACITY_FD_ENV, None)
     source_guard(value,args.request,raw)
@@ -837,7 +886,7 @@ def main():
         resource_scope=resource_admission_deadline(work_deadline_monotonic=work_deadline,native_deadline_monotonic=deadline)
         resource_scope.__enter__();resource_scope_entered=True
         result['resource_deadline_profile']=dict(work_seconds=240,stopped_cleanup_reserve_seconds=60,native_lifetime_seconds=300,absolute_clock_shared_by_all_resource_operations=True)
-        scheduler=open_existing_scheduler(STATE,POLICY)
+        scheduler=_open_original_scheduler(value,open_existing_scheduler)
         root=scheduler.acquire(ResourceLane.ORCHESTRATION,cpu_slots=1,memory_mb=1536,child_process_slots=8,
             requires_gpu=False,timeout=remaining(),cancel_event=cancelled,request_id=value['request_id']+':root')
         phase=root.acquire_child(lane=ResourceLane.ORCHESTRATION,cpu_slots=1,memory_mb=1536,child_process_slots=8,
@@ -845,10 +894,8 @@ def main():
         attempt=Path(value['attempt_directory'])
         need(attempt.is_dir() and not any(attempt.iterdir()) and attempt.lstat().st_uid==os.geteuid()
              and attempt.lstat().st_mode&0o777==0o700,'caller-prepared private attempt changed before original admission')
-        owner=ParentedPhaseResourceReservation(LEDGER,roots=ROOTS,attempt_directory=attempt,parent_lease=phase,
-            storage_bytes=value['storage_bytes'],memory_mb=1536,cpu_slots=1,child_process_slots=8,
-            scheduler_state_path=STATE,expected_scheduler_policy_sha256=POLICY,
-            timeout_seconds=remaining(),ledger_lock_timeout_seconds=None)
+        owner=_new_original_parented_reservation(value,ParentedPhaseResourceReservation,
+            attempt=attempt,parent_lease=phase,timeout_seconds=remaining())
         owner.__enter__();owner_entered=True;storage_status='active'
         need(owner.to_dict()['workload']=='canonical_parented_phase'
              and owner.to_dict()['scheduler_lane']=='orchestration','original control-purpose profile required')
@@ -926,7 +973,7 @@ def main():
         observed=decode(regular(event_path))
         need(observed.get('request_sha256')==args.expected_request_sha256
              and observed.get('denied_events')==[]
-              and observed.get('process_admission_driver')==pin(ACTOR_PATH)
+              and observed.get('process_admission_driver')==pin(actor_path)
              and len(observed.get('events',[]))==result['process_spawn_receipts']['intents'],
              'declared original CLI invocation receipt differs')
         result['allowed_subprocess_events']=pin(event_path)

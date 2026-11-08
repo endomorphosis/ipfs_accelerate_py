@@ -464,93 +464,6 @@ def test_resolution_only_present_module_cannot_escape_execution_provenance(guard
     assert not (finder.directory/'project-import-origins-present-resolution-only.json').exists()
 
 
-@pytest.fixture
-def read_only_route():
-    path=BASE/'ipfs_accelerate_py/agent_implementation_route.py'
-    name='_qualified_read_only_import_route'
-    spec=importlib.util.spec_from_file_location(name,path)
-    module=importlib.util.module_from_spec(spec);sys.modules[name]=module
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_read_only_import_scope_is_explicit_and_resets_after_exception(read_only_route,tmp_path):
-    route=read_only_route
-    assert route.current_agent_implementation_read_only_import_scope() is None
-    with pytest.raises(RuntimeError,match='fixture exit'):
-        with route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head='1'*40) as scope:
-            assert type(scope)is route.AgentImplementationReadOnlyImportScope
-            assert (scope.source_root,scope.source_head)==(tmp_path,'1'*40)
-            assert route.current_agent_implementation_read_only_import_scope() is scope
-            raise RuntimeError('fixture exit')
-    assert route.current_agent_implementation_read_only_import_scope() is None
-    assert list(tmp_path.iterdir())==[]
-
-
-@pytest.mark.parametrize('head',[None,True,'111111111111111111111111111111111111111','GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG'])
-def test_read_only_import_scope_refuses_noncanonical_heads(read_only_route,tmp_path,head):
-    with pytest.raises(ValueError,match='exact source HEAD'):
-        with read_only_route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head=head):
-            pytest.fail('invalid source HEAD entered a read-only scope')
-    assert read_only_route.current_agent_implementation_read_only_import_scope() is None
-
-
-def test_read_only_import_scope_refuses_nesting_without_losing_outer_restriction(read_only_route,tmp_path):
-    route=read_only_route
-    with route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head='1'*40) as outer:
-        with pytest.raises(ValueError,match='cannot be nested'):
-            with route.agent_implementation_read_only_import_scope(source_root=tmp_path,source_head='2'*40):
-                pytest.fail('nested source scope accepted')
-        assert route.current_agent_implementation_read_only_import_scope() is outer
-    assert route.current_agent_implementation_read_only_import_scope() is None
-
-
-def test_read_only_import_scope_refuses_parent_traversal(read_only_route,tmp_path):
-    with pytest.raises(ValueError,match='parent traversal'):
-        with read_only_route.agent_implementation_read_only_import_scope(source_root=tmp_path/'..',source_head='1'*40):
-            pytest.fail('aliased source root entered a scope')
-    assert read_only_route.current_agent_implementation_read_only_import_scope() is None
-
-
-@pytest.mark.parametrize('scope_kind',['archived','read-only'])
-def test_owner_and_driver_agree_on_both_exact_import_modes(owner,driver,tmp_path,scope_kind):
-    plan=_plan(driver,tmp_path);c=plan['native_metadata_cli']
-    scope=driver.ARCHIVED_IMPORT_SCOPE if scope_kind=='archived' else driver.READ_ONLY_IMPORT_SCOPE
-    c['import_head_capsule_Git']['scope']=scope
-    assert driver.validate_import_git_binding(c) is c['import_head_capsule_Git']
-    assert owner.validate_import_git_binding(c) is c['import_head_capsule_Git']
-    c['import_head_capsule_Git']['scope']=scope+' unreviewed'
-    with pytest.raises(RuntimeError,match='HEAD read scope'):
-        driver.validate_import_git_binding(c)
-    with pytest.raises(RuntimeError,match='HEAD read scope'):
-        owner.validate_import_git_binding(c)
-
-
-def test_read_only_import_admission_refuses_capsule_blob_archive(driver,import_git_case,monkeypatch):
-    case=import_git_case;_refresh_import_git_environment_for_call(case,monkeypatch)
-    case['plan']['native_metadata_cli']['import_head_capsule_Git']['scope']=driver.READ_ONLY_IMPORT_SCOPE
-    with pytest.raises(RuntimeError,match='does not archive HEAD blobs'):
-        driver.authorize_native_control_popen(case['argv'],(),case['kwargs'],case['plan'])
-
-
-def test_read_only_import_admission_preserves_original_clean_generation_query(driver,import_git_case,monkeypatch):
-    import subprocess
-    case=import_git_case;_refresh_import_git_environment_for_call(case,monkeypatch)
-    case['plan']['native_metadata_cli']['import_head_capsule_Git']['scope']=driver.READ_ONLY_IMPORT_SCOPE
-    kwargs=dict(case['kwargs']);kwargs.pop('close_fds');kwargs.pop('bufsize')
-    kwargs.update(stdin=subprocess.DEVNULL,stderr=subprocess.PIPE)
-    row=driver.authorize_native_control_popen(case['prefix']+['rev-parse','--show-toplevel'],(),kwargs,case['plan'])
-    assert row['original_frame']=='_agent_git_output' and row['sealed_launcher_fds']==[]
-
-
-def test_read_only_import_witness_cannot_be_minted_outside_active_scope(driver,read_only_route,tmp_path,monkeypatch):
-    route=read_only_route;plan=_plan(driver,tmp_path);c=plan['native_metadata_cli']
-    c['import_head_capsule_Git']['scope']=driver.READ_ONLY_IMPORT_SCOPE
-    monkeypatch.setattr(driver,'module_owner',lambda *args:(route,{}))
-    # No capsule, launch, constructor or daemon execution is fabricated here.
-    # The actual witness is exercised by the normal-import cold owning test.
-    with pytest.raises(RuntimeError,match='genuine current read-only normal import'):
-        driver.require_original_import_capability(types.SimpleNamespace(),c)
 def _reuse_cache_fixture(c,tmp_path):
     root=tmp_path/'retained-cache'/('c'*64);root.mkdir(parents=True)
     runner='ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py'
@@ -621,3 +534,275 @@ def test_reuse_process_constructor_cap_precedes_any_subprocess(owner,ordinal):
     if ordinal==32:owner.reuse_process_constructor_bound(ordinal)
     else:
         with pytest.raises(RuntimeError,match='constructor bound'):owner.reuse_process_constructor_bound(ordinal)
+
+
+# Policy successor controls extend the existing owner. The original tests above
+# remain byte-exact; these constructors and inert seams grant no native custody.
+def _policy_request(owner,driver,tmp_path,monkeypatch,policy_name):
+    value,plan,p=_request(owner,driver,tmp_path,monkeypatch)
+    assert value['expected_scheduler_policy_sha256']==owner.POLICY
+    value['expected_scheduler_policy_sha256']=getattr(owner,policy_name)
+    if policy_name=='POLICY':return value,plan,p
+    old_root=str(driver.RUNTIME);new_root=str(owner.QUALIFIED_F07_ACTOR.parents[3])
+    owner_path=str(Path(owner.__file__))
+    def relocated(item):
+        if isinstance(item,dict):return {relocated(k):relocated(v) for k,v in item.items()}
+        if isinstance(item,list):return [relocated(v) for v in item]
+        if isinstance(item,str) and item!=owner_path and item.startswith(old_root+'/'):
+            return new_root+item[len(old_root):]
+        if item==old_root:return new_root
+        return item
+    value=relocated(value);plan=relocated(plan)
+    ref=_write(p,plan)
+    value['argv'][6]=ref['sha256'];value['source_sha256'][str(p)]=ref['sha256']
+    return value,plan,p
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_known_policy_request_preserves_legacy_shape_without_effects(owner,driver,tmp_path,monkeypatch,policy_name):
+    value,_,_=_policy_request(owner,driver,tmp_path,monkeypatch,policy_name)
+    p=tmp_path/'policy-request.json';ref=_write(p,value)
+    reads=[];actual=owner.regular
+    def recorded(path,*args):
+        reads.append(str(path));return actual(path,*args)
+    def forbidden(*args,**kwargs):
+        raise AssertionError('request parsing must not enter a resource owner')
+    monkeypatch.setattr(owner,'regular',recorded)
+    monkeypatch.setattr(owner,'_open_original_scheduler',forbidden)
+    monkeypatch.setattr(owner,'load_source_lease',forbidden)
+    parsed,raw=owner.request(p,ref['sha256'])
+    assert parsed==value and raw==p.read_bytes()
+    assert parsed['schema']=='legal-ir-original-native-control-request/v1'
+    assert set(parsed)==owner.FIELDS
+    assert str(owner.DATABASE) not in reads
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('selected',[None,False,7,{},[], 'f07', '0'*64,
+    '4662bd8fe6caf6f2c048e3d7cff7abb4d80e5c875b21e02e204b1b89371b8286'.upper(),
+    'f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661'.upper()])
+def test_unknown_policy_refuses_before_plan_database_or_admission(owner,driver,tmp_path,monkeypatch,selected):
+    value,_,_=_request(owner,driver,tmp_path,monkeypatch)
+    value['expected_scheduler_policy_sha256']=selected
+    p=tmp_path/'unknown-policy.json';ref=_write(p,value)
+    reads=[];actual=owner.regular
+    def recorded(path,*args):
+        reads.append(str(path));return actual(path,*args)
+    monkeypatch.setattr(owner,'regular',recorded)
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner.request(p,ref['sha256'])
+    assert reads==[str(p)]
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('change',['missing_expected','extra_profile'])
+def test_policy_selection_never_adds_a_field_or_missing_field_default(owner,driver,tmp_path,monkeypatch,change):
+    value,_,_=_request(owner,driver,tmp_path,monkeypatch)
+    if change=='missing_expected':value.pop('expected_scheduler_policy_sha256')
+    else:value['scheduler_policy_profile']='current'
+    p=tmp_path/'closed-policy.json';ref=_write(p,value)
+    with pytest.raises(RuntimeError,match='closed control request'):
+        owner.request(p,ref['sha256'])
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('field,bad',[('cpu_slots',2),('memory_mb',1537),
+    ('child_process_slots',9),('storage_bytes',384*1024**2+1),('timeout_seconds',301)])
+def test_policy_choice_does_not_widen_any_resource_bound(owner,driver,tmp_path,monkeypatch,policy_name,field,bad):
+    value,_,_=_policy_request(owner,driver,tmp_path,monkeypatch,policy_name)
+    value[field]=bad
+    p=tmp_path/'policy-envelope.json';ref=_write(p,value)
+    with pytest.raises(RuntimeError,match='reviewed finite control envelope'):
+        owner.request(p,ref['sha256'])
+
+
+@pytest.mark.parametrize('selected_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('actual_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_original_scheduler_receives_selected_digest_and_crossing_refuses_before_acquire(owner,selected_name,actual_name):
+    selected=getattr(owner,selected_name);actual=getattr(owner,actual_name)
+    calls=[];sentinel=object()
+    def original_opener(state,expected):
+        calls.append((state,expected))
+        if expected!=actual:raise RuntimeError('original scheduler policy mismatch')
+        return sentinel
+    value={'expected_scheduler_policy_sha256':selected}
+    if selected==actual:
+        assert owner._open_original_scheduler(value,original_opener) is sentinel
+    else:
+        with pytest.raises(RuntimeError,match='original scheduler policy mismatch'):
+            owner._open_original_scheduler(value,original_opener)
+    assert calls==[(owner.STATE,selected)]
+
+
+def test_unknown_digest_never_calls_original_scheduler_opener(owner):
+    calls=[]
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner._open_original_scheduler({'expected_scheduler_policy_sha256':'0'*64},
+            lambda *args:calls.append(args))
+    assert calls==[]
+
+
+@pytest.mark.parametrize('selected_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('actual_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_private_capability_requires_matching_admitted_record_policy(owner,selected_name,actual_name):
+    selected=getattr(owner,selected_name);actual=getattr(owner,actual_name)
+    value={'expected_scheduler_policy_sha256':selected}
+    record={'scheduler_policy_sha256':actual}
+    if selected==actual:
+        assert owner._parent_capacity_scheduler_policy(value,record)==selected
+    else:
+        with pytest.raises(RuntimeError,match='admitted parent scheduler policy differs'):
+            owner._parent_capacity_scheduler_policy(value,record)
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_private_capability_does_not_invent_a_missing_record_policy(owner,policy_name):
+    with pytest.raises(RuntimeError,match='admitted parent scheduler policy differs'):
+        owner._parent_capacity_scheduler_policy(
+            {'expected_scheduler_policy_sha256':getattr(owner,policy_name)},{})
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('admitted_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_parent_seal_carries_selected_policy_with_inert_fd_operations(owner,tmp_path,monkeypatch,policy_name,admitted_name):
+    from dataclasses import dataclass
+    @dataclass
+    class Token:
+        lease_id:str
+        lease_key:str
+        state_path:str
+    policy=getattr(owner,policy_name);pid=os.getpid();child_pid=123;child_birth='456'
+    record={'status':'active','owner_pid':pid,'native_lease_id':'fixture-native',
+        'child':{'pid':child_pid,'birth':child_birth},'parent_lease_id':'fixture-phase',
+        'attempt_directory':{'path':str(tmp_path),'device':0,'inode':0},
+        'scheduler_policy_sha256':getattr(owner,admitted_name)}
+    native=types.SimpleNamespace(owner_pid=pid,released=False,cancelled=False,
+        token=Token('fixture-native','fixture-key',str(owner.STATE)))
+    fake_owner=types.SimpleNamespace(native_lease=native,
+        to_dict=lambda:{'status':'active','reservation_id':'fixture-disk','record':record})
+    writes=[];seals=owner.fcntl.F_SEAL_WRITE|owner.fcntl.F_SEAL_GROW|owner.fcntl.F_SEAL_SHRINK|owner.fcntl.F_SEAL_SEAL
+    fake_os=types.SimpleNamespace(getpid=lambda:pid,geteuid=os.geteuid,
+        SEEK_END=os.SEEK_END,SEEK_SET=os.SEEK_SET,lseek=lambda *args:0,
+        write=lambda fd,data:(writes.append(bytes(data)) or len(data)))
+    fake_fcntl=types.SimpleNamespace(**{name:getattr(owner.fcntl,name) for name in
+        ('F_SEAL_WRITE','F_SEAL_GROW','F_SEAL_SHRINK','F_SEAL_SEAL','F_ADD_SEALS','F_GET_SEALS')},
+        fcntl=lambda *args:seals)
+    monkeypatch.setattr(owner,'os',fake_os)
+    monkeypatch.setattr(owner,'fcntl',fake_fcntl)
+    monkeypatch.setattr(owner,'time',types.SimpleNamespace(monotonic=lambda:1.0))
+    monkeypatch.setattr(owner,'_parent_capacity_process_identity',lambda pid:{'pid':pid,'birth':'fixture'})
+    monkeypatch.setattr(owner,'pin',lambda p:{'path':str(p),'bytes':1,'sha256':'0'*64})
+    value={'expected_scheduler_policy_sha256':policy,'cpu_slots':1,'memory_mb':1536,
+        'child_process_slots':8,'storage_bytes':384*1024**2}
+    kwargs=dict(owner=fake_owner,value=value,request_path=tmp_path/'request.json',
+        execution_request={'path':'fixture'},work_deadline=2.0,native_deadline=3.0,
+        child_pid=child_pid,child_birth=child_birth)
+    if policy!=getattr(owner,admitted_name):
+        with pytest.raises(RuntimeError,match='admitted parent scheduler policy differs'):
+            owner._seal_parent_capacity_fd(99,**kwargs)
+        assert writes==[]
+        return
+    receipt=owner._seal_parent_capacity_fd(99,**kwargs)
+    payload=json.loads(b''.join(writes))
+    assert payload['scheduler_policy_sha256']==policy
+    assert payload['schema']=='native-metadata-sealed-parent-capacity/v1'
+    assert payload['authority']==owner.PARENT_CAPACITY_AUTHORITY
+    assert receipt['sealed'] is True and receipt['original_child_bound'] is True
+
+
+def test_invalid_policy_main_refuses_before_any_resource_or_child_effect(owner,driver,tmp_path,monkeypatch):
+    value,_,_=_request(owner,driver,tmp_path,monkeypatch)
+    value['expected_scheduler_policy_sha256']='0'*64
+    p=tmp_path/'main-unknown-policy.json';ref=_write(p,value)
+    calls=[]
+    def forbidden(*args,**kwargs):
+        calls.append('effect');raise AssertionError('unexpected resource or child effect')
+    monkeypatch.setattr(owner,'load_source_lease',forbidden)
+    monkeypatch.setattr(owner,'pin',forbidden)
+    monkeypatch.setattr(owner,'_open_original_scheduler',forbidden)
+    monkeypatch.setattr(owner,'_new_parent_capacity_fd',forbidden)
+    monkeypatch.setattr(owner,'subprocess',types.SimpleNamespace(Popen=forbidden))
+    monkeypatch.setattr(sys,'argv',[owner.__file__,'--request',str(p),'--expected-request-sha256',ref['sha256']])
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner.main()
+    assert calls==[]
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+def test_legacy_backend_selection_keeps_original_sibling_without_new_pins(owner):
+    assert owner._observation_actor({'expected_scheduler_policy_sha256':owner.POLICY})==owner.ACTOR_PATH
+
+
+@pytest.mark.parametrize('mutation',['wrong_path','missing_pin','wrong_pin'])
+def test_qualified_backend_rejects_unknown_or_copied_actor_before_file_read(owner,mutation,monkeypatch):
+    actor=str(owner.QUALIFIED_F07_ACTOR)
+    value={'expected_scheduler_policy_sha256':owner.QUALIFIED_F07_POLICY,
+        'argv':[sys.executable,'-B',actor],'source_sha256':{actor:owner.QUALIFIED_F07_ACTOR_SHA}}
+    if mutation=='wrong_path':
+        copied='/tmp/copied-native_embedded_observation_driver.py'
+        value['argv'][2]=copied;value['source_sha256'][copied]=owner.QUALIFIED_F07_ACTOR_SHA
+    elif mutation=='missing_pin':value['source_sha256'].pop(actor)
+    else:value['source_sha256'][actor]='0'*64
+    calls=[]
+    monkeypatch.setattr(owner,'pin',lambda *args:calls.append(args))
+    with pytest.raises(RuntimeError,match='explicit qualified f07 observation backend'):
+        owner._observation_actor(value)
+    assert calls==[]
+
+
+def test_qualified_backend_rejects_changed_original_bytes(owner,monkeypatch):
+    actor=str(owner.QUALIFIED_F07_ACTOR)
+    value={'expected_scheduler_policy_sha256':owner.QUALIFIED_F07_POLICY,
+        'argv':[sys.executable,'-B',actor],'source_sha256':{actor:owner.QUALIFIED_F07_ACTOR_SHA}}
+    monkeypatch.setattr(owner,'pin',lambda p:{'path':str(p),'bytes':28162,'sha256':'0'*64})
+    with pytest.raises(RuntimeError,match='qualified f07 observation backend changed'):
+        owner._observation_actor(value)
+
+
+@pytest.mark.parametrize('mutation',['accelerate_root','runtime_root','observer','guard'])
+def test_relocated_owner_cannot_rebind_retained_backend_graph(owner,driver,tmp_path,monkeypatch,mutation):
+    value,plan,p=_policy_request(owner,driver,tmp_path,monkeypatch,'QUALIFIED_F07_POLICY')
+    c=plan['native_metadata_cli']
+    if mutation=='accelerate_root':plan['accelerate_root']=str(driver.RUNTIME)
+    elif mutation=='runtime_root':c['runtime_root']=str(driver.RUNTIME)
+    elif mutation=='observer':c['observation_binding']['observer_source']['path']=str(tmp_path/'other-helper.py')
+    else:c['pre_body_guard']['path']=str(tmp_path/'other-guard.py')
+    ref=_write(p,plan);value['argv'][6]=ref['sha256'];value['source_sha256'][str(p)]=ref['sha256']
+    q=tmp_path/'rebound-backend.json';ref=_write(q,value)
+    with pytest.raises(RuntimeError):owner.request(q,ref['sha256'])
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('selected_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('actual_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_parented_constructor_receives_same_policy_and_unchanged_bounds(owner,tmp_path,selected_name,actual_name):
+    selected=getattr(owner,selected_name);actual=getattr(owner,actual_name)
+    calls=[];sentinel=object();parent=object()
+    def original_constructor(*args,**kwargs):
+        calls.append((args,kwargs))
+        if kwargs['expected_scheduler_policy_sha256']!=actual:
+            raise RuntimeError('original parented policy mismatch')
+        return sentinel
+    value={'expected_scheduler_policy_sha256':selected,'storage_bytes':384*1024**2}
+    if selected==actual:
+        assert owner._new_original_parented_reservation(value,original_constructor,
+            attempt=tmp_path,parent_lease=parent,timeout_seconds=17.5) is sentinel
+    else:
+        with pytest.raises(RuntimeError,match='original parented policy mismatch'):
+            owner._new_original_parented_reservation(value,original_constructor,
+                attempt=tmp_path,parent_lease=parent,timeout_seconds=17.5)
+    assert calls==[((owner.LEDGER,),dict(roots=owner.ROOTS,attempt_directory=tmp_path,
+        parent_lease=parent,storage_bytes=384*1024**2,memory_mb=1536,cpu_slots=1,
+        child_process_slots=8,scheduler_state_path=owner.STATE,
+        expected_scheduler_policy_sha256=selected,timeout_seconds=17.5,
+        ledger_lock_timeout_seconds=None))]
+
+
+def test_unknown_policy_never_constructs_parented_reservation(owner,tmp_path):
+    calls=[]
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner._new_original_parented_reservation(
+            {'expected_scheduler_policy_sha256':'0'*64,'storage_bytes':384*1024**2},
+            lambda *args,**kwargs:calls.append((args,kwargs)),attempt=tmp_path,
+            parent_lease=object(),timeout_seconds=17.5)
+    assert calls==[]

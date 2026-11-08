@@ -262,15 +262,14 @@ def test_terminal_result_cannot_substitute_foreign_request():
         executor.original_terminal(raw, ref)
 
 
-def test_proof_budget_refuses_symlinks_without_creating_a_special_fixture():
+def test_proof_budget_refuses_symlinks_without_creating_a_special_fixture(monkeypatch):
     import stat
     from types import SimpleNamespace
     class FixturePath:
         def lstat(self): return SimpleNamespace(st_mode=stat.S_IFLNK | 0o777)
-    class FixtureRoot:
-        def rglob(self, pattern): return [FixturePath()]
+    monkeypatch.setattr(executor,'_bounded_proof_walk',lambda *args,**kwargs:iter([FixturePath()]))
     with pytest.raises(executor.ExecutorHold, match='proof_symlink'):
-        executor.check_proof_budget(FixtureRoot(), 1024**2)
+        executor.check_proof_budget(object(), 1024**2)
 
 
 def test_main_process_gate_reuses_canonical_identity_before_any_owner(monkeypatch):
