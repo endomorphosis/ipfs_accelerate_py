@@ -35,6 +35,7 @@ Adaptive and formal planning: compile, validate, replan, metrics, and rollout he
 | `plan_evaluator` | `planning/plan_evaluator.py` |
 | `plan_failure_memory` | `planning/plan_failure_memory.py` |
 | `proof_carrying_planner` | `planning/proof_carrying_planner.py` |
+| `proof_ceiling_planner` | `planning/proof_ceiling_planner.py` |
 | `repository_planning_context` | `planning/repository_planning_context.py` |
 | `repository_planning_evidence` | `planning/repository_planning_evidence.py` |
 | `repository_planning_artifacts` | `planning/repository_planning_artifacts.py` |
@@ -62,6 +63,15 @@ observation and nominates validation or repairs using `ResidualLlmPacket`.
 Repairs retain signed output paths, validation commands and intent revision;
 dependent tasks are nominated for revalidation. No nomination dispatches work,
 admits a task, changes source interpretation or grants write/completion authority.
+
+`proof_ceiling_planner` turns a caller-supplied blocked observation into
+successor subgoals when the declared postcondition asks for owner evidence
+the observation does not contain. Deterministic rules cover a missing queue
+or checkpoint, a failed call that is not an executed semantic proof, an
+exhausted child clock, and a ready task whose unmet dependencies are all
+blocked. An optional proposer can add one bounded refinement per task.
+Suggestions that complete a parent, invent owner evidence, drop a dependency,
+or renew a clock are refused. The plan grants no completion authority.
 
 ## Repository context in the task proposal consumer
 

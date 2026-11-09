@@ -97,6 +97,51 @@ def read_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def project_required_verification(required: list[str], verified: list[str]) -> tuple[list[str], list[str]]:
+    """Keep the admitted required order and move every other verified id aside.
+
+    A completed unschedulable repair alias is evidence, not a member of the
+    campaign verification set. Publishing it inside verified_task_ids makes
+    the watchdog reject the snapshot as outside this campaign.
+    """
+    verified_set = set(verified)
+    covered = [alias for alias in required if alias in verified_set]
+    outside = [alias for alias in verified if alias not in set(required)]
+    return covered, outside
+
+
+def current_tree_completion_proof(
+    *,
+    run_id: str,
+    accepted_tree: str,
+    required_task_ids: list[str],
+    verified_task_ids: list[str],
+    runnable_count: int,
+    task_id: str,
+    effects_unknown: bool,
+    hold: bool,
+    blocked: bool,
+) -> dict[str, Any] | None:
+    """Proof over existing required receipts. It does not mark a task complete."""
+    if blocked or hold or effects_unknown or runnable_count != 0 or task_id:
+        return None
+    if not required_task_ids or verified_task_ids != required_task_ids:
+        return None
+    body = {
+        "schema": "wwl.native-current-tree-completion@1",
+        "run_id": run_id,
+        "accepted_tree": accepted_tree,
+        "required_task_ids": list(required_task_ids),
+        "verified_task_ids": list(verified_task_ids),
+        "runnable_count": 0,
+        "task_id": "",
+        "effects_unknown": False,
+        "hold": False,
+    }
+    body["completion_receipt"] = identity(body)
+    return body
+
+
 def atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=".wwl-", dir=path.parent)
@@ -770,26 +815,42 @@ class CampaignRuntime:
         markers = [self.config.state_root / name for name in ("HOLD", "STOP", "OPERATOR_STOP")
                    if os.path.lexists(self.config.state_root / name)]
         maintenance_bindings = [hold_binding(path, now=now) for path in markers]
-        verified = list(cached.get("verified_task_ids", []))
         required = list(self.tasks)
-        # Root completion must eventually come from the native typed-goal
-        # proof validator. A host-written boolean receipt cannot grant it.
-        completed = False
-        completion_receipt = ""
+        verified, outside = project_required_verification(required, list(cached.get("verified_task_ids", [])))
+        task_id = str(cached.get("active_task_id") or "")
+        runnable_count = len(cached.get("ready_task_ids", []))
+        effects_unknown = bool(failure.get("effects_unknown", False) or repair_unknown or native_unknown or callback_unknown)
+        accepted_tree = identity(observed_forest(self.config))
+        # The receipt is the hash of the required-task proof. It is not a
+        # hand-written completion bit, and it does not change task status.
+        proof = current_tree_completion_proof(
+            run_id=self.config.run_id,
+            accepted_tree=accepted_tree,
+            required_task_ids=required,
+            verified_task_ids=verified,
+            runnable_count=runnable_count,
+            task_id=task_id,
+            effects_unknown=effects_unknown,
+            hold=hold,
+            blocked=bool(failure) or bool(blockers),
+        )
+        completed = proof is not None
+        completion_receipt = proof["completion_receipt"] if proof else ""
         snapshot = {"schema": "wwl.watchdog.snapshot@1", "run_id": self.config.run_id, "observed_at": now,
             "authority_revision": str(cached.get("authority_revision") or "bootstrap"),
             "admitted_plan_revision": self.bootstrap_receipt["admitted_plan_revision"],
-            "accepted_tree": identity(observed_forest(self.config)), "hold": hold,
+            "accepted_tree": accepted_tree, "hold": hold,
             "maintenance_hold_bindings": maintenance_bindings if markers and all(maintenance_bindings) else [],
             "completion_verified": completed, "completion_receipt": completion_receipt,
             "required_task_ids": required, "verified_task_ids": verified,
-            "stage": str(cached.get("stage") or "startup"), "task_id": str(cached.get("active_task_id") or ""),
+            "unschedulable_verified_task_ids": outside,
+            "stage": str(cached.get("stage") or "startup"), "task_id": task_id,
             "active_attempt_id": str(cached.get("active_attempt_id") or ""),
             "progress_token": str(cached.get("progress_token") or self.bootstrap_receipt["receipt_id"]),
             "heartbeat_at": now, "owner_alive": alive, "owner_identity_verified": alive,
-            "runnable_count": len(cached.get("ready_task_ids", [])), "blocked_kind": "software_defect" if failure else ("permission" if native_unknown or self._native_terminal_result.get("reason") == "implementation_protected_path_mutated" else "none"),
+            "runnable_count": runnable_count, "blocked_kind": "software_defect" if failure else ("permission" if native_unknown or self._native_terminal_result.get("reason") == "implementation_protected_path_mutated" else "none"),
             "dependency_running": False, "stage_deadline_at": cached.get("stage_deadline_at", 0),
-            "effects_unknown": bool(failure.get("effects_unknown", False) or repair_unknown or native_unknown or callback_unknown), "failure_key": failure.get("failure_key", ""),
+            "effects_unknown": effects_unknown, "failure_key": failure.get("failure_key", ""),
             "reproducer_receipt": failure.get("receipt_id", ""),
             "action_observations": [value["observation"] for value in self._actions.values() if value.get("observation")],
             "owner_pid": os.getpid(), "meaningful_progress_at_ms": int(self._progress_at * 1000),
@@ -808,6 +869,14 @@ class CampaignRuntime:
         current_diagnosis = diagnosis if (diagnosis.get("task_id") == snapshot["task_id"]
             and diagnosis.get("active_attempt_id") == snapshot["active_attempt_id"]) else {}
         snapshot.update(native_diagnostic_available=True, native_diagnosis=dict(current_diagnosis))
+        if proof is not None:
+            proof_path = self.config.state_root / "control/current-tree-completion.json"
+            try:
+                current_proof = read_json(proof_path)
+            except (OSError, ValueError):
+                current_proof = None
+            if current_proof != proof:
+                atomic_json(proof_path, proof)
         for name in ("campaign-status.json", "status.json"):
             atomic_json(self.config.state_root / name, snapshot)
         return snapshot

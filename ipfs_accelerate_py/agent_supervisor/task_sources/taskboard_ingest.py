@@ -250,8 +250,10 @@ def parse_markdown_field_board(text: str) -> dict[str, Any]:
             current["dependencies"] = [
                 item.strip()
                 for item in value.split(",")
-                if item.strip()
+                if item.strip() and item.strip().casefold() not in {"none", "n/a", "na", "-", "—"}
             ]
+        if field == "parent_goal" and value.strip() and not current.get("goal_id"):
+            current["goal_id"] = value.strip()
         if field == "stable_task_id" and value.strip():
             current["stable_task_id"] = value.strip()
             current["task_id"] = value.strip()
@@ -299,6 +301,30 @@ def _mirror_taskboard_validation(errors: list[str], board: Mapping[str, Any]) ->
     return errors
 
 
+_EMPTY_DEPENDENCY = frozenset({"none", "n/a", "na", "-", "—"})
+
+
+def _dependency_ids(task: Mapping[str, Any]) -> list[str] | None:
+    """Return dependency ids. An explicit empty list is an empty frontier.
+
+    ``Depends on: none`` is not a task id. A non-list, non-string value is malformed.
+    """
+
+    if "dependencies" in task and task.get("dependencies") is not None:
+        deps = task.get("dependencies")
+    else:
+        deps = task.get("depends_on") or ()
+    if isinstance(deps, str):
+        deps = [item.strip() for item in deps.split(",") if item.strip()]
+    if not isinstance(deps, Sequence) or isinstance(deps, (str, bytes)):
+        return None
+    return [
+        str(dep).strip()
+        for dep in deps
+        if str(dep).strip() and str(dep).strip().casefold() not in _EMPTY_DEPENDENCY
+    ]
+
+
 def validate_taskboard(board: Mapping[str, Any]) -> list[str]:
     """Return blocking errors. Empty means the board may be ingested."""
 
@@ -332,10 +358,7 @@ def validate_taskboard(board: Mapping[str, Any]) -> list[str]:
             normalize_status(status)
         except TaskboardIngestError as exc:
             errors.append(f"{alias}: {exc}")
-        deps = task.get("dependencies") or task.get("depends_on") or ()
-        if isinstance(deps, str):
-            deps = [item.strip() for item in deps.split(",") if item.strip()]
-        if not isinstance(deps, Sequence) or isinstance(deps, (str, bytes)):
+        if _dependency_ids(task) is None:
             errors.append(f"{alias}: dependencies are malformed")
     known = set(ids)
     goal_references: dict[str, str] | None = None
@@ -349,10 +372,8 @@ def validate_taskboard(board: Mapping[str, Any]) -> list[str]:
         alias = str(
             task.get("stable_task_id") or task.get("task_id") or task.get("task_alias") or ""
         )
-        deps = task.get("dependencies") or task.get("depends_on") or ()
-        if isinstance(deps, str):
-            deps = [item.strip() for item in deps.split(",") if item.strip()]
-        if not isinstance(deps, Sequence) or isinstance(deps, (str, bytes)):
+        deps = _dependency_ids(task)
+        if deps is None:
             continue
         for dep in deps:
             dep_id = str(dep).strip()

@@ -117,6 +117,17 @@ def test_rotating_readonly_probes_and_json_clocks_cannot_renew_grace(frontier):
     assert result['planned_work']['state']=='plan_replan_required'
 
 
+@pytest.mark.parametrize('phase',['gate_recovery_needed','gate_retry_wait','gate_withheld'])
+def test_gate_recovery_label_keeps_the_blocked_frontier_incident(frontier,phase):
+    config,now,lane,live,probe,ledger,gates=frontier
+    state={};observe(frontier,state)
+    fixtures.status(lane,phase=phase,active_task_id='VOG-002')
+    result=observe(frontier,state,80)
+    assert 'planned_work_blocked_frontier' in [item['kind'] for item in result['incidents']]
+    assert result['planned_work']['state']=='plan_replan_required'
+    assert state['blocked_frontier_observation']['first_seen']==now
+
+
 @pytest.mark.parametrize('phase',['deterministic_command','validation','gate_revalidation'])
 def test_real_work_defers_maintenance_without_erasing_blockage_clock(frontier,phase):
     config,now,lane,live,probe,ledger,gates=frontier;state={};observe(frontier,state)

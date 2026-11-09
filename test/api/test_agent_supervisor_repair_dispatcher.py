@@ -13,7 +13,8 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.rescue.repair_dispatcher import (
     AlreadyRunning, Config, main, observe, probe_process, run_worker, singleton_lock, tick,
-    repair_lock, _unchanged_exit75_frontier,
+    repair_lock, _unchanged_exit75_frontier, _uncontracted_dependency_ready,
+    _lane_window, _rearm_clean_idle,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue import repair_dispatcher
 from ipfs_accelerate_py.agent_supervisor.rescue import watchdog_guardian
@@ -232,6 +233,98 @@ def test_failed_same_signature_retries_with_persisted_cooldown_then_caps(rig):
     assert cap["work_complete"] is False and cap["completion_authority"] is False
     config.evidence_paths[0].write_text("version = 2\n")
     assert tick(config, state, apply=True, now=now + 10001, probe=probe, worker=fail)["action"] == "worker_finished"
+
+
+def test_clean_attempt_cap_records_subgoals_until_the_lane_window_changes(rig):
+    config, now, lane, live, probe = rig
+    config.report_seconds = 100000
+    live[200] = False
+    calls = []
+    board = config.repo_root / "todo.md"
+    original = board.read_text()
+
+    def clean(*_args):
+        calls.append(1)
+        return {"outcome": "awaiting_observation", "exit_code": 0}
+
+    state = {}
+    assert tick(config, state, apply=True, now=now, probe=probe, worker=clean)["action"] == "worker_finished"
+    assert tick(config, state, apply=True, now=now + 9, probe=probe, worker=clean)["action"] == "cooldown"
+    assert tick(config, state, apply=True, now=now + 10, probe=probe, worker=clean)["action"] == "worker_finished"
+    tick(config, state, apply=True, now=now + 30, probe=probe, worker=clean)
+    capped = tick(config, state, apply=True, now=now + 10000, probe=probe, worker=clean)
+    assert capped["action"] == "idle_subgoals"
+    assert capped["reason"] == "clean_attempt_cap"
+    assert capped["subgoal_count"] >= 1
+    assert capped["work_complete"] is False and capped["completion_authority"] is False
+    assert len(calls) == 3
+    assert board.read_text() == original
+    receipt = json.loads((lane / "goal-redesign.json").read_text())
+    assert receipt["board_mutations"] == []
+    assert receipt["completion_authority"] is False
+    assert receipt["idle_incomplete"] is True
+    assert any(item["task_id"] == "VOG-001" and item["admission"] == "proposal_only" for item in receipt["subgoals"])
+    held = tick(config, state, apply=True, now=now + 10001, probe=probe, worker=clean)
+    assert held["action"] == "idle_subgoals"
+    assert len(calls) == 3
+    state["attempts"][capped["signature"]]["capped_window"] = "different-window"
+    rearmed = tick(config, state, apply=True, now=now + 20000, probe=probe, worker=clean)
+    assert rearmed["action"] == "worker_finished"
+    assert len(calls) == 4
+
+
+def test_gate_family_flicker_does_not_reopen_a_clean_cap(rig):
+    config, now, lane, live, probe = rig
+    config.report_seconds = 100000
+    live[200] = False
+    status(lane, phase="gate_retry_wait", active_task_id="VOG-001")
+    calls = []
+
+    def clean(*_args):
+        calls.append(1)
+        return {"outcome": "awaiting_observation", "exit_code": 0}
+
+    state = {}
+    assert tick(config, state, apply=True, now=now, probe=probe, worker=clean)["action"] == "worker_finished"
+    assert tick(config, state, apply=True, now=now + 9, probe=probe, worker=clean)["action"] == "cooldown"
+    assert tick(config, state, apply=True, now=now + 10, probe=probe, worker=clean)["action"] == "worker_finished"
+    tick(config, state, apply=True, now=now + 30, probe=probe, worker=clean)
+    capped = tick(config, state, apply=True, now=now + 10000, probe=probe, worker=clean)
+    assert capped["action"] == "idle_subgoals"
+    assert len(calls) == 3
+    record = state["attempts"][capped["signature"]]
+    assert record["capped_window"] == "vog|gate_wait|VOG-001"
+    # A window stored before the collapse must match the live gate label.
+    record["capped_window"] = "vog|gate_recovery_needed|VOG-001"
+    record["count"] = 3
+    for phase in ("gate_retry_wait", "gate_withheld", "gate_evidence_revalidation",
+                  "gate_dependency_revalidation", "gate_recovery_needed"):
+        status(lane, phase=phase, active_task_id="VOG-001")
+        held = tick(config, state, apply=True, now=now + 10001, probe=probe, worker=clean)
+        assert held["action"] == "idle_subgoals"
+        assert held["signature"] == capped["signature"]
+        assert len(calls) == 3
+        assert record["count"] == 3
+    status(lane, phase="deterministic_command", active_task_id="VOG-001")
+    rearmed = tick(config, state, apply=True, now=now + 20000, probe=probe, worker=clean)
+    assert rearmed["action"] == "worker_finished"
+    assert rearmed["signature"] == capped["signature"]
+    assert len(calls) == 4
+
+
+def test_stored_gate_window_matches_only_the_same_task():
+    observation = {"lanes": [{"lane": "jevops-lean-refactor-20261024", "phase": "gate_retry_wait",
+                              "active_task_id": "JLR-024"}],
+                   "pending_task_ids": ["JLR-024"], "selectable_task_ids": []}
+    state = {"last_worker": {"outcome": "awaiting_observation", "exit_code": 0, "work_complete": False}}
+    record = {"count": 3, "capped_window": "jevops-lean-refactor-20261024|gate_recovery_needed|JLR-024"}
+    assert _lane_window(observation) == "jevops-lean-refactor-20261024|gate_wait|JLR-024"
+    assert _rearm_clean_idle(record, state, observation) is False
+    assert record["count"] == 3
+    observation["lanes"][0]["active_task_id"] = "JLR-035"
+    assert _rearm_clean_idle(record, state, observation) is True
+    assert record["count"] == 0
+    assert record["capped_window"] == "jevops-lean-refactor-20261024|gate_wait|JLR-035"
 
 
 def test_provider_usage_limit_does_not_exhaust_the_attempt_budget(rig):
@@ -1446,6 +1539,27 @@ def test_unchanged_exit75_frontier_does_not_launch_another_worker(rig, monkeypat
         _frontier_state(fingerprint, now)) is True
 
 
+def test_dependency_ready_planned_work_is_not_an_exit75_freeze(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    fingerprint = "ab" * 32
+    observation = _exit75_frontier_observation(now, fingerprint)
+    observation["planned_work"]["state"] = "blocked_frontier_grace"
+    observation["planned_work"]["dependency_ready_planned_task_ids"] = ["VOG-022"]
+    calls = []
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: observation)
+    assert _uncontracted_dependency_ready(observation["planned_work"]) is True
+    assert _unchanged_exit75_frontier(observation, _frontier_state(fingerprint, now)) is False
+    result = tick(config, _frontier_state(fingerprint, now), apply=False, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "would_dispatch"
+    assert result["completion_authority"] is False
+    assert calls == []
+    # A ready id that is already one of the exit-75 proofs does not open a new repair.
+    observation["planned_work"]["dependency_ready_planned_task_ids"] = ["VOG-001"]
+    assert _uncontracted_dependency_ready(observation["planned_work"]) is False
+    assert _unchanged_exit75_frontier(observation, _frontier_state(fingerprint, now)) is True
+
+
 def test_deferred_exit75_frontier_does_not_launch_another_worker(rig, monkeypatch):
     config, now, lane, live, probe = rig
     fingerprint = "ab" * 32
@@ -1502,3 +1616,222 @@ def test_other_incident_still_dispatches_on_an_exit75_frontier(rig, monkeypatch)
     result = tick(config, _frontier_state(fingerprint, now), apply=False, now=now, probe=probe,
                   worker=lambda *_: pytest.fail("dry run must not launch"))
     assert result["action"] == "would_dispatch"
+
+
+def _truncated_jlr024_result() -> dict:
+    body = '```json\n{\n  "proof": "intros H'
+    attempt = {
+        "status": "RETURNED",
+        "http_status": 200,
+        "candidate_error": "Expecting value: line 1 column 1 (char 0)",
+        "response": {"choices": [{"finish_reason": "length", "message": {"content": body}}]},
+    }
+    return {
+        "status": "NO_CONFIRMED_WINNER",
+        "winner": None,
+        "completion_authority": False,
+        "proof_authority": False,
+        "promoted": False,
+        "full_campaign_complete": False,
+        "local_inference_calls": 2,
+        "limits": {"max_calls": 2},
+        "attempts": [attempt, dict(attempt)],
+    }
+
+
+def _write_truncated_jlr024(root):
+    path = root / "data/lean_refactor_arena_20261024/execution-v2/JLR-024.result.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_truncated_jlr024_result()))
+    return path
+
+
+def _jlr024_gate_observation(now):
+    observation = _exit75_frontier_observation(now, "ab" * 32, task="JLR-024")
+    observation["lanes"] = [{
+        "lane": "jevops-lean-refactor-20261024",
+        "phase": "gate_retry_wait",
+        "active_task_id": "JLR-024",
+    }]
+    observation["incidents"] = [{
+        "kind": "gate_fixed_point",
+        "lane": "jevops-lean-refactor-20261024",
+        "task": "JLR-024",
+        "evidence": {},
+    }]
+    observation["selectable_task_ids"] = ["JLR-024"]
+    observation["pending_task_ids"] = ["JLR-024"]
+    observation["planned_work"]["blocked_task_ids"] = ["JLR-024"]
+    observation["planned_work"]["dependency_ready_planned_task_ids"] = []
+    observation["planned_work"]["blocked_frontier_proofs"] = [
+        {"task_id": "JLR-024", "last_exit_code": 75},
+    ]
+    return observation
+
+
+def test_truncated_jlr024_gate_does_not_dispatch_or_complete(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    _write_truncated_jlr024(config.repo_root)
+    calls = []
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: _jlr024_gate_observation(now))
+    state = {}
+    result = tick(config, state, apply=True, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "waiting_external_gate"
+    assert result["reason"] == "truncated_phase_retained"
+    assert result["work_complete"] is False
+    assert result["completion_authority"] is False
+    assert result["attempt_count"] == 0
+    assert calls == []
+    assert state["attempts"][result["signature"]]["count"] == 0
+    again = tick(config, state, apply=True, now=now + 1, probe=probe,
+                 worker=lambda *_: calls.append(1) or {"outcome": "awaiting_observation", "exit_code": 0})
+    assert again["action"] == "waiting_external_gate"
+    assert calls == []
+
+
+def _write_closed_owner(root):
+    contracts = {"JLR-024": {"action": "pilot"}, "JLR-035": {"action": "release"}}
+    baseline = root / "data/lean_refactor_arena_20261024/execution-v2/history/baseline.json"
+    baseline.parent.mkdir(parents=True, exist_ok=True)
+    baseline.write_text(json.dumps({"contracts": contracts}))
+    (root / "config").mkdir(exist_ok=True)
+    (root / "config/lean_refactor_arena_20261024_execution_v2.json").write_text(json.dumps({"contracts": contracts}))
+    (root / "tools").mkdir(exist_ok=True)
+    (root / "tools/lean_refactor_compiled_sources_v1.json").write_text(json.dumps({
+        "baseline_profile": "data/lean_refactor_arena_20261024/execution-v2/history/baseline.json",
+    }))
+
+
+def _write_official_jlr035(root, **overrides):
+    document = {
+        "status": "WAITING_RELEASE",
+        "reason": "official_full_cohort_file_unavailable",
+        "model_calls": 0,
+        "completion_authority": False,
+        "proof_authority": False,
+        "full_campaign_complete": False,
+    }
+    document.update(overrides)
+    path = root / "data/lean_refactor_arena_20261024/execution-v2/JLR-035.result.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(document))
+    return path
+
+
+def _closed_frontier_observation(now):
+    observation = _jlr024_gate_observation(now)
+    observation["lanes"][0]["active_task_id"] = "JLR-035"
+    observation["incidents"] = [
+        {"kind": "gate_fixed_point", "lane": "jevops-lean-refactor-20261024", "task": "JLR-035", "evidence": {}},
+        {"kind": "planned_work_blocked_frontier", "lane": "", "task": "", "evidence": {}},
+    ]
+    observation["planned_work"]["blocked_task_ids"] = ["JLR-024", "JLR-035"]
+    observation["planned_work"]["dependency_ready_planned_task_ids"] = ["JLR-022"]
+    observation["selectable_task_ids"] = ["JLR-024", "JLR-035"]
+    observation["pending_task_ids"] = ["JLR-024", "JLR-035"]
+    return observation
+
+
+def test_closed_lineage_and_official_release_do_not_dispatch(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    _write_truncated_jlr024(config.repo_root)
+    _write_official_jlr035(config.repo_root)
+    _write_closed_owner(config.repo_root)
+    calls = []
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: _closed_frontier_observation(now))
+    result = tick(config, {}, apply=True, now=now, probe=probe,
+                  worker=lambda *_: calls.append(1) or {"outcome": "awaiting_observation", "exit_code": 0})
+    assert result["action"] == "waiting_external_gate"
+    assert result["reason"] == "retained_external_frontier"
+    assert result["attempt_count"] == 0
+    assert result["completion_authority"] is False
+    assert result["work_complete"] is False
+    assert calls == []
+
+
+def test_completion_claim_on_the_release_stays_dispatchable(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    _write_truncated_jlr024(config.repo_root)
+    _write_official_jlr035(config.repo_root, completion_authority=True)
+    _write_closed_owner(config.repo_root)
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: _closed_frontier_observation(now))
+    result = tick(config, {}, apply=False, now=now, probe=probe,
+                  worker=lambda *_: pytest.fail("dry run must not launch"))
+    assert result["action"] == "would_dispatch"
+    assert result.get("reason") != "retained_external_frontier"
+    assert result["completion_authority"] is False
+
+
+def test_deferred_frontier_keeps_another_ready_task_dispatchable(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    _write_truncated_jlr024(config.repo_root)
+    observation = _jlr024_gate_observation(now)
+    observation["planned_work"]["state"] = "blocked_frontier_deferred"
+    observation["planned_work"]["blocked_task_ids"] = ["JLR-024", "JLR-035"]
+    observation["planned_work"]["dependency_ready_planned_task_ids"] = ["JLR-022"]
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: observation)
+    result = tick(config, {}, apply=False, now=now, probe=probe,
+                  worker=lambda *_: pytest.fail("dry run must not launch"))
+    assert result["action"] == "would_dispatch"
+    assert result.get("reason") != "truncated_phase_retained"
+    assert result["completion_authority"] is False
+    assert result["work_complete"] is False
+
+
+def test_other_task_still_dispatches_beside_truncated_jlr024(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    _write_truncated_jlr024(config.repo_root)
+    observation = _jlr024_gate_observation(now)
+    observation["incidents"].append({
+        "kind": "planned_work_blocked_frontier",
+        "lane": "",
+        "task": "",
+        "evidence": {"blocked_task_ids": ["JLR-024", "JLR-035"], "dependency_ready_planned_task_ids": ["JLR-022"]},
+    })
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: observation)
+    result = tick(config, {}, apply=False, now=now, probe=probe,
+                  worker=lambda *_: pytest.fail("dry run must not launch"))
+    assert result["action"] == "would_dispatch"
+    assert result["completion_authority"] is False
+
+
+def test_tick_clears_a_false_completion_claim(rig, monkeypatch):
+    config, now, lane, live, probe = rig
+    receipt = lane / "goal-redesign.json"
+    receipt.write_text(json.dumps({
+        "completion_authority": True,
+        "work_complete": True,
+        "board_mutations": [],
+        "subgoals": [{"task_id": "JLR-024", "action": "retain_truncated_phase", "completion_authority": True}],
+        "decisions": [{
+            "task_id": "JLR-024",
+            "action": "retain_truncated_phase",
+            "completion_authority": True,
+            "board_mutation": False,
+        }],
+    }))
+    observation = _exit75_frontier_observation(now, "ab" * 32)
+    observation["signature"] = ""
+    observation["incidents"] = []
+    observation["pending_task_ids"] = []
+    observation["selectable_task_ids"] = []
+    observation["planned_work"] = {"enabled": False, "state": "disabled"}
+    observation["lanes"] = [{
+        "lane": "vog",
+        "phase": "gate_retry_wait",
+        "active_task_id": "",
+        "status_path": str(lane / "vog_status.json"),
+    }]
+    monkeypatch.setattr(repair_dispatcher, "observe", lambda *args, **kwargs: observation)
+    monkeypatch.setattr(repair_dispatcher, "_refresh_idle_subgoals", lambda *args, **kwargs: {"subgoals": []})
+    result = tick(config, {}, apply=True, now=now, probe=probe,
+                  worker=lambda *_: pytest.fail("completion correction must not dispatch"))
+    stored = json.loads(receipt.read_text())
+    assert stored["completion_authority"] is False
+    assert stored["work_complete"] is False
+    assert stored["subgoals"][0]["completion_authority"] is False
+    assert stored["decisions"][0]["completion_authority"] is False
+    assert result["completion_claim_corrections"] == 4
+    assert result["completion_authority"] is False
+    assert result["action"] == "healthy"
