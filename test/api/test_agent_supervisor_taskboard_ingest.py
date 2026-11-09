@@ -78,6 +78,15 @@ def test_json_trailing_comma_and_duplicate_keys() -> None:
         parse_json_taskboard('{"tasks":[], "tasks":[]}\n')
 
 
+def test_markdown_none_dependency_is_not_a_task_id() -> None:
+    text = "## LCM-000 Baseline\n- Status: todo\n- Parent goal: LCM-G010\n- Depends on: none\n"
+    task = parse_markdown_field_board(text)["tasks"][0]
+    assert task["status"] == "todo"
+    assert task["dependencies"] == []
+    assert task["goal_id"] == "LCM-G010"
+    assert validate_taskboard(parse_markdown_field_board(text)) == []
+
+
 def test_markdown_field_board_normalizes_status_and_dependencies() -> None:
     text = "## EX-001 First\n- Stable task ID: EX-001\n- Status: In Progress\n- Depends on: EX-000, EX-002\n"
     board = parse_markdown_field_board(text)

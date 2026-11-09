@@ -44,6 +44,10 @@ from .watchdog_guardian import (discover_watchdogs, _declared_storage_paths, _mi
                                 _option, _python_entrypoint)
 from .storage_pressure import (check_storage_capacity, clear_emergency_status,
                                is_storage_pressure, publish_emergency_status)
+from .goal_redesign import (
+    closed_lineage_planned, enforce_completion_claims, official_release_retained,
+    truncated_phase_retained, write_goal_redesign,
+)
 from .planned_work_watchdog import observe_planned_work, collect_gate_blockers
 from .queue_hold_lease import (QUEUE_HOLD_LEASE_VERSION, review_queue_hold, expire_queue_hold,
                                register_queue_hold, publisher_queue_hold_proof, expired_queue_hold_matches)
@@ -1716,6 +1720,222 @@ _EXTERNAL_FRONTIER_STATES = frozenset({
 })
 
 
+def _uncontracted_dependency_ready(planned: dict[str, Any]) -> bool:
+    """A dependency-ready planned task is not itself an exit-75 proof.
+
+    The sealed loader keeps that row planned until a reviewed contract
+    exists. Treating the surrounding exit-75 frontier as settled would
+    stop the repair worker from attempting that contract.
+    """
+    ready = planned.get("dependency_ready_planned_task_ids")
+    if not isinstance(ready, list) or not ready:
+        return False
+    blocked = planned.get("blocked_task_ids")
+    blocked_ids = {task_id for task_id in blocked if isinstance(task_id, str)} if isinstance(blocked, list) else set()
+    return any(isinstance(task_id, str) and task_id and task_id not in blocked_ids for task_id in ready)
+
+
+def _clean_refusal(state: dict[str, Any]) -> bool:
+    """A clean repair that made no completion claim can be followed by subgoals."""
+    last = state.get("last_worker")
+    if not isinstance(last, dict):
+        return False
+    return (last.get("outcome") == "awaiting_observation"
+            and last.get("exit_code") == 0
+            and last.get("work_complete") is False)
+
+
+def _board_incomplete(observation: dict[str, Any]) -> bool:
+    if observation.get("pending_task_ids") or observation.get("selectable_task_ids"):
+        return True
+    planned = observation.get("planned_work")
+    return isinstance(planned, dict) and _uncontracted_dependency_ready(planned)
+
+
+# A gate recheck renames the same wait. Those labels are one repair window.
+_GATE_WAIT_PHASES = frozenset({
+    "gate_retry_wait",
+    "gate_recovery_needed",
+    "gate_withheld",
+    "gate_evidence_revalidation",
+    "gate_dependency_revalidation",
+})
+
+
+def _canonical_phase(phase: str) -> str:
+    """Collapse a gate-family label. Other phases stay distinct opportunities."""
+    return "gate_wait" if phase in _GATE_WAIT_PHASES else phase
+
+
+def _canonical_window(window: str) -> str:
+    """Compare a stored window after older raw phase tokens are collapsed.
+
+    Records written before this collapse used the lane's literal phase.
+    Canonicalizing both sides keeps a reload from looking like a new window.
+    A line that is not lane|phase|task is left unchanged.
+    """
+    lines: list[str] = []
+    for line in window.split("\n"):
+        lane, separator, rest = line.partition("|")
+        phase, separator_2, task = rest.partition("|")
+        if separator and separator_2 and "|" not in task:
+            lines.append("|".join((lane, _canonical_phase(phase), task)))
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _lane_window(observation: dict[str, Any]) -> str:
+    """Lane phase and active task. Heartbeats, pids, and gate-label flicker are not a new window."""
+    lanes = observation.get("lanes")
+    if not isinstance(lanes, list):
+        return ""
+    parts: list[str] = []
+    for lane in lanes:
+        if not isinstance(lane, dict):
+            continue
+        parts.append("|".join((
+            str(lane.get("lane") or ""),
+            _canonical_phase(str(lane.get("phase") or "")),
+            str(lane.get("active_task_id") or ""),
+        )))
+    return "\n".join(parts)
+
+
+def _rearm_clean_idle(record: dict[str, Any], state: dict[str, Any], observation: dict[str, Any]) -> bool:
+    """Open one new repair budget when the lane window changes after a clean cap.
+
+    The first capped observation records the window and does not dispatch.
+    A later phase outside the gate family, or an active-task change, is a
+    different opportunity. Gate-family labels on the same task are one wait,
+    including a window stored before those labels were collapsed. The sealed
+    board and the attempt cap for one window stay in place.
+    """
+    if not _clean_refusal(state) or not _board_incomplete(observation):
+        return False
+    previous = record.get("capped_window")
+    if not isinstance(previous, str):
+        return False
+    window = _lane_window(observation)
+    if _canonical_window(previous) == _canonical_window(window):
+        return False
+    record["count"] = 0
+    record["capped_window"] = window
+    return True
+
+
+def _goal_receipt_paths(observation: dict[str, Any]) -> list[Path]:
+    lanes = observation.get("lanes")
+    paths: list[Path] = []
+    if not isinstance(lanes, list):
+        return paths
+    for lane in lanes:
+        status_path = lane.get("status_path") if isinstance(lane, dict) else None
+        if isinstance(status_path, str) and status_path:
+            paths.append(Path(status_path).parent / "goal-redesign.json")
+    return paths
+
+
+def _correct_goal_receipts(observation: dict[str, Any]) -> int:
+    """Clear completion claims on supervisor receipts. The lane status is not edited."""
+
+    return sum(enforce_completion_claims(path) for path in _goal_receipt_paths(observation))
+
+
+_RETAINED_GATE_TASKS = frozenset({"JLR-024", "JLR-035"})
+
+
+def _listed_ids(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    return {value for value in values if isinstance(value, str) and value}
+
+
+def _retained_external_frontier(config: Config, observation: dict[str, Any]) -> str:
+    """Return a wait reason when every open task is an external retain.
+
+    JLR-024's truncated phase, JLR-035's missing official cohort, and a
+    dependency-ready JLR-022 that this owner's compiled lineage cannot admit
+    do not need a repair worker. Any other task, incident, or a completion
+    claim on those results stays dispatchable. A deferred frontier still
+    counts the planned-work lists. This does not edit a result, the ledger,
+    or the board, and it does not spend a model call.
+    """
+
+    incidents = observation.get("incidents")
+    if not isinstance(incidents, list) or not incidents:
+        return ""
+    if any(not isinstance(item, dict) or item.get("kind") not in _EXTERNAL_GATE_INCIDENTS for item in incidents):
+        return ""
+    planned = observation.get("planned_work") if isinstance(observation.get("planned_work"), dict) else {}
+    blocked: set[str] = set()
+    ready: set[str] = set()
+    named: set[str] = set()
+    for source in (observation, planned):
+        blocked |= _listed_ids(source.get("blocked_task_ids"))
+        ready |= _listed_ids(source.get("dependency_ready_planned_task_ids"))
+    for item in incidents:
+        task = str(item.get("task") or "")
+        if task:
+            named.add(task)
+        evidence = item.get("evidence") if isinstance(item.get("evidence"), dict) else {}
+        other_task = evidence.get("task_id")
+        if isinstance(other_task, str) and other_task:
+            named.add(other_task)
+        blocked |= _listed_ids(evidence.get("blocked_task_ids"))
+        ready |= _listed_ids(evidence.get("dependency_ready_planned_task_ids"))
+    active: set[str] = set()
+    lanes = observation.get("lanes")
+    if isinstance(lanes, list):
+        for lane in lanes:
+            if isinstance(lane, dict) and str(lane.get("active_task_id") or ""):
+                active.add(str(lane["active_task_id"]))
+    involved = blocked | named | active
+    if not involved or not involved <= _RETAINED_GATE_TASKS:
+        return ""
+    if not active and not named:
+        return ""
+    if ready - {"JLR-022"}:
+        return ""
+    if ready and not closed_lineage_planned(config.repo_root):
+        return ""
+    if "JLR-024" in involved and not truncated_phase_retained(config.repo_root):
+        return ""
+    if "JLR-035" in involved and not official_release_retained(config.repo_root):
+        return ""
+    if ready or "JLR-035" in involved:
+        return "retained_external_frontier"
+    return "truncated_phase_retained"
+
+
+def _refresh_idle_subgoals(config: Config, observation: dict[str, Any]) -> dict[str, Any]:
+    """Record proposal-only subgoals beside the lane. The taskboard is not written."""
+    try:
+        manifest = _json(config.manifest_path)
+    except (OSError, ValueError):
+        return {"subgoals": []}
+    tasks: dict[str, Any] = {}
+    if manifest.get("todo_path"):
+        try:
+            tasks = _tasks(
+                _path(config.repo_root, manifest["todo_path"]),
+                manifest.get("task_header_prefix", "## TASK-"),
+            )
+        except (OSError, ValueError):
+            return {"subgoals": []}
+    lanes = observation.get("lanes")
+    receipt: Path | None = None
+    if isinstance(lanes, list):
+        for lane in lanes:
+            status_path = lane.get("status_path") if isinstance(lane, dict) else None
+            if isinstance(status_path, str) and status_path:
+                receipt = Path(status_path).parent / "goal-redesign.json"
+                break
+    if receipt is None or receipt.is_symlink() or not tasks:
+        return {"subgoals": []}
+    return write_goal_redesign(config.repo_root, tasks, receipt)
+
+
 def _unchanged_exit75_frontier(observation: dict[str, Any], state: dict[str, Any]) -> bool:
     """True when a clean repair already saw this same exit-75 frontier.
 
@@ -1724,9 +1944,14 @@ def _unchanged_exit75_frontier(observation: dict[str, Any], state: dict[str, Any
     plan_replan_required for one observation. Neither event opens a new
     repair attempt. A later proof change resets the frontier clock and
     repair can run again. Tasks stay pending.
+
+    A dependency-ready planned task outside that blocked set still needs a
+    reviewed contract. The attempt cap still bounds those dispatches.
     """
     planned = observation.get("planned_work")
     if not isinstance(planned, dict) or planned.get("state") not in _EXTERNAL_FRONTIER_STATES:
+        return False
+    if _uncontracted_dependency_ready(planned):
         return False
     blocked = planned.get("blocked_task_ids")
     selectable = observation.get("selectable_task_ids")
@@ -1818,6 +2043,11 @@ def tick(
     telemetry = {**observation, "last_full_observation_at": observation["observed_at"],
                  "action": "observational", "apply": apply,
                  **({"queue_hold_retirement": queue_retirement} if "retirement" in queue_retirement else {})}
+    if not observation.get("held"):
+        _refresh_idle_subgoals(config, observation)
+    corrections = _correct_goal_receipts(observation)
+    if corrections:
+        telemetry["completion_claim_corrections"] = corrections
     active = state.get("active_worker", {})
     if active:
         live = probe(int(active.get("pid") or 0))
@@ -1917,11 +2147,13 @@ def tick(
         record = state.setdefault("attempts", {}).setdefault(signature, {"count": 0, "next_dispatch_at": 0})
         telemetry["attempt_count"] = record["count"]
         telemetry["max_attempts"] = config.max_attempts
+        retained_reason = _retained_external_frontier(config, observation)
+        retained = bool(retained_reason)
         selected_argv = [str(part) for part in config.worker_argv]
         selected_provider = ""
         routed = _argv_provider(selected_argv) == "codex"
         router_blocked = False
-        if routed:
+        if routed and not retained:
             choice = _choose_repair_source(config, now)
             telemetry["router_decision"] = choice["decision"]
             telemetry["router_provider"] = choice["selected_provider"]
@@ -1946,17 +2178,31 @@ def tick(
         provider_quota = record.get("provider_quota") if isinstance(record.get("provider_quota"), dict) else {}
         provider_retry_at = None if routed else provider_quota.get("retry_at")
         stated_retry_at = None if routed else _latest_stated_quota_retry(config, now)
-        if stated_retry_at is not None:
+        if not retained and stated_retry_at is not None:
             provider_retry_at = stated_retry_at
             record["provider_quota"] = {"reason": "provider_usage_limit", "retry_at": stated_retry_at}
             record["next_dispatch_at"] = stated_retry_at
             state["next_dispatch_at"] = stated_retry_at
-        if router_blocked:
+        if retained:
+            telemetry["action"] = "waiting_external_gate"
+            telemetry["reason"] = retained_reason
+            telemetry["work_complete"] = False
+            telemetry["completion_authority"] = False
+        elif router_blocked:
             pass
-        elif record["count"] >= config.max_attempts:
+        elif record["count"] >= config.max_attempts and not _rearm_clean_idle(record, state, observation):
             recovered_retry_at = _recover_quota_exhaustion(config, signature, record, now)
             telemetry["attempt_count"] = record["count"]
-            if recovered_retry_at is None:
+            if recovered_retry_at is None and _clean_refusal(state) and _board_incomplete(observation):
+                record["capped_window"] = _lane_window(observation)
+                refreshed = _refresh_idle_subgoals(config, observation)
+                subgoals = refreshed.get("subgoals") if isinstance(refreshed.get("subgoals"), list) else []
+                telemetry["action"] = "idle_subgoals"
+                telemetry["reason"] = "clean_attempt_cap"
+                telemetry["subgoal_count"] = len(subgoals)
+                telemetry["work_complete"] = False
+                telemetry["completion_authority"] = False
+            elif recovered_retry_at is None:
                 telemetry["action"] = "attention_required"
             else:
                 telemetry["action"] = "provider_backoff"

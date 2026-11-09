@@ -20,6 +20,8 @@ _ACTIVE = {"running", "in_progress", "in-progress"}
 _RETRY_WAIT = {"attempt_retry_wait", "semantic_failure_wait", "gate_retry_wait", "gate_withheld", "resource_wait"}
 _EXECUTION = {"deterministic_command", "validation", "gate_dependency_revalidation",
               "gate_revalidation", "gate_evidence_revalidation"}
+# A gate recheck is the same withheld frontier. It must not drop the incident.
+_FRONTIER_WAIT = _RETRY_WAIT | {"gate_dependency_revalidation", "gate_recovery_needed"}
 
 
 def _digest(value: Any) -> str:
@@ -196,7 +198,7 @@ def _blocked_frontier(*, result: dict[str, Any], tasks: dict[str, dict[str, Any]
     accepted_wait = set(needed) | result["deferred_tasks"].keys()
     unsafe = any(lane.get("active_task_id") and not (
                  lane.get("active_task_id") in accepted_wait and
-                 lane.get("phase") in (_RETRY_WAIT | {"gate_dependency_revalidation"})) for lane in lanes)
+                 lane.get("phase") in _FRONTIER_WAIT) for lane in lanes)
     due = now - first >= result["grace_seconds"]
     result.update(state="blocked_frontier_deferred" if unsafe else "plan_replan_required" if due else "blocked_frontier_grace",
                   blocked_task_ids=needed, blocked_frontier_proofs=[by_id[t] for t in needed],

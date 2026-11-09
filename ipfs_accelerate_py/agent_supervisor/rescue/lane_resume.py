@@ -1746,6 +1746,8 @@ def run_resume_cycle(
     written on the task is still refused. Completion authority stays false.
     """
 
+    from .goal_redesign import write_goal_redesign
+    from .sealed_source_restore import restore_sealed_source_drift
     from .supervisor_watchdog import (
         parse_todo_task_fields,
         selectable_pending_task_ids,
@@ -2189,6 +2191,8 @@ def run_resume_cycle(
     held = hold_result()
     if held:
         return held
+    restore_sealed_source_drift(repo_root)
+    write_goal_redesign(repo_root, blocks, attempt_path.with_name("goal-redesign.json"))
     completed_statuses = {"completed", "complete", "done"}
     for task_id, fields in blocks.items():
         if str(fields.get("status") or "").strip().lower() not in completed_statuses:

@@ -19,7 +19,8 @@ from ipfs_accelerate_py.agent_supervisor.project_adapters.worldwide_legal_search
     CampaignConfig, CampaignRuntime, atomic_json, build_population, identity,
     read_json, topological_tasks, validate_goal, admit_repair, REPAIR_VALIDATOR,
     repair_pipeline_binding, verified_repair_canary,
-    wait_for_storage, bootstrap,
+    wait_for_storage, bootstrap, project_required_verification,
+    current_tree_completion_proof,
 )
 
 
@@ -612,6 +613,54 @@ class RepairAdmissionBoundaries(unittest.TestCase):
             self.assertEqual(snapshot["native_blocked_tasks"][0]["reason"], "native_process_cleanup_unverified")
             self.assertEqual(snapshot["blocked_kind"], "permission")
             self.assertFalse(snapshot["completion_verified"])
+
+    def test_unschedulable_alias_stays_outside_required_verification(self):
+        covered, outside = project_required_verification(
+            ["WWL-000", "WWL-001"],
+            ["WWL-001", "WWL-111.restore-commands", "WWL-000"],
+        )
+        self.assertEqual(covered, ["WWL-000", "WWL-001"])
+        self.assertEqual(outside, ["WWL-111.restore-commands"])
+        self.assertIsNone(current_tree_completion_proof(
+            run_id="worldwide-legal-search-v1", accepted_tree="sha256:abc",
+            required_task_ids=["WWL-000", "WWL-001"], verified_task_ids=covered,
+            runnable_count=1, task_id="", effects_unknown=False, hold=False, blocked=False,
+        ))
+        with tempfile.TemporaryDirectory() as directory:
+            config, _request, _failure, _target = self.fixture(Path(directory))
+            runtime = CampaignRuntime(config, {"admitted_plan_revision": "plan", "receipt_id": "receipt", "plan_definition_id": "plan-def"})
+            runtime._last_failure = {}
+            runtime._last_result = {}
+            runtime._native_terminal_result = {}
+            runtime._cached = {
+                "authority_revision": "460",
+                "verified_task_ids": ["WWL-001", "WWL-111.restore-commands", "WWL-000"],
+                "ready_task_ids": [],
+                "active_task_id": "",
+                "active_attempt_id": "",
+                "stage": "idle",
+                "native_blocked_tasks": [],
+                "task_statuses": {"WWL-000": "completed", "WWL-001": "completed", "WWL-111.restore-commands": "completed"},
+                "native_completion_receipts": {},
+                "native_completion_projection": "native-projection",
+                "native_completion_receipts_by_alias": {
+                    "WWL-000": "receipt-0",
+                    "WWL-001": "receipt-1",
+                    "WWL-111.restore-commands": "receipt-repair",
+                },
+                "progress_token": "token",
+            }
+            snapshot = runtime.publish()
+            self.assertEqual(snapshot["verified_task_ids"], ["WWL-000", "WWL-001"])
+            self.assertEqual(snapshot["unschedulable_verified_task_ids"], ["WWL-111.restore-commands"])
+            self.assertEqual(snapshot["native_completion_receipts_by_alias"]["WWL-111.restore-commands"], "receipt-repair")
+            self.assertTrue(snapshot["completion_verified"])
+            self.assertTrue(snapshot["completion_receipt"])
+            self.assertFalse(snapshot["completion_authority"])
+            proof = read_json(config.state_root / "control/current-tree-completion.json")
+            self.assertEqual(proof["completion_receipt"], snapshot["completion_receipt"])
+            self.assertEqual(proof["verified_task_ids"], snapshot["required_task_ids"])
+            self.assertNotIn("WWL-111.restore-commands", proof["verified_task_ids"])
 
     def test_only_bound_completed_tools_renew_progress_and_no_completion(self):
         with tempfile.TemporaryDirectory() as directory:
