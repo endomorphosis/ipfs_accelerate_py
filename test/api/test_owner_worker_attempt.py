@@ -287,11 +287,30 @@ def test_prior_immutable_event_tampering_refuses_another_event(case, children, c
         if change == "bytes":
             path.write_bytes(b"foreign replacement bytes")
             path.chmod(0o400)
-    child = children()
-    with pytest.raises(ValueError, match="immutable"):
-        attempt.note_spawned(child)
-    assert not _path(case, attempt, "spawned").exists()
-    assert path.exists()
+    refusal_observed = False
+    try:
+        child = children()
+        with pytest.raises(ValueError, match="immutable"):
+            attempt.note_spawned(child)
+        refusal_observed = True
+        assert not _path(case, attempt, "spawned").exists()
+        assert path.exists()
+    finally:
+        if change == "hardlink":
+            # Keep the hostile alias present through the real refusal, then
+            # retire only this authored name before owned artifact accounting.
+            alias = case.parent / "foreign-hardlink"
+            original_info, alias_info = path.stat(), alias.lstat()
+            assert (original_info.st_dev, original_info.st_ino) == (alias_info.st_dev, alias_info.st_ino)
+            assert original_info.st_nlink == alias_info.st_nlink == 2
+            observation = dict(schema="authored-hardlink-fixture-cleanup/v1",
+                original_name=path.name, alias_name=alias.name,
+                observed_links=original_info.st_nlink,
+                refusal_observed=refusal_observed, authority_granted=False)
+            alias.unlink()
+            assert path.stat().st_nlink == 1 and path.read_bytes() == original
+            observation.update(alias_removed=True, original_links_after_cleanup=1)
+            (case.parent / "authored-hardlink-cleanup.json").write_text(json.dumps(observation, sort_keys=True))
 
 
 @pytest.mark.parametrize("event", ["spawned", "retired"])
