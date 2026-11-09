@@ -20,9 +20,6 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.runtime import owner_writable_worktree as provisioner
 from ipfs_accelerate_py.agent_supervisor.runtime import source_formalization_context as boundary_guard
 from test.api.candidate_resource_test_support import resource_parent
-from test.api.test_current_source_worktree_allocation import _protect_control_tree
-from test.api.test_native_candidate_continuation import children, prepared, run_options
-from test.api.test_native_delegated_allocation import delegated_case
 
 
 @pytest.fixture
@@ -474,6 +471,10 @@ def test_original_deadline_expiring_after_root_gate_quarantines_without_enableme
 
 def test_actual_provisioning_precedes_first_census_and_native_continuation(
         tmp_path, monkeypatch, resource_parent):
+    # These native helpers belong only to this admitted integration case.
+    from test.api.test_current_source_worktree_allocation import _protect_control_tree
+    from test.api.test_native_candidate_continuation import children, prepared, run_options
+    from test.api.test_native_delegated_allocation import delegated_case
     receipts = []
     def provision_native(allocated):
         # Explicit trusted fixture setup removes ambient checkout umask writes
