@@ -456,3 +456,280 @@ def test_separate_producer_drift_during_native_read_is_refused_before_return(tmp
     with pytest.raises(ValueError,match="repair descriptor changed"):
         installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
     assert changed==[True]
+
+
+def catalogue_producer_fixture(tmp_path, monkeypatch, mode=0o600):
+    """Modeled @3/@2 producer and @1 owner metadata; execute no body."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owners
+    d = separate_producer_fixture(tmp_path, monkeypatch, mode)
+    owner_relative = "ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py"
+    # This extra ordinary fixture source is an explicit qualification input.
+    # It is read and hashed, never imported or executed by these owning tests.
+    old_owner_source = Path(installer.__file__).parents[3] / owner_relative
+    old_owner_raw = old_owner_source.read_bytes()
+    assert hashlib.sha256(old_owner_raw).hexdigest() == "e243cdf7b22a63f55e3c55101a2a7aeeee31492a98c8dbfe9f05b4d43b7fdc06"
+    old_owner_path = Path(d["roles"]["owner_source"]["path"]); old_owner_path.write_bytes(old_owner_raw)
+    d["roles"]["owner_source"] = pin(old_owner_path)
+    d["files"][owner_relative].update(pin(old_owner_path))
+    d["files"][owner_relative]["git_blob"] = hashlib.sha1(b"blob " + str(len(old_owner_raw)).encode() + b"\0" + old_owner_raw).hexdigest()
+    d["original"]["blobs"] = [{"relative_path":relative,"object_id":row["git_blob"],"bytes":row["bytes"]} for relative,row in d["files"].items()]
+    d["original"]["payload_bytes"] = sum(row["bytes"] for row in d["files"].values())
+    d["inventory"]["source_bytes"] = d["original"]["payload_bytes"]
+    d["capsule"]["source_bytes"] = d["original"]["payload_bytes"]
+    d["capsule"]["sources"] = copy.deepcopy(list(d["files"].values()))
+    cli = d["plan"]["native_metadata_cli"]
+    cli["project_import_plan"]["source_pins"] = list(d["roles"].values())
+    cli["source_sha256"] = {row["path"]:row["sha256"] for row in d["roles"].values()}
+    d["request"]["source_sha256"] = copy.deepcopy(cli["source_sha256"])
+    d["request"].update(storage_bytes=384*1024**2,timeout_seconds=300,
+        expected_scheduler_policy_sha256="f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661")
+    relative = "ipfs_accelerate_py/agent_supervisor/rescue/native_catalogue_probe.py"
+    path = d["producer_root"] / relative
+    path.write_text("raise AssertionError('catalogue parser metadata body must never execute')\n")
+    path.chmod(mode)
+    raw = path.read_bytes()
+    d["producer_rows"][relative] = {**pin(path), "relative_path":relative, "mode":mode,
+        "git_blob":hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()}
+    native_owner_root = tmp_path / "OW"; native_owner_root.mkdir()
+    owner_rows = {}
+    for owner_rel in ("ipfs_accelerate_py/__init__.py","ipfs_accelerate_py/agent_supervisor/__init__.py",
+            "ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",owner_relative):
+        target = native_owner_root/owner_rel; target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_text("raise AssertionError('native owner metadata body must never execute')\n")
+        target.chmod(mode); body=target.read_bytes()
+        owner_rows[owner_rel] = {**pin(target),"relative_path":owner_rel,"mode":mode,
+            "git_blob":hashlib.sha1(b"blob "+str(len(body)).encode()+b"\0"+body).hexdigest()}
+    d.update(catalogue_parser_relative=relative,catalogue_parser_path=path,native_owner_root=native_owner_root,
+        native_owner_rows=owner_rows,native_owner_relative=owner_relative,native_owner_head="e"*40,native_owner_tree="f"*40,
+        native_owner_calls=[],native_owner_fault=None)
+    original_git = owners.git_command
+    def owner_git(root,argv,**kwargs):
+        if root != native_owner_root:return original_git(root,argv,**kwargs)
+        assert kwargs["timeout"] == 3 and kwargs["environment"]["GIT_CONFIG_GLOBAL"] == "/dev/null"
+        d["native_owner_calls"].append(argv);args=argv[4:]
+        if args == ["rev-parse","--show-toplevel"]:return (str(tmp_path/"foreign") if d["native_owner_fault"] == "root" else str(root))+"\n"
+        if args == ["rev-parse","--verify","HEAD"]:return ("a"*40 if d["native_owner_fault"] == "head" else d["native_owner_head"])+"\n"
+        if args == ["rev-parse",d["native_owner_head"]+"^{tree}"]:return ("a"*40 if d["native_owner_fault"] == "tree" else d["native_owner_tree"])+"\n"
+        if args == ["status","--porcelain=v1","-z","--untracked-files=all"]:return "?? foreign\0" if d["native_owner_fault"] == "dirty" else ""
+        if args == ["ls-tree","-r","-z","--full-tree",d["native_owner_head"]]:
+            return "".join(("100755" if row["mode"]&0o111 else "100644")+" blob "+row["git_blob"]+"\t"+rel+"\0"
+                for rel,row in owner_rows.items() if d["native_owner_fault"] != "inventory" or rel != owner_relative)
+        raise AssertionError(args)
+    monkeypatch.setattr(owners,"git_command",owner_git)
+    old_seal = d["seal"]
+    def seal():
+        owner_source = pin(native_owner_root/owner_relative)
+        d["request"]["source_sha256"][owner_source["path"]] = owner_source["sha256"]
+        old_seal()
+        parser = pin(path)
+        commitment = {**d["producer_commitment"],"schema":"agent-supervisor/scientific-producer-source-commitment@2",
+            "catalogue_parser":parser}
+        commitment_ref = write(tmp_path/"catalogue-producer-commitment.json",commitment)
+        owner_source = pin(native_owner_root/owner_relative)
+        owner_inventory = {"schema":"legal-ir-scientific-source-inventory/v1","source_root":str(native_owner_root),
+            "source_commit":d["native_owner_head"],"source_tree":d["native_owner_tree"],"file_count":4,
+            "source_bytes":sum(row["bytes"] for row in owner_rows.values()),"files":list(owner_rows.values())}
+        generation=write(tmp_path/"native-owner-generation.json",{"source_only":True})
+        qualified=write(tmp_path/"native-owner-qualification.json",{"modeled_source_fixture_only":True})
+        native_commitment = {"schema":installer.SCIENTIFIC_NATIVE_OWNER_POLICY_SOURCE_COMMITMENT_SCHEMA,
+            "source_root":str(native_owner_root),"source_commit":d["native_owner_head"],"source_tree":d["native_owner_tree"],
+            "source_inventory":write(tmp_path/"native-owner-inventory.json",owner_inventory),
+            "source_operation_plan":generation,"source_qualification":qualified,"owner_source":owner_source,
+            "prior_owner_source":d["roles"]["owner_source"],
+            "native_backend_source":d["roles"]["driver_source"],
+            "scheduler_policy_transition":{"prior_sha256":"4662bd8fe6caf6f2c048e3d7cff7abb4d80e5c875b21e02e204b1b89371b8286",
+                "target_sha256":"f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661"},
+            "runtime_activation_or_task_authority":False}
+        native_ref = write(tmp_path/"native-owner-commitment.json",native_commitment)
+        profile = copy.deepcopy(d["profile"]); profile["owner_source"] = owner_source
+        profile["source_descriptors"].extend([parser,*[pin(native_owner_root/rel) for rel in owner_rows]])
+        profile["unit"]["argv"].extend(["--catalogue-parser-source",parser["path"],"--catalogue-parser-sha256",parser["sha256"]])
+        d["request"]["source_sha256"][owner_source["path"]] = owner_source["sha256"]
+        d["profile"] = profile;d["producer_commitment"] = commitment;d["native_owner_commitment"] = native_commitment
+        d["native_owner_inventory"] = owner_inventory
+        d["profile_ref"] = write(tmp_path/"Git-profile.json",profile)
+        d["binding_ref"] = write(tmp_path/"typed-binding.json",{
+            "schema":installer.SCIENTIFIC_CATALOGUE_PRODUCER_GIT_BINDING_SCHEMA,"profile":d["profile_ref"],
+            "source_commitment":d["commitment_ref"],"observer_plan":pin(tmp_path/"plan.json"),
+            "producer_source_commitment":commitment_ref,"native_owner_source_commitment":native_ref})
+    d["seal"]=seal;seal()
+    return d
+
+
+@pytest.mark.parametrize("mode", [0o400,0o600,0o664])
+def test_catalogue_producer_Git3_binds_exact_five_files_and_preserves_native_generation(tmp_path,monkeypatch,mode):
+    d = catalogue_producer_fixture(tmp_path,monkeypatch,mode)
+    native = copy.deepcopy(d["plan"]); request = copy.deepcopy(d["request"])
+    before = copy.deepcopy(d["config"])
+    profile = installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+    assert profile == d["profile"] and d["plan"] == native and d["request"] == request and d["config"] == before
+    assert len(d["producer_inventory"]["files"]) == 5
+    assert len(d["producer_commitment"]) == 9
+    assert all(row["mode"] == mode for row in d["producer_inventory"]["files"])
+    assert d["producer_head"] != d["head"] and d["producer_root"] != d["source"]
+    assert len(d["producer_calls"]) == len(d["native_owner_calls"]) == len(d["git_calls"]) == 18
+    assert all(profile[role]["path"].startswith(str(d["root"])+"/") for role in ("health_module","driver_source"))
+    assert profile["owner_source"]["path"].startswith(str(d["native_owner_root"])+"/")
+    assert len(d["native_owner_commitment"]) == 12 and len(d["native_owner_inventory"]["files"]) == 4
+    assert profile["unit"]["environment"]["PYTHONPATH"] == str(d["root"])+":"+str(d["datasets"])
+
+
+@pytest.mark.parametrize("failure", ["binding_schema_v1","binding_schema_v2","producer_schema_v1",
+    "producer_extra_key","missing_parser_key","crossed_parser_descriptor","unbound_probe",
+    "missing_probe_row","extra_producer_row","duplicate_probe_row","missing_cli_source","missing_cli_sha",
+    "duplicate_cli_source","duplicate_cli_sha","crossed_cli_source","crossed_cli_sha","mode_drift",
+    "native_role","pythonpath","binding_extra_key","probe_wrong_git_mode"])
+def test_catalogue_producer_Git3_rejects_crossed_missing_extra_schema_CLI_and_mode_roles(tmp_path,monkeypatch,failure):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owners
+    d = catalogue_producer_fixture(tmp_path,monkeypatch)
+    typed = json.loads(Path(d["binding_ref"]["path"]).read_bytes())
+    commitment = copy.deepcopy(d["producer_commitment"]); profile = copy.deepcopy(d["profile"])
+    parser = commitment["catalogue_parser"]; inventory = copy.deepcopy(d["producer_inventory"])
+    if failure == "binding_schema_v1": typed["schema"] = installer.SCIENTIFIC_GIT_BINDING_SCHEMA
+    elif failure == "binding_schema_v2": typed["schema"] = installer.SCIENTIFIC_PRODUCER_GIT_BINDING_SCHEMA
+    elif failure == "producer_schema_v1": commitment["schema"] = "agent-supervisor/scientific-producer-source-commitment@1"
+    elif failure == "producer_extra_key": commitment["inferred_parser_allowed"] = True
+    elif failure == "missing_parser_key": del commitment["catalogue_parser"]
+    elif failure == "crossed_parser_descriptor": commitment["catalogue_parser"] = profile["main_entrypoint"]
+    elif failure == "unbound_probe": profile["source_descriptors"].remove(parser)
+    elif failure == "missing_probe_row":
+        inventory["files"] = [row for row in inventory["files"] if row["relative_path"] != d["catalogue_parser_relative"]]
+    elif failure == "extra_producer_row":
+        extra = d["producer_root"] / "unrelated.py"; extra.write_text("# not a selected producer role\n")
+        raw = extra.read_bytes()
+        inventory["files"].append({**pin(extra), "relative_path":"unrelated.py", "mode":0o644,
+            "git_blob":hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest()})
+    elif failure == "duplicate_probe_row":
+        inventory["files"].append(copy.deepcopy(d["producer_rows"][d["catalogue_parser_relative"]]))
+    elif failure in ("missing_cli_source","missing_cli_sha"):
+        flag = "--catalogue-parser-source" if failure == "missing_cli_source" else "--catalogue-parser-sha256"
+        index = profile["unit"]["argv"].index(flag); del profile["unit"]["argv"][index:index+2]
+    elif failure in ("duplicate_cli_source","duplicate_cli_sha"):
+        flag, value = ("--catalogue-parser-source",parser["path"]) if failure == "duplicate_cli_source" else ("--catalogue-parser-sha256",parser["sha256"])
+        profile["unit"]["argv"].extend([flag,value])
+    elif failure in ("crossed_cli_source","crossed_cli_sha"):
+        flag, value = ("--catalogue-parser-source",profile["owner_source"]["path"]) if failure == "crossed_cli_source" else ("--catalogue-parser-sha256","0"*64)
+        profile["unit"]["argv"][profile["unit"]["argv"].index(flag)+1] = value
+    elif failure == "mode_drift": d["catalogue_parser_path"].chmod(0o640)
+    elif failure == "native_role": profile["health_module"] = parser
+    elif failure == "pythonpath": profile["unit"]["environment"]["PYTHONPATH"] = str(d["producer_root"])+":"+str(d["datasets"])
+    elif failure == "binding_extra_key": typed["infer_catalogue_parser"] = True
+    elif failure == "probe_wrong_git_mode":
+        original_git = owners.git_command
+        def wrong_mode(root,argv,**kwargs):
+            response = original_git(root,argv,**kwargs)
+            if root == d["producer_root"] and argv[4:] == ["ls-tree","-r","-z","--full-tree",d["producer_head"]]:
+                entry = "100644 blob "+d["producer_rows"][d["catalogue_parser_relative"]]["git_blob"]+"\t"+d["catalogue_parser_relative"]
+                assert entry in response
+                response = response.replace(entry,entry.replace("100644","100755",1),1)
+            return response
+        monkeypatch.setattr(owners,"git_command",wrong_mode)
+    inventory["file_count"] = len(inventory["files"])
+    inventory["source_bytes"] = sum(row["bytes"] for row in inventory["files"])
+    commitment["source_inventory"] = write(tmp_path/"rejected-catalogue-producer-inventory.json",inventory)
+    typed["producer_source_commitment"] = write(tmp_path/"rejected-catalogue-producer-commitment.json",commitment)
+    d["profile_ref"] = write(Path(d["profile_ref"]["path"]),profile);typed["profile"] = d["profile_ref"]
+    binding = write(Path(d["binding_ref"]["path"]),typed)
+    before = copy.deepcopy(d["config"])
+    with pytest.raises(ValueError):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],binding)
+    assert d["config"] == before
+
+
+def test_catalogue_producer_Git3_cannot_mask_changed_probe_body_with_clean_Git_metadata(tmp_path,monkeypatch):
+    d = catalogue_producer_fixture(tmp_path,monkeypatch)
+    row = d["producer_rows"][d["catalogue_parser_relative"]]
+    d["catalogue_parser_path"].write_text("raise AssertionError('changed parser body is not its committed blob')\n")
+    row.update(pin(d["catalogue_parser_path"]))
+    d["seal"]()
+    with pytest.raises(ValueError,match="producer physical source/mode differs from its committed Git blob"):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+
+
+def test_catalogue_producer_Git3_probe_drift_during_native_metadata_read_is_refused(tmp_path,monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owners
+    d = catalogue_producer_fixture(tmp_path,monkeypatch); original_git = owners.git_command; changed = []
+    def drift(root,argv,**kwargs):
+        if root == d["root"] and argv[4:] == ["ls-tree","-r","-z","--full-tree",d["head"]] and not changed:
+            d["catalogue_parser_path"].write_text("raise AssertionError('probe drift after initial producer read')\n")
+            changed.append(True)
+        return original_git(root,argv,**kwargs)
+    monkeypatch.setattr(owners,"git_command",drift)
+    with pytest.raises(ValueError,match="repair descriptor changed"):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+    assert changed == [True]
+
+
+@pytest.mark.parametrize("failure", ["missing_commitment","extra_commitment_key","crossed_schema","wrong_policy",
+    "wrong_prior_policy","crossed_owner","crossed_prior","unbound_prior","missing_parent","extra_file",
+    "mode_drift","crossed_root","request_policy","request_bounds","request_owner_pin",
+    "crossed_backend","git_head","git_tree","transition_extra_key","git_inventory"])
+def test_Git3_native_owner_refuses_unbound_crossed_policy_source_and_Git_roles(tmp_path,monkeypatch,failure):
+    d = catalogue_producer_fixture(tmp_path,monkeypatch)
+    if failure in ("request_policy","request_bounds"):
+        if failure == "request_policy": d["request"]["expected_scheduler_policy_sha256"] = "0"*64
+        else: d["request"]["memory_mb"] = 1537
+        d["seal"]()
+    typed = json.loads(Path(d["binding_ref"]["path"]).read_bytes())
+    commitment = copy.deepcopy(d["native_owner_commitment"])
+    inventory = copy.deepcopy(d["native_owner_inventory"]); profile = copy.deepcopy(d["profile"])
+    if failure == "missing_commitment": del typed["native_owner_source_commitment"]
+    elif failure == "extra_commitment_key": commitment["infer_native_root"] = True
+    elif failure == "crossed_schema": commitment["schema"] = "agent-supervisor/scientific-producer-source-commitment@1"
+    elif failure == "wrong_policy": commitment["scheduler_policy_transition"]["target_sha256"] = "a"*64
+    elif failure == "wrong_prior_policy": commitment["scheduler_policy_transition"]["prior_sha256"] = "b"*64
+    elif failure == "crossed_owner": commitment["owner_source"] = profile["main_entrypoint"]
+    elif failure == "crossed_prior": commitment["prior_owner_source"] = profile["health_module"]
+    elif failure == "unbound_prior": profile["source_descriptors"].remove(commitment["prior_owner_source"])
+    elif failure == "crossed_backend": commitment["native_backend_source"] = profile["health_module"]
+    elif failure == "transition_extra_key": commitment["scheduler_policy_transition"]["allow_other_policy"] = True
+    elif failure == "missing_parent":
+        inventory["files"] = [row for row in inventory["files"] if row["relative_path"] != "ipfs_accelerate_py/__init__.py"]
+    elif failure == "extra_file":
+        extra = d["native_owner_root"] / "unrelated.py"; extra.write_text("# no native owner role\n"); raw = extra.read_bytes()
+        inventory["files"].append({**pin(extra),"relative_path":"unrelated.py","mode":0o644,
+            "git_blob":hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()})
+    elif failure == "mode_drift": Path(commitment["owner_source"]["path"]).chmod(0o640)
+    elif failure == "crossed_root": commitment["source_root"] = str(d["producer_root"])
+    elif failure == "request_owner_pin":
+        request = copy.deepcopy(d["request"]); request["source_sha256"].pop(commitment["owner_source"]["path"])
+        request_ref = write(tmp_path/"request.json",request)
+        template = json.loads((tmp_path/"template.json").read_bytes()); template["request_ref"] = request_ref
+        service = json.loads((tmp_path/"service.json").read_bytes()); service["idle_template_ref"] = write(tmp_path/"template.json",template)
+        service_ref = write(tmp_path/"service.json",service)
+        profile["source_descriptors"] = [row for row in profile["source_descriptors"] if row["path"] != service_ref["path"]] + [service_ref]
+        profile["unit"]["argv"][profile["unit"]["argv"].index("--config-sha256")+1] = service_ref["sha256"]
+    elif failure.startswith("git_"): d["native_owner_fault"] = failure[len("git_"):]
+    inventory["file_count"] = len(inventory["files"])
+    inventory["source_bytes"] = sum(row["bytes"] for row in inventory["files"])
+    commitment["source_inventory"] = write(tmp_path/"rejected-native-owner-inventory.json",inventory)
+    if failure != "missing_commitment":
+        typed["native_owner_source_commitment"] = write(tmp_path/"rejected-native-owner-commitment.json",commitment)
+    profile_ref = write(Path(d["profile_ref"]["path"]),profile); typed["profile"] = profile_ref
+    binding = write(Path(d["binding_ref"]["path"]),typed); before = copy.deepcopy(d["config"])
+    with pytest.raises(ValueError):
+        installer._repair_scientific_profile(profile_ref,d["release"],binding)
+    assert d["config"] == before
+
+
+def test_Git3_native_owner_cannot_mask_changed_body_with_clean_Git_metadata(tmp_path,monkeypatch):
+    d = catalogue_producer_fixture(tmp_path,monkeypatch)
+    row = d["native_owner_rows"][d["native_owner_relative"]]; path = Path(row["path"])
+    path.write_text("raise AssertionError('changed native owner is not its committed blob')\n")
+    row.update(pin(path)); d["seal"]()
+    with pytest.raises(ValueError,match="native owner physical source/mode differs from its committed Git blob"):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+
+
+def test_Git3_native_owner_drift_during_native_metadata_read_is_refused(tmp_path,monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owners
+    d = catalogue_producer_fixture(tmp_path,monkeypatch); original_git = owners.git_command; changed = []
+    def drift(root,argv,**kwargs):
+        if root == d["root"] and argv[4:] == ["ls-tree","-r","-z","--full-tree",d["head"]] and not changed:
+            Path(d["native_owner_commitment"]["owner_source"]["path"]).write_text("raise AssertionError('owner drift after initial source read')\n")
+            changed.append(True)
+        return original_git(root,argv,**kwargs)
+    monkeypatch.setattr(owners,"git_command",drift)
+    with pytest.raises(ValueError,match="repair descriptor changed"):
+        installer._repair_scientific_profile(d["profile_ref"],d["release"],d["binding_ref"])
+    assert changed == [True]

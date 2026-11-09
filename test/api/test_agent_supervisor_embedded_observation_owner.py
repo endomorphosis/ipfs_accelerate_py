@@ -462,3 +462,347 @@ def test_resolution_only_present_module_cannot_escape_execution_provenance(guard
     assert finder.project_origins[spec.name]['execution_status']=='resolution_only'
     assert 'execution_profile' not in finder.project_origins[spec.name]
     assert not (finder.directory/'project-import-origins-present-resolution-only.json').exists()
+
+
+def _reuse_cache_fixture(c,tmp_path):
+    root=tmp_path/'retained-cache'/('c'*64);root.mkdir(parents=True)
+    runner='ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py'
+    accepted=dict(schema='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2',runner_path=str(root/runner),
+        runner_sha256='sha256:'+'a'*64,capsule_root=str(root),capsule_id='sha256:'+'c'*64,
+        source_head=c['import_head_capsule_Git']['source_head'],source_tree='2'*40,archive_sha256='sha256:'+'b'*64)
+    manifest=dict(schema='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1',source_head=accepted['source_head'],
+        source_tree=accepted['source_tree'],files={runner:accepted['runner_sha256']},capsule_id=accepted['capsule_id'])
+    commitment=dict(schema='legal-ir-scientific-source-commitment/v1',source_root=c['runtime_root'],
+        source_commit=accepted['source_head'],source_tree=accepted['source_tree'],runtime_activation_or_task_authority=False)
+    m=_write(root/'.agent-control-plane-manifest.json',manifest);z=_write(tmp_path/'source-generation.json',commitment)
+    data=dict(schema='agent-supervisor/scientific-source-capsule-reuse@1',accepted_pin=accepted,manifest_ref=m,source_commitment_ref=z)
+    path=tmp_path/'source-capsule-ref.json'
+    def seal():
+        ref=_write(path,data);c['schema']='native-embedded-scoped-observation-cli/v3';c['source_capsule_ref']=ref
+        for pin in (ref,m,z):c['source_sha256'][pin['path']]=pin['sha256']
+        return ref
+    seal();return data,seal
+
+
+@pytest.mark.parametrize('target',['driver','owner'])
+def test_reuse_metadata_is_closed_source_input_without_native_or_cache_writes(driver,owner,tmp_path,monkeypatch,target):
+    plan=_plan(driver,tmp_path);c=plan['native_metadata_cli'];data,_=_reuse_cache_fixture(c,tmp_path)
+    module=driver if target=='driver' else owner;monkeypatch.setattr(module,'REUSE_ROOTS',(tmp_path,))
+    before={str(p):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    assert module.capsule_reuse_binding(c)==data
+    assert {str(p):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}==before
+
+
+@pytest.mark.parametrize('mutation',['extra','head','tree','commitment_root','source_pin','inside_attempt','manifest_path'])
+def test_reuse_metadata_rejects_cache_scope_and_generation_drift(driver,tmp_path,monkeypatch,mutation):
+    c=_plan(driver,tmp_path)['native_metadata_cli'];data,seal=_reuse_cache_fixture(c,tmp_path)
+    monkeypatch.setattr(driver,'REUSE_ROOTS',(tmp_path,))
+    if mutation=='extra':data['write_on_miss']=True
+    elif mutation=='head':data['accepted_pin']['source_head']='3'*40
+    elif mutation=='tree':data['accepted_pin']['source_tree']='3'*40
+    elif mutation=='commitment_root':
+        p=Path(data['source_commitment_ref']['path']);x=json.loads(p.read_bytes());x['source_root']='/arbitrary/root'
+        data['source_commitment_ref']=_write(p,x)
+    elif mutation=='inside_attempt':data['accepted_pin']['capsule_root']=str(Path(c['attempt_directory'])/'cache'/('c'*64))
+    elif mutation=='manifest_path':data['manifest_ref']=_write(tmp_path/'other-manifest.json',json.loads(Path(data['manifest_ref']['path']).read_bytes()))
+    seal()
+    if mutation=='source_pin':c['source_sha256'].pop(data['manifest_ref']['path'])
+    with pytest.raises(RuntimeError):driver.capsule_reuse_binding(c)
+
+
+def test_original_owner_cli3_transport_keeps_exact_grants_and_empty_attempt(owner,driver,tmp_path,monkeypatch):
+    value,plan,path=_request(owner,driver,tmp_path,monkeypatch);c=plan['native_metadata_cli']
+    _reuse_cache_fixture(c,tmp_path);monkeypatch.setattr(owner,'REUSE_ROOTS',(tmp_path,))
+    value['source_sha256'].update(c['source_sha256']);ref=_write(path,plan)
+    value['argv'][6]=ref['sha256'];value['source_sha256'][str(path)]=ref['sha256']
+    req=tmp_path/'v3-request.json';ref=_write(req,value)
+    actual,_=owner.request(req,ref['sha256'])
+    assert actual==value and {k:actual[k] for k in ('cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds')}==dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300)
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('files',[276,277])
+def test_reuse_parent_file_bound_is_enforced_independently_of_byte_usage(owner,tmp_path,files):
+    for n in range(files):(tmp_path/str(n)).write_bytes(b'')
+    if files==276:assert owner.reuse_attempt_file_bound(tmp_path)==276
+    else:
+        with pytest.raises(RuntimeError,match='total attempt file bound'):owner.reuse_attempt_file_bound(tmp_path)
+
+
+@pytest.mark.parametrize('ordinal',[32,33])
+def test_reuse_process_constructor_cap_precedes_any_subprocess(owner,ordinal):
+    if ordinal==32:owner.reuse_process_constructor_bound(ordinal)
+    else:
+        with pytest.raises(RuntimeError,match='constructor bound'):owner.reuse_process_constructor_bound(ordinal)
+
+
+# Policy successor controls extend the existing owner. The original tests above
+# remain byte-exact; these constructors and inert seams grant no native custody.
+def _policy_request(owner,driver,tmp_path,monkeypatch,policy_name):
+    value,plan,p=_request(owner,driver,tmp_path,monkeypatch)
+    assert value['expected_scheduler_policy_sha256']==owner.POLICY
+    value['expected_scheduler_policy_sha256']=getattr(owner,policy_name)
+    if policy_name=='POLICY':return value,plan,p
+    old_root=str(driver.RUNTIME);new_root=str(owner.QUALIFIED_F07_ACTOR.parents[3])
+    owner_path=str(Path(owner.__file__))
+    def relocated(item):
+        if isinstance(item,dict):return {relocated(k):relocated(v) for k,v in item.items()}
+        if isinstance(item,list):return [relocated(v) for v in item]
+        if isinstance(item,str) and item!=owner_path and item.startswith(old_root+'/'):
+            return new_root+item[len(old_root):]
+        if item==old_root:return new_root
+        return item
+    value=relocated(value);plan=relocated(plan)
+    ref=_write(p,plan)
+    value['argv'][6]=ref['sha256'];value['source_sha256'][str(p)]=ref['sha256']
+    return value,plan,p
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_known_policy_request_preserves_legacy_shape_without_effects(owner,driver,tmp_path,monkeypatch,policy_name):
+    value,_,_=_policy_request(owner,driver,tmp_path,monkeypatch,policy_name)
+    p=tmp_path/'policy-request.json';ref=_write(p,value)
+    reads=[];actual=owner.regular
+    def recorded(path,*args):
+        reads.append(str(path));return actual(path,*args)
+    def forbidden(*args,**kwargs):
+        raise AssertionError('request parsing must not enter a resource owner')
+    monkeypatch.setattr(owner,'regular',recorded)
+    monkeypatch.setattr(owner,'_open_original_scheduler',forbidden)
+    monkeypatch.setattr(owner,'load_source_lease',forbidden)
+    parsed,raw=owner.request(p,ref['sha256'])
+    assert parsed==value and raw==p.read_bytes()
+    assert parsed['schema']=='legal-ir-original-native-control-request/v1'
+    assert set(parsed)==owner.FIELDS
+    assert str(owner.DATABASE) not in reads
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('selected',[None,False,7,{},[], 'f07', '0'*64,
+    '4662bd8fe6caf6f2c048e3d7cff7abb4d80e5c875b21e02e204b1b89371b8286'.upper(),
+    'f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661'.upper()])
+def test_unknown_policy_refuses_before_plan_database_or_admission(owner,driver,tmp_path,monkeypatch,selected):
+    value,_,_=_request(owner,driver,tmp_path,monkeypatch)
+    value['expected_scheduler_policy_sha256']=selected
+    p=tmp_path/'unknown-policy.json';ref=_write(p,value)
+    reads=[];actual=owner.regular
+    def recorded(path,*args):
+        reads.append(str(path));return actual(path,*args)
+    monkeypatch.setattr(owner,'regular',recorded)
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner.request(p,ref['sha256'])
+    assert reads==[str(p)]
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('change',['missing_expected','extra_profile'])
+def test_policy_selection_never_adds_a_field_or_missing_field_default(owner,driver,tmp_path,monkeypatch,change):
+    value,_,_=_request(owner,driver,tmp_path,monkeypatch)
+    if change=='missing_expected':value.pop('expected_scheduler_policy_sha256')
+    else:value['scheduler_policy_profile']='current'
+    p=tmp_path/'closed-policy.json';ref=_write(p,value)
+    with pytest.raises(RuntimeError,match='closed control request'):
+        owner.request(p,ref['sha256'])
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('field,bad',[('cpu_slots',2),('memory_mb',1537),
+    ('child_process_slots',9),('storage_bytes',384*1024**2+1),('timeout_seconds',301)])
+def test_policy_choice_does_not_widen_any_resource_bound(owner,driver,tmp_path,monkeypatch,policy_name,field,bad):
+    value,_,_=_policy_request(owner,driver,tmp_path,monkeypatch,policy_name)
+    value[field]=bad
+    p=tmp_path/'policy-envelope.json';ref=_write(p,value)
+    with pytest.raises(RuntimeError,match='reviewed finite control envelope'):
+        owner.request(p,ref['sha256'])
+
+
+@pytest.mark.parametrize('selected_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('actual_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_original_scheduler_receives_selected_digest_and_crossing_refuses_before_acquire(owner,selected_name,actual_name):
+    selected=getattr(owner,selected_name);actual=getattr(owner,actual_name)
+    calls=[];sentinel=object()
+    def original_opener(state,expected):
+        calls.append((state,expected))
+        if expected!=actual:raise RuntimeError('original scheduler policy mismatch')
+        return sentinel
+    value={'expected_scheduler_policy_sha256':selected}
+    if selected==actual:
+        assert owner._open_original_scheduler(value,original_opener) is sentinel
+    else:
+        with pytest.raises(RuntimeError,match='original scheduler policy mismatch'):
+            owner._open_original_scheduler(value,original_opener)
+    assert calls==[(owner.STATE,selected)]
+
+
+def test_unknown_digest_never_calls_original_scheduler_opener(owner):
+    calls=[]
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner._open_original_scheduler({'expected_scheduler_policy_sha256':'0'*64},
+            lambda *args:calls.append(args))
+    assert calls==[]
+
+
+@pytest.mark.parametrize('selected_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('actual_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_private_capability_requires_matching_admitted_record_policy(owner,selected_name,actual_name):
+    selected=getattr(owner,selected_name);actual=getattr(owner,actual_name)
+    value={'expected_scheduler_policy_sha256':selected}
+    record={'scheduler_policy_sha256':actual}
+    if selected==actual:
+        assert owner._parent_capacity_scheduler_policy(value,record)==selected
+    else:
+        with pytest.raises(RuntimeError,match='admitted parent scheduler policy differs'):
+            owner._parent_capacity_scheduler_policy(value,record)
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_private_capability_does_not_invent_a_missing_record_policy(owner,policy_name):
+    with pytest.raises(RuntimeError,match='admitted parent scheduler policy differs'):
+        owner._parent_capacity_scheduler_policy(
+            {'expected_scheduler_policy_sha256':getattr(owner,policy_name)},{})
+
+
+@pytest.mark.parametrize('policy_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('admitted_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_parent_seal_carries_selected_policy_with_inert_fd_operations(owner,tmp_path,monkeypatch,policy_name,admitted_name):
+    from dataclasses import dataclass
+    @dataclass
+    class Token:
+        lease_id:str
+        lease_key:str
+        state_path:str
+    policy=getattr(owner,policy_name);pid=os.getpid();child_pid=123;child_birth='456'
+    record={'status':'active','owner_pid':pid,'native_lease_id':'fixture-native',
+        'child':{'pid':child_pid,'birth':child_birth},'parent_lease_id':'fixture-phase',
+        'attempt_directory':{'path':str(tmp_path),'device':0,'inode':0},
+        'scheduler_policy_sha256':getattr(owner,admitted_name)}
+    native=types.SimpleNamespace(owner_pid=pid,released=False,cancelled=False,
+        token=Token('fixture-native','fixture-key',str(owner.STATE)))
+    fake_owner=types.SimpleNamespace(native_lease=native,
+        to_dict=lambda:{'status':'active','reservation_id':'fixture-disk','record':record})
+    writes=[];seals=owner.fcntl.F_SEAL_WRITE|owner.fcntl.F_SEAL_GROW|owner.fcntl.F_SEAL_SHRINK|owner.fcntl.F_SEAL_SEAL
+    fake_os=types.SimpleNamespace(getpid=lambda:pid,geteuid=os.geteuid,
+        SEEK_END=os.SEEK_END,SEEK_SET=os.SEEK_SET,lseek=lambda *args:0,
+        write=lambda fd,data:(writes.append(bytes(data)) or len(data)))
+    fake_fcntl=types.SimpleNamespace(**{name:getattr(owner.fcntl,name) for name in
+        ('F_SEAL_WRITE','F_SEAL_GROW','F_SEAL_SHRINK','F_SEAL_SEAL','F_ADD_SEALS','F_GET_SEALS')},
+        fcntl=lambda *args:seals)
+    monkeypatch.setattr(owner,'os',fake_os)
+    monkeypatch.setattr(owner,'fcntl',fake_fcntl)
+    monkeypatch.setattr(owner,'time',types.SimpleNamespace(monotonic=lambda:1.0))
+    monkeypatch.setattr(owner,'_parent_capacity_process_identity',lambda pid:{'pid':pid,'birth':'fixture'})
+    monkeypatch.setattr(owner,'pin',lambda p:{'path':str(p),'bytes':1,'sha256':'0'*64})
+    value={'expected_scheduler_policy_sha256':policy,'cpu_slots':1,'memory_mb':1536,
+        'child_process_slots':8,'storage_bytes':384*1024**2}
+    kwargs=dict(owner=fake_owner,value=value,request_path=tmp_path/'request.json',
+        execution_request={'path':'fixture'},work_deadline=2.0,native_deadline=3.0,
+        child_pid=child_pid,child_birth=child_birth)
+    if policy!=getattr(owner,admitted_name):
+        with pytest.raises(RuntimeError,match='admitted parent scheduler policy differs'):
+            owner._seal_parent_capacity_fd(99,**kwargs)
+        assert writes==[]
+        return
+    receipt=owner._seal_parent_capacity_fd(99,**kwargs)
+    payload=json.loads(b''.join(writes))
+    assert payload['scheduler_policy_sha256']==policy
+    assert payload['schema']=='native-metadata-sealed-parent-capacity/v1'
+    assert payload['authority']==owner.PARENT_CAPACITY_AUTHORITY
+    assert receipt['sealed'] is True and receipt['original_child_bound'] is True
+
+
+def test_invalid_policy_main_refuses_before_any_resource_or_child_effect(owner,driver,tmp_path,monkeypatch):
+    value,_,_=_request(owner,driver,tmp_path,monkeypatch)
+    value['expected_scheduler_policy_sha256']='0'*64
+    p=tmp_path/'main-unknown-policy.json';ref=_write(p,value)
+    calls=[]
+    def forbidden(*args,**kwargs):
+        calls.append('effect');raise AssertionError('unexpected resource or child effect')
+    monkeypatch.setattr(owner,'load_source_lease',forbidden)
+    monkeypatch.setattr(owner,'pin',forbidden)
+    monkeypatch.setattr(owner,'_open_original_scheduler',forbidden)
+    monkeypatch.setattr(owner,'_new_parent_capacity_fd',forbidden)
+    monkeypatch.setattr(owner,'subprocess',types.SimpleNamespace(Popen=forbidden))
+    monkeypatch.setattr(sys,'argv',[owner.__file__,'--request',str(p),'--expected-request-sha256',ref['sha256']])
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner.main()
+    assert calls==[]
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+def test_legacy_backend_selection_keeps_original_sibling_without_new_pins(owner):
+    assert owner._observation_actor({'expected_scheduler_policy_sha256':owner.POLICY})==owner.ACTOR_PATH
+
+
+@pytest.mark.parametrize('mutation',['wrong_path','missing_pin','wrong_pin'])
+def test_qualified_backend_rejects_unknown_or_copied_actor_before_file_read(owner,mutation,monkeypatch):
+    actor=str(owner.QUALIFIED_F07_ACTOR)
+    value={'expected_scheduler_policy_sha256':owner.QUALIFIED_F07_POLICY,
+        'argv':[sys.executable,'-B',actor],'source_sha256':{actor:owner.QUALIFIED_F07_ACTOR_SHA}}
+    if mutation=='wrong_path':
+        copied='/tmp/copied-native_embedded_observation_driver.py'
+        value['argv'][2]=copied;value['source_sha256'][copied]=owner.QUALIFIED_F07_ACTOR_SHA
+    elif mutation=='missing_pin':value['source_sha256'].pop(actor)
+    else:value['source_sha256'][actor]='0'*64
+    calls=[]
+    monkeypatch.setattr(owner,'pin',lambda *args:calls.append(args))
+    with pytest.raises(RuntimeError,match='explicit qualified f07 observation backend'):
+        owner._observation_actor(value)
+    assert calls==[]
+
+
+def test_qualified_backend_rejects_changed_original_bytes(owner,monkeypatch):
+    actor=str(owner.QUALIFIED_F07_ACTOR)
+    value={'expected_scheduler_policy_sha256':owner.QUALIFIED_F07_POLICY,
+        'argv':[sys.executable,'-B',actor],'source_sha256':{actor:owner.QUALIFIED_F07_ACTOR_SHA}}
+    monkeypatch.setattr(owner,'pin',lambda p:{'path':str(p),'bytes':28162,'sha256':'0'*64})
+    with pytest.raises(RuntimeError,match='qualified f07 observation backend changed'):
+        owner._observation_actor(value)
+
+
+@pytest.mark.parametrize('mutation',['accelerate_root','runtime_root','observer','guard'])
+def test_relocated_owner_cannot_rebind_retained_backend_graph(owner,driver,tmp_path,monkeypatch,mutation):
+    value,plan,p=_policy_request(owner,driver,tmp_path,monkeypatch,'QUALIFIED_F07_POLICY')
+    c=plan['native_metadata_cli']
+    if mutation=='accelerate_root':plan['accelerate_root']=str(driver.RUNTIME)
+    elif mutation=='runtime_root':c['runtime_root']=str(driver.RUNTIME)
+    elif mutation=='observer':c['observation_binding']['observer_source']['path']=str(tmp_path/'other-helper.py')
+    else:c['pre_body_guard']['path']=str(tmp_path/'other-guard.py')
+    ref=_write(p,plan);value['argv'][6]=ref['sha256'];value['source_sha256'][str(p)]=ref['sha256']
+    q=tmp_path/'rebound-backend.json';ref=_write(q,value)
+    with pytest.raises(RuntimeError):owner.request(q,ref['sha256'])
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('selected_name',['POLICY','QUALIFIED_F07_POLICY'])
+@pytest.mark.parametrize('actual_name',['POLICY','QUALIFIED_F07_POLICY'])
+def test_parented_constructor_receives_same_policy_and_unchanged_bounds(owner,tmp_path,selected_name,actual_name):
+    selected=getattr(owner,selected_name);actual=getattr(owner,actual_name)
+    calls=[];sentinel=object();parent=object()
+    def original_constructor(*args,**kwargs):
+        calls.append((args,kwargs))
+        if kwargs['expected_scheduler_policy_sha256']!=actual:
+            raise RuntimeError('original parented policy mismatch')
+        return sentinel
+    value={'expected_scheduler_policy_sha256':selected,'storage_bytes':384*1024**2}
+    if selected==actual:
+        assert owner._new_original_parented_reservation(value,original_constructor,
+            attempt=tmp_path,parent_lease=parent,timeout_seconds=17.5) is sentinel
+    else:
+        with pytest.raises(RuntimeError,match='original parented policy mismatch'):
+            owner._new_original_parented_reservation(value,original_constructor,
+                attempt=tmp_path,parent_lease=parent,timeout_seconds=17.5)
+    assert calls==[((owner.LEDGER,),dict(roots=owner.ROOTS,attempt_directory=tmp_path,
+        parent_lease=parent,storage_bytes=384*1024**2,memory_mb=1536,cpu_slots=1,
+        child_process_slots=8,scheduler_state_path=owner.STATE,
+        expected_scheduler_policy_sha256=selected,timeout_seconds=17.5,
+        ledger_lock_timeout_seconds=None))]
+
+
+def test_unknown_policy_never_constructs_parented_reservation(owner,tmp_path):
+    calls=[]
+    with pytest.raises(RuntimeError,match='explicit qualified scheduler policy'):
+        owner._new_original_parented_reservation(
+            {'expected_scheduler_policy_sha256':'0'*64,'storage_bytes':384*1024**2},
+            lambda *args,**kwargs:calls.append((args,kwargs)),attempt=tmp_path,
+            parent_lease=object(),timeout_seconds=17.5)
+    assert calls==[]

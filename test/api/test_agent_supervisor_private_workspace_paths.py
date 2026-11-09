@@ -126,6 +126,20 @@ def test_direct_tools_and_kernel_policy_receive_the_same_private_paths(tmp_path)
         temporary.cleanup()
 
 
+def test_relative_symlink_inside_denied_dependency_is_not_a_new_alias(tmp_path):
+    root = _workspace(tmp_path)
+    dependency = root / "external" / "ipfs_datasets_py"
+    (dependency / "docker").mkdir(parents=True)
+    (dependency / "docker" / "Dockerfile").write_text("FROM scratch\n")
+    (dependency / "Dockerfile").symlink_to("docker/Dockerfile")
+    (root / "public-alias").symlink_to(dependency / "docker" / "Dockerfile")
+    reached = G._workspace_symlinks_reach_denied_paths(
+        workspace=root, denied_paths=(dependency,),
+    )
+    assert dependency / "Dockerfile" not in reached
+    assert root / "public-alias" in reached
+
+
 def test_private_rules_use_supported_prefixes_even_with_legacy_list_keyword(tmp_path):
     path = tmp_path / "private"
     ordinary = G._grok_filesystem_deny_rules((path,))
@@ -170,6 +184,51 @@ def test_docker_mask_mounts_hide_private_bytes_and_leave_source_mount(tmp_path, 
         assert not any(f"dst={root / 'applications'}," in value for value in mounts)
         assert not any(f"src={git_store}" in value.split(",") for value in mounts)
         assert "synthetic private fixture" not in " ".join(command)
+    finally:
+        temporary.cleanup()
+
+
+def test_docker_mask_omits_nested_mount_under_a_masked_directory(tmp_path, monkeypatch):
+    root = _workspace(tmp_path)
+    dependency = root / "external" / "ipfs_kit_py"
+    dependency.mkdir(parents=True)
+    (dependency / ".git").write_text("gitdir: /synthetic/modules/ipfs_kit_py\n")
+    (root / "notes").mkdir()
+    (root / "notes" / "synthetic.key").write_text("synthetic uncovered key")
+    env = _environment(tmp_path, [
+        "external/**",
+        "external/ipfs_kit_py/.git",
+        ".env*",
+        "notes/synthetic.key",
+    ])
+    git_store = tmp_path / "private-git-store"
+    git_store.mkdir()
+    (root / ".git").write_text(f"gitdir: {git_store}\n")
+    monkeypatch.setattr(G, "_git_metadata_roots", lambda _workspace: (git_store,))
+    temporary, child, _policy, denied = G._isolated_grok_home(
+        base_env=env, child_env={}, codex_fallback_command=(), workspace=root,
+    )
+    try:
+        prompt = tmp_path / "prompt.txt"
+        prompt.write_text("synthetic instructions")
+        binary = tmp_path / "fixture-grok"
+        binary.write_text("inert fixture; never executed")
+        command = G._docker_grok_command(
+            grok_command=[str(binary)], grok_bin=binary, workspace=root,
+            prompt_path=prompt, grok_home=Path(temporary.name), base_env=env, child_env=child,
+            denied_paths=denied, mask_root=tmp_path / "masks", docker_config=tmp_path / "docker-config",
+            container_name="ipfs-accelerate-grok-123-" + "b" * 32,
+            cidfile=tmp_path / "cid", docker_bin="/fixture/docker", isolation_image="sha256:" + "b" * 64,
+        )
+        mounts = [command[index + 1] for index, part in enumerate(command) if part == "--mount"]
+        nested = root / "external" / "ipfs_kit_py" / ".git"
+        assert any(f"dst={root / 'external'}," in value for value in mounts)
+        assert not any(f"dst={nested}" in value for value in mounts)
+        for private in (root / ".env.test", root / "notes" / "synthetic.key", root / ".git"):
+            matching = [value for value in mounts if f"dst={private}," in value or value.endswith(f"dst={private}")]
+            assert len(matching) == 1, private
+            assert "readonly" in matching[0]
+        assert "gitdir: /synthetic/modules/ipfs_kit_py" not in " ".join(command)
     finally:
         temporary.cleanup()
 

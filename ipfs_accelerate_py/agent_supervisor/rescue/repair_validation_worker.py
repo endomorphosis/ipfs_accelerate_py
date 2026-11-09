@@ -1035,6 +1035,19 @@ def original_pytest_failure_attribution(guard, *, error, report_path, nodeid, wh
         result["kind"] = "trusted_test_assertion"
     return result
 
+def _pure_pytest_arguments(plan, datasets_root, attempt):
+    """Keep logging and the original ordinary tmp_path fixture inside custody."""
+    plugin = "ipfs_datasets_py.optimizers.logic_theorem_optimizer.validation_pytest"
+    plugin_source = Path(datasets_root) / "ipfs_datasets_py/optimizers/logic_theorem_optimizer/validation_pytest.py"
+    need(plan["source_pins"].get(str(plugin_source)) == descriptor(plugin_source)["sha256"],
+         "maintained private tmp_path plugin source must be pinned and unchanged")
+    return ["-c", "/dev/null", "--noconftest", "--capture=sys", "--assert=plain", "--import-mode=importlib",
+        "-p", "no:cacheprovider", "-p", plugin, "--basetemp", str(attempt / "tmp/pytest"),
+        "--log-file", str(attempt / "exports/pytest.log"), "--junitxml", str(attempt / "exports/test-results.xml"),
+        *plan["selected_checks"]]
+
+
+
 def original_pytest_no_collectors(error, *, session, selected_checks, failed_reports,
         perform_collect_code, perform_collect_globals, usage_error_type, source_pin):
     """Observe the genuine selected-module collection UsageError, never stderr.

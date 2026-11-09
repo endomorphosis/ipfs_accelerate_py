@@ -728,18 +728,175 @@ def render_control_owner_commands(policy_pin: dict, *, validation_timeout_second
              "original owner deadline cannot accommodate the explicit pre-D source probe and cleanup")
         result["validation_admission_retry"] = profile
     return result
+def _repair_upgrade_board_id(old: dict, contract: dict, initial_bindings: dict | None) -> str:
+    """Select one existing board from its explicit retained-job path.
+
+    The original single engineering board and the existing engineering/science
+    pair are supported in either order. An initial finite epoch must name the
+    same selected board. Selection grants no epoch, retry or task authority.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    boards = old.get("boards")
+    need(type(boards) is list and 1 <= len(boards) <= 2
+         and all(type(board) is dict and type(board.get("id")) is str for board in boards),
+         "existing legal-ir board population required")
+    identifiers = [board["id"] for board in boards]
+    need(len(set(identifiers)) == len(identifiers)
+         and (identifiers == ["legal-ir"] or set(identifiers) == {"legal-ir", "legal-ir-scientific"}),
+         "exact existing legal-ir namespaces required")
+    state = Path(old["state_dir"])
+    prior = contract.get("prior_job")
+    need(type(prior) is dict and type(prior.get("path")) is str,
+         "explicit retained board job required")
+    selected = [identifier for identifier in identifiers
+                if prior["path"] == str(state / "repairs" / identifier / "job.json")]
+    need(len(selected) == 1, "retained job does not select an exact configured board")
+    board_id = selected[0]
+    if initial_bindings is not None:
+        epoch = initial_bindings.get("authorization_epoch") if type(initial_bindings) is dict else None
+        need(type(epoch) is dict and type(epoch.get("board_id")) is str
+             and epoch["board_id"] == board_id, "finite epoch and retained job select different boards")
+    return board_id
+
+
+def _repair_initial_configuration(old: dict, board_id: str, bindings: dict) -> dict:
+    """Bind shared repair owners and only the selected board's finite epoch.
+
+    Candidate policy/runtime remain fleet-wide, as in the existing worker.
+    Both board observations, holds, namespace bindings and spent history stay
+    exact; only the selected board receives the supplied explicit epoch.
+    The original authorization and runtime parsers still validate the result.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    need(type(bindings) is dict and set(bindings) == {
+        "candidate_policy", "candidate_runtime", "authorization_epoch", "source_snapshot"},
+        "one explicit initial policy/runtime/epoch binding required")
+    worker = old.get("repair_worker")
+    need(type(worker) is dict and "candidate_policy" not in worker and "candidate_runtime" not in worker,
+         "existing productive authority requires a separate reviewed transition")
+    selected = [board for board in old["boards"] if board["id"] == board_id]
+    epoch = bindings["authorization_epoch"]
+    need(len(selected) == 1 and "repair_authorization_epoch" not in selected[0]
+         and type(epoch) is dict and epoch.get("board_id") == board_id,
+         "existing or crossed selected epoch requires a separate reviewed transition")
+    config = json.loads(json.dumps(old))
+    config["repair_worker"]["candidate_policy"] = json.loads(json.dumps(bindings["candidate_policy"]))
+    config["repair_worker"]["candidate_runtime"] = json.loads(json.dumps(bindings["candidate_runtime"]))
+    for board in config["boards"]:
+        if board["id"] == board_id:
+            board["repair_authorization_epoch"] = json.loads(json.dumps(epoch))
+    need([board["id"] for board in config["boards"]] == [board["id"] for board in old["boards"]],
+         "repair binding changed board order or population")
+    for before, after in zip(old["boards"], config["boards"]):
+        expected = dict(before)
+        if before["id"] == board_id:
+            expected["repair_authorization_epoch"] = epoch
+        need(encoded_json(after) == encoded_json(expected), "repair binding changed unrelated board data")
+    return config
+
+
+
+def _repair_release_command_environments(config: dict, release: Path, source: Path) -> dict:
+    """Bind declared board commands to the selected immutable package first."""
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    need(all(path.is_absolute() and ".." not in path.parts for path in (release, source)),
+         "absolute selected release/source roots required")
+    value = json.loads(json.dumps(config))
+    need(type(value.get("boards")) is list, "declared board command population required")
+    need(type(value.get("repair_worker")) is dict, "declared repair worker required")
+    value["repair_worker"]["cwd"] = str(release)
+    pythonpath = os.pathsep.join((str(release), str(source)))
+    for board in value["boards"]:
+        for key in ("probe", "repair"):
+            if key not in board:
+                continue
+            command = board[key]
+            need(type(command) is dict and type(command.get("argv")) is list
+                 and command["argv"] and all(type(arg) is str for arg in command["argv"]),
+                 "ordinary declared board command required")
+            env = command.get("env", {})
+            need(type(env) is dict and all(type(k) is str and type(v) is str for k, v in env.items()),
+                 "ordinary declared board command environment required")
+            command["env"] = {**env, "PYTHONPATH": pythonpath}
+    return value
+
+
+
+def _repair_release_liveness_identity(config: dict, release: Path, watchdog_source: dict) -> dict:
+    """Keep an existing liveness declaration bound to its selected release."""
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor
+    value = json.loads(json.dumps(config))
+    if "liveness_identity" not in value:
+        return value
+    identity = value["liveness_identity"]
+    need(type(identity) is dict and set(identity) == {"schema", "deployment_id", "source_sha256"} and identity.get("schema") == "agent-supervisor/watchdog-liveness-profile@1",
+         "supported existing liveness identity required")
+    need(type(watchdog_source) is dict and set(watchdog_source) == {"path", "bytes", "sha256"}
+         and watchdog_source["path"] == str(release / "ipfs_accelerate_py/agent_supervisor/rescue/fleet_watchdog.py")
+         and type(watchdog_source["bytes"]) is int and type(watchdog_source["sha256"]) is str
+         and re.fullmatch(r"[0-9a-f]{64}", watchdog_source["sha256"]),
+         "exact selected immutable watchdog source required")
+    need(len(checked_descriptor(watchdog_source)) <= 4 * 1024**2, "finite immutable watchdog Python source required")
+    value["liveness_identity"] = {**identity, "deployment_id": release.name,
+                                 "source_sha256": watchdog_source["sha256"]}
+    return value
 
 
 SCIENTIFIC_GIT_BINDING_SCHEMA = "agent-supervisor/scientific-git-executor-binding@1"
 SCIENTIFIC_PRODUCER_GIT_BINDING_SCHEMA = "agent-supervisor/scientific-git-executor-binding@2"
+SCIENTIFIC_CATALOGUE_PRODUCER_GIT_BINDING_SCHEMA = "agent-supervisor/scientific-git-executor-binding@3"
+SCIENTIFIC_NATIVE_OWNER_POLICY_SOURCE_COMMITMENT_SCHEMA = "agent-supervisor/scientific-native-owner-policy-source-commitment@1"
+SCIENTIFIC_PRIOR_SCHEDULER_POLICY_SHA256 = "4662bd8fe6caf6f2c048e3d7cff7abb4d80e5c875b21e02e204b1b89371b8286"
+SCIENTIFIC_SCHEDULER_POLICY_SHA256 = "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661"
+
+
+def _repair_scientific_separate_source_git_generation(root, head, tree, rows, selected, metadata_refs, label):
+    """Existing bounded genuine Git reader shared by closed producer/owner roles."""
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need, git_command
+    need(label in ("producer", "native owner"), "closed separate scientific source role required")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS="0",
+                       GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
+    def git(*args):
+        return git_command(root, ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull, *args],
+                           timeout=3, environment=environment)
+    def generation():
+        need(git("rev-parse", "--show-toplevel").strip() == str(root)
+             and git("rev-parse", "--verify", "HEAD").strip() == head
+             and git("rev-parse", head + "^{tree}").strip() == tree
+             and git("status", "--porcelain=v1", "-z", "--untracked-files=all") == "",
+             label + " genuine Git root/HEAD/tree/clean state differs")
+    generation()
+    entries = git("ls-tree", "-r", "-z", "--full-tree", head)
+    need(len(entries.encode()) <= 4 * 1024**2, "finite " + label + " Git tree required")
+    actual = {}
+    for entry in entries.split("\0"):
+        if entry:
+            header, rel = entry.split("\t", 1); mode, kind, blob = header.split(" ")
+            need(kind in ("blob", "commit") and rel not in actual, "bounded " + label + " Git tree required")
+            actual[rel] = (kind, int(mode, 8) & 0o777, blob)
+    need(all(actual.get(rel) == ("blob", 0o755 if row["mode"] & 0o111 else 0o644, row["git_blob"])
+             for rel, row in rows.items()), label + " selected genuine Git inventory differs")
+    def close():
+        for pin in selected:
+            checked_descriptor(pin)
+            row = rows[Path(pin["path"]).relative_to(root).as_posix()]
+            need(stat.S_IMODE(Path(pin["path"]).lstat().st_mode) == row["mode"], label + " source mode changed during read")
+        for pin in metadata_refs:
+            checked_descriptor(pin)
+        generation()
+    return close
 
 
 def _repair_scientific_producer_git_binding(typed: dict, profile: dict, native_root: Path):
     """Authenticate one separate producer Git generation; preserve native roots.
 
-    Only the producer entrypoint and its three genuine package initializer
-    descriptors may belong to the second root. These descriptors are metadata
-    evidence; this reader never imports or executes a producer body.
+    Version @2 retains the producer entrypoint and three genuine package
+    initializer descriptors. Explicit @3 also binds its single catalogue-parser
+    sibling through a source-only @2 commitment and exact CLI descriptor pair.
+    These descriptors are metadata evidence; no producer body is executed.
     """
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor, json_object
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need, git_command
@@ -749,9 +906,14 @@ def _repair_scientific_producer_git_binding(typed: dict, profile: dict, native_r
         return json_object(raw)
     ref = typed["producer_source_commitment"]
     commitment = document(ref)
-    need(set(commitment) == {"schema", "source_root", "source_commit", "source_tree", "source_inventory",
-             "source_operation_plan", "source_qualification", "runtime_activation_or_task_authority"}
-         and commitment["schema"] == "agent-supervisor/scientific-producer-source-commitment@1"
+    catalogue_producer = typed.get("schema") == SCIENTIFIC_CATALOGUE_PRODUCER_GIT_BINDING_SCHEMA
+    commitment_keys = {"schema", "source_root", "source_commit", "source_tree", "source_inventory",
+        "source_operation_plan", "source_qualification", "runtime_activation_or_task_authority"}
+    if catalogue_producer:
+        commitment_keys.add("catalogue_parser")
+    need(set(commitment) == commitment_keys
+         and commitment["schema"] == ("agent-supervisor/scientific-producer-source-commitment@2"
+             if catalogue_producer else "agent-supervisor/scientific-producer-source-commitment@1")
          and commitment["runtime_activation_or_task_authority"] is False,
          "closed source-only producer Git commitment required")
     root = Path(commitment["source_root"])
@@ -788,12 +950,28 @@ def _repair_scientific_producer_git_binding(typed: dict, profile: dict, native_r
     relatives = {"ipfs_accelerate_py/__init__.py", "ipfs_accelerate_py/agent_supervisor/__init__.py",
         "ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
         "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py"}
+    if catalogue_producer:
+        parser_relative = "ipfs_accelerate_py/agent_supervisor/rescue/native_catalogue_probe.py"
+        relatives.add(parser_relative)
+        parser = commitment["catalogue_parser"]
+        need(set(rows) == relatives and len(rows) == 5
+             and type(parser) is dict and set(parser) == {"path", "bytes", "sha256"}
+             and parser == {key: rows[parser_relative][key] for key in ("path", "bytes", "sha256")},
+             "exact five-file producer inventory and catalogue parser descriptor required")
+        argv = profile["unit"]["argv"]
+        need(argv.count("--catalogue-parser-source") == argv.count("--catalogue-parser-sha256") == 1,
+             "explicit catalogue parser CLI source and SHA pair required")
+        source_index, sha_index = argv.index("--catalogue-parser-source") + 1, argv.index("--catalogue-parser-sha256") + 1
+        need(source_index < len(argv) and sha_index < len(argv)
+             and argv[source_index] == parser["path"] and argv[sha_index] == parser["sha256"],
+             "catalogue parser CLI pair differs from producer commitment")
     pins = profile["source_descriptors"]
     selected = [pin for pin in pins if Path(pin["path"]).is_relative_to(root)]
     need(len(selected) == len(relatives) and {Path(pin["path"]).relative_to(root).as_posix() for pin in selected} == relatives
          and profile["main_entrypoint"] in selected
          and profile["main_entrypoint"]["path"] == str(root / "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py")
-         and all(Path(profile[role]["path"]).is_relative_to(native_root) for role in ("health_module", "owner_source", "driver_source")),
+         and all(Path(profile[role]["path"]).is_relative_to(native_root) for role in
+             (("health_module", "driver_source") if catalogue_producer else ("health_module", "owner_source", "driver_source"))),
          "exact separate producer entrypoint/parents and retained native roles required")
     need(profile["unit"].get("environment", {}).get("PYTHONPATH") == str(native_root) + os.pathsep + profile["unit"]["working_directory"]
          and profile["unit"]["argv"].count(profile["main_entrypoint"]["path"]) == 1,
@@ -806,38 +984,87 @@ def _repair_scientific_producer_git_binding(typed: dict, profile: dict, native_r
         need(stat.S_IMODE(Path(pin["path"]).lstat().st_mode) == row["mode"]
              and hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw).hexdigest() == row["git_blob"],
              "producer physical source/mode differs from its committed Git blob")
-    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS="0",
-                       GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
-    def git(*args):
-        return git_command(root, ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.devnull, *args],
-                           timeout=3, environment=environment)
-    def generation():
-        need(git("rev-parse", "--show-toplevel").strip() == str(root)
-             and git("rev-parse", "--verify", "HEAD").strip() == head
-             and git("rev-parse", head + "^{tree}").strip() == tree
-             and git("status", "--porcelain=v1", "-z", "--untracked-files=all") == "",
-             "producer genuine Git root/HEAD/tree/clean state differs")
-    generation()
-    entries = git("ls-tree", "-r", "-z", "--full-tree", head)
-    need(len(entries.encode()) <= 4 * 1024**2, "finite producer Git tree required")
-    actual = {}
-    for entry in entries.split("\0"):
-        if entry:
-            header, rel = entry.split("\t", 1); mode, kind, blob = header.split(" ")
-            need(kind in ("blob", "commit") and rel not in actual, "bounded producer Git tree required")
-            actual[rel] = (kind, int(mode, 8) & 0o777, blob)
-    need(all(actual.get(rel) == ("blob", 0o755 if row["mode"] & 0o111 else 0o644, row["git_blob"])
-             for rel, row in rows.items()), "producer selected genuine Git inventory differs")
-    def close():
-        for pin in selected:
-            checked_descriptor(pin)
-            row = rows[Path(pin["path"]).relative_to(root).as_posix()]
-            need(stat.S_IMODE(Path(pin["path"]).lstat().st_mode) == row["mode"], "producer source mode changed during read")
-        for pin in (ref, commitment["source_inventory"], commitment["source_operation_plan"], commitment["source_qualification"]):
-            checked_descriptor(pin)
-        generation()
-    return close
+    return _repair_scientific_separate_source_git_generation(root, head, tree, rows, selected,
+        (ref, commitment["source_inventory"], commitment["source_operation_plan"], commitment["source_qualification"]), "producer")
+
+
+def _repair_scientific_native_owner_git_binding(typed: dict, profile: dict, native_root: Path):
+    """Read the one explicit separate native-owner successor; execute no body."""
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor, json_object
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    def document(ref):
+        raw = checked_descriptor(ref)
+        need(len(raw) <= 4 * 1024**2, "finite native owner Git metadata required")
+        return json_object(raw)
+    ref = typed["native_owner_source_commitment"]; commitment = document(ref)
+    transition = commitment.get("scheduler_policy_transition")
+    need(type(SCIENTIFIC_NATIVE_OWNER_POLICY_SOURCE_COMMITMENT_SCHEMA) is str
+         and set(commitment) == {"schema", "source_root", "source_commit", "source_tree", "source_inventory",
+             "source_operation_plan", "source_qualification", "owner_source", "prior_owner_source",
+             "native_backend_source", "scheduler_policy_transition", "runtime_activation_or_task_authority"}
+         and commitment["schema"] == SCIENTIFIC_NATIVE_OWNER_POLICY_SOURCE_COMMITMENT_SCHEMA
+         and commitment["runtime_activation_or_task_authority"] is False
+         and type(transition) is dict and set(transition) == {"prior_sha256", "target_sha256"}
+         and transition["prior_sha256"] == SCIENTIFIC_PRIOR_SCHEDULER_POLICY_SHA256
+         and transition["target_sha256"] == SCIENTIFIC_SCHEDULER_POLICY_SHA256,
+         "closed explicit known-policy native owner commitment required")
+    root = Path(commitment["source_root"]); head, tree = commitment["source_commit"], commitment["source_tree"]
+    producer_root = Path(document(typed["producer_source_commitment"])["source_root"])
+    need(root.is_absolute() and ".." not in root.parts and root.resolve() == root
+         and all(root != other and root not in other.parents and other not in root.parents for other in (native_root, producer_root))
+         and type(head) is str and re.fullmatch(r"[0-9a-f]{40}", head)
+         and type(tree) is str and re.fullmatch(r"[0-9a-f]{40}", tree),
+         "separate genuine native owner Git root/HEAD/tree required")
+    inventory = document(commitment["source_inventory"])
+    document(commitment["source_operation_plan"]); document(commitment["source_qualification"])
+    need(set(inventory) == {"schema", "source_root", "source_commit", "source_tree", "file_count", "source_bytes", "files"}
+         and inventory["schema"] == "legal-ir-scientific-source-inventory/v1"
+         and all(inventory[key] == commitment[key] for key in ("source_root", "source_commit", "source_tree"))
+         and type(inventory["files"]) is list and len(inventory["files"]) == 4,
+         "exact four-file native owner inventory generation required")
+    rows = {}
+    for row in inventory["files"]:
+        need(type(row) is dict and set(row) == {"path", "relative_path", "bytes", "sha256", "mode", "git_blob"},
+             "closed native owner inventory row required")
+        relative = row["relative_path"]
+        need(type(relative) is str and relative and not Path(relative).is_absolute() and ".." not in Path(relative).parts
+             and Path(relative).as_posix() == relative and relative not in rows and row["path"] == str(root / relative)
+             and type(row["bytes"]) is int and 0 <= row["bytes"] <= 4 * 1024**2
+             and type(row["mode"]) is int and 0 <= row["mode"] <= 0o777 and not row["mode"] & 0o002
+             and type(row["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", row["sha256"])
+             and type(row["git_blob"]) is str and re.fullmatch(r"[0-9a-f]{40}", row["git_blob"]),
+             "native owner inventory path/body/mode identity differs")
+        rows[relative] = row
+    relative = "ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py"
+    relatives = {"ipfs_accelerate_py/__init__.py", "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/rescue/__init__.py", relative}
+    selected = [pin for pin in profile["source_descriptors"] if Path(pin["path"]).is_relative_to(root)]
+    owner = commitment["owner_source"]; prior = commitment["prior_owner_source"]
+    backend = commitment["native_backend_source"]
+    need(type(backend) is dict and set(backend) == {"path", "bytes", "sha256"}
+         and backend == profile["driver_source"]
+         and backend["path"] == str(native_root / "ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py")
+         and backend in profile["source_descriptors"], "retained native backend descriptor and source role required")
+    checked_descriptor(backend)
+    need(set(rows) == relatives and type(inventory["file_count"]) is int and inventory["file_count"] == 4
+         and type(inventory["source_bytes"]) is int and inventory["source_bytes"] == sum(row["bytes"] for row in rows.values())
+         and len(selected) == 4 and {Path(pin["path"]).relative_to(root).as_posix() for pin in selected} == relatives
+         and owner == profile["owner_source"] and owner in selected and owner["path"] == str(root / relative)
+         and type(prior) is dict and set(prior) == {"path", "bytes", "sha256"}
+         and prior["path"] == str(native_root / relative)
+         and prior in profile["source_descriptors"],
+         "exact separate native owner and retained prior native source roles required")
+    checked_descriptor(prior)
+    for pin in selected:
+        row = rows[Path(pin["path"]).relative_to(root).as_posix()]
+        need(pin == {key: row[key] for key in ("path", "bytes", "sha256")}, "native owner profile source snapshot differs")
+        raw = checked_descriptor(pin)
+        need(stat.S_IMODE(Path(pin["path"]).lstat().st_mode) == row["mode"]
+             and hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw).hexdigest() == row["git_blob"],
+             "native owner physical source/mode differs from its committed Git blob")
+    close = _repair_scientific_separate_source_git_generation(root, head, tree, rows, selected,
+        (ref, commitment["source_inventory"], commitment["source_operation_plan"], commitment["source_qualification"], prior, backend), "native owner")
+    return close, commitment
 
 
 def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: dict, release: Path) -> None:
@@ -855,8 +1082,11 @@ def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: di
         need(len(raw) <= 4 * 1024**2, "finite scientific Git metadata required")
         return json_object(raw)
     typed = document(git_binding)
-    separate_producer = (set(typed) == {"schema", "profile", "source_commitment", "observer_plan", "producer_source_commitment"}
-                         and typed["schema"] == SCIENTIFIC_PRODUCER_GIT_BINDING_SCHEMA)
+    separate_native_owner = (set(typed) == {"schema", "profile", "source_commitment", "observer_plan",
+                                 "producer_source_commitment", "native_owner_source_commitment"}
+                             and typed["schema"] == SCIENTIFIC_CATALOGUE_PRODUCER_GIT_BINDING_SCHEMA)
+    separate_producer = ((set(typed) == {"schema", "profile", "source_commitment", "observer_plan", "producer_source_commitment"}
+                          and typed["schema"] == SCIENTIFIC_PRODUCER_GIT_BINDING_SCHEMA) or separate_native_owner)
     need(((set(typed) == {"schema", "profile", "source_commitment", "observer_plan"}
            and typed["schema"] == SCIENTIFIC_GIT_BINDING_SCHEMA) or separate_producer)
          and typed["profile"] == binding,
@@ -875,6 +1105,8 @@ def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: di
          and type(tree) is str and re.fullmatch(r"[0-9a-f]{40}", tree),
          "exact genuine scientific Git root/HEAD/tree required")
     producer_close = _repair_scientific_producer_git_binding(typed, profile, root) if separate_producer else None
+    owner_close, owner_commitment = (_repair_scientific_native_owner_git_binding(typed, profile, root)
+        if separate_native_owner else (None, None))
     inventory = document(commitment["source_inventory"])
     capsule = document(commitment["capsule_DATA"])
     original = document(commitment["original_import_Git_binding"])
@@ -937,8 +1169,12 @@ def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: di
              "owner_source": "rescue/original_embedded_observation_owner.py", "driver_source": "rescue/native_embedded_observation_driver.py"}
     if separate_producer:
         del roles["main_entrypoint"]
+    if separate_native_owner:
+        del roles["owner_source"]
     pins = {pin["path"]: pin for pin in profile["source_descriptors"]}
     critical = [(profile[role], "ipfs_accelerate_py/agent_supervisor/" + rel) for role, rel in roles.items()]
+    if separate_native_owner:
+        critical.append((owner_commitment["prior_owner_source"], "ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py"))
     critical += [(cli["pre_body_guard"], "ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py"),
                  (observation["observer_source"], "ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py"),
                  (original["route_source"], "ipfs_accelerate_py/agent_implementation_route.py")]
@@ -979,6 +1215,13 @@ def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: di
          and request["source_roots"][0] == cli["cwd"]
          and all(request["source_sha256"].get(pin["path"]) == pin["sha256"] for pin, _ in critical),
          "scientific original observer request source/cwd differs")
+    if separate_native_owner:
+        need(request.get("expected_scheduler_policy_sha256") == owner_commitment["scheduler_policy_transition"]["target_sha256"]
+             and all(type(request.get(key)) is int and request[key] == value for key, value in
+                 {"cpu_slots":1, "memory_mb":1536, "child_process_slots":8,
+                  "storage_bytes":384 * 1024**2, "timeout_seconds":300}.items())
+             and request["source_sha256"].get(profile["owner_source"]["path"]) == profile["owner_source"]["sha256"],
+             "native owner request policy/source or finite envelope differs")
     environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     environment.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS="0",
                        GIT_TERMINAL_PROMPT="0", GIT_NO_LAZY_FETCH="1")
@@ -1036,7 +1279,8 @@ def _repair_scientific_git_binding(binding: dict, git_binding: dict, profile: di
     generation()
     if producer_close is not None:
         producer_close()
-
+    if owner_close is not None:
+        owner_close()
 
 
 def _repair_scientific_profile(binding: dict, release: Path, git_binding: dict | None = None) -> dict:
@@ -1084,7 +1328,6 @@ def _repair_scientific_profile(binding: dict, release: Path, git_binding: dict |
             del sys.modules[name]
 
 
-
 def _repair_scientific_configuration(config: dict, binding: dict, release: Path, git_binding: dict | None = None) -> dict:
     """Compose one explicit scientific profile without granting runtime authority."""
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
@@ -1100,7 +1343,7 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path,
     need(declared_git is None or declared_git == git_binding,
          "existing scientific Git binding cannot be silently changed or removed")
     if git_binding is not None:
-        need(board.get("native_executor_binding") in (None, binding),
+        need(declared_git is None or board.get("native_executor_binding") in (None, binding),
              "scientific Git binding cannot replace another producer profile")
         board["native_executor_git_binding"] = json.loads(json.dumps(git_binding))
     catalogue = board.get("native_catalogue_binding")
@@ -1140,7 +1383,6 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path,
         probe["argv"].extend((flag, argument))
     board["native_executor_binding"] = json.loads(json.dumps(binding))
     return value
-
 
 
 def prepare_existing_repair_configuration(source: Path, contract: dict, bindings: dict, *, scientific_executor_binding: dict | None = None, scientific_executor_git_binding: dict | None = None) -> dict:
@@ -1284,6 +1526,7 @@ def prepare_repair_upgrade(source: Path, contract: dict, source_commitment: str,
         config = _repair_scientific_configuration(config, scientific_executor_binding, release, scientific_executor_git_binding)
     sources = {name: descriptor(release / PACKAGE_MODULES[name] if name in PACKAGE_MODULES else
         release / "ipfs_accelerate_py/agent_supervisor/rescue" / (name + ".py")) for name in contents}
+    config = _repair_release_liveness_identity(config, release, sources["fleet_watchdog"])
     commitment_path = release / "repair-source-commitment.json"
     commitment = encoded_json({"schema": "agent-supervisor/repair-source-release@1",
         "source_commitment": source_commitment, "sources": sources,

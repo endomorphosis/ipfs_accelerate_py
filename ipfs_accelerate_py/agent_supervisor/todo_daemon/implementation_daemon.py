@@ -30,6 +30,9 @@ from types import MappingProxyType
 from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence, TextIO
 from urllib.parse import unquote, urlsplit
 
+from ...agent_implementation_route import (
+    current_agent_implementation_read_only_import_scope,
+)
 from ...llm_router import (
     AgentImplementationInvocationBinding,
     AgentImplementationRoutePlan,
@@ -5230,6 +5233,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
+        if implement and _IMPORTED_READ_ONLY_CONTROL_PLANE_IMPORT:
+            raise ValueError("a read-only imported daemon cannot implement tasks")
         automatic_retry_rearm_enabled()
         configured_task_source = task_source
         if configured_task_source is None and task_source_kind:
@@ -10246,6 +10251,262 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return None
         return matches[0]
 
+    def _unstarted_dispatch_intent_evidence(
+        self,
+        state: PortalTaskState,
+        *,
+        claim: Mapping[str, Any],
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        display_attempt: int,
+        canonical_attempt: int,
+    ) -> dict[str, Any] | None:
+        """Recognize a dead process's intent that never reached implementation.
+
+        The claim names the next ordinal while both durable counters still
+        name the previous one. Starts and finishes from an earlier generation
+        of that ordinal, or from a later ordinal that already ended before
+        this intent was published, are not this intent. A blocking event at
+        or after publication stays fail closed. Releasing the intent does not
+        refund a consumed attempt or complete the task.
+        """
+
+        def exact_int(value: Any) -> int | None:
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+            return None
+
+        if (
+            str(claim.get("lease_role") or "")
+            != IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE
+            or exact_int(claim.get("attempt")) != attempt
+            or attempt != display_attempt + 1
+            or canonical_attempt != display_attempt
+            or display_attempt < 0
+        ):
+            return None
+        claim_started_at = claim.get("started_at")
+        if not isinstance(claim_started_at, str) or not claim_started_at:
+            return None
+        if (
+            state.last_implementation_started_at
+            and claim_started_at == state.last_implementation_started_at
+        ):
+            return None
+        try:
+            if (
+                claim.get("dispatch_authority_cid")
+                != self._implementation_dispatch_authority_cid(claim)
+            ):
+                return None
+        except (TypeError, ValueError):
+            return None
+        claim_started = parse_timestamp(claim_started_at)
+        if claim_started is None:
+            return None
+        try:
+            events = self._iter_merge_lifecycle_events()
+        except CursorReplayError:
+            return None
+        blocking_types = {
+            "implementation_started",
+            "implementation_finished",
+            "implementation_terminated",
+            "implementation_timeout",
+            "implementation_provider_exhausted",
+        }
+        for event in events:
+            if event.get("canonical_task_cid") != canonical_task_cid:
+                continue
+            if event.get("type") not in blocking_types:
+                continue
+            event_attempt = exact_int(event.get("attempt"))
+            if event_attempt is None or event_attempt < attempt:
+                continue
+            raw_time = event.get("timestamp") or event.get("started_at")
+            occurred = (
+                parse_timestamp(raw_time)
+                if isinstance(raw_time, str)
+                else None
+            )
+            if occurred is None or occurred >= claim_started:
+                return None
+        try:
+            matches = [
+                task
+                for task in self._load_tasks()
+                if self._canonical_ref(task) == canonical_task_cid
+            ]
+        except Exception:
+            return None
+        if len(matches) != 1 or matches[0].task_id != task_id:
+            return None
+        task_status = normalize_status(matches[0].status)
+        if task_status in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
+            return None
+        identity = self._identity_for_task(matches[0])
+        if (
+            identity.canonical_task_key != claim.get("canonical_task_key")
+            or identity.canonical_task_cid != canonical_task_cid
+            or identity.board_namespace != claim.get("board_namespace")
+        ):
+            return None
+        return {
+            "reason": "dead_unstarted_dispatch_intent",
+            "attempt": attempt,
+            "display_attempt": display_attempt,
+            "canonical_attempt": canonical_attempt,
+            "started_at": claim_started_at,
+            "task_status": task_status,
+            "attempt_refunded": False,
+            "completion_authority": False,
+        }
+
+    def _release_dead_unstarted_dispatch_intent(
+        self,
+        *,
+        claim: Mapping[str, Any],
+        claim_path: Path,
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        pid: int,
+        lease_id: str,
+        expected_state_dir: str,
+        expected_state_path: str,
+        claim_worktree_root: str,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Drop one proven-dead intent without completing the task.
+
+        The caller holds the claim update guard and has already proved the
+        owner birth is dead, the lane is quiesced, and no protected fence is
+        present. Counters and task status stay as they are.
+        """
+
+        def blocked(reason: str, **extra: Any) -> dict[str, Any]:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": reason,
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "claim_path": str(claim_path),
+                "attempt_refunded": False,
+                "completion_authority": False,
+                **extra,
+            }
+
+        claim_id = content_identity(claim)
+        basis = {
+            "schema": IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
+            "operation": "release_dead_unstarted_dispatch_intent",
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "task_status": str(evidence.get("task_status") or ""),
+            "attempt_refunded": False,
+            "completion_authority": False,
+            "claim": {
+                "path": str(claim_path),
+                "claim_id": claim_id,
+                "lease_id": lease_id,
+                "owner_pid": pid,
+                "state_dir": expected_state_dir,
+                "state_path": expected_state_path,
+                "legacy_worktree_root_missing": not bool(claim_worktree_root),
+            },
+            "unstarted_dispatch_intent": dict(evidence),
+            "task_source_identity": self._task_source_identity_record(),
+        }
+        operation_id = content_identity(basis)
+        receipt_path = self._task_claim_release_receipt_path(
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            lease_id=lease_id,
+        )
+        existing_receipt = load_json_dict(receipt_path)
+        if existing_receipt is None and (
+            receipt_path.exists() or receipt_path.is_symlink()
+        ):
+            return blocked(
+                "task_claim_release_receipt_unreadable",
+                receipt_path=str(receipt_path),
+            )
+        if existing_receipt is not None and (
+            str(existing_receipt.get("operation_id") or "") != operation_id
+            or str(existing_receipt.get("phase") or "") != "prepared"
+        ):
+            return blocked(
+                "task_claim_release_receipt_conflict",
+                receipt_path=str(receipt_path),
+            )
+        prepared_at = (
+            str(existing_receipt.get("prepared_at") or "")
+            if existing_receipt is not None
+            else utc_now()
+        )
+        write_json_atomic(
+            receipt_path,
+            {
+                **basis,
+                "operation_id": operation_id,
+                "phase": "prepared",
+                "prepared_at": prepared_at,
+            },
+        )
+        current = self._load_exact_json_object(claim_path)
+        if (
+            current is None
+            or content_identity(current) != claim_id
+            or str(current.get("lease_id") or "") != lease_id
+            or str(current.get("canonical_task_cid") or "") != canonical_task_cid
+        ):
+            return blocked(
+                "task_claim_compare_and_delete_lost",
+                attempt=attempt,
+                claim_lease_id=lease_id,
+                receipt_path=str(receipt_path),
+            )
+        claim_path.unlink()
+        released_at = utc_now()
+        receipt_body = {
+            **basis,
+            "operation_id": operation_id,
+            "phase": "released",
+            "prepared_at": prepared_at,
+            "released_at": released_at,
+        }
+        receipt_id = content_identity(receipt_body)
+        write_json_atomic(
+            receipt_path,
+            {**receipt_body, "receipt_id": receipt_id},
+        )
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_dead_dispatch_intent_released",
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "task_status": str(evidence.get("task_status") or ""),
+            "claim_path": str(claim_path),
+            "claim_id": claim_id,
+            "claim_lease_id": lease_id,
+            "owner_pid": pid,
+            "state_dir": expected_state_dir,
+            "operation_id": operation_id,
+            "released_at": released_at,
+            "receipt_id": receipt_id,
+            "receipt_path": str(receipt_path),
+            "attempt_refunded": False,
+            "completion_authority": False,
+            "unstarted_dispatch_intent": dict(evidence),
+        }
+        self._record_event("implementation_task_claim_released", result)
+        return result
+
     def _reconcile_quiesced_implementation_task_claim(
         self,
         state: PortalTaskState,
@@ -10346,6 +10607,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 attempt == display_attempt == canonical_attempt
             )
             released_attempt_evidence = None
+            unstarted_intent_evidence = None
             if not exact_attempt_counters:
                 released_attempt_evidence = (
                     self._released_unfinished_attempt_evidence(
@@ -10358,6 +10620,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         canonical_attempt=canonical_attempt,
                     )
                 )
+                if released_attempt_evidence is None:
+                    unstarted_intent_evidence = (
+                        self._unstarted_dispatch_intent_evidence(
+                            state,
+                            claim=claim,
+                            task_id=task_id,
+                            canonical_task_cid=canonical_task_cid,
+                            attempt=attempt,
+                            display_attempt=display_attempt,
+                            canonical_attempt=canonical_attempt,
+                        )
+                    )
             if (
                 str(claim.get("kind") or "")
                 != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
@@ -10368,6 +10642,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 or (
                     not exact_attempt_counters
                     and released_attempt_evidence is None
+                    and unstarted_intent_evidence is None
                 )
                 or pid <= 0
                 or not lease_id
@@ -10390,6 +10665,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     state.last_implementation_started_at
                     and str(claim.get("started_at") or "")
                     != state.last_implementation_started_at
+                    and unstarted_intent_evidence is None
                 )
             ):
                 return blocked(
@@ -10442,6 +10718,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 return blocked(
                     "task_claim_protected_fence_present",
                     protected_fence_paths=list(protected_fences),
+                )
+            if unstarted_intent_evidence is not None:
+                return self._release_dead_unstarted_dispatch_intent(
+                    claim=claim,
+                    claim_path=claim_path,
+                    task_id=task_id,
+                    canonical_task_cid=canonical_task_cid,
+                    attempt=attempt,
+                    pid=pid,
+                    lease_id=lease_id,
+                    expected_state_dir=expected_state_dir,
+                    expected_state_path=expected_state_path,
+                    claim_worktree_root=claim_worktree_root,
+                    evidence=unstarted_intent_evidence,
                 )
             record, task_status, authority_reason = (
                 self._terminal_authority_for_quiesced_task_claim(
@@ -81807,22 +82097,47 @@ def main(argv: list[str] | None = None) -> None:
             startup_watchdog.close()
 
 
-def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
-    """Seal the generation that finished importing this daemon module."""
+def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path | None]:
+    """Seal implementation imports, or verify an explicit read-only import."""
+
+    global _IMPORTED_READ_ONLY_CONTROL_PLANE
+
+    from ...agent_implementation_route import agent_implementation_control_plane_capture_pin
 
     source_root = Path(__file__).resolve(strict=True).parents[3]
     head_before, tree_before = (
         agent_implementation_control_plane_source_generation(source_root)
     )
-    parent = Path(
-        tempfile.mkdtemp(prefix="asref-imported-control-plane-")
+    read_only = current_agent_implementation_read_only_import_scope()
+    if read_only is not None:
+        if read_only.source_root != source_root or read_only.source_head != head_before:
+            raise ValueError("read-only import source root/HEAD differs")
+        head_after, tree_after = (
+            agent_implementation_control_plane_source_generation(source_root)
+        )
+        if (head_after, tree_after) != (head_before, tree_before):
+            raise ValueError("read-only import source generation changed")
+        _IMPORTED_READ_ONLY_CONTROL_PLANE = {
+            "schema": "agent-implementation-read-only-import@1",
+            "source_root": str(source_root),
+            "source_head": head_before,
+            "source_tree": tree_before,
+        }
+        return None, None, None
+    retained = agent_implementation_control_plane_capture_pin(source_root)
+    owns_parent = retained is None
+    parent = (
+        Path(tempfile.mkdtemp(prefix="asref-imported-control-plane-"))
+        if owns_parent else Path(retained.capsule_root).parent
     )
     try:
+        capture_options = {} if owns_parent else {"reuse_only": True, "accepted_pin": retained}
         pin = materialize_agent_implementation_control_plane_capsule(
             source_root=source_root,
             capsule_parent=parent,
             source_head=head_before,
             source_tree=tree_before,
+            **capture_options,
         )
         launch = seal_agent_implementation_control_plane_capsule(pin)
         head_after, tree_after = (
@@ -81834,11 +82149,28 @@ def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
             )
         return pin, launch, parent
     except Exception:
-        try:
-            shutil.rmtree(parent)
-        except OSError:
-            pass
+        # Original closed evidence is never removed or retried as a fresh
+        # source capture when an explicit reuse-only contract fails.
+        if owns_parent:
+            try:
+                shutil.rmtree(parent)
+            except OSError:
+                pass
         raise
+
+
+_IMPORTED_READ_ONLY_CONTROL_PLANE_IMPORT = (
+    current_agent_implementation_read_only_import_scope() is not None
+)
+_IMPORTED_READ_ONLY_CONTROL_PLANE: dict[str, str] | None = None
+
+
+def _has_explicit_control_plane_capture_context() -> bool:
+    from ...agent_implementation_route import agent_implementation_control_plane_capture_pin
+
+    return agent_implementation_control_plane_capture_pin(
+        Path(__file__).resolve(strict=True).parents[3]
+    ) is not None
 
 
 try:
@@ -81848,6 +82180,9 @@ try:
         _IMPORTED_CONTROL_PLANE_TEMP_ROOT,
     ) = _capture_imported_control_plane_generation()
 except (OSError, ValueError, subprocess.SubprocessError):
+    if _has_explicit_control_plane_capture_context():
+        # Do not fall through to the legacy constructor's fresh-capture retry.
+        raise
     # Dirty development/import trees cannot be used for the protected route.
     # Its constructor will retry only against the same on-disk generation and
     # fail closed if no clean exact capsule can be proven.
