@@ -51,7 +51,7 @@ def executable(tmp_path, monkeypatch):
     root = Path(module.__file__).resolve().parents[3]
     script = tmp_path / "inert-owner-wrapper"
     script.write_text(f"#!{sys.executable} -I\n" +
-        "import json,os,sys\nfrom pathlib import Path\n" +
+        "import json,os,sys\nsys.dont_write_bytecode=True\nfrom pathlib import Path\n" +
         f"sys.path.insert(0,{str(root)!r})\n" +
         "from ipfs_accelerate_py.agent_supervisor.runtime import owner_provider_deadline as m\n" +
         "m.OWNER_WRAPPER=str(Path(__file__).resolve())\n" +
