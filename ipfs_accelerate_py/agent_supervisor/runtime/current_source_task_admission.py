@@ -80,6 +80,7 @@ class NativeSourceTaskAdmission:
         self._claim_bytes = canonical_json_bytes(self._claim)
         self._peer, self._client_id, self._owner_pid = peer_identity, client_id, os.getpid()
         self._lock, self._checking = threading.RLock(), False
+        self._owner_callback_active = self._owner_callback_reentry_detected = False
         self._source = self._source_refs = self._source_bytes = None
         self._binding_in_progress = False
         self._nominated_source_scope = self._original_nominated_source_scope = None
@@ -197,6 +198,7 @@ class NativeSourceTaskAdmission:
     def require_current(self):
         """Check COOR then SERVER; same owned live lease/grant renewal is allowed."""
         with self._lock:
+            self._refuse_owner_callback_reentry()
             _need(not self._checking, "native source task admission reentry refused")
             self._checking = True
             try:
@@ -221,12 +223,23 @@ class NativeSourceTaskAdmission:
             finally:
                 self._checking = False
 
-    def _require_source_binding_transaction(self):
-        """Decline borrowed transactions before any native SQL or claim fence."""
+    def _refuse_owner_callback_reentry(self):
+        """A suppressed recursive owner operation still poisons its callback."""
+        if self._owner_callback_active:
+            self._owner_callback_reentry_detected = True
+            raise CurrentSourceTaskAdmissionError("native source owner callback reentry refused")
+
+    def _require_inactive_owner_transaction(self):
+        """Decline borrowed native transactions without entering a claim fence."""
         with self._owner_lock:
             self._retained()
             _need(getattr(self._connection, "in_transaction", None) is False,
                   "native source binding requires an inactive original transaction")
+
+    def _require_source_binding_transaction(self):
+        """Decline borrowed transactions before any native SQL or claim fence."""
+        self._refuse_owner_callback_reentry()
+        self._require_inactive_owner_transaction()
 
     def bind_current_source_lookup(self, *, repository, cas, expected_inventory_cid,
                                    request, limits, context_cid, allowed_paths,

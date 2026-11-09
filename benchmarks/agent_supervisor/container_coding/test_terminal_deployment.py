@@ -35,6 +35,9 @@ def _inputs(tmp_path):
     for name in ("benchmarks/__init__.py", "benchmarks/agent_supervisor/__init__.py"):
         (roots["source"] / name).write_bytes((checkout / name).read_bytes())
     (bench / "worker.py").write_text("VALUE = 2\n")
+    # Production packaging explicitly includes both namespace initializers.
+    for package in (bench.parent, bench.parent.parent):
+        (package / "__init__.py").write_text('"""Authored benchmark package fixture."""\n')
     extensions = tmp_path / "extensions"
     extensions.mkdir()
     for name in ("ducklake", "httpfs", "quack"):

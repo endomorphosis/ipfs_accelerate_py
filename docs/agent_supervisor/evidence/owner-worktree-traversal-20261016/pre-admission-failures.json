@@ -1,0 +1,15 @@
+{
+  "schema": "qualification-pre-admission-failure@1",
+  "runs": [
+    "traversal-environment-v01",
+    "traversal-host-uid-v01"
+  ],
+  "returncode": 1,
+  "phase": "pinned_scheduler_import_before_lease_acquisition",
+  "error": "ModuleNotFoundError: No module named ipfs_datasets_py",
+  "cause": "Pinned sibling datasets/kit worktree directories were absent at start of this continuation.",
+  "child_command_started": false,
+  "native_lease_acquired": false,
+  "qualifying": false,
+  "resolution": "Recreated detached locked dependency worktrees at exactly previously pinned revisions. No canonical source content modified."
+}

@@ -193,7 +193,7 @@ def test_custody_and_budget_rechecked_after_cleanup(monkeypatch, capsys, failure
 ])
 def test_refresh_deadline_uses_original_owner_start_and_safe_timeout(monkeypatch, argv, expected):
     start = OWNER_ENTRY.index("# The fixed lease includes")
-    end = OWNER_ENTRY.index("from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context")
+    end = OWNER_ENTRY.index("worker_arguments=sys.argv[1:]")
     namespace = {"owner_candidate_round_started": 123.25, "sys": sys}
     monkeypatch.setattr(sys, "argv", ["router-worker", *argv])
     exec(compile(OWNER_ENTRY[start:end], "<installed-owner-deadline>", "exec"), namespace)

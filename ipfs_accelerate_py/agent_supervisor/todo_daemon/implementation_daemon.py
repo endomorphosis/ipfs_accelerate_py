@@ -5553,6 +5553,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # relative --worktree-root cannot be resolved a second time below it.
         if not configured_worktree_root.is_absolute():
             configured_worktree_root = self.repo_root / configured_worktree_root
+        self._configured_worktree_root_lexical = configured_worktree_root
         self.worktree_root = configured_worktree_root.resolve()
         self.worktree_pool_enabled = (
             _env_bool(WORKTREE_POOL_ENABLED_ENV, True)
@@ -37843,7 +37844,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         allow_pool: bool = True,
         seed_context: bool = True,
         offline_local_only: bool = False,
+        protected_initial_parent: bool = False,
     ) -> str:
+        if type(protected_initial_parent) is not bool:
+            raise ValueError("protected initial worktree parent selection must be an exact boolean")
+        if protected_initial_parent:
+            from ..runtime.owner_worktree_parent import prepare_owner_worktree_parent
+
+            lexical_root = self._configured_worktree_root_lexical
+            candidate = Path(worktree_path)
+            if ((self.worktree_pool is not None and allow_pool is not False)
+                    or seed_context is not False or self._effective_worktree_submodule_paths(task)
+                    or not lexical_root.is_absolute() or ".." in lexical_root.parts
+                    or lexical_root.resolve() != lexical_root or self.worktree_root != lexical_root
+                    or not candidate.is_absolute() or ".." in candidate.parts
+                    or candidate == lexical_root or not candidate.is_relative_to(lexical_root)
+                    or candidate.resolve() != candidate or candidate.exists() or candidate.is_symlink()):
+                raise ValueError("protected initial parent requires an absent native-profile checkout within its lexical root")
+            prepare_owner_worktree_parent(directory=candidate.parent)
         if self.worktree_pool is not None and allow_pool:
             base_ref = self._main_branch_name()
             cache_key = self._implementation_worktree_cache_key()
@@ -37921,6 +37939,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._run_git(
             ["worktree", "add", "-b", branch_name, str(worktree_path), self._main_branch_name()],
             cwd=self.repo_root,
+            child_umask=0o077,
         )
         baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
         self._initialize_worktree_submodules(
@@ -64365,8 +64384,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return ""
         return result.stdout.strip()
 
-    def _run_git(self, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run(["git", "--no-optional-locks", *args], cwd=cwd, text=True, capture_output=True, check=False)
+    def _run_git(self, args: list[str], *, cwd: Path,
+                 child_umask: int | None = None) -> subprocess.CompletedProcess[str]:
+        child_options = {}
+        if child_umask is not None:
+            if type(child_umask) is not int or child_umask != 0o077 or args[:2] != ["worktree", "add"]:
+                raise ValueError("owner-only child umask requires an initial Git worktree add")
+            child_options["umask"] = child_umask
+        result = subprocess.run(["git", "--no-optional-locks", *args], cwd=cwd,
+            text=True, capture_output=True, check=False, **child_options)
         if result.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result

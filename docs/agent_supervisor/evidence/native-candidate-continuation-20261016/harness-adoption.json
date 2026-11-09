@@ -1,0 +1,26 @@
+{
+  "schema": "native-candidate-continuation-harness@1",
+  "recorded_utc": "2026-10-16T00:20:11.481850+00:00",
+  "files": {
+    "run-leased-qualification.py": {
+      "sha256": "3d93caf86fb3a867e28a2c7d72375c5a7c1b1ee62393af42f11016cd099f6602",
+      "copied_from": "/home/barberb/lift_coding/artifacts/owner-provider-deadline-20261015-01/run-leased-qualification.py",
+      "modified": false
+    },
+    "run-with-pinned-owner.py": {
+      "sha256": "05bf539bc7663c47a40e7d7b7aefb5a6b3ce5d46afa7510495c6aa17b2240970",
+      "copied_from": "/home/barberb/lift_coding/artifacts/owner-provider-deadline-20261015-01/run-with-pinned-owner.py",
+      "modified": false
+    },
+    "probe-environment.py": {
+      "sha256": "633c7ce3ebb0a722797e008c9dd6d9fa9666db5fbe1fa7412a596811b515826e",
+      "copied_from": "/home/barberb/lift_coding/artifacts/owner-provider-deadline-20261015-01/probe-environment.py",
+      "modified": false
+    }
+  },
+  "accelerate_base": "684bb7ea1a741a25a7fef4fa014ced393b5ed490",
+  "policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "resource_owner": "existing native scheduler; no reconfiguration or competing owner"
+}

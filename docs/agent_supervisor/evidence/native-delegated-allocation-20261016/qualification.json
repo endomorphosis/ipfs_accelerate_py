@@ -1,0 +1,526 @@
+{
+  "schema": "native-delegated-allocation-qualification@1",
+  "recorded_utc": "2026-10-16T01:19:20.468054+00:00",
+  "accelerate_base": "028f800ed1baeb3a20a5a8f94d5423a462159935",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the pinned sibling datasets checkout; accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "dataset_resource_scheduler_source": {
+    "bytes": 121503,
+    "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+  },
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_and_candidate_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "Static reads/AST/edits and static security/claim review only; no agent runtime, tests or probes.",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/native-delegated-allocation-20261016-01",
+  "qualification_counts": {
+    "tests": 390,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 8
+  },
+  "new_delegated_cases": 28,
+  "qualified_modules": [
+    "api.test_current_source_worktree_allocation",
+    "api.test_native_candidate_continuation",
+    "api.test_native_candidate_round_admission",
+    "api.test_native_delegated_allocation",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_candidate_dispatch",
+    "test.api.test_native_candidate_round_resources",
+    "test.api.test_router_candidate_dispatch"
+  ],
+  "qualifying_runs": [
+    "delegated-pipeline-capture-v02",
+    "delegated-custody-binding-v02",
+    "delegated-strict-allocation-regression-v01",
+    "delegated-native-gate-regression-v01",
+    "delegated-archive-router-kernel-v01",
+    "delegated-continuation-worker-v01",
+    "delegated-continuation-custody-v01"
+  ],
+  "runs": [
+    {
+      "label": "delegated-archive-router-kernel-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-archive-router-kernel-v01",
+        "started_utc": "2026-10-16T01:14:40.931439+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:15:50.203877+00:00"
+      },
+      "junit": {
+        "tests": 273,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_candidate_dispatch",
+          "test.api.test_native_candidate_round_resources",
+          "test.api.test_router_candidate_dispatch"
+        ],
+        "bytes": 56533,
+        "sha256": "6d4d31039fbe06529bc30c7bc7e82f1dbc1f2f229e88ea9a3f41407c8f6b3ade"
+      },
+      "stdout.log": {
+        "bytes": 74968,
+        "sha256": "332cbe6cce5d7139422f601a2e461b8af4e3e17506b59f668bcb4d8305b3ea11"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-continuation-custody-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-continuation-custody-v01",
+        "started_utc": "2026-10-16T01:14:40.944115+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:17:47.102699+00:00"
+      },
+      "junit": {
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_continuation"
+        ],
+        "bytes": 4022,
+        "sha256": "d6c51578b3328144a621801b03bdb220e3b718086193e50cfa3079f21d43fbc0"
+      },
+      "stdout.log": {
+        "bytes": 232314,
+        "sha256": "2d4220917ff62591f117d141062734d43993ef4079bbffaaf7654b50f18bffe2"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-continuation-worker-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-continuation-worker-v01",
+        "started_utc": "2026-10-16T01:14:40.964228+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:16:17.897655+00:00"
+      },
+      "junit": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_continuation"
+        ],
+        "bytes": 1026,
+        "sha256": "3464bed24728cf645608e34ddd006026305bed4e1282d341d21fc8c08fa894aa"
+      },
+      "stdout.log": {
+        "bytes": 61848,
+        "sha256": "1ea2b3aea4ad0a40569536c0118d93c7ab83778aad5f578dbcd2822820f7befc"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-custody-binding-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-custody-binding-v01",
+        "started_utc": "2026-10-16T01:05:21.309396+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:06:29.611260+00:00"
+      },
+      "junit": {
+        "tests": 15,
+        "failures": 15,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_delegated_allocation"
+        ],
+        "bytes": 41591,
+        "sha256": "109b36432835a925b7746dded2fc2b86e6880c1d9f88f5d78b3e4febe4db2a21"
+      },
+      "nonqualifying_reason": "Same initial group-writable fixture boundary prevented capture; no custody assertion qualified.",
+      "stdout.log": {
+        "bytes": 323147,
+        "sha256": "17c7d81a1c3ca13abad9f4f0c46e7bb62ab89b98e18995f3ba29d27509043264"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-custody-binding-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-custody-binding-v02",
+        "started_utc": "2026-10-16T01:10:39.868333+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:12:21.968563+00:00"
+      },
+      "junit": {
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_delegated_allocation"
+        ],
+        "bytes": 2695,
+        "sha256": "f926ab83243fb87cb1a4161382d97cc1df50216741014c6006474490087130e9"
+      },
+      "stdout.log": {
+        "bytes": 159058,
+        "sha256": "9ebf94164501d8fefef22a705e07de1f3b64aa72925bb67789fca324209a4eb8"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-environment-v01",
+        "started_utc": "2026-10-16T00:56:23.091362+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:56:25.257231+00:00"
+      },
+      "nonqualifying_reason": "Native environment probe; not a test-count contribution.",
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-native-gate-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-native-gate-regression-v01",
+        "started_utc": "2026-10-16T01:09:48.240585+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:12:50.768248+00:00"
+      },
+      "junit": {
+        "tests": 30,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_admission"
+        ],
+        "bytes": 5052,
+        "sha256": "04f4837128341bc99cc191a27d62b23aff12ba3bda9fe9ec3dd4f60859b367ff"
+      },
+      "stdout.log": {
+        "bytes": 291403,
+        "sha256": "7cceb9a1628bd61c2f58f55acf33f6dea8339d53060a80653cc957d2f04589bc"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-pipeline-capture-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-pipeline-capture-v01",
+        "started_utc": "2026-10-16T01:05:21.339523+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:06:21.908419+00:00"
+      },
+      "junit": {
+        "tests": 13,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_delegated_allocation"
+        ],
+        "bytes": 7781,
+        "sha256": "7e4c4009003488165ba5c8ef1589d129e4eed79d932aacf9196c0b57bb9607d1"
+      },
+      "nonqualifying_reason": "Initial inherited fixture boundary was group-writable under the process umask; both positive cases were correctly refused at the new protected-boundary guard. Remaining negative passes are not qualifying evidence.",
+      "stdout.log": {
+        "bytes": 141851,
+        "sha256": "1b24d5e2bee26dc44f38983bbfd82aba538c6be885feaac0466a8b57970ebbee"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-pipeline-capture-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-pipeline-capture-v02",
+        "started_utc": "2026-10-16T01:10:39.838667+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:12:10.057026+00:00"
+      },
+      "junit": {
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_delegated_allocation"
+        ],
+        "bytes": 2233,
+        "sha256": "4cf212cfbb49de20c99bd2cdfb15bbb47e258d5b4b56637339bac309784ef068"
+      },
+      "stdout.log": {
+        "bytes": 125009,
+        "sha256": "b92c8a7cc925c76a539d611513dbfd5656249ba1b3da44e44182072e73171795"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-provisioned-smoke-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-provisioned-smoke-v01",
+        "started_utc": "2026-10-16T01:08:30.490416+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:08:53.553647+00:00"
+      },
+      "junit": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_delegated_allocation"
+        ],
+        "bytes": 3227,
+        "sha256": "17c2f58a9ff30575dd6db595e0b697153e5653c3578f499a4ff2480455247b3f"
+      },
+      "nonqualifying_reason": "Actual code0 continuation completed and released its native leaf, then the fixture compared renewable parent timestamps for equality. Final fixture compares all immutable parent fields and requires heartbeat/expiry monotonicity.",
+      "stdout.log": {
+        "bytes": 31313,
+        "sha256": "9762f42d82bff1289de595a6f40efd6a78bb43ff5668e5acc27182b9b536638c"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "delegated-strict-allocation-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "delegated-strict-allocation-regression-v01",
+        "started_utc": "2026-10-16T01:05:21.341341+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T01:08:18.531169+00:00"
+      },
+      "junit": {
+        "tests": 31,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_current_source_worktree_allocation"
+        ],
+        "bytes": 5068,
+        "sha256": "0a9bff08a95c38d1eb6eef85b26a136e463aacc1c12ff98b9b67b2a3c543b789"
+      },
+      "stdout.log": {
+        "bytes": 469628,
+        "sha256": "4780dde5aecde631d442b3e7184f22131dd7d162d1f7a0d5d10460cb8cb9e8cc"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "source_verification": "All changed runtime/archive sources and original fixture hooks retain their prequalification hashes. Only the new delegated test fixture changed for boundary provisioning and renewable-parent assertions. All successful delegated cases use the final qualification test SHA. After qualification one extra blank line at test-file EOF was removed; both hashes and the exact one-byte difference are verified. Documentation was pinned after completion of the delegated reruns; final nine-file review pins are verified before publication.",
+  "whitespace_only_postqualification_revision": {
+    "path": "test/api/test_native_delegated_allocation.py",
+    "qualification_sha256": "28f0553406f22e5647986378419de05dc81182928560637daffbb002e6997f43",
+    "final_review_sha256": "91d49a492aba7009cf7ff18bd7694527068b375ead5ff83f63dad5cfbee1c4b3",
+    "change": "Remove exactly one extra newline byte at EOF; runtime and test logic unchanged."
+  },
+  "fixture_revision_ledger": [
+    {
+      "runs": [
+        "delegated-pipeline-capture-v01",
+        "delegated-custody-binding-v01"
+      ],
+      "source_sha256": "5cb66b1f5d65c76fbed1c285e921e013e64784c3bf55706a94bf9d7a5390a38c",
+      "qualification": false,
+      "change": "Initial fixture inherited group-writable boundary mode."
+    },
+    {
+      "runs": [
+        "delegated-provisioned-smoke-v01"
+      ],
+      "source_sha256": null,
+      "qualification": false,
+      "change": "Intermediate fixture provisions boundary0444 before first census. Exact intermediate source hash was not retained in this evidence ledger; parent timestamp equality assertion remained."
+    },
+    {
+      "runs": [
+        "delegated-pipeline-capture-v02",
+        "delegated-custody-binding-v02"
+      ],
+      "source_sha256": "28f0553406f22e5647986378419de05dc81182928560637daffbb002e6997f43",
+      "qualification": true,
+      "change": "Final fixture additionally compares immutable parent fields and monotonic renewable timestamps."
+    }
+  ],
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "docker_runs": 0,
+  "real_boundaries": [
+    "Separate exact native delegated allocation captures a prepared unspent first OwnerWorkerAttempt and already provisioned root; ordinary native allocation still refuses that group-writable root",
+    "Actual root03770 and marker0440 descriptor identities, owner/group, marker bytes and single-link custody; actual fdinfo mount ID/namespace and POSIX ACL absence observations",
+    "Same-owner native task/claim/grant, Portal projections, lifecycle/index, canonical Git and registered-worktree controls remain real in the shared kernel",
+    "Actual code0/code7 second Popen receives exact sealed candidate prompt; two observed children, genuine nested native resource leaf release, parent immutable budget preserved and task remains in_progress",
+    "Actual first-child birth blocks recapture; original delegated allocation remains current through legitimate birth and retirement",
+    "Actual root/marker/canonical mode, marker inode, Portal, lifecycle, grant and byte-identical boundary-inode drift refused",
+    "Exact prior attempt, selected source broker and original deadline binding substitutions refused",
+    "Actual native source publication/inventory binding admitted before the first edit and refuses source rebasing after that edit",
+    "Original strict allocation, candidate gate, continuation, archive, typed router, native resource and provider-stub full-native dispatch regressions pass"
+  ],
+  "authored_fixture_boundaries": [
+    "Existing host fixture authors Quack transport and boundary/UID admission; root-owned deployment manifest authentication and distinct worker UID are not exercised",
+    "Fixture actually chmods its local worktree and marker before preparing the first census; this is supplied provisioning, not a verified production permission transition",
+    "Local inert first child edits fixture bytes and exits7; second child reads prompt and returns0/7 without external provider, target execution or formal proof",
+    "Two ACL-name refusal cases inject listxattr results; mount-drift refusal substitutes a helper result; no actual ACL installation or mount/namespace transition",
+    "Existing full-native router regression authors provider/catalog initialization and provider observations"
+  ],
+  "limitations": [
+    "Capture-only API: no chmod, permission-transition certificate, recursive tree permission check, worker link prevention, group-membership change or cross-UID isolation qualification",
+    "Production permission loop, Docker deployment and daemon-to-wrapper live native ownership handoff remain unqualified; installed retry path is not enabled",
+    "SourceLookupWorkerBroker remains exact ordinary-allocation-only; this change widens candidate admission/continuation, not that launch lane",
+    "New module does not dynamically cover constructor-closing callback races, same-object event/policy tampering, negative UID/GID/boundary-scope cases or delegated deadline expiry",
+    "Caller retains allocation/run/parent lifetime ownership; resource custody remains live-owner cooperative accounting, not cgroups or crash-safe external-child accounting",
+    "Metadata and delegation CID grant no native authority; no task completion or legal proof acceptance is enabled",
+    "No external provider/model/training run, matched TerminalBench trial, measured total token savings or legal autoformalization correctness claim"
+  ]
+}
