@@ -32,6 +32,19 @@ DECLARED_OUTPUT_FAILURE_STAGES = frozenset({
     "attempt_binding", "owner_event_log", "allocation_event", "allocation_root",
     "invocation_join", "declared_output_files",
 })
+BASELINE_SESSION_LIMIT = 512
+BASELINE_SESSION_IDENTITY_SCHEMA = "terminal-baseline-native-session-identities@1"
+_BASELINE_IDENTITY_FIELDS = frozenset({"schema", "status", "reason", "provider", "inventory_complete",
+    "observed_session_count", "identity_sha256", "modern_source", "usage_population_coherent",
+    "observation_only", "source_authenticity_verified", "billing_total_verified", "completion_authority"})
+_BASELINE_IDENTITY_REASONS = frozenset({"native_session_inventory_observed", "historical_session_identity_not_recorded",
+    "invalid_native_session_population", "native_session_identity_missing", "native_session_identity_invalid",
+    "native_session_identity_duplicate", "native_session_source_unsupported"})
+_COLLECTION_COUNTERS = native_usage_accounting._COLLECTION_COUNTERS
+_COLLECTION_REASONS = native_usage_accounting._COLLECTION_REASONS
+_COLLECTION_FALSE_FIELDS = native_usage_accounting._COLLECTION_FALSE_FIELDS
+_COLLECTION_UNKNOWN_FIELDS = native_usage_accounting._COLLECTION_UNKNOWN_FIELDS
+_COLLECTION_FIELDS = native_usage_accounting._COLLECTION_FIELDS
 LABELS = {
     "native-codex": "Native Codex harness",
     "no-index": "Supervisor: no indexed context",
@@ -82,6 +95,84 @@ def _baseline_completion(native):
     if explicit is False or any(flag is False for flag in flags):
         return False
     return True if explicit is True else _completion(flags)
+
+
+def _baseline_usage_population_coherent(native, sessions):
+    """Check current producer categories against its supplied session population."""
+    fields = (*TOKENS, "cache_write_input_tokens", "reasoning_output_tokens")
+    top = native.get("usage")
+    if type(top) is not dict or any(type(row.get("usage")) is not dict for row in sessions):
+        return None
+    values = [top, *(row["usage"] for row in sessions)]
+    for value in values:
+        if any(value.get(key) is not None and (type(value[key]) is not int or not 0 <= value[key] < (1 << 63))
+               for key in fields):
+            return False
+        inputs, outputs, total = (value.get(key) for key in ("input_tokens", "output_tokens", "total_tokens"))
+        if inputs is not None and outputs is not None and total is not None and inputs + outputs != total:
+            return False
+        if (inputs is not None and value.get("cached_input_tokens") is not None
+                and value["cached_input_tokens"] > inputs
+                or outputs is not None and value.get("reasoning_output_tokens") is not None
+                and value["reasoning_output_tokens"] > outputs):
+            return False
+    for key in fields:
+        parts = [row["usage"].get(key) for row in sessions]
+        expected = sum(parts) if all(value is not None for value in parts) else None
+        if expected is not None and expected >= (1 << 63) or top.get(key) != expected:
+            return False
+    return True if all(value.get(key) is not None for value in values
+                       for key in ("input_tokens", "output_tokens", "total_tokens")) else None
+
+
+def _baseline_session_identity_observation(native):
+    """Hash only exact declared IDs; never substitute artifact paths or hashes."""
+    modern = native.get("source") == "native_rollout_observed_cumulative_totals"
+    sessions = native.get("sessions")
+    bounded = type(sessions) is list and len(sessions) <= BASELINE_SESSION_LIMIT
+    result = dict(schema=BASELINE_SESSION_IDENTITY_SCHEMA, status="invalid",
+        reason="invalid_native_session_population", provider="codex_cli", inventory_complete=False,
+        observed_session_count=len(sessions) if bounded else None, identity_sha256=[], modern_source=modern,
+        usage_population_coherent=None, observation_only=True, source_authenticity_verified=False,
+        billing_total_verified=False, completion_authority=False)
+    if "sessions" not in native and native.get("source") is None:
+        result.update(status="unverified", reason="historical_session_identity_not_recorded")
+        return result
+    if not bounded:
+        return result
+    historical = (not modern and native.get("source") is None
+        and all(type(row) is dict and "session_id" not in row for row in sessions))
+    if historical:
+        result.update(status="unverified", reason="historical_session_identity_not_recorded")
+        return result
+    missing = malformed = duplicate = False
+    hashes = set()
+    for row in sessions:
+        if type(row) is not dict:
+            malformed = True
+            continue
+        if "session_id" not in row:
+            missing = True
+            continue
+        identity = row["session_id"]
+        if type(identity) is not str or re.fullmatch(r"[A-Za-z0-9-]{1,80}", identity) is None:
+            malformed = True
+            continue
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        duplicate |= digest in hashes
+        hashes.add(digest)
+    result["identity_sha256"] = sorted(hashes)
+    if not sessions or malformed or missing or duplicate:
+        result["reason"] = ("native_session_identity_invalid" if malformed else "native_session_identity_missing"
+            if missing or not sessions else "native_session_identity_duplicate")
+        return result
+    if not modern and native.get("source") is not None:
+        result["reason"] = "native_session_source_unsupported"
+        return result
+    result.update(status="observed", reason="native_session_inventory_observed", inventory_complete=True)
+    if modern:
+        result["usage_population_coherent"] = _baseline_usage_population_coherent(native, sessions)
+    return result
 
 
 def _archive_digest(raw):
@@ -545,6 +636,90 @@ def _invocations(report):
     return [item[1] for item in found.values()]
 
 
+def _interaction_observation(report, invocations):
+    """Recompute bounded native and helper observations from original receipts.
+
+    An existing producer summary is never an input. Modern Codex receipts must
+    reconcile native sessions; historical unlabelled sums remain descriptive.
+    """
+    raw = report.get("provider_invocations", [])
+    identified = any(("thread_id" in _mapping(item.get("native_rollout_usage"))
+        and (item.get("provider") == "codex_cli"
+             or _mapping(item.get("native_rollout_usage")).get("schema") == "native-codex-cumulative-usage@1"))
+        or (item.get("schema") == "router-implementation-invocation@1"
+            and _mapping(item.get("native_rollout_usage")).get("schema") == "native-codex-cumulative-usage@1")
+        for item in raw)
+    modern = any(item.get("schema") == "router-implementation-invocation@1"
+        and _mapping(item.get("native_rollout_usage")).get("schema") in {
+            "native-codex-cumulative-usage@1", "native-grok-final-usage@1"} for item in raw)
+    phases = {name: sum(item["phase"] == name for item in invocations) for name in ("planning", "coding")}
+    phase_coverage = dict(planning_invocations=phases["planning"], coding_invocations=phases["coding"],
+        unknown_phase_invocations=sum(item["phase"] not in phases for item in invocations),
+        planning_observed=bool(phases["planning"]), coding_observed=bool(phases["coding"]),
+        all_phase_calls_retained=None, whole_interaction_qualified=False)
+    context = accounting = None
+    pins = dict(native_session_accounting_source_sha256=None, context_delivery_observation_source_sha256=None)
+    if identified or modern:
+        accounting = dict(status="unavailable", reason="native_session_observation_unavailable",
+            complete_supplied_native_usage=False, complete_native_total_tokens=None,
+            campaign_call_population_complete=None, billing_total_verified=False,
+            token_savings_established=False, completion_authority=False)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime import context_delivery_accounting as core
+            from . import terminal_context_delivery_observation as delivery
+            pins = dict(native_session_accounting_source_sha256=hashlib.sha256(Path(core.__file__).read_bytes()).hexdigest(),
+                context_delivery_observation_source_sha256=hashlib.sha256(Path(delivery.__file__).read_bytes()).hexdigest())
+            context = delivery.collect(report=report)
+            accounting = context["native_invocations"]
+        except (ValueError, TypeError, KeyError, OSError, ImportError, OverflowError, RecursionError, UnicodeError):
+            context = dict(status="unavailable", reason="retained_interaction_observation_invalid",
+                observation_only=True, provider_usage_modified=False, billing_total_verified=False,
+                total_token_savings_measured=False, completion_authority=False, raw_content_exported=False)
+    return identified, accounting, context, phase_coverage, pins
+
+
+def _provider_receipt_collection_observation(value):
+    return native_usage_accounting.provider_receipt_collection_observation(value)
+
+
+def _usage_coverage_inputs(report):
+    """Derive local channel coverage without replacing native usage accounting."""
+    observation = dict(schema="terminal-supplied-usage-coverage-observation@1",
+        status="not_recorded", scope="supplied_local_receipt_channels_only",
+        semantic_decision_selected=False, semantic_decision_coverage=None,
+        semantic_decision_coverage_recomputed=False, provider_receipt_collection=None,
+        provider_receipt_collection_status="not_recorded", complete_usage_blocked=False,
+        campaign_usage_complete=None, whole_interaction_qualified=False,
+        stored_usage_summary_trusted=False, provider_collection_authenticated=False,
+        local_prompt_estimates_added=False, billing_total_verified=False,
+        execution_authority=False, completion_authority=False)
+    inputs = report
+    try:
+        from . import terminal_decision_usage_projection as decision
+        selected = decision.decision_usage_selected(report)
+        observation["semantic_decision_selected"] = selected
+        if selected:
+            rows, coverage = decision._accounting_inputs(report)
+            inputs = {**report, "provider_invocations": rows}
+            observation.update(status="observed", semantic_decision_coverage=coverage,
+                semantic_decision_coverage_recomputed=True,
+                complete_usage_blocked=coverage["authoritative_usage_coverage_complete"] is not True)
+    except (ValueError, TypeError, KeyError, OSError, ImportError, OverflowError, RecursionError, UnicodeError):
+        observation.update(status="unavailable", complete_usage_blocked=True,
+            reason="semantic_decision_coverage_inputs_unavailable")
+    if "provider_receipt_collection" in report:
+        collection = _provider_receipt_collection_observation(report["provider_receipt_collection"])
+        observation["provider_receipt_collection"] = collection
+        observation["provider_receipt_collection_status"] = "reported" if collection is not None else "invalid"
+        if collection is None or collection["complete"] is not True:
+            observation["complete_usage_blocked"] = True
+        elif observation["status"] == "not_recorded":
+            observation["status"] = "reported"
+    if observation["complete_usage_blocked"] and observation["status"] != "unavailable":
+        observation["status"] = "incomplete"
+    return inputs, observation, observation["complete_usage_blocked"]
+
+
 def _trial(receipt, raw, *, source):
     baseline = receipt["schema"] == BASELINE
     arm = "native-codex" if baseline else receipt["arm"]
@@ -570,18 +745,35 @@ def _trial(receipt, raw, *, source):
         outcome = "failed_without_verifier_reward"
     else:
         outcome = "outcome_unknown"
-    invocations = _invocations(report) if not baseline else []
+    usage_report, usage_coverage, usage_blocked = (_usage_coverage_inputs(report) if not baseline
+        else (report, None, False))
+    invocations = _invocations(usage_report) if not baseline else []
+    identified, session_accounting, delivery_observation, phase_coverage, accounting_pins = (
+        _interaction_observation(usage_report, invocations) if not baseline else
+        (False, None, None, None, {}))
     unreceipted = bool(report.get("unreceipted_provider_attempt"))
+    baseline_identity = None
+    subtotal_basis = "reported_invocation_observations"
     if baseline:
         native = _mapping(raw.get("raw_usage"))
-        completion = _baseline_completion(native)
+        baseline_identity = _baseline_session_identity_observation(native)
+        population_invalid = (baseline_identity["status"] == "invalid"
+            or baseline_identity["modern_source"] and baseline_identity["usage_population_coherent"] is not True)
+        if population_invalid:
+            completion = False
+        elif baseline_identity["modern_source"]:
+            completion = _completion([_boolean(native.get("task_complete_observed")),
+                *(_boolean(row.get("task_complete_observed")) for row in native["sessions"])])
+        else:
+            completion = _baseline_completion(native)
         subtotal = _tokens(native.get("usage"))
         tokens = {key: value if completion is True else None for key, value in subtotal.items()}
         sessions = native.get("sessions")
-        calls = len(sessions) if isinstance(sessions, list) and sessions else None
+        calls = (len(sessions) if isinstance(sessions, list) and sessions else None) if not population_invalid else None
         cost_subtotal = _number(native.get("reported_cost_usd"))
         cost = cost_subtotal if completion is True else None
-        cache_included, lower_bounds = True, True
+        cache_included, lower_bounds = True, not population_invalid
+        subtotal_basis = "raw_baseline_usage_unreconciled" if population_invalid else "reported_baseline_usage"
     else:
         completion = None if unreceipted else _completion(
             row["native_usage_complete_observed"] for row in invocations)
@@ -595,6 +787,41 @@ def _trial(receipt, raw, *, source):
         cost_subtotal = _subtotal(row["known_reported_cost_subtotal_usd"] for row in invocations)
         cache_included = _uniform_boolean(row["cache_included_in_input"] for row in invocations)
         lower_bounds = bool(invocations) and all(row["observed_counts_are_lower_bounds"] for row in invocations)
+    accounting_basis = "native_baseline_reported_session_totals" if baseline else "legacy_invocation_sum_unreconciled"
+    input_scope = "native_provider_categories"
+    cost_basis = "reported_native_costs" if baseline else "reported_invocation_costs_unreconciled"
+    if baseline and baseline_identity["status"] == "unverified":
+        accounting_basis = "legacy_baseline_identity_unverified"
+    elif baseline and population_invalid:
+        accounting_basis, cost_basis = "native_baseline_population_unreconciled", "raw_baseline_cost_subtotal_unreconciled"
+    reconciliation_available = bool(identified and session_accounting is not None
+        and session_accounting.get("schema") == "supervisor-context-delivery-summary@1")
+    shared_sessions = 0
+    if identified:
+        accounting_basis, input_scope = "native_session_reconciled", "native_input_including_cache"
+        complete_counts = _mapping(_mapping(session_accounting).get("complete_native_counts"))
+        known_counts = _mapping(_mapping(session_accounting).get("known_native_counter_subtotals"))
+        names = {"input_tokens": "input_tokens_including_cache", "cached_input_tokens": "cached_input_tokens",
+                 "output_tokens": "output_tokens", "total_tokens": "total_tokens"}
+        tokens = {key: complete_counts.get(name) for key, name in names.items()}
+        subtotal = {key: known_counts.get(name) for key, name in names.items()}
+        completion = _mapping(session_accounting).get("complete_supplied_native_usage") is True
+        sessions = _mapping(session_accounting).get("sessions", [])
+        shared_sessions = sum(session.get("identity_kind") == "native_session"
+            and len({session_accounting["observations"][index]["invocation_id"]
+                for index in session["observation_indices"]}) > 1 for session in sessions)
+        if shared_sessions or not completion:
+            cost = None
+            cost_basis = "raw_invocation_cost_subtotal_unreconciled"
+        else:
+            cost_basis = "reported_invocation_costs_with_native_session_token_accounting"
+        lower_bounds = bool(sessions) and all(session.get("identity_kind") == "native_session"
+            and session.get("provider") == "codex_cli" and session.get("status") != "conflict"
+            for session in sessions)
+    if usage_blocked:
+        tokens = dict.fromkeys(TOKENS)
+        completion, cost, calls = False, None, None
+        cost_basis = "raw_invocation_cost_subtotal_incomplete_receipt_coverage"
     return {
         "arm": arm,
         "label": LABELS[arm],
@@ -653,18 +880,97 @@ def _trial(receipt, raw, *, source):
         "post_publication_context": _refresh_observation(report) if not baseline else None,
         "provider_calls": calls,
         "observed_provider_invocations": len(invocations) if not baseline else calls,
-        "unreceipted_provider_attempt": unreceipted,
+        "unreceipted_provider_attempt": (True if type(report.get("unreceipted_provider_attempt")) is dict else
+            report.get("unreceipted_provider_attempt") if type(report.get("unreceipted_provider_attempt")) is bool else None)
+            if identified else unreceipted,
         "native_usage_complete_observed": completion,
         "cache_included_in_input": cache_included,
         "observed_counts_are_lower_bounds": lower_bounds,
         "billing_total_verified": False,
         "tokens": tokens,
         "known_token_subtotals": subtotal,
+        "known_token_subtotals_basis": subtotal_basis,
+        "native_token_accounting_basis": accounting_basis,
+        "input_token_scope": input_scope,
+        "native_session_reconciliation_available": reconciliation_available,
+        "native_session_accounting": session_accounting,
+        "baseline_native_session_identity_observation": baseline_identity,
+        "context_delivery_observation": delivery_observation,
+        "interaction_phase_coverage": phase_coverage,
+        "usage_coverage_observation": usage_coverage,
+        "whole_interaction_qualified": False,
+        "shared_native_session_count": shared_sessions,
+        **accounting_pins,
         "reported_cost_usd": cost,
         "known_reported_cost_subtotal_usd": cost_subtotal,
+        "reported_cost_accounting_basis": cost_basis,
         "invocations": invocations,
         "retained_trial": True,
     }
+
+
+def _native_session_keys(row):
+    """Return content-free ownership keys from recomputed bounded projections."""
+    keys = set()
+    if row.get("arm") == "native-codex":
+        value = row.get("baseline_native_session_identity_observation")
+        if type(value) is not dict or set(value) != _BASELINE_IDENTITY_FIELDS:
+            return keys
+        count, identities = value["observed_session_count"], value["identity_sha256"]
+        if (value["schema"] != BASELINE_SESSION_IDENTITY_SCHEMA or value["provider"] != "codex_cli"
+                or type(value["status"]) is not str or type(value["reason"]) is not str
+                or value["status"] not in {"observed", "unverified", "invalid"}
+                or value["reason"] not in _BASELINE_IDENTITY_REASONS
+                or type(value["inventory_complete"]) is not bool or type(value["modern_source"]) is not bool
+                or value["usage_population_coherent"] is not None and type(value["usage_population_coherent"]) is not bool
+                or value["observation_only"] is not True
+                or any(value[field] is not False for field in ("source_authenticity_verified", "billing_total_verified", "completion_authority"))
+                or count is not None and (type(count) is not int or not 0 <= count <= BASELINE_SESSION_LIMIT)
+                or type(identities) is not list or len(identities) > BASELINE_SESSION_LIMIT
+                or any(type(identity) is not str or re.fullmatch(r"[0-9a-f]{64}", identity) is None for identity in identities)
+                or identities != sorted(set(identities))
+                or identities and (count is None or len(identities) > count)):
+            return keys
+        if value["status"] == "observed":
+            if (value["inventory_complete"] is not True or count in (None, 0) or len(identities) != count
+                    or value["reason"] != "native_session_inventory_observed"):
+                return keys
+        elif value["inventory_complete"] is not False:
+            return keys
+        if value["status"] == "unverified" and (identities or value["modern_source"] is not False
+                or value["reason"] != "historical_session_identity_not_recorded"
+                or value["usage_population_coherent"] is not None):
+            return keys
+        if (value["status"] == "invalid" and value["reason"] in {
+                "native_session_inventory_observed", "historical_session_identity_not_recorded"}
+                or value["modern_source"] is False and value["usage_population_coherent"] is not None):
+            return keys
+        return {("codex_cli", identity) for identity in identities}
+    if row.get("native_token_accounting_basis") == "native_session_reconciled":
+        accounting = _mapping(row.get("native_session_accounting"))
+        sessions = accounting.get("sessions")
+        if (accounting.get("schema") != "supervisor-context-delivery-summary@1"
+                or type(sessions) is not list or len(sessions) > BASELINE_SESSION_LIMIT):
+            return keys
+        for session in sessions:
+            if (type(session) is dict and session.get("identity_kind") == "native_session"
+                    and session.get("provider") == "codex_cli" and type(session.get("identity_sha256")) is str
+                    and re.fullmatch(r"[0-9a-f]{64}", session["identity_sha256"])):
+                keys.add(("codex_cli", session["identity_sha256"]))
+    return keys
+
+
+def _annotate_native_session_reuse(rows):
+    """Replace overlap annotations using all retained rows before filtering."""
+    native_owners = {}
+    populations = [_native_session_keys(row) for row in rows]
+    for ordinal, keys in enumerate(populations):
+        for key in keys:
+            native_owners.setdefault(key, set()).add(ordinal)
+    for row, keys in zip(rows, populations):
+        row["native_sessions_reused_across_comparison_trials"] = sorted({identity for provider, identity in keys
+            if len(native_owners[(provider, identity)]) > 1})
+    return rows
 
 
 def _aggregate(rows):
@@ -683,6 +989,34 @@ def _aggregate(rows):
         "reported_cost_usd": _sum(row["reported_cost_usd"] for row in rows),
         "known_reported_cost_subtotal_usd": _subtotal(row["known_reported_cost_subtotal_usd"] for row in rows),
     }
+    native_owners = {}
+    for ordinal, row in enumerate(rows):
+        reused = row.get("native_sessions_reused_across_comparison_trials", [])
+        reused = reused if type(reused) is list and len(reused) <= BASELINE_SESSION_LIMIT else []
+        for key in _native_session_keys(row):
+            native_owners.setdefault(key, set()).add(ordinal)
+            if key[1] in reused:
+                native_owners[key].add(-1)
+    overlaps = sum(len(owners) > 1 for owners in native_owners.values())
+    totals.update(native_session_overlap_count=overlaps,
+        native_session_overlap_prevents_complete_total=bool(overlaps),
+        native_usage_complete_observed=False if overlaps else _completion(
+            row["native_usage_complete_observed"] for row in rows),
+        known_token_subtotals_basis=("per_trial_observations_unreconciled_across_shared_sessions" if overlaps
+            else "sum_of_per_trial_observations_including_unreconciled_baseline_usage"
+            if any(row.get("known_token_subtotals_basis") == "raw_baseline_usage_unreconciled" for row in rows)
+            else "sum_of_per_trial_accounting"),
+        known_reported_cost_subtotal_basis="raw_retained_invocation_observations_not_session_reconciled",
+        input_token_scope=(rows[0].get("input_token_scope") if rows
+            and all(row.get("input_token_scope") == rows[0].get("input_token_scope") for row in rows) else None),
+        native_token_accounting_basis=(rows[0].get("native_token_accounting_basis") if rows
+            and all(row.get("native_token_accounting_basis") == rows[0].get("native_token_accounting_basis") for row in rows)
+            else "mixed_or_unavailable_accounting_bases"), whole_interaction_qualified=False)
+    if overlaps:
+        # Distinct retained trials cannot charge the same cumulative session
+        # twice. Cross-trial sharing is unsupported; retain diagnostics only.
+        totals["tokens"] = dict.fromkeys(TOKENS)
+        totals["reported_cost_usd"] = None
     unavailable = []
     if totals["unknown_reward_trials"]:
         unavailable.append("unknown_official_reward")
@@ -692,6 +1026,9 @@ def _aggregate(rows):
                                   if totals["tokens"]["total_tokens"] is None else [])
     cost_reasons = unavailable + (["incomplete_reported_provider_cost"]
                                  if totals["reported_cost_usd"] is None else [])
+    if overlaps:
+        token_reasons.append("native_session_reused_across_retained_trials")
+        cost_reasons.append("native_session_reused_across_retained_trials")
     totals["observed_efficiency"] = {
         "schema": "terminal-observed-efficiency@1",
         "numerator_scope": "all_retained_attempts_in_aggregate",
@@ -784,6 +1121,7 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
             else:
                 seen[identity] = row
                 rows.append(row)
+    _annotate_native_session_reuse(rows)
     unsuccessful = [
         row for row in rows if row["outcome"] not in ("official_verifier_passed", "outcome_unknown")
     ]
@@ -825,7 +1163,12 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
             "Runtime archive hashes are reported from retained agent metadata; the comparison source hash identifies this reporting implementation separately.",
             "Initial cold indexing, planning, Doctor and post-publication refresh are inside supervisor agent time; reported phases are observations, not added to total time or nested helper durations.",
             "Prepared context, reported wire measurements, and independently reconstructed model inputs are separate observations; bytes do not establish token savings.",
-            "Native counters are counted once per invocation. Codex input includes cache; Grok input excludes cache. Mixed-provider cache semantics are unknown at the comparison level.",
+            "Identified Codex sessions are reconciled once per trial using original retained receipts; cross-trial session overlap withholds aggregate totals. Legacy invocation sums remain explicitly unreconciled.",
+            "Baseline session ownership uses exact declared native IDs, including valid observed IDs in incomplete inventories; artifact paths and hashes never substitute for IDs. Global overlap annotations are recomputed before filtering arms or unsuccessful attempts.",
+            "Current baseline receipts require a complete unique identity inventory, coherent per-session usage, and each session's completion. Historical receipts without IDs remain explicitly identity-unverified descriptive observations.",
+            "Reconciled trial input includes native cache categories; per-invocation and legacy observations retain their original provider categories. Prompt bytes and local tokenizer counts are never added to native usage.",
+            "Interaction phase coverage records observed planning and coding wrappers, not exhaustive campaign calls. Supplied producer summaries are not trusted as native usage or read-adoption evidence.",
+            "Selected semantic-decision coverage is reconstructed from retained attempts before native session accounting. Local receipt collection can withhold outer totals; complete supplied native-session counters remain separate from campaign completeness, which stays unknown.",
             "A single-task pilot does not establish efficiency, parallelism, or benchmark superiority.",
             "Matching declarations cover task bytes, timeouts, retries, resources and concurrency; they do not establish runtime enforcement. Legacy preparations without frozen controls remain unknown.",
         ],

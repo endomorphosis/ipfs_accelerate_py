@@ -64,10 +64,102 @@ def campaign(tmp_path):
         for budget, tokens in zip(CAPSULE_BUDGETS, (100, 60, 80)))))
 
 
+def test_registered_budget_comparison_uses_reconciled_sessions_and_failed_retry(tmp_path):
+    """Authored native receipts exercise the existing matched-report consumer."""
+    from test.api.test_context_delivery_accounting import _receipt as native_receipt
+
+    paths = campaign(tmp_path)
+    selected = paths['one'][0]
+    receipt = json.loads(selected.read_text())
+    trial = receipt['trials'][0]
+    early = native_receipt('early-wrapper', inputs=20, outputs=2, cached=10,
+                           complete=False, records=1, artifact='early-artifact')
+    latest = native_receipt('latest-wrapper', inputs=55, outputs=5, cached=30,
+                            records=2, artifact='latest-artifact')
+    failed = native_receipt('failed-retry', thread='separate-retry-session-123456',
+                            inputs=10, outputs=2, cached=0, artifact='retry-artifact')
+    for call in (early, latest, failed):
+        call.update(model=benchmark.MODEL, phase='coding')
+    early.update(phase='planning', purpose='planning')
+    failed.update(status='failed', error_type='ResponseDecodeError')
+    trial['supervisor'].update(provider_invocations=[early, latest, failed],
+                               unreceipted_provider_attempt=False)
+    write(selected, receipt)
+    result = comparison.collect(**paths)
+    one = result['budgets']['one-capsule@1']
+    assert one['aggregate']['tokens']['total_tokens'] == 72  # Latest 60 plus failed retry 12.
+    assert one['complete_registered_native_usage'] is True
+    assert one['aggregate']['observed_efficiency']['total_tokens_per_official_pass'] == 72
+    assert result['contrasts']['one-capsule@1']['candidate_minus_legacy_tokens'] == -28
+    assert result['contrasts']['one-capsule@1']['causal_token_savings_claimed'] is False
+
+
 def mutate(path, callback):
     value = json.loads(path.read_text())
     callback(value)
     write(path, value)
+
+
+def _native_session_attempt(path, identity, thread, *, inputs, outputs=2, records=1):
+    from test.api.test_context_delivery_accounting import _receipt as native_receipt
+
+    call = native_receipt(identity, thread=thread, inputs=inputs, outputs=outputs,
+                          cached=0, records=records, artifact=identity)
+    call.update(model=benchmark.MODEL, phase='coding')
+    mutate(path, lambda value: value['trials'][0]['supervisor'].update(
+        provider_invocations=[call], unreceipted_provider_attempt=False))
+
+
+def test_shared_native_session_across_budget_groups_withholds_both_contrasts(tmp_path):
+    paths = campaign(tmp_path)
+    thread = 'authored-shared-budget-session-123456'
+    _native_session_attempt(paths['legacy'][0], 'legacy-wrapper', thread, inputs=98)
+    _native_session_attempt(paths['one'][0], 'one-wrapper', thread, inputs=58)
+    result = comparison.collect(**paths)
+    for budget in ('legacy', 'one-capsule@1'):
+        group = result['budgets'][budget]
+        aggregate = group['aggregate']
+        assert group['complete_registered_native_usage'] is False
+        assert aggregate['native_session_overlap_count'] == 1
+        assert aggregate['tokens'] == dict.fromkeys(comparison.native.TOKENS)
+        assert aggregate['observed_efficiency']['total_tokens_per_official_pass'] is None
+    assert result['budgets']['two-capsules@1']['aggregate']['tokens']['total_tokens'] == 80
+    for contrast in result['contrasts'].values():
+        assert contrast['comparable'] is False
+        assert contrast['candidate_minus_legacy_tokens'] is None
+        assert 'incomplete_registered_native_usage' in contrast['unavailable_reasons']
+    assert len(result['rows'][0]['native_sessions_reused_across_comparison_trials']) == 1
+
+
+def test_shared_session_within_budget_cannot_report_complete_registered_usage(tmp_path):
+    paths = campaign(tmp_path)
+    second = attempt(tmp_path, 'one-capsule@1', name='one-second', tokens=80)
+    paths['one'].append(second)
+    thread = 'authored-shared-within-budget-123456'
+    _native_session_attempt(paths['one'][0], 'one-first-wrapper', thread, inputs=58)
+    _native_session_attempt(second, 'one-second-wrapper', thread, inputs=78, records=2)
+    result = comparison.collect(**paths)
+    group = result['budgets']['one-capsule@1']
+    assert group['aggregate']['trials'] == 2
+    assert group['aggregate']['known_token_subtotals']['total_tokens'] == 140
+    assert group['aggregate']['known_token_subtotals_basis'] == 'per_trial_observations_unreconciled_across_shared_sessions'
+    assert group['aggregate']['native_session_overlap_count'] == 1
+    assert group['aggregate']['tokens']['total_tokens'] is None
+    assert group['complete_registered_native_usage'] is False
+
+
+def test_distinct_native_sessions_keep_registered_budget_totals(tmp_path):
+    paths = campaign(tmp_path)
+    for group, inputs in (('legacy', 98), ('one', 58), ('two', 78)):
+        _native_session_attempt(paths[group][0], group + '-wrapper',
+            'authored-distinct-' + group + '-session-123456', inputs=inputs)
+    result = comparison.collect(**paths)
+    for budget, total in zip(CAPSULE_BUDGETS, (100, 60, 80)):
+        group = result['budgets'][budget]
+        assert group['aggregate']['tokens']['total_tokens'] == total
+        assert group['aggregate']['native_session_overlap_count'] == 0
+        assert group['complete_registered_native_usage'] is True
+    assert result['contrasts']['one-capsule@1']['candidate_minus_legacy_tokens'] == -40
 
 
 def test_budget_only_comparison_groups_all_three_and_preserves_generic_mismatch(tmp_path):

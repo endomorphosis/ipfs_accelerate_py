@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,8 @@ _CACHE_COUNTS = ("entry_count", "file_count", "directory_count", "symlink_count"
 _CACHE_AUTHORITY = ("native_indexed", "proof_authority", "execution_authority", "completion_authority")
 DEFAULT_LIMITS = dict(max_files=512, max_total_bytes=16 * 1024 * 1024,
                       max_file_bytes=256 * 1024, max_generations=8)
+MAX_READ_LINES = 4096
+MAX_READ_LINE_BYTES = 65536
 
 
 class RepositorySourceSessionError(ValueError):
@@ -327,16 +330,54 @@ class RepositorySourceSession:
             return dict(self._identity(), operation="symbols", symbols=rows)
 
     def read(self, *, generation: int, path: str, representation: str | None = None,
-             symbol_id: str | None = None) -> dict:
+             symbol_id: str | None = None, start_line: int | None = None,
+             end_line: int | None = None) -> dict:
+        """Read a full file, indexed definition, or exact original LF line range.
+
+        Line coordinates are inclusive and require both endpoints. A range is
+        deliberately original-only: compact formatting can change coordinates.
+        The canonical whole-file digest and repository freshness fences remain
+        the same as a full read; the range does not grant an edit selector.
+        """
         with self._lock:
             self._generation(generation)
             self._current()
             representation = self.representation if representation is None else representation
+            line_range = start_line is not None or end_line is not None
+            if line_range:
+                if symbol_id is not None:
+                    _fail("invalid_read_selector")
+                if (not _integer(start_line, 1, 2**31 - 1)
+                        or not _integer(end_line, 1, 2**31 - 1)
+                        or start_line > end_line or end_line - start_line + 1 > MAX_READ_LINES):
+                    _fail("invalid_line_range")
+                if representation != "original":
+                    _fail("line_range_requires_original")
             if symbol_id is not None:
                 return self._read_symbol(path, symbol_id, representation)
             result = views.read_repository_file(
                 self._package, expected_manifest_sha256=self._capture_receipt["manifest_sha256"],
                 path=path, representation=representation)
+            if line_range:
+                if result["encoding"] != "utf-8":
+                    _fail("line_range_requires_text")
+                # Only LF defines a physical source line. str.splitlines()
+                # would also split lone CR and Unicode separators, changing
+                # coordinates and losing the exact source-read contract.
+                pieces = result["content"].split("\n")
+                lines = [piece + "\n" for piece in pieces[:-1]]
+                if pieces[-1]:
+                    lines.append(pieces[-1])
+                if end_line > len(lines):
+                    _fail("line_range_out_of_bounds")
+                content = "".join(lines[start_line - 1:end_line])
+                raw = content.encode("utf-8")
+                if len(raw) > min(MAX_READ_LINE_BYTES, self.limits["max_file_bytes"]):
+                    _fail("line_range_byte_limit")
+                result.update(content=content, view_bytes=len(raw),
+                    view_sha256=hashlib.sha256(raw).hexdigest(), scope="line_range",
+                    start_line=start_line, end_line=end_line, total_lines=len(lines),
+                    omitted_lines=len(lines) - (end_line - start_line + 1))
             self._current()
             identity = self._identity()
             identity["representation"] = result["representation"]

@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 import shlex
 import sys
-import tarfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,7 +15,8 @@ from benchmarks.agent_supervisor.container_coding import full_supervisor_benchma
 from benchmarks.agent_supervisor.container_coding import terminal_semantic_working_set_policy as policy
 from benchmarks.agent_supervisor.container_coding import terminal_doctor_dispatch as dispatch
 from benchmarks.agent_supervisor.container_coding.benchmark_provider_profile import CLI_VERSION
-from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
+from benchmarks.agent_supervisor.container_coding.terminal_deployment import build_runtime_archive
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_inputs, _supervisor_manifest
 from benchmarks.agent_supervisor.container_coding.test_terminal_semantic_metadata_policy import authored_task
 
 MODE = "capsule-references@1"
@@ -106,10 +106,17 @@ def test_signed_implementation_adds_only_explicit_flag_and_keeps_candidate_route
 
 def test_prepare_freezes_selection_without_provider_dispatch(tmp_path, monkeypatch):
     dataset, _ = authored_task(tmp_path)
-    archive = tmp_path / "archive"; archive.mkdir()
-    with tarfile.open(archive / "runtime.tar.gz", "w:gz"): pass
-    (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({**inventory(),
-        "archive_sha256": benchmark._hash(archive / "runtime.tar.gz"), "codex_version": CLI_VERSION})))
+    inputs = _supervisor_inputs(tmp_path / "runtime-inputs")
+    root = Path(policy.__file__).resolve().parents[3]
+    for name in policy.SOURCE_PATHS:
+        target = inputs["source"] / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((root / name).read_bytes())
+    archive = tmp_path / "archive"
+    manifest = build_runtime_archive(output=archive, **inputs)
+    expected_deadlines = {name: benchmark._hash(path)
+        for name, path in benchmark._timeout_runtime_sources().items()}
+    assert benchmark._require_current_timeout_runtime(archive, manifest) == expected_deadlines
     calls = []
     monkeypatch.setattr(benchmark.subprocess, "run", lambda argv, **kwargs:
         calls.append(argv) or SimpleNamespace(returncode=0, stdout="Authored dry-run", stderr=""))
@@ -118,6 +125,7 @@ def test_prepare_freezes_selection_without_provider_dispatch(tmp_path, monkeypat
     assert result["semantic_working_set"] == MODE
     assert result["comparison_controls"]["schema"] == controls.SEMANTIC_WORKING_SET_SCHEMA
     assert result["provider_calls"] == 0 and calls and all("--dry-run" in c for c in calls)
+    assert result["runtime_timeout_source_sha256"] == expected_deadlines
     observed = benchmark.collect(tmp_path / "out")
     assert observed["semantic_working_set_config_unchanged"] is True
     assert observed["semantic_working_set_runtime_declared_matches"] is None

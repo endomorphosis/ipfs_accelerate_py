@@ -154,13 +154,17 @@ def test_complete_native_telemetry_reaches_accounting_without_changing_dispatch(
         "provider", "model_name", "provider_instance", "deps", "allow_local_fallback",
         "allow_cross_provider_fallback", "timeout", "max_tokens", "max_new_tokens",
         "reasoning_effort", "side_effecting", "task_kind", "allocation_path", "allocation_session_id",
+        "codex_cli_literal_response", "temperature",
     }
+    assert options["codex_cli_literal_response"] is False
+    assert type(options["temperature"]) is int and options["temperature"] == 0
     assert {key: value for key, value in options.items()
             if key not in {"provider_instance", "deps", "allocation_session_id"}} == {
         "provider": "codex_cli", "model_name": "authored-model", "allow_local_fallback": False,
         "allow_cross_provider_fallback": False, "timeout": 30, "max_tokens": 512,
         "max_new_tokens": 512, "reasoning_effort": "high", "side_effecting": True,
         "task_kind": "coding", "allocation_path": "cli",
+        "codex_cli_literal_response": False, "temperature": 0,
     }
     assert emitted["model_prompt_bytes"] == len(prompt.encode("utf-8"))
     assert emitted["model_prompt_sha256"] == hashlib.sha256(prompt.encode("utf-8")).hexdigest()

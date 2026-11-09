@@ -4031,6 +4031,20 @@ class DatabaseTaskSource:
             compact,
         )
 
+    def release_dependency_satisfied_blocks(self) -> Mapping[str, Any]:
+        """Complete recorded dependency blocks. Never writes through Quack."""
+
+        if self._intent.uses_quack_transport:
+            return MappingProxyType(
+                {
+                    "completed": [],
+                    "pending": [],
+                    "held": [],
+                    "reason": "quack_transport_unchanged",
+                }
+            )
+        return self._intent.release_dependency_satisfied_blocks()
+
     def recover_typed_deferral_budget(
         self,
         task_cid_or_alias: str | TaskRecord | Mapping[str, Any],

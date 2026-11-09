@@ -16,6 +16,7 @@ import tarfile
 from types import SimpleNamespace
 
 import pytest
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
 
@@ -23,7 +24,7 @@ from benchmarks.agent_supervisor.container_coding import full_supervisor_benchma
 from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
 from test.api.test_benchmark_prompt_options import DEFAULTS
 from test.api.test_terminal_decision_archive import _decision_runtime_archive
-from test.api.test_terminal_timeout_configuration import (
+from test.api.test_current_terminal_archive_fixtures import (
     _authored_prepare_dataset, _timeout_runtime_archive,
 )
 
@@ -86,7 +87,7 @@ def test_invalid_native_control_refuses_before_preparation_or_adapter_io(tmp_pat
     with pytest.raises(ValueError):
         benchmark.prepare(dataset=unread, output=tmp_path / "output", archive=unread, arm=arm, **options)
     with pytest.raises(ValueError):
-        adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+        adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"],
             runtime_archive=str(tmp_path / "missing"), arm=arm, **options)
     assert not (tmp_path / "output").exists() and not (tmp_path / "logs").exists()
 
@@ -218,7 +219,7 @@ def test_native_execute_replays_actual_router_archive_member_even_if_outer_hashe
 def test_harbor_driver_forwards_native_switch_only_when_explicit_and_keeps_indexed_arm(tmp_path, monkeypatch, selected):
     archive = tmp_path / "archive"
     archive.mkdir()
-    (archive / "manifest.json").write_text(json.dumps({"archive_sha256": "authored", "learned_requirements": []}))
+    (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": "authored", "learned_requirements": []})))
     commands = []
 
     class Environment:
@@ -237,7 +238,7 @@ def test_harbor_driver_forwards_native_switch_only_when_explicit_and_keeps_index
 
     monkeypatch.setattr(adapter, "capture_public_inputs", capture)
     monkeypatch.setattr(adapter, "export_public_outputs", capture)
-    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"],
         runtime_archive=str(archive), arm="full", semantic_native_input=selected)
     context = AgentContext()
     asyncio.run(agent.run("Authored public instruction.", Environment(), context))

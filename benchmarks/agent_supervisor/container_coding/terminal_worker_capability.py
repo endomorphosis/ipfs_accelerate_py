@@ -14,6 +14,19 @@ from .benchmark_resource_profile import coding_timeout_seconds, FORMALIZATION_SO
 KEY = "router_worker_capability"
 SCHEMA = "terminal-router-worker-capability@4"
 WORKER_CHILD_CUSTODY_SCHEMA = "terminal-worker-child-custody@1"
+# Declared lifecycle and numeric/context accounting owners. These sources are
+# required for ordinary supervisor routes as well as selected decision routes.
+USAGE_SOURCE_PATHS = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/codex_interaction_telemetry.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/native_context_delivery.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/context_delivery_accounting.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/cumulative_usage_reconciliation.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_decision_usage.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_decision_usage_projection.py",
+    "benchmarks/agent_supervisor/container_coding/native_usage_accounting.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_delivery_observation.py",
+)
 SOURCE_PATHS = (
     # The owner must retain the observation result before container removal;
     # an installer from a newer checkout cannot silently use an older driver.
@@ -25,10 +38,8 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
     "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
     "benchmarks/agent_supervisor/container_coding/terminal_context_evidence.py",
-    "benchmarks/agent_supervisor/container_coding/terminal_decision_usage_projection.py",
     "benchmarks/agent_supervisor/container_coding/semantic_decision_input_audit.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_decision_usage.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/cumulative_usage_reconciliation.py",
+    *USAGE_SOURCE_PATHS,
     "benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py",
     "benchmarks/agent_supervisor/container_coding/terminal_world_nomination_audit.py",
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",

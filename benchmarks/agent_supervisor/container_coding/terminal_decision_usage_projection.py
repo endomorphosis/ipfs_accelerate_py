@@ -6,7 +6,7 @@ other provider observations stay visible without acquiring complete totals.
 """
 from __future__ import annotations
 
-from .native_usage_accounting import native_usage_contract
+from .native_usage_accounting import native_usage_contract, provider_receipt_collection_observation
 
 DECISION_REPORT_FIELDS = (
     "semantic_decision_dialogues", "semantic_decision_dialogue_expected",
@@ -33,6 +33,17 @@ def _accounting_inputs(report):
             coverage["all_attempts_receipted"] = False
             coverage["provider_call_count_complete"] = False
             coverage["issues"].append({"reason": "invalid_expected_decision_mode"})
+    if "provider_receipt_collection" in report:
+        collection = provider_receipt_collection_observation(report["provider_receipt_collection"])
+        coverage.update(provider_receipt_collection=collection,
+            provider_receipt_collection_valid=collection is not None,
+            provider_receipt_collection_complete_reported=collection["complete"] if collection is not None else None)
+        if collection is None or collection["complete"] is not True:
+            coverage["authoritative_usage_coverage_complete"] = False
+            coverage["all_attempts_receipted"] = False
+            coverage["provider_call_count_complete"] = False
+            coverage["issues"].append({"reason": "invalid_provider_receipt_collection" if collection is None
+                else "incomplete_provider_receipt_collection"})
     return rows, coverage
 
 
@@ -64,7 +75,8 @@ def measured_decision_usage(report: dict) -> dict:
         and codex_only and native_scope_qualified)
     result = {
         "provider_calls": (len(unique) + coverage["known_additional_provider_calls"]
-                           if coverage["provider_call_count_complete"] else None),
+                            if coverage["provider_call_count_complete"] and not unreceipted else None),
+        "observed_provider_invocations": len(unique),
         "observed_complete_sessions": complete,
         "cache_included_in_input": True if codex_only else None,
         "source": "observed_native_cumulative_totals" if codex_only else "observed_native_mixed_or_unknown_totals",
@@ -79,7 +91,7 @@ def measured_decision_usage(report: dict) -> dict:
         "token_count_scope": "native_session_cumulative" if codex_only else None,
         "harbor_usage_exportable": complete, "usage_accounting_complete": complete,
     }
-    if decision_usage_selected(report):
+    if decision_usage_selected(report) or "provider_receipt_collection" in report:
         result["semantic_decision_coverage"] = coverage
     for key in COUNTERS:
         values = [session["known_counter_subtotals"][key] for session in reconciliation["sessions"]]
@@ -142,7 +154,7 @@ def finalize_usage_accounting(report: dict) -> None:
             report_provider_total_tokens=(reconciliation["provider_total_tokens"]
                 if native_scope_qualified and "unreceipted_provider_attempt" not in report
                 and coverage["authoritative_usage_coverage_complete"] is True else None))
-        if decision_usage_selected(report):
+        if decision_usage_selected(report) or "provider_receipt_collection" in report:
             value["semantic_decision_coverage"] = coverage
         other = _other_native_observations(rows)
         if other:

@@ -424,3 +424,133 @@ def test_retained_cache_consumes_full_package_limits(tmp_path, limits, code):
 def test_invalid_generation_handles_are_rejected(source, tmp_path, generation):
     with make(source, tmp_path) as session:
         assert_error("invalid_generation", lambda: session.read(generation=generation, path="calc.py"))
+
+
+@pytest.mark.parametrize("raw,start,end,expected,total", [
+    (b"first\nsecond\n", 1, 2, b"first\nsecond\n", 2),
+    (b"first\nsecond", 2, 2, b"second", 2),
+    (b"\n", 1, 1, b"\n", 1),
+    (b"\n\n", 2, 2, b"\n", 2),
+    (b"first\r\nsecond\r\nlast", 2, 3, b"second\r\nlast", 3),
+    ("first\nβ\u2028γ\rδ\nlast".encode(), 2, 2, "β\u2028γ\rδ\n".encode(), 3),
+])
+def test_original_line_range_preserves_exact_bytes_and_full_file_identity(
+        source, tmp_path, raw, start, end, expected, total):
+    # Non-Python source needs no AST or language-specific compact mapping.
+    path = source / "script.sh"
+    path.write_bytes(raw)
+    with make(source, tmp_path) as session:
+        whole = session.read(generation=1, path="script.sh", representation="original")
+        ranged = session.read(generation=1, path="script.sh", representation="original",
+                              start_line=start, end_line=end)
+        assert ranged["content"].encode("utf-8") == expected
+        assert ranged["encoding"] == "utf-8" and ranged["representation"] == "original"
+        assert ranged["original_sha256"] == whole["original_sha256"] == digest(raw)
+        assert ranged["original_bytes"] == len(raw)
+        assert ranged["view_sha256"] == digest(expected) and ranged["view_bytes"] == len(expected)
+        assert ranged["generation"] == whole["generation"] == 1
+        assert ranged["source_tree_sha256"] == whole["source_tree_sha256"]
+        assert ranged["scope"] == "line_range"
+        assert (ranged["start_line"], ranged["end_line"], ranged["total_lines"], ranged["omitted_lines"]) == (
+            start, end, total, total - (end - start + 1))
+        assert ranged["proof_authority"] is False and "symbol" not in ranged
+        assert "scope" not in whole and whole["content"].encode("utf-8") == raw
+        assert path.read_bytes() == raw
+
+
+@pytest.mark.parametrize("arguments,code", [
+    ({"start_line": 1}, "invalid_line_range"),
+    ({"end_line": 1}, "invalid_line_range"),
+    ({"start_line": True, "end_line": 2}, "invalid_line_range"),
+    ({"start_line": 1, "end_line": False}, "invalid_line_range"),
+    ({"start_line": "1", "end_line": 2}, "invalid_line_range"),
+    ({"start_line": 0, "end_line": 1}, "invalid_line_range"),
+    ({"start_line": -1, "end_line": 1}, "invalid_line_range"),
+    ({"start_line": 2, "end_line": 1}, "invalid_line_range"),
+    ({"start_line": 1, "end_line": 2**31}, "invalid_line_range"),
+    ({"start_line": 1, "end_line": sessions.MAX_READ_LINES + 1}, "invalid_line_range"),
+    ({"start_line": 1, "end_line": 1, "symbol_id": "fixture-symbol"}, "invalid_read_selector"),
+    ({"start_line": 1, "end_line": 1, "representation": "compact"}, "line_range_requires_original"),
+    ({"start_line": 1, "end_line": 100}, "line_range_out_of_bounds"),
+])
+def test_invalid_line_selectors_refuse_without_poisoning_current_index(source, tmp_path, arguments, code):
+    with make(source, tmp_path) as session:
+        assert_error(code, lambda: session.read(generation=1, path="calc.py",
+            **{"representation": "original", **arguments}))
+        assert session.status()["source_current"] is True
+        assert session.read(generation=1, path="calc.py", representation="original")["content"].encode() == (
+            source / "calc.py").read_bytes()
+
+
+def test_line_ranges_require_original_even_when_session_default_is_compact(source, tmp_path):
+    with make(source, tmp_path) as session:
+        assert_error("line_range_requires_original", lambda: session.read(
+            generation=1, path="calc.py", start_line=1, end_line=1))
+        assert session.read(generation=1, path="calc.py")["representation"] == "compact"
+    with sessions.RepositorySourceSession(source, tmp_path / "original-state",
+            representation="original", index_factory=RecordingIndex) as session:
+        assert session.read(generation=1, path="calc.py", start_line=1, end_line=1)["representation"] == "original"
+
+
+def test_binary_and_empty_line_ranges_refuse_without_removing_full_file_access(source, tmp_path):
+    (source / "blank.txt").write_bytes(b"")
+    with make(source, tmp_path) as session:
+        assert_error("line_range_requires_text", lambda: session.read(generation=1,
+            path="opaque.bin", representation="original", start_line=1, end_line=1))
+        assert_error("line_range_out_of_bounds", lambda: session.read(generation=1,
+            path="blank.txt", representation="original", start_line=1, end_line=1))
+        assert session.read(generation=1, path="opaque.bin", representation="original")["encoding"] == "base64"
+        assert session.read(generation=1, path="blank.txt", representation="original")["content"] == ""
+        assert session.status()["source_current"] is True
+
+
+def test_line_range_limits_refuse_whole_ranges_without_truncating(source, tmp_path):
+    exact = b"x" * (sessions.MAX_READ_LINE_BYTES - 1) + b"\n"
+    (source / "wide.txt").write_bytes(exact + b"z")
+    (source / "wide-unicode.txt").write_bytes("β".encode() * (sessions.MAX_READ_LINE_BYTES // 2 + 1))
+    (source / "many.txt").write_bytes(b"a\n" * (sessions.MAX_READ_LINES + 1))
+    with make(source, tmp_path) as session:
+        read = session.read(generation=1, path="wide.txt", representation="original", start_line=1, end_line=1)
+        assert read["content"].encode() == exact and read["view_bytes"] == sessions.MAX_READ_LINE_BYTES
+        assert_error("line_range_byte_limit", lambda: session.read(generation=1,
+            path="wide.txt", representation="original", start_line=1, end_line=2))
+        assert_error("line_range_byte_limit", lambda: session.read(generation=1,
+            path="wide-unicode.txt", representation="original", start_line=1, end_line=1))
+        read = session.read(generation=1, path="many.txt", representation="original",
+                            start_line=1, end_line=sessions.MAX_READ_LINES)
+        assert read["content"].encode() == b"a\n" * sessions.MAX_READ_LINES
+        assert read["omitted_lines"] == 1
+        assert_error("invalid_line_range", lambda: session.read(generation=1,
+            path="many.txt", representation="original", start_line=1, end_line=sessions.MAX_READ_LINES + 1))
+        assert session.status()["source_current"] is True
+
+
+def test_line_range_fences_unrequested_source_and_refreshes_generation(source, tmp_path):
+    raw = b"first\nrequested\nlast\n"
+    (source / "notes.txt").write_bytes(raw)
+    with make(source, tmp_path) as session:
+        first = session.read(generation=1, path="notes.txt", representation="original", start_line=2, end_line=2)
+        dependency = source / "calc.py"
+        dependency.write_bytes(dependency.read_bytes() + b"# External dependency change.\n")
+        assert_error("stale_source", lambda: session.read(generation=1,
+            path="notes.txt", representation="original", start_line=2, end_line=2))
+        assert session.refresh(generation=1)["generation"] == 2
+        assert_error("stale_generation", lambda: session.read(generation=1,
+            path="notes.txt", representation="original", start_line=2, end_line=2))
+        current = session.read(generation=2, path="notes.txt", representation="original", start_line=2, end_line=2)
+        assert current["content"] == first["content"] == "requested\n"
+        assert current["original_sha256"] == first["original_sha256"] == digest(raw)
+        assert current["source_tree_sha256"] != first["source_tree_sha256"]
+
+
+def test_source_mutation_during_line_range_read_is_refused(source, tmp_path, monkeypatch):
+    with make(source, tmp_path) as session:
+        read = views.read_repository_file
+        def changed(*args, **kwargs):
+            result = read(*args, **kwargs)
+            target = source / "calc.py"
+            target.write_bytes(target.read_bytes() + b"# Concurrent external change.\n")
+            return result
+        monkeypatch.setattr(views, "read_repository_file", changed)
+        assert_error("stale_source", lambda: session.read(generation=1,
+            path="calc.py", representation="original", start_line=2, end_line=2))

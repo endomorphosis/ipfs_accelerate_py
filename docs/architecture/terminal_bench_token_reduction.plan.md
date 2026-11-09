@@ -2,6 +2,169 @@
 
 Status: implementation plan, based on the canonical workspace audit of 2026-10-11. This document adds no execution, source-substitution, proof, or completion authority. The next outcome is a measured reduction in the tokens needed to complete the same Terminal Bench tasks with the same acceptance checks.
 
+## Current direction: semantic memory and the model working set (2026-10-15)
+
+The next token-reduction milestone is to make the existing semantic world model
+and repository source gateway reduce the complete model-facing reading and
+decision loop. The recent retrieval-kernel speedup and replay qualification
+improve latency and integrity; they establish no provider-token reduction.
+Use the existing [metadata/world integration plan](../agent_supervisor/terminal_token_metadata_plan.md)
+and its A–E comparison arms. Do not build a second world store, source codec,
+context compiler or usage ledger for this milestone.
+
+### What repository-wide minification would and would not supply
+
+There are three separate capabilities: exact recovery of retained originals,
+editing through a compact view, and reducing complete task tokens. The current
+[reversible source views](../agent_supervisor/reversible_source_views.md)
+already retain a complete admitted committed population and reconstruct original
+bytes using source custody plus KEEP/DELETE maps. Unchanged-view restoration
+is different from reconstructing arbitrary edits to a transformed program.
+Existing mapped edits and repository source sessions cover explicit bounded
+operations; unsupported operations and languages retain original-source access.
+The legacy worker reader admits at most 64 files/1 MiB. The separate repository
+source route defaults to 512 files/16 MiB and composes with world packets.
+Neither route redirects every ordinary shell read into a compact filesystem.
+
+A transparent compact working tree remains an optional navigation/edit feature.
+It would require admitted coverage of paths, creations/deletions, renames,
+new generations and supported language mappings, with canonical patches and
+unaltered validation. It is neither a prerequisite nor evidence of token
+savings. Keep original source authoritative. Keep restoration maps and removed
+bytes outside the prompt. Select a supported compact read only after counting
+its entire rendered response, guidance and any required exact-source expansion
+with the compatible tokenizer; otherwise retain the exact representation.
+
+The [retained compact-worker benchmark](../agent_supervisor/compact_worker_benchmark.md)
+reported 1,310,764 token-category totals for identity and 1,621,661 for comment
+compaction, with official reward 1.0 in both single trials. Usage completeness
+was unknown, so these are reported observations, not complete totals or a causal
+estimate. Compaction returned fewer source bytes but needed more coding turns.
+Initial raw sources were only 2,588 bytes, while capsules occupied 12,008 bytes
+inside a larger semantic payload; these nested byte counts are not additive.
+This makes repeated decision context, tool output and unnecessary rounds the
+next hypotheses to test before broader minification.
+
+### Roles of the existing components
+
+| Component | Work retained outside the model conversation | Small model-facing result |
+| --- | --- | --- |
+| DuckDB indexes and admitted Quack operations | Current source/symbol/dependency identities, scoped facts, query state and proof handles under existing ownership | Bounded relevant rows and resolvable references; no full index dump |
+| DuckLake | Historical observations, provenance and prior generations | A relevant current observation or change; history alone grants no currentness |
+| IntentIR, CodebaseIR, SecurityIR and UI/UX IR | Requested behavior, source correspondence, applicable constraints and separately recorded learned candidates | Required obligations, relevant interfaces/effects and explicit missing coverage |
+| Semantic world model | Observed state, checked facts, hypotheses, unknowns, failed actions, dependency bindings and action frontier | What is established, what changed, what remains and the evidence needed for the next decision |
+| Semantic capsules and source gateway | Complete bodies, originals, maps and verification evidence | Selected readable facts/source spans plus bounded exact expansion |
+
+The current repository-planning profile integrates Intent and optional scoped
+Security evidence; UI/UX coverage is explicitly unavailable there. Registry
+entries are not an implemented UI/UX adapter. Repository-trained autoencoder
+outputs nominate retrieval/ranking or interpretation candidates; decoded
+formulas remain proposals until independently checked. Predictions do not become
+proved behavior or authoritative planner facts. Keep source observations,
+learned predictions, mechanically checked results and unknown
+coverage distinguishable. Model dimensions and reconstruction accuracy do not
+establish that the coding model can consume latent vectors as context.
+
+### Close the provider-facing loop
+
+1. Index the admitted target revision and reuse current source-backed facts.
+   Optional repository adaptation is recorded and costed separately; refresh
+   affected entries after canonical edits using existing dependency invalidation.
+2. Join the task's intent and applicable constraints to source, dependencies,
+   tests, checked facts and open obligations. Preserve the mandatory closure
+   before ranking optional evidence. Missing or stale coverage remains visible.
+3. Compile the next decision's bounded working set: invariant task requirements,
+   relevant facts, unresolved obligations, selected source and expansion handles.
+   Keep full graph/provenance, vectors, maps and proof payloads owner-side.
+4. Route supported source discovery, reads and edits through the existing
+   repository session. Measure ordinary-tool reads that bypass it where the
+   provider exposes them; otherwise report that exposure as unknown. Do not
+   quietly withdraw required source or substitute unimplemented tool behavior.
+5. Apply checked proposals to canonical source and retain actual test/prover
+   outcomes in the world state. Update generations and invalidate dependent
+   facts/capsules before the next decision. Learned predictions remain proposals.
+6. Use an explicit, qualified provider history/continuation policy to supply the
+   current working set and needed recent results. A database delta or a CID
+   does not imply that a fresh model call has retained its parent. The current
+   world packet is self-contained (`provider_retained_parent=False`), and the
+   semantic dialogue resends cumulative delivered capsule bodies. Replacing old
+   history therefore needs a real worker/provider integration, rather than
+   relabeling stored deltas as saved tokens.
+
+### Next implementation and promotion gates
+
+The first source-delivery increment is implemented in the existing gateway:
+[bounded exact original line reads](../agent_supervisor/compact_worker_benchmark.md#exact-original-line-ranges-in-the-source-working-set-2026-10-15),
+with explicit omissions, canonical full-file identities and unchanged freshness
+checks. Ordinary prepared-world routes also use the existing offline prompt
+counter by default, and historical replay accepts strictly labelled estimates.
+These support the comparisons below; worker adoption and complete task-token
+benefit still require measurement.
+
+Read-scope observations are now retained through worker cleanup and Terminal
+collection, alongside existing retrieval and tokenizer diagnostics. They make
+exact-line adoption visible without converting omitted lines into saved tokens.
+The [complete local exchange comparison](../agent_supervisor/compact_worker_benchmark.md#retained-read-scope-and-complete-local-exchanges-2026-10-15)
+includes initial guidance, discovery, requests, responses and a failed read;
+native provider history and task-token benefit remain separate promotion gates.
+
+The existing comparator now reconciles repeated supervisor Codex session
+snapshots through its existing accounting owner, retains separate failed
+retries, and withholds aggregate totals when identified supervisor sessions
+overlap across retained trials. Historical unidentified sums remain explicitly
+unreconciled. Reported baseline session identities and capsule-budget groups now
+use the same [overlap guard](../agent_supervisor/compact_worker_benchmark.md#baseline-and-capsule-session-overlap-2026-10-15),
+with incomplete identity inventories and reused sessions withholding complete
+comparison totals. Its
+[authored integration observation](../agent_supervisor/compact_worker_benchmark.md#native-session-reconciliation-in-comparisons-2026-10-15)
+corrects double counting without claiming provider-token savings. Complete
+supplied counts and planning/coding phase presence do not prove campaign-wide
+coverage; retain that separate promotion gate.
+
+The [receipt collection increment](../agent_supervisor/compact_worker_benchmark.md#local-receipt-collection-and-semantic-attempt-coverage-2026-10-16)
+also preserves normal planner receipt failures and incomplete local coding-log
+scans even when good receipts survive. Existing semantic dialogue and owner
+coverage is recomputed before complete public usage is accepted. Bounded clean
+scans and outer provider callback counts do not establish a model-attempt
+census, so registered whole-run dispatch coverage remains a separate gate.
+
+Ordinary Terminal runs now retain final accounting, and ordinary Harbor Codex
+exports use the existing cumulative-session owner. The
+[current Codex lifecycle bridge](../agent_supervisor/compact_worker_benchmark.md#codex-lifecycle-metadata-through-harbor-2026-10-16)
+supplies its explicit lifecycle contract from actual parser evidence and closes
+sparse-category regression gaps through existing flags. Historical receipts
+retain their strict unknown and alias-conflict policies. Supplied-session
+compatibility still leaves registered whole-run dispatch coverage and matched
+task acceptance as the promotion gates for token-saving claims.
+
+First complete and qualify the existing repository-source/world-packet path
+through real worker preparation, signed dispatch, model-visible read responses
+and collection under its current admitted scope. Existing tool bindings still
+need measured worker adoption. Retain model-driven planning. Measure which inline
+context or ordinary tool output each gateway response actually replaces, so an
+additional compact tool cannot silently become another source of repeated text.
+Use existing token-aware candidate selection on complete rendered alternatives,
+including wrappers and expansion guidance; a byte-only proxy is not a tokenizer.
+
+Then compare selective exact reads against ordinary reads, compact reads against
+the same exact gateway, and the world-state working set against the same source
+route. Qualify required-coverage preservation and a real bounded continuation
+policy before promoting history replacement. Test learned ranking/adaptation as
+a separate arm. A general virtual compact filesystem is a later independent
+capability, justified only by remaining measured read/edit exposure.
+
+The primary metric is native provider input plus output for all planning,
+coding, expansion, retry and failed attempts on the same assigned task population,
+with unchanged official acceptance. Respect provider-specific cache/reasoning
+subset semantics; do not add tool text again when it is already in later input.
+Report completeness, turns, expansions, repairs, success rate, tokens per accepted
+task and cost separately. Repeated cached input still contributes to token
+volume even when its price differs. Count local scan/training/check latency and
+amortization separately from provider tokens. Preserve current defaults and
+explicit opt-outs; only promote a treatment after matched repeated trials show
+net token benefit at comparable task success. No new paid/model runs or
+whole-task savings are claimed by this documentation update.
+
 ## Implemented measurement seams (2026-10-12)
 
 The first measurement changes are available in the existing runtime/context
@@ -2069,3 +2232,484 @@ audit cap is distinct from this isolated ten-second qualification. Machine or
 power-loss recovery, other filesystems, CUDA and 8D/384D/768D/4096D inference,
 complete provider usage, accepted tasks and whole-task token savings remain
 separate qualifications. No model or token savings are established here.
+
+
+## Current canonical semantic option plumbing and native component qualification (2026-10-15)
+
+Restored the current canonical option path through benchmark configuration,
+preparation, Harbor, the terminal driver, Doctor argv generation and the protected
+owner/worker boundary. Explicit tokenizer ceilings, native semantic input,
+versioned identifier/projection controls, independently pinned decision policy
+and nomination inputs, and the default-on typed nomination opt-out are forwarded
+again. Host nominations use the independently hashed immutable snapshot and root
+publication protocol. The shared route guard refuses unqualified combinations
+with alternative renderer controls; decision-policy routes retain their Codex
+boundary. Existing provider, physical resource, source-view, replay export and
+usage-accounting work is preserved. Archive packaging now retains required
+parent package initializers. Provider-free Doctor routes retain requested options
+as observations without claiming those model-rendering options were applied.
+Combinations of the decision worker with newer source-formalization, broker or
+budget-profile controls remain refused or unqualified; this milestone adds no
+support for those combinations.
+
+The fresh current build03 contains 13,101 source files and 13,104
+verified archive members. Its normal/retrieval declarations contain 32/35 source
+pins, and the actual admission closures contain 36/39. All 563 collected test
+cases passed exactly once with the normal repository conftests and fresh
+mandatory AST catalog seals containing each actual test file. Every runtime
+source and all 50 copied normal test/config files had independent
+matching SHA guards. The normal optional receipt plugin explicitly ran in mode
+off: no receipt read, write or skip path was admitted, and every test body ran.
+These executions establish behavior and source/AST custody; they establish no
+reusable test receipt, repository-forest admission or reusable-proof coverage.
+
+The separate public Bottle native component fixture retains 531 symbols and
+4,652 relations, with one nominated closure materializing five graph nodes and
+four edges. Actual DID signature verification, altered-argv refusal, protected
+UID1000 owner to UID1001 worker handoff and a complete-input-budget refusal all
+ran before any provider invocation. The current independent full auditors
+verified retained native input, typed lineage and owner coverage in
+2.44911 seconds in-process and 3.40940
+seconds in a cold subprocess. This run uses the current native 30-second audit
+cap. The earlier ten-second cap belongs to its earlier frozen qualification;
+that result is not transferred to this current source profile.
+
+The current native Codex 0.160.0 Linux ARM64 executables came from the exact
+official npm package. Its tar SHA256 is
+`9286a7e01d500ab224c9e5b4b223b7adf5dd901fba23efd6a438316426798b17`;
+SHA512 matched the independently pinned registry metadata. Complete member
+inventory, per-file hashes, remote uploaded bytes, and the unchanged installer's
+real version/help checks passed. This qualifies native executable staging and
+version compatibility without credentials or a provider call. The older 0.158
+portable cache was not substituted. The model-worker UID could not read the
+owner's private cache key. The whitelist public replay contains 6,281 files and
+excludes that key. Both owned containers closed; all 3 existing MAIN coordinators
+closed with zero leases/waiters and the frozen resource configuration unchanged.
+
+Earlier failed staging, obsolete helper-argument, observer and focused-test
+attempts remain retained and excluded from final qualification. The stopped
+qualification05 attempt with optional receipt generation selected is retained
+and is not counted as a completed result. The failed qualification06 run is also
+retained and excluded. The selected qualification09 is the final complete
+execution with optional receipt generation off. Earlier complete executions are retained separately and are not added to the selected final count.
+No failed task was reset or
+accepted from an earlier fixture.
+
+This milestone qualifies canonical option plumbing and the actual native
+components exercised above. It does not establish a complete canonical Harbor
+lifecycle, live provider inference, paid comparison, accepted benchmark task,
+CUDA/model-head inference, provider token savings or whole-task token savings.
+Next run the actual canonical Harbor lifecycle with replay delivery/custody,
+then a matched provider comparison with measured usage and independent task
+acceptance. Qualify CUDA and the 8D, 384D, 768D and 4096D heads separately.
+
+Evidence is retained in
+`artifacts/supervisor-canonical-semantic-forwarding-20261015-01/`:
+`qualification-result.json`, `qualification09/verification.json`,
+`build03/build-result.json`,
+`container01/typed-evidence/full-terminal-audit.json`,
+`container01/public-replay/manifest.json`, and `plan-update.json`.
+The final artifact inventory and CIDv1 integrity record are written separately
+as `evidence-manifest.json` and `evidence-integrity.json` after finalization.
+
+
+## Actual canonical Harbor lifecycle, replay custody and advisory 8D CPU training (2026-10-15)
+
+The actual Harbor SDK created and removed one exact owned container, and the
+unchanged FullSupervisorAgent setup and run methods exercised canonical
+planning, signed admission, typed nomination, the driver, isolated worker and
+replay delivery. This uses the existing public Bottle ARM image pinned by
+digest, its independently checked public source and the public task resource
+declaration: one CPU, 2,048 MiB memory and zero GPUs. The original published
+image recipe was not executed; the configured 10,240 MiB storage declaration is
+recorded without claiming storage-limit enforcement. Setup made no cached
+command substitution. Its native Codex 0.160.0 version check ran against the
+actual installed executable. External container networks were detached before
+the agent run.
+
+This is an explicitly authless worker fixture. No real host credential was
+read or transferred; a protected authored empty file satisfied the installer
+input boundary. Authentication readiness remains unqualified. The independently
+reviewed public semantic contract is an authored administrative interpretation,
+not a proof that the code or security requirements are correct. Native DID
+admission and the signed implementation grant were actually verified. The
+typed owner/worker route refused a complete prompt exceeding the one-token
+input ceiling before any provider invocation. The refusal did not complete or
+accept the task. Unknown provider token counters remain unknown; this result
+claims no measured provider usage or savings.
+
+The genuine native historical typed-nomination verification joins the exact
+owner, lineage, derived and original nominee, native input, semantic parent,
+policy and launch digests. It grants no source-freshness or proof authority.
+The overall input audit can remain unverified because no provider round was
+dispatched; this result does not relabel that status. The versioned typed replay
+profile retains the closed lineage, derived nominee and exact original bytes
+embedded in that lineage. The retained origin is not mounted or dispatched;
+the existing replay mounts and base profile remain unchanged.
+The genuine slim public context result pins its one public initial-context
+descriptor by exact path and SHA. Replay retains only that bound descriptor and
+does not follow nested world, index, model or learner references. Canonical
+manifest bytes are bounded at 4 MiB for the typed profile and 1 MiB for the
+unchanged base profile.
+
+This typed replay qualification covers the exercised public Bottle owner packet.
+Indexed-candidate typed snapshots and typed retrieval-reference launch@3 remain
+explicitly refused and require separate closure work and native qualification.
+Existing untyped launch@2/@3 behavior remains unchanged. The optional diagnostic
+capture of already public prepared/context-result leaves has no qualification
+authority and never substitutes for canonical replay delivery.
+
+The actual default codebase autoencoder trained in this run with task_profile
+unset. The independently SHA-bound receipt reports 24
+epochs, 2 sources and 358 samples;
+the natively observed checkpoint has latent width 8 and loaded no Legal IR
+weights. The training descriptor, receipt and checkpoint digest agree. Its
+security-code@1 result remains an unverified advisory candidate with no proof
+or formalization authority and no mutation of the legal state. The separately
+selected CPU runtime wheel is torch==2.13.0+cpu, SHA256 `6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604`. Actual
+wheel metadata, interpreter/platform compatibility, native archive verification
+and installed bytes were checked. This wheel supplies runtime code; learned
+model weights were not bundled or substituted. Build time imported no Torch
+and performed no training; the actual advisory 8D training happened later in
+the SDK container.
+
+The fresh build contains 13,104 source files and
+13,108 archive members, including three native DuckDB
+extensions and the exact CPU wheel. The real canonical replay was exported,
+downloaded to its named host destination and independently verified. Final
+stdlib closure freshly hashes every one of its 6,512
+manifest-listed files and its 14,928,004 content bytes. Replay
+excludes the private state tree and provider transcripts. It grants no
+execution or completion authority. Protected installed runtime files had exact
+opening and closing hashes, public Bottle bytes stayed unchanged, UID1001
+worker processes drained, and the actual SDK stop deleted the exact container.
+
+The selected qualification04 execution passed all 563 collected
+cases across 20 selected files, using the original normal
+conftests. Each test body executed once and had a fresh mandatory AST seal
+containing its actual test file. All 13,104 frozen
+runtime source files and 52 copied normal inputs had
+independent matching before/after guards. Actual DuckDB 1.5.5 supplied the native
+extension environment. Optional test proof reuse was explicitly off; no receipt
+skip, reusable receipt or repository-forest admission is qualified. Counts from
+failed, incomplete or superseded attempts are retained separately and are not
+added to this selected execution.
+
+The actual Harbor implementation ran from a byte-equivalent frozen capture of
+the installed SDK. All 458 SDK files are retained
+and freshly hashed; original installed-source hardlinks were not relabeled as
+single-link evidence. Frozen build/runtime/test source custody is the qualified
+scope. Closing observations of unrelated live checkout edits are retained as
+drift, without claiming that a concurrently used global repository head stayed
+unchanged. Both owned production fixes, for the CPU wheel and typed replay
+export, must still match their qualified sources.
+
+All 3 owned MAIN reservations closed without changing
+the frozen scheduler configuration or unrelated reservations. local01 released
+its own lease and joined its heartbeat before its obsolete global-empty check
+encountered another job; that reviewed failure remains retained. Later closures
+verify their own acquired lease and waiter are absent. A globally empty pool is
+neither required nor claimed.
+
+This qualifies the actual provider-free canonical SDK/adapter lifecycle, replay
+custody and the exercised advisory 8D CPU training. It establishes no accepted
+benchmark task, authenticated provider readiness, model/provider inference,
+paid comparison, CUDA qualification, 384D/768D/4096D head qualification, token
+savings, source-semantics proof or reusable test-proof coverage. Next qualify
+an independently accepted task with a matched provider comparison and measured
+usage, then measure the remaining model heads and CUDA independently.
+Separately close and qualify indexed-candidate typed snapshots and typed
+retrieval-reference launch@3 before extending this replay scope.
+
+Evidence: `artifacts/supervisor-canonical-harbor-lifecycle-20261015-01/`,
+`build03/build-result.json`, `qualification04/verification.json`,
+`lifecycle05/qualification.json`, `lifecycle05/actual-replay-manifest.json`,
+`lifecycle05/actual-codebase-training-receipt.json`, `sdk-source/capture.json`,
+and `plan-update.json`. The final evidence manifest and raw CIDv1 are written
+separately after all closure checks pass. Earlier failed or partial attempts
+remain retained as unqualified history.
+
+
+## Typed retrieval-reference launch and canonical replay qualification (2026-10-15)
+
+Default-on typed nomination now composes with independently admitted retrieval query references. The trusted owner derives the retrieval artifact, digest and task binding from the signed task bundle; workers cannot override those parents. New typed result, receipt and lineage revisions bind the exact native launch@3 descriptor. Legacy typed and explicit opt-out paths retain their existing contracts. On the retained 426-row, 268D, five-hit public Bottle retrieval workload, five measured searches per build after one warmup had median times of 639.954 ms before and 194.794 ms after (3.29x ratio), with identical canonical result bytes. This is a CPU search-kernel measurement, excluding model/encoder work, imports, loading and result serialization. Retrieval search now reuses the full snapshot identity within each call while the public validator independently revalidates it; export byte accounting uses running totals without skipping any source reads. The new combined export may use the existing 30-second collector bound within the unchanged remaining task deadline.
+
+A dedicated typed retrieval replay profile retains the exact raw retrieval parent, snapshot, typed origin, derived nominee and lineage. Native historical verification reconstructs the graph, policy and query reference and checks its inverse against retained source evidence. Replay retains only the reviewed public CAS closure; indexed candidate contexts remain explicitly refused pending their separate source-scope bridge.
+
+Qualification: 842 actual passing cases across 25 normal test files, fresh mandatory AST seals and optional proof reuse off; 13105 runtime sources independently guarded. Execution used three disjoint file groups in separate actual pytest processes, each with fresh full source guards, mandatory AST seals and its own finite existing-MAIN reservation. The checker matched their exact node union to the independently pinned planned collection; partial earlier runs were retained and excluded. Cumulative shard execution time is 2073.337 seconds; this does not qualify single-process order interactions. The actual Harbor SDK and unchanged FullSupervisorAgent setup/run exercised signed admission, the default typed retrieval owner and UID1001 worker, and delivered a verified 6512-file replay archive. One-token complete-input refusal kept provider calls at zero. Default advisory 8D CPU training also ran. The exact owned container and all owned existing-MAIN reservations were closed.
+
+This explicit authless diagnostic does not qualify authentication, accepted task completion, provider inference, measured whole-task token savings or CUDA/head inference. Existing public Bottle ARM image and original task CPU/memory/GPU declarations were retained. New evidence: artifacts/supervisor-typed-retrieval-replay-20261015-01/qualification-result.json and evidence-integrity.json. Prior sealed evidence remains immutable.
+
+Remaining work: separately bridge indexed context@2 program/support scope and bounded replay scratch; refresh current-source CUDA qualification for retained trained 8D/384D/768D heads, and qualify the 4096D Leanstral checkpoint with a declared batching/parity contract. The saved head-qualification-followup.json distinguishes prior trained, diagnostic and untrained evidence. A separate metadata-optimization-followup.json records transaction batching, connection reuse and narrowly scoped historical read-only replay opportunities; the normal regression and Harbor lifecycle retained default metadata behavior and the regression retained mandatory AST seals. Only the isolated search microbenchmark used the existing production read-only metadata context, as recorded in its result.
+
+
+## Cumulative rendered-context comparison and compact transport compatibility (2026-10-15)
+
+The new `runtime/context_trajectory_comparison.py` compares two explicitly bound
+ordered sequences of complete rendered user inputs. It charges every occurrence,
+including repeated legends, capsule bodies and tool text already present in the
+input. Additional expansion and retry calls remain in final totals, so a smaller
+first prompt can still produce a larger cumulative exposure. Common call-ordinal
+prefixes are diagnostic; they do not align task progress or establish equivalent
+behavior. Exact local counts and declared best-guess estimates remain separate.
+Failed, unstable or overflowing counters leave both sequences' token totals
+unknown. Counter cancellation propagates, and reports retain identities and
+counts rather than prompt bodies or private exception text.
+
+`semantic_selection_comparison.py` now requests the current explicit compact
+transport through `transport_schema=COMPACT_TRANSPORT_SCHEMA`, replacing its
+removed slot-policy API. The four comparison arms, source/currentness checks and
+exact restoration targets remain. Compact admission refusal is retained rather
+than retried through a different transport. These authored comparison fixtures
+establish API and accounting behavior; they do not establish native compression,
+provider-tokenizer equivalence or task acceptance. Peer-owned world-invocation
+replay updates are preserved and included in compatibility coverage, without
+counting them as another publication by this increment. The isolated run also
+validated a narrow replay-test error-label correction. A peer subsequently
+published a stronger exact-code check for all 27 rejection mutations; their
+source and test bytes are preserved. Our replay candidates remain unpublished.
+
+The separate genuine producer probe uses an authored repository with real
+metadata/capsule preparation and the current compact codec. It checks identical
+required raw-source populations, literal suffixes, metadata locators and exact
+restoration for the full and query-selected arms. Only its obsolete expected-wire
+keyword is repaired. Its `token_counter=None` leaves token measurements unknown;
+this probe supplies no token-reduction, provider-inference or accepted-task
+evidence. Missing dependency coverage remains visible.
+
+Reducing stored bytes does not reduce model input unless the rendered evidence changes. The probe retains the same required raw source in both arms, so selecting fewer capsules does not remove those raw-source tokens. Adding summaries to an unchanged required packet can increase context.
+
+Whole-codebase minification is not a prerequisite. Keep canonical originals,
+maps, graph history and complete capsules outside the conversation; supply a
+bounded readable decision packet with required task/acceptance constraints,
+unresolved obligations, current source where required and exact expansion
+handles. DuckDB, admitted Quack operations, DuckLake history and the IR/world
+models can guide evidence selection. Stored vectors, checkpoint weights and CIDs
+do not themselves give an external Grok or Codex call knowledge of that evidence.
+Learned nominations remain optional proposals under the existing source and
+owner checks.
+
+The provenance working-set selector still needs a coordinated token-aware
+protocol: retain raw native, original semantic and deferred-view alternatives
+until final selection, count their complete renderings with the declared active
+counter, and migrate receipt production, collector replay and source preflight
+together. Existing byte-only receipt semantics remain unchanged. The
+[static integration design](../../../../artifacts/semantic-world-context-review-20261015-02/design-review.json)
+records the lost-original-candidate and byte/token-divergence cases; this
+increment does not activate that owner/launch change.
+
+Qualification: **262 passing cases / 786 phases**
+across eight complete files, **11,364 stable guards**. Publication is
+limited to five source/test paths; peer replay production updates are preserved.
+The selected run used normal conftests, genuine initializers, mandatory actual-call AST seals and optional proof reuse off, with no skips or deselections. All three phases passed. Qualification covers the retained detached source capture. Later peer source/test changes were observed and preserved; this does not requalify their current MAIN versions. All owned resource requests closed without changing the shared configuration or requiring unrelated leases to disappear.
+Retained earlier attempts include run01's two obsolete-codec failures and
+run02's one replay-test error-label failure.
+Their counts are not added to the selected final qualification.
+
+The objective remains complete native input plus output over planning, coding,
+expansion, retries and failed attempts for the same assigned task population,
+with unchanged official acceptance. This local evaluator does not infer missing
+calls, separate native output schemas, provider output, hidden CLI history or
+framing. Full accepted-task usage and net token savings remain unmeasured; a
+lower supplied-input count is not a whole-session result or a token hardcap.
+
+Evidence: [campaign result](../../../../artifacts/supervisor-world-context-token-accounting-20261015-02/RESULT.json)
+(SHA-256 `b25450208701520f38224b4ff3b7206e17f1939252a643a8a4eabebeea247b21`).
+
+
+### 2026-10-15 — real-source offline read-view context probe
+
+Added `benchmarks/agent_supervisor/source_view_context_probe.py` and its focused test file. The probe captures one through eight explicit Python files and uses the current generic raw/compact renderer inside complete authored user-input histories. It counts the complete response JSON, metadata, repeated prior responses, common prefix/guidance/suffix and coding workspace wrapper through the cumulative trajectory comparator. This generic AST read view retains names and has no alias dictionary. Canonical source remains authoritative; no whole-codebase minify/unminify cycle or arbitrary compact-source editing is required for this local measurement.
+
+The actual module CLI ran on eight captured sources under both `grok_cli` / `grok-4.7` and `codex_cli` / `gpt-5.6-sol` labels. Both routes used the SAME cached `o200k_base` proxy with reviewed `tiktoken 0.13.0`; all values are labelled estimates and remote-tokenizer compatibility is unverified. In the authored repeated-read recipe, compact inputs were 5.18–13.68% lower per source than raw inputs across three callbacks. In the separate compact-then-raw recipe, every candidate was higher (105.07–122.35%): its four callbacks include an extra exact-original read and retain the earlier compact response, while control has three callbacks. This diagnoses the explicit recipe's exposure, not the causal cost of expansion alone, natural agent behavior or equivalent task progress. Case results are separate; no population or provider total is inferred.
+
+Experiment01 remains retained. Harbor's `tiktoken 0.14.0` preceded the reviewed environment, so the resolver correctly returned its UTF8/4 estimate with `unsupported_tiktoken_version`. Experiment02 changed environment path precedence to the root Python's installed `0.13.0` and used already cached ranks. No tokenizer library code, installation or download changed. Its two route labels do not establish Grok-versus-Codex tokenizer efficiency.
+
+Example using the retained root environment ordering (target paths/model and a fresh output path remain explicit):
+
+```bash
+cd /home/barberb/lift_coding/external/ipfs_accelerate
+PYTHONDONTWRITEBYTECODE=1 IPFS_DATASETS_PY_LAZY_INSTALL_ERGOAI=0 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+PYTHONPATH="/home/barberb/lift_coding/.venv/lib/python3.12/site-packages:/home/barberb/lift_coding/external/ipfs_datasets:/home/barberb/lift_coding/external/ipfs_kit:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages" \
+/home/barberb/lift_coding/.venv/bin/python -B -m benchmarks.agent_supervisor.source_view_context_probe \
+  --root /absolute/path/to/target/codebase --paths src/module_a.py src/module_b.py \
+  --provider grok_cli --model grok-4.7 --rounds 3 \
+  --output /existing/output/directory/fresh-report.json
+```
+
+The root Python environment here supplies reviewed `tiktoken 0.13.0` before Harbor's `0.14.0`; the command does not pin an arbitrary future environment. Read `tokenizer_provenance` in each result. A missing reviewed local counter or cached asset remains a labelled fallback, never provider usage. The CLI uses fixed generic inspection instructions and a synthetic workspace; the Python API accepts explicit common prefix/suffix and a compatible caller-supplied `PromptTokenCounter`.
+
+Qualification passed **152 cases / 456 phases** across four complete files, with **11,366 stable guards**, normal conftests/genuine initializers, mandatory actual-call AST seals, proof reuse off and no skipped/deselected cases. Only the new probe and test file are published; owner, router, source-view renderer, working-set protocol and deployment paths are unchanged. Earlier qualification counts are not added. Tests and CLI measurements used the retained frozen source capture. Later peer changes in three source-policy/delivery files were preserved; all 78 observed unowned test-import files matched MAIN at closing. This does not qualify the entire later MAIN runtime.
+
+There were zero provider calls, downloads or installs. These authored offline inputs do not measure real MCP delivery, native conversation history, output tokens, task acceptance or complete accepted-task usage. Full-session token savings and hardcaps remain unqualified. Next use source-bound IR/world nominations to avoid unnecessary repeated deliveries and expansions, then qualify actual accepted control/treatment traces with complete input/output usage. Stored metadata and vectors do not replace model-visible evidence.
+
+Evidence: [campaign result](../../../../artifacts/supervisor-source-view-context-probe-20261015-03/RESULT.json) (SHA-256 `acc548938c0ab0ebc2f3b3c3648ab9336e5f8e7c8303c85b5378d9e5b44ba56f`). The retained experiment01 and experiment02 executions remain distinct.
+
+
+### 2026-10-15 — three-way local token selection, recommendation only
+
+Added the independent `runtime/semantic_working_set_selection.py` utility and its focused tests. `select_complete_working_set` keeps three complete rendered alternatives available: raw native, original semantic, and provenance-deferred working set. This addresses the lost-alternative design gap: choosing a smaller view by bytes can discard an original semantic input that would use fewer tokens. The existing active router is unchanged by this increment.
+
+The utility reuses the public `@1` working-set checks to verify the original semantic/deferred view and unchanged wrappers; it ignores that validator's byte-selected winner. It counts every byte-eligible full input and the separately declared canonical native output schema using one provider/model-bound counter. Oversized rows remain explicitly excluded and unmeasured. It recommends the lowest eligible local total; ties prefer raw native, then original semantic, then deferred working set. The current complete-input byte ceiling and any explicitly requested local token ceiling remain enforced. The schema cost is included in each candidate's declared total.
+
+Local tokenizer counts and declared estimates have separate fields. Distinct complete strings and a supplied schema are recounted, with counter identity/quality checked around each observation. A throwing, changing, inconsistent or overflowing counter clears all candidate and schema measurements. Without usable measurements, the first byte-eligible priority alternative is returned without a minimum-token claim; an explicit token ceiling instead refuses. Cancellation propagates. Receipts contain hashes and bounded counts, not prompt bodies or private exception text.
+
+The new closed `supervisor-semantic-working-set-selection@2` receipt is a recommendation: `dispatch_usable=False` and `recommendation_only=True`. Existing `@1` codec, byte-selection receipt, validator and historical replay remain unchanged. The old validator refuses the new receipt. Existing source descriptors, source sessions, endpoint preflights and owner/worker routing are unchanged. Raw/semantic task equivalence, source freshness, provider framing and remote-tokenizer equivalence are not authenticated by this utility.
+
+Qualification: 188 passing cases / 564 phases across 4 complete files, with 11,370 stable guards. This was a fresh detached checkout with genuine initializers, normal conftests, mandatory complete per-call AST seals, all setup/call/teardown phases, no skips or deselections, and proof reuse off. The first attempt exposed one test constructing different timestamped descriptors; the successor reuses one fixture and retains every assertion. Current MAIN runtime was not qualified.
+
+On one genuine authored six-function capsule fixture, complete-input estimates were raw 22,712, original semantic 12,136, and deferred working set 11,383. The old byte/two-way path and new three-way utility both chose the deferred working set: this fixture demonstrates no winner reversal or additional saving. Both Grok and Codex route labels used the same cached o200k proxy, so these are neither provider usage nor independent model-tokenizer validations. The regression that exposes a hidden semantic winner uses explicitly authored counter values.
+
+Future active integration must coordinate producer selection and final prompt/router/reply state, sealed owner admission, worker argument gates, exact-version collector/replay, source-session observation and selected archive source pins. The [static integration map](../../../../artifacts/supervisor-working-set-token-selection-20261015-04/live-integration-map.json) records the exact current functions and observed source hashes, separating those requirements from optional telemetry and unchanged scheduler/evidence protocols. It is a design snapshot, not a live rollout or permission to overwrite later peer edits.
+
+This increment adds only the new utility and tests. It does not change what any actual supervisor model receives, reduce live provider usage, establish task acceptance, or prove whole-session savings or a native token hardcap. Whole-codebase minification remains unnecessary for comparing/selecting bounded read views; actual benefit still depends on complete repeated inputs, expansions, retries and output over equivalent accepted tasks.
+
+Evidence: [campaign result](../../../../artifacts/supervisor-working-set-token-selection-20261015-04/RESULT.json) (SHA-256 `7a627a219c3978da0c310f8b4af9fe770dd8506a79973f24fbef29ec630c1249`).
+
+
+### 2026-10-15 — opt-in repository read-set preparation
+
+Added a caller-facing compiler and module CLI that turn existing native repository query nominations into one bounded coding input. `compile_repository_read_set` uses the genuine `RepositorySourceSession.context_query`, deduplicates nominated paths, and reads every admitted path with `representation="original"`. Caller-reviewed required text and files remain intact. Optional sources are admitted as whole files in native lexical order only when the complete rendered input fits the declared byte and local token ceilings; unsupported or over-budget optional files are explicitly omitted. Native query/capsule/admission JSON remains owner-side rather than being delivered alongside the source bodies. The model input still includes its required instructions, file paths/source hashes, complete original content and ordinary coding workspace wrapper, all counted together.
+
+This is an actual opt-in preparation tool, not automatic supervisor routing. The CLI writes a fresh private `prompt.txt` and metadata-only `receipt.json`, with hashes on stdout. Its native session state is private and temporary outside the source workspace/Git. It checks source generation, tree/index identity, original file digests and closing query/currentness after counter callbacks; source changes refuse instead of refreshing into a mixed plan. Required inputs cannot be silently trimmed to satisfy a budget. Counter failure, drift or inconsistent complete-input counts refuse. Exact local counts and estimates keep distinct fields and provenance; a declared estimated ceiling is not a provider-tokenizer guarantee or native session hardcap.
+
+Example using the appropriate existing project Python environment:
+
+```bash
+python -B -m benchmarks.agent_supervisor.repository_read_set \
+  --root /absolute/path/to/repository --query invoice_total \
+  --required-path display.py --requirements-file /absolute/path/to/reviewed-requirements.txt \
+  --task-id reviewed-task --provider grok_cli --model grok-4.7 \
+  --max-input-tokens 32768 \
+  --scheduler-state /absolute/path/to/existing-native-state.json \
+  --scheduler-policy-sha256 EXACT_PERSISTED_POLICY_SHA256 \
+  --output /existing/parent/fresh-private-read-set
+```
+
+Supply both scheduler flags together when selecting an already existing native pool; use its exact current persisted configuration digest, not a newly inferred host policy. Select `codex_cli` and the explicit backup model identifier when appropriate. Inspect retained tokenizer provenance: automatic offline resolution may use a compatible installed tokenizer or a labelled proxy/UTF8 fallback. No installation, download or remote-equivalence claim follows from a route label.
+
+The initial real offline native-session attempt refused because its default scheduler configuration, derived under the restricted two-CPU process affinity, differed from the already active persisted native policy. The earlier qualification remains retained separately; its pass count is not added to the successor. The successor accepts an explicit existing native scheduler state and exact stored-policy SHA through `open_existing_scheduler`. It neither creates a pool nor resets, normalizes or reconfigures the selected policy. The held MAIN outer resource lease and the native default scheduler are separately bound: the historical MAIN policy is not opened through a newer incompatible facade. Both policies remain unchanged; only this experiment's own native requests/leases must close, while unrelated peer leases remain intact.
+
+Qualification: 155 passing cases / 465 phases across 4 complete files, with 11,375 stable guards. The fresh detached successor used genuine initializers, normal conftests, mandatory complete per-call AST seals, all setup/call/teardown phases, no skips/deselections, and proof reuse off. The original 145-case pass is retained separately and is not added. This qualifies the frozen source capture, not whole current MAIN runtime.
+
+The fixed provider-free experiment uses three authored invoice/display/storage files, one genuine native source generation and unchanged literal task/security/UI requirements. The selected recipe makes display source mandatory and uses the invoice query for optional original-file nominations; the control requires all three source files. The selected two-file input measured 587 estimated tokens / 2,787 bytes; the all-three-file control measured 681 estimated tokens / 3,129 bytes, a 94-token (13.80%) difference in this authored initial-input recipe. Both Grok and Codex route labels used the same cached o200k proxy, so this is not an independent model-tokenizer comparison. These arms share literal obligations but have different required-source populations; no behavioral or acceptance equivalence is established. No favorable source/query search is performed. Actual CLI execution: The actual module entrypoint succeeded for both routes using the explicitly pinned existing native scheduler, writing owner-0700 directories with prompt/receipt files at 0600. Each CLI input measured 591 estimated tokens / 2,789 bytes. The CLI reads the same three obligations from one literal requirements file, whereas the API fixture passes three text entries, so those recipe counts stay separate. No provider was invoked.
+
+Four new source/test paths are published. Active router/owner/source-session/policy/collector paths and the earlier working-set selector remain unchanged. Native lexical nomination does not prove dependencies complete, omitted files irrelevant, UI/security obligations satisfied, or task accepted. Provider calls, native conversation/output evidence and accepted-task savings remain unqualified. Whole-codebase minification is unnecessary: this tool reduces candidate input by selecting original files, while retaining canonical bytes and explicit unresolved obligations.
+
+Evidence: [campaign result](../../../../artifacts/supervisor-repository-read-set-20261015-05/RESULT.json) (SHA-256 `626accf4b5273915a08a25cadc8e60b712c3bdedeb0431edf9bdb4e99df871f5`).
+
+
+2026-10-15 — Opt-in read-set inspection consumer
+
+The additive repository_read_set_provider API and repository_read_set_inspect CLI connect the existing original-source read-set compiler to one selected Grok route. They send the compiler's complete rendered prompt unchanged through llm_router.generate_text. A guarded backend rechecks the actual compiler, counter provenance, external literal requirements and source generation immediately before delegation, then checks them again at close. Provider retries, cross-provider/local fallback and response caching are disabled for this operation; a fresh allocation identity is used. A failed or post-call stale operation retains its closed observed native usage receipt without returning the stale inspection as valid.
+
+This remains an explicit Grok-only inspection tool (grok_cli / grok-4.7), with original-source selection and caller-required instruction/file preservation. It does not activate the supervisor's hot routing path or the working-set @2 recommendation. The native request uses max-turns=1, tools=read_file with read_file/search_tool/use_tool denied, streaming output and dontAsk permission mode. These are requested CLI settings; effective tool denial and process containment are unverified. The requested output-token limit is not guaranteed by the native provider. The bounded timeout applies to the backend request, not to all preparation work or cumulative usage.
+
+Qualification: 233 fresh cases across six complete files; 699 actual setup/call/teardown phases; 11380 stable source guards; normal conftests, mandatory AST seals and proof reuse off. Verification: 91a59b9bc96eebbd41d713dcd07c20ab9fcaa64264c2540379ba07d4f912cc91. No earlier passing counts are added to this result.
+
+The separate authored local transport experiment uses the genuine factory, router, provider and stream-capture implementation with one fixed local Python child. Discovery and API-key selection use explicit fixture hooks, and allocation writes use a fresh genuine private database. The child verifies the delivered complete-prompt SHA, requested argv and source cwd; the provider removes its temporary prompt file. It emits an authored 13-token envelope (7 input + 2 cache-read + 1 cache-creation + 3 output), which is transport/accounting test data and is not a provider charge. Actual experiment status: qualified in fresh experiment02; experiment01 assertion mismatch retained separately; report: 2a735be1e1e430230a536d58db2c6f4ecabe390ca1ea0ebed9dd461e6711c84d; ROOT RESULT: cb94ee1d381125f84d402effa87d2f8d8e249e5f6d9b0c26d5ca4c25a9845287. No native Grok binary/model, credentials, external provider or paid model is used in that fixture. It does not establish real-provider delivery, authentication, native policy enforcement, acceptance or whole-session savings.
+
+Usage example (this command requests a real configured provider operation; it is not the authored fixture):
+  cd /absolute/original/repository
+  /absolute/root/python -B -m benchmarks.agent_supervisor.repository_read_set_inspect --root /absolute/original/repository --query invoice_total --required-path display.py --requirements-file /absolute/private/requirements.txt --task-id invoice-inspection --provider grok_cli --model grok-4.7 --max-input-tokens 8192 --timeout 1800 --max-output-tokens 2048 --output /absolute/private/fresh-inspection --scheduler-state /absolute/existing/native-scheduler.json --scheduler-policy-sha256 EXACT_EXISTING_POLICY_SHA256
+Run with the qualified project/package paths and interpreter. The scheduler options are a matched explicit pair for an already existing native scheduler; they never request reset, creation or policy normalization. Omit both only when the native default policy is intentionally selected. The source root must be the current working directory. Requirements are read verbatim from a pinned local file. Successful prompt/response/receipt files are private; failures retain metadata-only receipts when publication succeeds, and stdout contains metadata only.
+
+Next evidence needed: an explicitly authorized real-provider inspection with independently retained dispatch/native observations, then accepted-task matched evaluation of cumulative full inputs and tool output. Current local counts are tokenizer-scoped measurements or labelled estimates; no accepted-task token reduction, total usage cap or billing saving is claimed. Whole-codebase minification and inverse transformation remain unnecessary for this selective original-source path.
+
+
+2026-10-16 — Bounded independent read-set inspection series
+
+Added an optional series API and module CLI, plus focused tests, over the existing Grok-only read-set consumer. A caller declares one source session/generation, task, required literal instructions/files, tokenizer binding, ordered query population and shared local complete-input allowance. Every inspection is independently self-contained: full required instructions and selected original source are rendered and counted again. Earlier responses are not silently treated as retained provider history. Fresh allocation/session identities separate the actual callbacks.
+
+Before a later callback, the series checks the remaining local input allowance and its bounded callback population. Each actual delegated complete input is debited once; tokenizer observations made while preparing/rechecking alternatives are not additional model calls or native charges. Repeated identical inputs are still charged for every actual callback. Counter provenance and repeatability are fenced across the series. Exact declared local counts and estimates retain separate fields; an estimated allowance is not equivalent to the remote provider's tokenizer, native framing, output or complete task usage.
+
+The optional observed-native threshold uses the existing public context-delivery accounting owner on unchanged inspection receipts. It preserves Grok's final-envelope/cache semantics and stops before a later callback after the supplied scoped total reaches the threshold. The first call, or the call crossing the threshold, may overshoot. Native internal requests, output, billing and complete session/task costs are not capped. A spent attempt with unavailable or contradictory native accounting blocks later callbacks; provider failure, source/requirements drift or counter failure/drift aborts the series and retains all available attempt metadata, including failed-call costs. Original exception identities remain intact. This adds no usage ledger or metadata database and does not replace peer native session reconciliation.
+
+Qualification: 202 fresh cases / 606 phases / 6 complete files / 11386 unchanged guards, with genuine initializers, normal conftests, mandatory actual-call AST seals, proof reuse off and no skips/deselections. Verification: 0edf442f2cc143e351119082a4bf3ea580f7bedc9b2a92344919229e29681072. Earlier campaign counts are historical and are not added.
+
+Fixed local transport fixture: qualified in fresh experiment01, report eb904fc571efc051a011bb29f4f4f2582dcb8c64b61fb0aac4211bffd6b29ef4. Three identical invoice queries request independent complete inputs. Two actual authored Python children each emit a normalized 13-token final envelope; scoped observed total 26 reaches the declared threshold 20 and prevents the third callback. Both full inputs are counted, both fresh session identities and exact prompt/argv bindings are checked, and both temporary prompt files are removed. These envelopes are authored transport/accounting facts, not actual provider charges. No real Grok binary/model, credentials, paid provider or external inference is involved. ROOT RESULT: 243dcc8467f237b2b4135fd2b22c2c81520deecfa113ad5aa34d79b5b9b5d6eb.
+
+CLI example (requests real configured provider operations; this is not the authored fixture):
+  cd /absolute/original/repository
+  /absolute/root/python -B -m benchmarks.agent_supervisor.repository_read_set_series --root /absolute/original/repository --query invoice_total --query invoice_label --required-path display.py --requirements-file /absolute/private/requirements.txt --task-id invoice-review --provider grok_cli --model grok-4.7 --max-input-tokens 8192 --max-total-input-tokens 12000 --max-observed-native-tokens-before-next-dispatch 10000 --timeout 1800 --max-output-tokens 2048 --scheduler-state /absolute/existing/native-scheduler.json --scheduler-policy-sha256 EXACT_EXISTING_POLICY_SHA256 --output /absolute/private/fresh-series
+Use the appropriate existing project interpreter/package paths. Scheduler flags must be a matched pair for an existing pool, with its exact persisted policy; no creation/reset/reconfiguration is requested. Both may be omitted for an intentionally selected native default. Successful or orderly stopped series retain completed prompt/response pairs privately, with metadata-only receipts/stdout. Failures retain closed attempt receipts when publication succeeds and preserve the original error.
+
+This prevents declared local input overrun and unnecessary later callbacks under the explicit scoped stop rules. It does not establish provider authentication, real native policy enforcement/containment, an output-token cap, accepted tasks, complete campaign accounting or token savings. The remaining promotion gate is independently retained real dispatch/native usage and equivalent accepted-task evaluation, including failed attempts, expansions, output and all repeated context. Whole-codebase minification remains unnecessary for this selective original-source consumer.
+
+2026-10-16 — Replay retained real accepted-task token evidence before another cost utility
+
+This increment reads existing metadata only. It freezes 50 explicit inputs: original supervisor receipts, preparations/configurations, historical pair/binding/observation records, linked Harbor results and scalar verifier rewards, plus three real Grok runs and their original control/readout records. All five canonical receipts bind the corresponding actual Harbor result hash; the retained receipt, Harbor result and reward.txt each report reward 1, with supervisor.task_completed true. This preserves original outcomes rather than rerunning or independently adjudicating the verifier. No raw prompts, transcripts, source bodies, credential files or hidden verifier code are used. No new provider/model call, runtime rebuild or product source change is made.
+
+The historical Codex pair reported 720,840 versus 445,333 tokens (275,507 fewer, 38.22%). Its four native receipts already include explicit lifecycle completeness. Current cold replay must reconcile original native sessions and join the candidate's semantic-dialogue alias to the same coding invocation exactly once; cached input is already a subset of input, not an additional charge. The candidate delivered decision_packet@2 task-text references, with no code minification or world-model training, no expansion and different coding tool histories (13 versus 9 calls). Its smaller first prompt and historical total difference do not isolate a causal compression saving. The retained pair lacks current comparison_controls and provider_receipt_collection census metadata. Historical binding/population claims and a pilot source-stability boolean cannot supply an independent exhaustive dispatch census or post-live source guard rows. Missing or contradictory evidence stays unknown/ineligible under current owners; the old 38.22% is not promoted to a newly qualified saving.
+
+The genuine Grok identity/comments runs reported category sums 1,310,764 and 1,621,661 (+310,897); the comments initial coding prompt was only 98 bytes smaller. A later comments-plus-metadata run reported 2,452,634, outside the original pair. These Grok native envelopes omit explicit completeness, so final observations cannot become complete task/session/provider or billed totals. The original trajectories and source/tool activity differ. Byte savings, owner response counters and a smaller initial prompt are not added to native token usage or used to claim causal token reduction.
+
+Fresh current-owner qualification: 203 cases / 609 phases / 6 complete files / 11387 guards, verification 80f20023ce59aebd0a36fb76f7fac229c62d748e25b6fa8781e7dba62c408595. Current cold replay status and exact native reconciliation: complete; 50 unchanged metadata inputs and five original outcome joins; known subtotals retained, all complete totals unknown and strict paired metrics ineligible; replay evidence 8210926871664716c978c423261ab694126a5790bb5b1b4a08184dc2871126be. Earlier historical or failed counts are not added. Campaign RESULT: e23d5da3d4983332ac7f42f6542a96068c73a5f246a2c6d37f11facdbbb4d18a. Evidence input manifest SHA-256 eadd975564a7f6e247337be22dcb24fb5dfa96884d08decc664ea82f27ffa0c1.
+
+Next require independently retained dispatch population and current matched controls for any accepted-task reduction claim, including failed attempts, retries, expansions and output. Keep tokenizer provenance explicit for local complete-input measurements; Grok and backup Codex route labels do not establish matching tokenizers. Optimize cumulative repeated required context, original-source read sets and avoidable expansion/tool output while retaining literal obligations. DuckDB/Quack/DuckLake and IntentIR/CodebaseIR/UIUXIR/SecurityIR/world-model metadata can support bounded selection and provenance, but metadata compression or a trained IR alone does not measure native conversation savings. A reversible whole-codebase minified state remains unnecessary for selective model-facing views.
+
+2026-10-16 — Optional reuse of an identical inspection result within one read-set series
+
+The existing standalone read-set series gains explicit opt-in result reuse. Default behavior continues to request fresh independent inspections. A successful earlier result may satisfy a later byte-identical complete input only within that series, after validating the complete rendered input, original-source generation, required literal instructions/files, tokenizer binding/counts and selected invocation settings again. Different queries may nominate the same complete input; the query is retrieval metadata rather than an additional delivered task instruction. No persistent response cache, global router/owner/policy change or new metadata database is introduced. Reuse returns the previous inspection answer; it does not represent a fresh model opinion or assumed provider memory.
+
+Every genuine backend entry still debits its whole input once and retains its original native usage, including failures. A reuse hit has no backend entry, no new local input debit and no duplicated native observation. Already exhausted local allowance, a reached observed-native threshold or unknown native completeness may prevent a new call while still permitting a validated hit on a fully successful prior result. A hit does not make unknown native costs complete. Stale inputs, counter drift and failed validation refuse; failed inspections never become reusable results. Local exact/estimate allowance and observed-native stopping retain their existing scopes; neither is a cumulative provider hardcap or complete billing evidence.
+
+Fresh qualification: 236 cases / 708 phases / 6 complete suites / 11388 stable guards; verification 570f008006ce0a8c384014a6366f1dc83d74ed87a84e35f09ca5f6720accd6eb. Fixed genuine-router/Grok-streaming fixture: qualified in fresh experiment01, report dda60259a29744a42b8a4af19bda1d93f74fffa9bcbca1ff500c6e170326f7cf. It compares three identical queries by default (three authored local Python children) against opt-in reuse (one child plus two hits), keeping the same complete input and source/requirements. Each actual child emits an authored 13-token envelope. The reuse scenario has allowance for exactly one full input and threshold13, testing hits after both are reached. These envelopes are fixture data, not provider charges. Actual counts/status must come from the retained execution, not this draft. ROOT RESULT: 9f4de17fa834c5f132f448da7a0dd718b73c7c898f3b2e3751df848545281a83.
+
+No real native Grok binary/model, credentials, external provider, paid inference or Terminal Bench acceptance is exercised by that local fixture. This saves dispatches only when the caller deliberately accepts reuse of an unchanged earlier answer. Equivalent accepted-task total tokens and real-provider savings remain unqualified; no favorable input search or whole-codebase minification roundtrip is required.
+
+
+2026-10-16 — Bind current lifecycle sources and prepare a matched capsule pilot
+
+The benchmark prepare/execute owners now verify physical runtime tar bytes for the declared deadline and native usage chain; existing selected decision sources remain additionally required. The capsule matrix registers its complete intended population first, holds the registry digest before preflight, and requires the existing comparator's frozen configuration/assets/controls match before readiness. It retains failed preparations and refuses changed registries. These checks do not establish preregistration authenticity, full import closure or complete future model dispatch coverage.
+
+The provider-free pilot fixes one task, three repeats and legacy/one/two capsule budgets with explicit model planning, one current Codex profile and one common resource profile. Optional learned model/Torch/toolchain selections are omitted equally. Its runtime input snapshot includes every code asset selected by the existing builder, including supported non-Python assets, with qualified Python bytes and a complete physical archive inventory. This prepares a capsule-delivery experiment; it does not qualify neural head/CUDA performance or prove token savings. The promotion gate remains retained real dispatch/native usage and equivalent task acceptance, including retries, failed attempts, repeated context, expansions and output.
+
+The complete selected runtime input generation is frozen before native validation, including supported non-Python code assets and existing native extensions. Preparation rechecks that immutable generation rather than chasing later unrelated repository edits. The source generation remains explicit, and live checkout currentness after capture is not claimed.
+
+
+2026-10-16 — Predeclare matched source, planning and Doctor evaluations
+
+Prepared eight configurations through the existing full-supervisor configuration API, retaining `arm="full"` in every original schema. R/P/PD/D/Q and A/B/C are experiment labels only. Grok uses the current `grok-4.7-cli-1.0.46@1` profile; Codex uses `codex-gpt-6.1-sol-0.160.0@1`. Historical 0.158/gpt-5.6 evidence remains separate. All configurations retain the original fix-code-vulnerability task inputs and verifier, task/resource/retry defaults and exact runtime-archive binding.
+
+| Label | Provider | Planning | Doctor | Source delivery treatment |
+| --- | --- | --- | --- | --- |
+| R | Grok | model | model-only | identity@1 signed source view |
+| P | Grok | declared-contract@1 | model-only | same identity@1 view |
+| PD | Grok | declared-contract@1 | auto | same identity@1 view |
+| D | Grok | model | auto | same identity@1 view |
+| Q | Grok | model | model-only | identity@1 plus capsule-references@1 |
+| A | Codex | model | model-only | source view disabled; legacy repository policy |
+| B | Codex | model | model-only | source view disabled; repository-source-raw@1 |
+| C | Codex | model | model-only | source view disabled; repository-source-compact@1 |
+
+R/P isolates declared planning; P/PD and R/D isolate Doctor selection under each planner; D/PD checks planning with Doctor held auto; R/Q isolates the capsule-reference option; A/B and B/C distinguish tool introduction from raw/compact delivery. Declared planning mechanically compiles the signed single-task declaration without interpreting natural-language intent; it cannot replace an explicit Intent requirement contract or select a multitask profile. The default public task needs no additional task profile. A checked provider-free Doctor candidate may bypass model coding even when source controls were requested; receipts must retain those controls as not applied. `model-only` is selected for source comparisons so that the intended source treatment reaches the model route, not because Doctor/source controls are syntactically incompatible.
+
+Q requires the original semantic transport and legacy metadata. It is not the pending current-world treatment. The existing world-packet D/E evaluation design still requires its coordinated worker/owner/collector integration and qualification; do not relabel capsule references as that integration. No trained head, learned capsule ranking, semantic context profile, source-input policy or minification treatment is silently added to this matrix.
+
+The artifact driver validates actual Harbor configurations and compares every field with a closed per-pair allowed-delta recipe. Public `compare_controls` must continue to report intentional experimental-control differences; recipe acceptance does not rewrite that result as matched. Runtime preflight separately invokes the current provider, worker-capability, timeout and selected source/planning/working-set/archive guards. A stale or unavailable archive remains refused. Valid declarations and archive checks do not establish native policy enforcement, actual source-tool adoption or accepted-task results.
+
+Fresh qualification: 125 cases / 375 phases / 11390 stable guards; verification SHA256 e8bcc546daf4b7ba0664635e1861259c1a366c2dc547750de0351c995f0e7633 across six complete existing test files, with no prior counts added. The genuine local declared-Doctor suite already covers signed planning, native indexing, real Z3/Lean proof, detached candidate materialization and authored public validation for keyword/import-alias repairs, plus a missing-prover residual case. Its optional metadata outputs are collected from that actual suite rather than duplicating the pipeline in another fixture. Native proof binaries are required, not skipped. Host configuration/route tests separately use authored archives or process/owner results and do not qualify native worker execution. Local proof applies to the closed repair contract; whole-program verification and actual Terminal Bench execution remain false.
+
+Preflight/archive result: Genuine fresh archive SHA256 8c59f10583bf1c9b9f07c92aba5b121cbcaf0a3071b7f1de2c35be986aaf124a (24262 completely verified members), cached Grok + CPU Torch + Lean. Eight actual original Harbor dry-run preparations passed, and eight exact configuration comparisons passed. No live model/task execution or current-world D/E qualification. All actual configurations retain force_build=True, selecting the unchanged task Dockerfile; its python:3.11-slim base is not currently cached. The published task-image tag's amd64 metadata does not establish the platform of that future native build. Preserved attempt01 stopped before the genuine builder on an owned-FD artifact-guard check; corrected attempt02 succeeded without production source edits.. Evidence: [campaign result](../../../../artifacts/supervisor-matched-evaluation-preflight-20261016-10/RESULT.json).
+
+No provider is invoked by this preflight increment. Live matched evaluation must independently retain the complete dispatch census, current immutable controls, native session identities/lifecycle/cache conventions, failures/retries/expansions/tool output and original acceptance results. Local tokenizer measurements must use the selected model's compatible tokenizer or a labelled estimate. Complete accepted-task and billed totals remain unmeasured until those joins pass. Optimize cumulative delivered context and avoidable model turns; a whole-codebase minified state is unnecessary. DuckDB/Quack/DuckLake and IR/world records guide source selection and checked local actions, but their latent vectors or CIDs are not knowledge directly available to the external model.
+
+Actual local outcome: 1,429 passing cases across 32 normal modules, no skips, fresh mandatory AST seals and optional proof reuse off. The complete selected archive contains 13,155 physically checked members. Nine genuine Harbor dry-runs prepared successfully and match the frozen controls/assets with the original matrix registry unchanged. Provider/container/verifier executions remain zero; the fixed source generation is explicit, and no currentness-after-capture, runtime deployment, neural performance or whole-task token reduction is promoted. Earlier unsuccessful preflights and native input generations remain retained with their actual statuses.
+
+2026-10-16 — Credential-free native qualification in the original task image
+
+This increment starts the original fix-code-vulnerability task through genuine Harbor force-build handling, then calls the frozen N10 `deploy_supervisor` and `deploy_worker_boundary` APIs directly with Grok4.7/CLI1.0.46. It rechecks installed archive members and exposed native binary identities, original task bytes/modes/status/HEAD, and actual container/namespaces. The worker exercise checks UID1000→1001 delegation, candidate writes, private-state/Git denials and termination cleanup. Additional probes cover the installed CPU runtime, Lean/Z3, DuckDB/httpfs/Quack/DuckLake and a lexical native Bottle source index. An explicitly authored public empty JSON file supplies the required auth-file copy: synthetic auth transfer is true; real credentials are false. No host credential discovery, authenticated catalog check, model inference or official verifier is requested. Public system/Python dependency downloads belong to deployment; this is not an offline setup claim.
+
+Actual status: qualified in attempt02 on the explicitly pinned rootless daemon; attempt01 retained its rootful namespace-permission failure; installed inventory 24,262 completely rehashed members; boundary/probe/index outcomes actual Grok boundary passed all six denials and termination checks; CPU Torch, an authored Lean theorem and Z3 query passed; native AST/lexical index built, reopened and queried 426 Bottle symbols with DuckLake metadata projection and 64 bounded metadata links; evidence [campaign result](../../../../artifacts/supervisor-native-worker-readiness-20261016-11/RESULT.json), SHA bdb86886fd9acbdb54476bb4e5426ba36f66e16d54a0fec54797b43910083dac. Retain all failures and incomplete outcomes separately rather than replacing them with later success. Any qualified result applies only to the exact frozen archive/source capture and observed original task container. It does not qualify later current MAIN, authentication readiness, FullSupervisorAgent end-to-end behavior, Doctor WSGI repair, task acceptance, complete native usage, training or token savings. Prover presence/version and lexical indexing retain their own scopes; whole-program proof and model ingestion do not follow. This closes a deployment-evidence gap before a separately authorized matched accepted-task evaluation.
+
+The anonymous Docker client configuration initially changed daemon selection to the rootful default. The successful successor explicitly pins unix:///run/user/1000/docker.sock while retaining an empty client config; no host credentials, privileged helper or namespace-reader adapter is used. Actual cgroup cpu.max and memory.max confirm the original 1 CPU / 2048 MiB limits. The owned resource request, both containers and both networks are closed; only the pure task images remain. Shared runtime source is unchanged.
+
+
+2026-10-16 — Opt-in token-aware capsule delivery
+
+`capsule-token-minimum@1` now connects complete-input selection to the actual supervisor router. With the existing identity@1 source route, it compares native source, full semantic input and capsule references using the selected model tokenizer or an explicitly labelled local estimate. It dispatches one eligible winner, keeps native input on ties, rechecks source/counter bindings before generation and probes capsule availability only when references win. A separate dispatch receipt preserves the earlier recommendation and capsule schemas; losing semantic candidates remain evaluation evidence. Audit readers reconstruct the candidates and leave independent token counts unknown when compatible provenance is unavailable. Existing defaults remain unchanged.
+
+Fresh validation: 654 credited cases / 1962 passed phases across 17 whole test files in 5 credited finite batches; actual-call AST seals enabled and proof reuse off. Superseded Q1/Q4/Q5/Q6/Q7 attempts contribute zero cases. Q9 retains its failed status and credits only six complete passing files; its entire audit file is excluded and freshly rerun in Q10. The old archive fixture now uses the genuine builder, and signed-source native tests select the existing DuckDB 1.5.5/Quack environment. Three original Harbor dry-runs (legacy, capsule-references@1, capsule-token-minimum@1) use a newly rebuilt runtime and identical remaining configuration. Peer world-packet changes are preserved. Their fixture repair was captured in a separate genuine checkout; all other guarded Python/configuration rows match the primary checkout. The mixed supplemental run retains its missing-SQL setup error; its entire audit file was rerun in the primary checkout with six SQL resources pinned, and only complete passing files receive credit. All owned reservations are closed. [Campaign result](../../../../artifacts/supervisor-working-set-live-integration-20261016-12/RESULT.json), SHA256 53f782a2bdbb109d295f85ffd67f18db8ec5dc83782cab2ac453f8dc7dd7d6c2.
+
+This enables a local token-aware delivery policy; actual provider ingestion, deployment of this new archive and complete accepted-task token savings remain unmeasured. Whole-codebase minification is unnecessary. The next evaluation must count every model call, retry, tool result and capsule expansion while preserving original task acceptance.

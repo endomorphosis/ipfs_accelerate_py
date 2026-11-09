@@ -242,3 +242,60 @@ def test_status_writer_refuses_untyped_or_different_original_window_without_over
         owner._write_supervisor_maintenance_status("fixture", status="running",
             started_at=NOW.isoformat(), maintenance_window=window)
     assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("birth_mode", ["managed", "missing", "unknown"])
+def test_watchdog_maintenance_preserves_managed_daemon_birth(writer, tmp_path, monkeypatch, birth_mode):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import SupervisedChild
+
+    owner, module = writer
+    command = (sys.executable, "-B", "-c", "import sys; sys.stdin.buffer.read()")
+    child = subprocess.Popen(command, stdin=subprocess.PIPE)
+    try:
+        birth = module.read_process_birth(child.pid)
+        assert birth is not None
+        managed = SupervisedChild(
+            pid=child.pid, command=command, log_path=tmp_path / "managed.log",
+            child_pid_path=tmp_path / "managed.pid",
+            identity_process_birth=None if birth_mode == "missing" else birth,
+        )
+        owner.config.implement = True
+        owner.config.reconciliation_only = False
+        state = module.PortalTaskState()
+        monkeypatch.setattr(module.PortalTaskState, "load", classmethod(lambda cls, path: state))
+        owner._last_supervisor_maintenance_at = 0.0
+        owner._refresh_native_dispatch_child = lambda current: None
+        owner._refresh_loop_proof_rollout_status = lambda loop: None
+        owner._control_plane_status_projection = lambda: {"control_plane_update_pending": False}
+        owner._database_authority_enabled = lambda: False
+        owner._is_board_maintenance_leader = lambda: True
+        owner.is_stuck = lambda state, now_ts: (False, "")
+        def selected_maintenance(update, **kwargs):
+            update("watchdog_fixture")
+            return {"stuck": False}
+        owner._run_once_with_maintenance = selected_maintenance
+        if birth_mode == "unknown":
+            monkeypatch.setattr(module, "owner_liveness", lambda current: module.OwnerLiveness.UNKNOWN)
+        observations = []
+        write = owner._write_supervisor_maintenance_status
+        def capture(*args, **kwargs):
+            write(*args, **kwargs)
+            observations.append(json.loads(owner._supervisor_status_path().read_text()))
+        owner._write_supervisor_maintenance_status = capture
+        loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+        decision = owner._supervisor_loop_watchdog_decision(loop, managed, {})
+        assert decision.action == "continue"
+        assert [item["status"] for item in observations] == [
+            "agentic_maintenance_started", "agentic_maintenance_started", "agentic_maintenance_completed",
+        ]
+        expected_birth = None if birth_mode == "missing" else birth.to_dict()
+        for item in observations:
+            assert item["daemon_pid"] == child.pid
+            assert item["daemon_process_birth"] == expected_birth
+            assert item["daemon_pid_alive"] is (birth_mode == "managed")
+            assert item["active_agentic_maintenance_has_daemon"] is True
+        assert module.read_process_birth(child.pid) == birth
+    finally:
+        if child.stdin is not None:
+            child.stdin.close()
+        child.wait(timeout=5)

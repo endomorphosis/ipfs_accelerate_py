@@ -222,19 +222,26 @@ def _git(root: Path, *args: str) -> str:
     ).strip()
 
 
-def _repository(root: Path) -> tuple[Path, str, str]:
+def _repository(root: Path, *, mirror: bool = True) -> tuple[Path, str, str]:
+    if type(mirror) is not bool:
+        raise LocalPlanningError("exact repository metadata mirroring control required")
     root = Path(root).absolute()
     if root.resolve(strict=True) != root or _git(root, "rev-parse", "--show-toplevel") != str(root):
         raise LocalPlanningError("repository must be its exact non-symlink Git root")
     head = _git(root, "rev-parse", "HEAD")
     tree = _git(root, "rev-parse", "HEAD^{tree}")
-    identity = cid_for_dag_json(
-        {
-            "schema": "ipfs_accelerate_py.agent_supervisor.observed-repository-root@1",
-            "root": str(root),
-            "head_tree": tree,
-        }
-    )
+    material = {
+        "schema": "ipfs_accelerate_py.agent_supervisor.observed-repository-root@1",
+        "root": str(root),
+        "head_tree": tree,
+    }
+    if mirror:
+        identity = cid_for_dag_json(material)
+    else:
+        # This closed payload contains only text; the native pure encoder uses
+        # the same UTF-8 sorted/compact DAG-JSON and CIDv1/sha2-256 representation.
+        from ..task_sources.control_plane_contracts import content_identity
+        identity = content_identity(material)
     return root, head, identity
 
 

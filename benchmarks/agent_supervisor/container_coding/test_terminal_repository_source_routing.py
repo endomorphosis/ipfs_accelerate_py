@@ -35,8 +35,19 @@ def inventory():
 def archive_fixture(root):
     """Real member bodies; all deployment/provider operations are mocked."""
     root.mkdir()
-    manifest = _supervisor_manifest({**inventory(), "codex_version": CLI_VERSION, "learned_requirements": []})
+    manifest = _supervisor_manifest({**inventory(), "schema": "terminal-supervisor-runtime-archive@1",
+        "codex_version": CLI_VERSION, "learned_requirements": []})
     sources = policy._current_sources()
+    # Preparation checks the current deadline members before the selected
+    # repository capability. Keep both inventories genuine in this fixture.
+    deadline_sources = {benchmark.TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name:
+        Path(benchmark.__file__).with_name(name).read_bytes()
+        for name in benchmark.TIMEOUT_RUNTIME_SOURCE_NAMES}
+    sources.update(deadline_sources)
+    manifest["files"] = [row for row in manifest["files"] if row["path"] not in deadline_sources]
+    manifest["files"].extend({"path": name, "bytes": len(body), "mode": 0o644,
+                              "sha256": hashlib.sha256(body).hexdigest()}
+                             for name, body in deadline_sources.items())
     checkout = Path(policy.__file__).resolve().parents[3]
     for row in manifest["files"]:
         if row["path"] not in sources:
@@ -335,6 +346,9 @@ def test_prepare_rejects_current_inventory_with_unqualified_tar(tmp_path, mode):
     manifest["archive_sha256"] = hashlib.sha256(body).hexdigest()
     (archive / "manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="newly qualified runtime archive"):
+        policy.require_repository_source_archive(manifest, mode, archive=archive / "runtime.tar.gz")
+    # The benchmark's mandatory deadline replay precedes selected capabilities.
+    with pytest.raises(ValueError, match=r"^runtime deadline sources differ; rebuild the runtime archive$"):
         benchmark.prepare(dataset=dataset, output=tmp_path / "output", archive=archive,
             arm="full", repository_source_policy=mode)
     assert not (tmp_path / "output").exists()

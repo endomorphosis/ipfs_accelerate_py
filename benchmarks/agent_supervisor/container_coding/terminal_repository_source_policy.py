@@ -356,7 +356,8 @@ def _usage_observation(value):
     """Reject impossible aggregate populations; unknown counters stay unknown."""
     selection = value.get("token_selection") if type(value) is dict else None
     retrieval = value.get("retrieval_observation") if type(value) is dict else None
-    base_fields = set(value) - {"token_selection", "retrieval_observation"} if type(value) is dict else set()
+    read_scope = value.get("read_observation") if type(value) is dict else None
+    base_fields = set(value) - {"token_selection", "retrieval_observation", "read_observation"} if type(value) is dict else set()
     shape = (type(value) is dict and base_fields in (_USAGE_FIELDS, _USAGE_FIELDS | {"store_cleanup_error"})
              and type(value.get("status")) is str
              and value["status"] in {"observed", "not_observed", "unavailable"}
@@ -408,12 +409,32 @@ def _usage_observation(value):
                     <= value["tool_calls"] - max(0, value["errors"] - (1 - value["initializations"])))
         except (ValueError, TypeError, KeyError):
             pass
+    reads_valid = False
+    if read_scope is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_mcp import validate_read_observation
+        try:
+            validate_read_observation(read_scope, tool_calls=value["tool_calls"], errors=value["errors"],
+                successful_reads=value["successful_reads"], compact_reads=value["compact_reads"])
+            reads_valid = bool(valid and value["status"] != "unavailable")
+        except (ValueError, TypeError, KeyError):
+            pass
+    if reads_valid and retrieval_valid:
+        read_calls = read_scope["read_calls"] + read_scope["legacy_read_calls"]
+        retrieval_calls = retrieval["query_calls"] + retrieval["expansion_calls"] + retrieval["legacy_retrieval_calls"]
+        known_read_errors = read_scope["failed_reads"] + read_scope["legacy_read_calls"] - read_scope["legacy_successful_reads"]
+        if (read_calls + retrieval_calls > value["tool_calls"]
+                or known_read_errors + retrieval["errors"] > value["errors"]):
+            # Individually plausible summaries cannot reuse the same call or
+            # failure population as evidence for two disjoint tool families.
+            reads_valid = retrieval_valid = False
     return {"server_audit_valid": bool(valid), "server_audit_status": value.get("status") if shape else "unavailable",
             "store_cleanup_complete": cleanup,
             **({"token_selection_summary_valid": selection_valid,
                 "token_selection": selection if selection_valid else None} if selection is not None else {}),
             **({"retrieval_observation_valid": retrieval_valid,
                 "retrieval_observation": retrieval if retrieval_valid else None} if retrieval is not None else {}),
+            **({"read_observation_valid": reads_valid,
+                "read_observation": read_scope if reads_valid else None} if read_scope is not None else {}),
             **{key: value[key] if valid else None for key in _COUNTERS}}
 
 
@@ -518,6 +539,14 @@ def repository_source_dispatch_observation(report, value):
             and retrieval["capsules_returned"] > 0)
         read = bool(initialized and usage["successful_reads"] and usage["returned_bytes"])
         compact = bool(read and usage["compact_reads"])
+        scope = usage.get("read_observation")
+        line_reads = None
+        if (exact and configured and initialized and usage["store_cleanup_complete"]
+                and usage.get("read_observation_valid")):
+            if scope["line_range_reads"] > 0:
+                line_reads = True
+            elif scope["complete"]:
+                line_reads = False
         tokenizer_bound = bool(binding_valid and "tokenizer" in binding["config"])
         selected = usage.get("token_selection")
         token_selection_observed = bool(tokenizer_bound and read and usage.get("token_selection_summary_valid")
@@ -534,6 +563,7 @@ def repository_source_dispatch_observation(report, value):
             "server_initialized": bool(initialized), "actual_reads_observed": read,
             **({"capsule_retrieval_observed": capsule_retrieval} if "retrieval_observation_valid" in usage else {}),
             "compact_reads_observed": compact,
+            "line_reads_observed": line_reads,
             **({"local_token_selection_observed": token_selection_observed} if tokenizer_bound else {}),
             "confirmed_canonical_edit_observed": bool(exact and configured and initialized and usage["canonical_edits"]),
             "effective_repository_tools_observed": effective})

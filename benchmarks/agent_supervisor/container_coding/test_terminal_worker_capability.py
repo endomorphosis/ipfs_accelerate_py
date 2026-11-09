@@ -2,8 +2,10 @@
 import asyncio
 import copy
 import hashlib
+import io
 import json
 from pathlib import Path
+import tarfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -24,6 +26,12 @@ GTE_REVISION = '17e1f347d17fe144873b1201da91788898c639cd'
 @pytest.fixture
 def packaged(tmp_path):
     inputs = _supervisor_inputs(tmp_path)
+    # Selected native/decision tests need their genuine declared source bodies.
+    # This remains packaging evidence, with provider and deployment calls mocked.
+    for name, source in benchmark._decision_runtime_sources().items():
+        target = inputs['source'] / name.removeprefix('source/')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
     archive = tmp_path / 'bundle'
     snapshot = tmp_path / GTE_REVISION
     snapshot.mkdir()
@@ -61,7 +69,13 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_evidence.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_decision_usage_projection.py',
+        'source/benchmarks/agent_supervisor/container_coding/native_usage_accounting.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_context_delivery_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/semantic_decision_input_audit.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/codex_interaction_telemetry.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_context_delivery.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/context_delivery_accounting.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/semantic_decision_usage.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/cumulative_usage_reconciliation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py',
@@ -123,7 +137,9 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     'context_selection_observation.py', 'worker_source_request_observation.py',
     'terminal_world_packet_audit.py', 'terminal_world_nomination_audit.py', 'repository_world_packet.py',
     'repository_world_packet_replay.py', 'repository_world_invocation_replay.py',
-    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py'])
+    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py',
+    'codex_usage_receipt.py', 'codex_interaction_telemetry.py', 'native_context_delivery.py',
+    'context_delivery_accounting.py', 'native_usage_accounting.py', 'terminal_context_delivery_observation.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])
@@ -207,7 +223,9 @@ def test_prepare_rejects_stale_or_mismatched_archive_before_harbor(packaged, tmp
     archive, manifest, dataset = packaged
     (archive / 'manifest.json').write_text(json.dumps(_mutate(manifest, kind)))
     monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k: pytest.fail('unexpected Harbor call'))
-    with pytest.raises(ValueError, match='worker archive capability'):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if kind == "inventory" else "worker archive capability")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=dataset, output=tmp_path / 'trial', archive=archive,
                           arm='full', resource_profile=profile)
     assert not (tmp_path / 'trial').exists()
@@ -317,3 +335,89 @@ def test_execute_rechecks_even_when_outer_manifest_hash_is_updated(packaged, tmp
     with pytest.raises(ValueError, match='worker archive capability'):
         benchmark.execute(output)
     assert not (output / 'invocation.json').exists()
+
+
+def _usage_route(route):
+    if route == 'native':
+        return 'full', {'semantic_native_input': True}
+    if route == 'decision':
+        return 'full', {'semantic_decision_policy_artifact': '/opt/authored-policy.json',
+                        'semantic_decision_policy_sha256': 'a' * 64}
+    return route, {}
+
+
+def _mutate_usage_member(archive, manifest, kind):
+    """Rehash the outer archive while its source claims remain current."""
+    required = 'source/ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py'
+    with tarfile.open(archive / 'runtime.tar.gz', 'r:gz') as bundle:
+        members = [(entry, bundle.extractfile(entry).read()) for entry in bundle]
+    matching = [(entry, body) for entry, body in members if entry.name == required]
+    assert len(matching) == 1
+    with tarfile.open(archive / 'runtime.tar.gz', 'w:gz') as bundle:
+        for entry, body in members:
+            if entry.name == required:
+                if kind == 'missing':
+                    continue
+                if kind == 'stale':
+                    body = (b'#' if body[:1] != b'#' else b' ') + body[1:]
+            bundle.addfile(entry, io.BytesIO(body))
+        if kind == 'duplicate':
+            entry, body = matching[0]
+            bundle.addfile(entry, io.BytesIO(body))
+    changed = copy.deepcopy(manifest)
+    changed['archive_sha256'] = benchmark._hash(archive / 'runtime.tar.gz')
+    (archive / 'manifest.json').write_text(json.dumps(changed))
+    assert changed[capability.KEY] == manifest[capability.KEY]
+    assert changed['files'] == manifest['files']
+    return changed
+
+
+@pytest.mark.parametrize('route', ['full', 'no-index', 'native', 'decision'])
+def test_prepare_freezes_usage_owners_for_each_supported_route(packaged, tmp_path, monkeypatch, route):
+    archive, _, dataset = packaged
+    arm, options = _usage_route(route)
+    calls = []
+    monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k:
+        calls.append(a) or SimpleNamespace(returncode=0, stdout='', stderr=''))
+    result = benchmark.prepare(dataset=dataset, output=tmp_path / 'trial', archive=archive,
+                               arm=arm, **options)
+    required = benchmark._timeout_runtime_sources()
+    assert result['runtime_timeout_source_sha256'] == {
+        name: benchmark._hash(source) for name, source in required.items()}
+    if route in {'native', 'decision'}:
+        field = 'runtime_native_input_source_sha256' if route == 'native' else 'runtime_decision_source_sha256'
+        assert set(result[field]) == set(benchmark._decision_runtime_sources())
+        # Shared finalization owners remain bound in both declared scopes.
+        assert set(required) & set(result[field])
+    assert result['prepared'] is True and len(calls) == 1
+
+
+@pytest.mark.parametrize('route', ['full', 'no-index', 'native', 'decision'])
+@pytest.mark.parametrize('kind', ['missing', 'duplicate', 'stale'])
+@pytest.mark.parametrize('stage', ['prepare', 'execute'])
+def test_usage_source_bytes_required_despite_rehashed_outer_archive(
+        packaged, tmp_path, monkeypatch, route, kind, stage):
+    archive, manifest, dataset = packaged
+    arm, options = _usage_route(route)
+    output = tmp_path / 'trial'
+    prepared = None
+    if stage == 'execute':
+        monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k:
+            SimpleNamespace(returncode=0, stdout='', stderr=''))
+        prepared = benchmark.prepare(dataset=dataset, output=output, archive=archive, arm=arm, **options)
+    changed = _mutate_usage_member(archive, manifest, kind)
+    if prepared is not None:
+        # These digests are deliberately updated; the required source-body
+        # validator must still refuse before dispatch rather than trust labels.
+        prepared['archive_sha256'] = changed['archive_sha256']
+        prepared['manifest_sha256'] = benchmark._hash(archive / 'manifest.json')
+        (output / 'preparation.json').write_text(json.dumps(prepared))
+    monkeypatch.setattr(benchmark.subprocess, 'run', lambda *a, **k: pytest.fail('unexpected Harbor call'))
+    with pytest.raises(ValueError, match='rebuild the runtime archive'):
+        if stage == 'prepare':
+            benchmark.prepare(dataset=dataset, output=output, archive=archive, arm=arm, **options)
+        else:
+            benchmark.execute(output)
+    assert not (output / 'invocation.json').exists()
+    if stage == 'prepare':
+        assert not output.exists()

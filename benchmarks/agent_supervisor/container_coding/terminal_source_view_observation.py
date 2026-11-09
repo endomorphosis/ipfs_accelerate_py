@@ -102,15 +102,24 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
         _need(type(audit[key]) is int and audit[key] == 0)
     descriptor = protocol.validate_descriptor(audit["session"])
     evidence_enabled = descriptor["schema"] == "supervisor-worker-source-descriptor@4"
-    _need(evidence_enabled is (expected_semantic_working_set == "capsule-references@1"))
+    _need(evidence_enabled is (expected_semantic_working_set in {"capsule-references@1", "capsule-token-minimum@1"}))
+    token_dispatch = None
+    evaluated_lineage = None
     if evidence_enabled:
-        from .terminal_context_audit import _receipt
+        from .terminal_context_audit import _receipt, _token_working_set
         # Join the captured model input, selected projection and probe to this
         # session before treating any of its retrieval counts as qualified.
         _receipt(row, Path(row["workspace"]).parent)
-        working_set = row.get("semantic_working_set")
-        _need(type(working_set) is dict and working_set.get("requested_profile") == expected_semantic_working_set)
-        if working_set["selected_mode"] != "legacy":
+        if expected_semantic_working_set == "capsule-token-minimum@1":
+            token_dispatch, evaluated_lineage = _token_working_set(row)
+            _need(token_dispatch["requested_profile"] == expected_semantic_working_set)
+            deferred = token_dispatch["selected_representation"] == "working_set"
+        else:
+            working_set = row.get("semantic_working_set")
+            _need(type(working_set) is dict and working_set.get("requested_profile") == expected_semantic_working_set)
+            _need("semantic_working_set_dispatch" not in row and "semantic_working_set_evaluated" not in row)
+            deferred = working_set["selected_mode"] != "legacy"
+        if deferred:
             probe = row["semantic_working_set_preflight"]
             _need(any(record.get("response_sha256") == probe["response_sha256"]
                 and record.get("response_bytes") == probe["response_bytes"]
@@ -127,7 +136,7 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
     _need((attributed or ((audit["schema"] == "supervisor-worker-source-session@4") is editing
         and (editing or (audit["schema"] == "supervisor-worker-source-session@3") is shared)))
         and descriptor.get("source_edit_mode", "disabled") == expected_edit_mode)
-    observation = row["source_view_retrieval"]
+    observation = evaluated_lineage["source_view_retrieval"] if evaluated_lineage is not None else row["source_view_retrieval"]
     expected_fields = OBSERVATION_FIELDS | set(SHARED_PIN_FIELDS) if shared or editing or evidence_enabled else OBSERVATION_FIELDS
     if editing or evidence_enabled:
         expected_fields = expected_fields | {"source_edit_mode"}
@@ -152,7 +161,7 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
         _need(observation["source_edit_mode"] == expected_edit_mode)
     if expected_policy_binding is not None:
         _need(shared and descriptor["view_policy_binding_sha256"] == expected_policy_binding)
-    semantic = row["semantic_translation"]
+    semantic = evaluated_lineage["semantic_translation"] if evaluated_lineage is not None else row["semantic_translation"]
     _need(type(semantic) is dict and all(semantic.get(key) == descriptor[key] for key in (
         "task_id", "scope_cid", "semantic_root_cid", "semantic_sha256", "native_prompt_sha256")))
     boundary = row["external_container_boundary"]
@@ -264,6 +273,10 @@ def _session(raw, row, scope, *, expected_policy_binding=None, expected_edit_mod
             owner_writes_performed=False, task_validation_observed=False)
     if evidence_enabled:
         result["semantic_evidence_counts"] = evidence_counts
+    if token_dispatch is not None:
+        result.update(semantic_working_set_representation=token_dispatch["selected_representation"],
+            source_guidance_delivered=token_dispatch["selected_representation"] != "raw_native",
+            evaluated_source_lineage_only=token_dispatch["selected_representation"] == "raw_native")
     if attributed:
         result["request_operation_counts"] = request_observation.operation_counts(audit["requests"])
         _need(result["request_operation_counts"]["accepted_requests"] == counts["accepted_requests"])
@@ -297,7 +310,7 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
             expected_policy_binding = expected["source_view_policy_binding_sha256"]
         else:
             _need(not policy_fields.intersection(report))
-        selected = [row for row in rows if "source_view_retrieval" in row]
+        selected = [row for row in rows if "source_view_retrieval" in row or "semantic_working_set_dispatch" in row]
         if not selected:
             if provider_free_coding_application_observed(report):
                 return _base("not_applicable", "provider_free_doctor_materialization_observed")
@@ -323,7 +336,12 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
                     and type(row.get("invocation_id")) is str and 0 < len(row["invocation_id"]) <= 512
                     and row["invocation_id"] not in invocations)
                 invocations.add(row["invocation_id"])
-                observation = row["source_view_retrieval"]
+                if "semantic_working_set_dispatch" in row:
+                    from .terminal_context_audit import _token_working_set
+                    _, lineage = _token_working_set(row)
+                    observation = lineage["source_view_retrieval"]
+                else:
+                    observation = row["source_view_retrieval"]
                 _need(type(observation) is dict and observation.get("profile") == profile
                     and type(observation.get("session_id")) is str
                     and re.fullmatch("[0-9a-f]{32}", observation["session_id"]) is not None

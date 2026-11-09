@@ -1,4 +1,4 @@
-"""Opt-in capsule references with exact live expansion; no proof authority."""
+"""Opt-in capsule references and complete-input selection; no proof authority."""
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +8,8 @@ from .terminal_source_view_policy import DEFAULT_SOURCE_VIEW_PROFILE, validate_s
 from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
 
 DEFAULT_SEMANTIC_WORKING_SET = "legacy"
-SEMANTIC_WORKING_SETS = (DEFAULT_SEMANTIC_WORKING_SET, "capsule-references@1")
+TOKEN_MINIMUM_WORKING_SET = "capsule-token-minimum@1"
+SEMANTIC_WORKING_SETS = (DEFAULT_SEMANTIC_WORKING_SET, "capsule-references@1", TOKEN_MINIMUM_WORKING_SET)
 SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py",
     "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
@@ -29,6 +30,14 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+)
+TOKEN_SOURCE_PATHS = SOURCE_PATHS + (
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_selection.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_dispatch.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/automatic_prompt_tokenizer.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_prompt_tokenizer.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source_input_view.py",
+    "benchmarks/agent_supervisor/container_coding/automatic_tokenizer_audit.py",
 )
 
 
@@ -65,13 +74,15 @@ def semantic_working_set_observation(value):
 
 def require_semantic_working_set_archive(manifest, value):
     """Bind every selected producer before deployment or model dispatch."""
-    if _mode(value) == DEFAULT_SEMANTIC_WORKING_SET:
+    mode = _mode(value)
+    if mode == DEFAULT_SEMANTIC_WORKING_SET:
         return
     rows = manifest.get("files") if type(manifest) is dict else None
     if type(rows) is not list or len(rows) > 250_000:
         raise ValueError("semantic working set requires current runtime source inventory")
     checkout = Path(__file__).resolve().parents[3]
-    for relative in SOURCE_PATHS:
+    sources = TOKEN_SOURCE_PATHS if mode == TOKEN_MINIMUM_WORKING_SET else SOURCE_PATHS
+    for relative in sources:
         matches = [row for row in rows if type(row) is dict and row.get("path") == "source/" + relative]
         path = checkout / relative
         if (len(matches) != 1 or not path.is_file() or path.is_symlink()

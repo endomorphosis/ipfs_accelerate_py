@@ -12,6 +12,24 @@ The [world-model integration sequence](#semantic-world-model-integration-sequenc
 below distinguishes the existing components from their remaining worker-loop
 integration and measurement gates.
 
+The current-world runner now has a default-on, lossless metadata view. It factors
+identical scalar fields shared by selected context references into one inline
+table. Task text, evidence bodies, IDs, obligations and coverage remain present;
+the exact issued native prompt can be restored. Selection compares the complete
+rendered inputs, including source-tool guidance and coding reply instructions,
+with the existing pinned counter. Both bytes and declared local counts or
+labelled estimates must decrease.
+Missing or failed counters, ties and larger candidates retain native input;
+explicit token-budget failures still refuse dispatch. Owners can opt out with
+`run(compact_world_prompt=False)`. Historical invocation replay reconstructs the
+chosen form without a tokenizer or live source owner. The selected measurement
+reuses the comparison observation instead of counting the input twice.
+
+This improves a representation at the worker boundary. It neither selects fewer
+facts nor proves that the model needs fewer subsequent calls. The
+[worker qualification](compact_worker_benchmark.md#current-world-inline-metadata-compaction-2026-10-16)
+records the local evidence and the remaining matched-session measurement gate.
+
 ## Working decision: optimize the whole reading and decision loop
 
 The October 14 source audit separates three questions that must not be treated
@@ -1237,3 +1255,129 @@ wiring and benchmark observations. The datasets and kit commits and actual
 import origins stayed pinned and clean. An early fixture socket-path error
 and an overly broad Lean assertion are retained in the run history alongside
 their corrected results; they are not hidden as successful runs.
+
+## Bounded source working sets and world-prompt accounting (2026-10-15)
+
+The existing repository-source MCP gateway now supports bounded, exact original
+line ranges, including admitted files without Python symbol coverage. Replies
+retain the full-file hash and repository generation, state the omitted line
+count, and preserve whole-repository freshness checks. See the
+[source working-set guide](compact_worker_benchmark.md#exact-original-line-ranges-in-the-source-working-set-2026-10-15)
+for coordinates, limits and the explicit original-source requirement. This is a
+small source-expansion operation; it does not change the executable checkout or
+automatically replace the worker's ordinary terminal reads or required context.
+
+Ordinary prepared-world coding routes now count the complete rendered prompt
+offline by default. A compatible explicit owner counter or hash-bound tokenizer
+descriptor takes precedence; nonlegacy repository-source and tool policies
+retain their existing owner requirements. Local tokenizer counts and fallback
+estimates remain separately labelled. Historical invocation replay verifies
+prompt bindings and recorded arithmetic without recounting tokens. These
+observations do not establish provider tokenizer equivalence, account for
+provider-internal history, or guarantee whole-task token savings.
+
+The next comparison must measure adoption and displacement through the actual
+worker: which whole-file reads these exact ranges replace, which expansions are
+needed, and the complete input/output for the same accepted task. Keep the
+self-contained world packet and mandatory evidence intact until a separate
+continuation policy qualifies history replacement.
+
+The [fresh qualification](evidence/source-working-set-20261015/qualification.json)
+passed 451 checks across 12 test files, including automatic complete-prompt
+accounting, exact and estimated invocation replay, and actual native MCP range
+delivery. Earlier failed attempts and the four reviewed corrections remain
+recorded separately. The source guide reports a complete-reply fixture
+comparison; provider and whole-task token savings remain unmeasured.
+
+Worker read-scope observations now survive invocation cleanup and the existing
+Terminal report projection. The report also preserves the existing retrieval
+and tokenizer observations that its scalar-only projection previously omitted.
+Complete scope totals require every selected invocation's valid current-format
+observation; historical or missing scope remains unknown, including failed
+attempts. Native session reconciliation remains the separate source of token
+totals. The [local exchange method](compact_worker_benchmark.md#retained-read-scope-and-complete-local-exchanges-2026-10-15)
+counts initial guidance and all actual MCP request/reply frames in an authored
+worker fixture. It does not establish displaced ordinary reads or provider
+history savings. The existing opt-in full Codex repository-source route remains
+the qualified scope; typed semantic decision dispatch retains its current policy
+restrictions.
+
+The [worker/report qualification](evidence/source-adoption-20261015/qualification.json)
+passed 861 checks across 17 modules. Its authored prompt-plus-MCP exchange used
+34.4% fewer local tokenizer units for bounded exact reads. The comparison
+included common guidance, discovery, selectors and error frames; both arms
+passed the same source validation.
+This extends the earlier reply-only observation without claiming native provider
+or whole-task savings. Matched provider sessions using the existing A–E arms are
+still the next promotion gate.
+
+The [native-session comparison increment](compact_worker_benchmark.md#native-session-reconciliation-in-comparisons-2026-10-15)
+now applies the existing reconciliation owner to retained supervisor Codex
+receipts. Repeated cumulative snapshots count once; separate failed retries
+remain in the numerator. Missing modern identities and incomplete/conflicting
+observations withhold totals. Identified supervisor-session reuse across trials
+or arms withholds aggregate efficiency metrics. The subsequent
+[baseline and capsule overlap increment](compact_worker_benchmark.md#baseline-and-capsule-session-overlap-2026-10-15)
+joins reported baseline IDs to the same guard and applies it before capsule
+budget grouping. Historical unidentified wrappers are
+explicitly unreconciled, and shared-session dollar subtotals are not promoted to
+complete costs. Source-read and tokenizer diagnostics survive comparison
+without becoming native usage. Phase presence and complete supplied counts do
+not establish whole-campaign call coverage. The authored 357-to-247 example is
+an accounting correction, not a measured token reduction. The next promotion
+gate remains registered matched provider attempts with unchanged task acceptance
+and explicit coverage of planning, coding, retries and failures.
+
+Baseline identity coverage remains separate from provider authenticity and
+campaign completeness. Modern baseline receipts with partial identities,
+incoherent per-session sums or unknown session completion withhold complete
+totals while preserving labelled observations. Valid identities in a partial
+inventory still expose reuse. Capsule comparisons require complete aggregate
+usage; complete wrappers cannot override a shared-session aggregate failure.
+These accounting controls support the registered matched experiment without
+promoting authored counter corrections to savings.
+
+The [local collection and semantic coverage increment](compact_worker_benchmark.md#local-receipt-collection-and-semantic-attempt-coverage-2026-10-16)
+closes two additional gaps: a malformed normal planner reply now retains its
+possible missing attempt, and a lost or oversized later coding log cannot be
+masked by an earlier good receipt. The comparator recomputes existing semantic
+dialogue/owner coverage and retains dialogue-only native observations through
+the same native total owner. Coverage gaps block complete public totals without
+erasing observed usage. A clean bounded scan is not an attempt census, and outer
+native callback counts are not model-call counts. The next whole-run gate still
+requires a registered task population and independent dispatch coverage for
+planning, coding, expansions, retries and failed attempts; these local checks
+leave campaign completeness unknown.
+
+The same increment fixes ordinary Harbor cumulative snapshot summation and
+finalizes accounting on ordinary Terminal runs. Missing-attempt markers also
+withhold complete call counts, while retained invocation counts stay visible.
+The [Codex lifecycle bridge](compact_worker_benchmark.md#codex-lifecycle-metadata-through-harbor-2026-10-16)
+now supplies the existing lifecycle contract from current parser evidence and
+closes sparse-category regression gaps through the existing flags. Historical
+receipts retain their strict unknown/alias policies. Complete supplied-session
+exports remain distinct from the registered whole-run denominator needed for
+the matched experiment.
+
+
+The [frozen runtime and capsule pilot increment](compact_worker_benchmark.md#frozen-runtime-and-capsule-pilot-preparation-2026-10-16)
+binds the current declared lifecycle/accounting chain to physical runtime tar
+members on both benchmark preparation and execution. The existing capsule
+matrix now requires matched frozen configurations/assets/controls and its
+unchanged originally registered slot population before reporting readiness.
+A successful dry-run alone cannot establish those joins. The fixed nine-slot
+source-only pilot compares capsule budgets with model planning and common
+provider/resources; optional learned assets are held absent across arms.
+Complete future dispatch coverage, native usage, equivalent accepted-task
+outcomes and whole-task savings remain separate evidence requirements.
+
+Archive input custody now freezes the complete builder-selected population
+before native validation. Preparation refers to that fixed source generation;
+later unrelated checkout edits do not silently replace validated inputs.
+
+The fixed-generation [qualification](evidence/matched-preflight-20261016/qualification.json)
+passed 1,429 checks across 32 normal modules and independently verified a
+13,155-member archive plus nine actual matched Harbor dry-runs. No providers,
+containers or verifier executions were performed. This readies the setup;
+registered dispatch coverage and accepted-task native totals remain required
+for a savings claim.

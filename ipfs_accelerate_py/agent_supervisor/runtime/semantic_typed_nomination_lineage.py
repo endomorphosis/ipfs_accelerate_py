@@ -22,6 +22,7 @@ from .semantic_typed_source_context import (
 )
 
 LINEAGE_SCHEMA = "supervisor-semantic-typed-nomination-lineage@1"
+RETRIEVAL_LINEAGE_SCHEMA = "supervisor-semantic-typed-nomination-lineage@2"
 BINDING_SCHEMA = "supervisor-semantic-typed-nomination-binding@1"
 VERIFICATION_SCHEMA = "supervisor-semantic-typed-nomination-verification@1"
 MAX_LINEAGE_BYTES = 2_000_000
@@ -177,14 +178,17 @@ def _owner_material(*, repository, workspace, artifact, digest, directory, maxim
 
 
 def _validate_lineage(*, lineage, native_prompt, expected_origin_nomination_sha256,
-                      expected_task_id, owner_binding, source_proposal):
+                      expected_task_id, owner_binding, source_proposal, repository=None,
+                      require_current_source=False):
     """Reconstruct the transformation; do not accept cached verification flags."""
     from .semantic_decision_owner import build_decision_nomination, MAX_NOMINATION_BYTES
     _sha(expected_origin_nomination_sha256, "independent origin nomination")
     if (type(lineage) is not dict
             or set(lineage) != {"schema", "origin_nomination_text", "typed_nomination"}
-            or lineage["schema"] != LINEAGE_SCHEMA):
+            or type(lineage["schema"]) is not str
+            or lineage["schema"] not in {LINEAGE_SCHEMA, RETRIEVAL_LINEAGE_SCHEMA}):
         raise ValueError("exact typed nomination lineage required")
+    retrieval = lineage["schema"] == RETRIEVAL_LINEAGE_SCHEMA
     origin_text = lineage["origin_nomination_text"]
     if type(origin_text) is not str or not 1 <= len(origin_text.encode()) <= MAX_NOMINATION_BYTES:
         raise ValueError("bounded exact original nomination bytes required")
@@ -199,11 +203,16 @@ def _validate_lineage(*, lineage, native_prompt, expected_origin_nomination_sha2
         raise ValueError("typed origin nomination revision or explicit seeds differ")
     value = lineage["typed_nomination"]
     if (type(value) is not dict or set(value) != {"schema", "nomination", "launch_policy", "policy", "receipt"}
-            or value["schema"] != "supervisor-semantic-typed-owner-nomination@1"):
+            or value["schema"] != ("supervisor-semantic-typed-owner-nomination@2" if retrieval
+                                    else "supervisor-semantic-typed-owner-nomination@1")):
         raise ValueError("exact retained typed owner result required")
     receipt = value["receipt"]
-    if type(receipt) is not dict or receipt.get("schema") != "supervisor-semantic-typed-owner-policy-receipt@1":
+    if type(receipt) is not dict or receipt.get("schema") != (
+            "supervisor-semantic-typed-owner-policy-receipt@2" if retrieval
+            else "supervisor-semantic-typed-owner-policy-receipt@1"):
         raise ValueError("typed owner transformation receipt required")
+    if not retrieval and "retrieval_query_binding" in receipt:
+        raise ValueError("legacy typed lineage cannot carry retrieval parent custody")
     wire, _, _, _, text, artifact = codec._prompt_parts(native_prompt)
     parent = codec._parse(text)
     parent_sha = codec._sha(text)
@@ -248,14 +257,37 @@ def _validate_lineage(*, lineage, native_prompt, expected_origin_nomination_sha2
     # current-source assertion or invented provider envelope.
     from .semantic_context_projection import SemanticProjectionBindings
     from .semantic_decision_packet import build_semantic_decision_packet
-    build_semantic_decision_packet(original_text=text, policy=selected,
-        bindings=SemanticProjectionBindings(artifact=artifact, expected_sha256=parent_sha,
-            task_id=expected_task_id, semantic_root_cid=parent["semantic_root_cid"], scope_cid=parent["scope_cid"],
-            repository_id=wire["repository_id"], tree_id=wire["tree_id"]))
+    bindings = SemanticProjectionBindings(artifact=artifact, expected_sha256=parent_sha,
+        task_id=expected_task_id, semantic_root_cid=parent["semantic_root_cid"], scope_cid=parent["scope_cid"],
+        repository_id=wire["repository_id"], tree_id=wire["tree_id"])
+    semantic_view = build_semantic_decision_packet(original_text=text, policy=selected, bindings=bindings)
     nomination = build_decision_nomination(selected)
     descriptor = {"schema": "supervisor-semantic-decision-launch-policy@" + selected.schema_revision,
                   "task_id": expected_task_id, "parent_artifact": artifact,
                   "parent_sha256": parent_sha, "policy": selected.to_dict()}
+    if retrieval:
+        from .semantic_retrieval_query_reference import (
+            SemanticRetrievalQueryBinding, load_live_retrieval_query_context,
+            load_historical_retrieval_query_context, validate_native_retrieval_references,
+            build_retrieval_query_reference, restore_retrieval_query_reference,
+        )
+        binding = SemanticRetrievalQueryBinding.from_dict(receipt.get("retrieval_query_binding"))
+        if (not isinstance(repository, Path) or "worker_projection" not in parent
+                or selected.task_text_source_path is None or binding.task_id != expected_task_id):
+            raise ValueError("typed retrieval lineage requires its projected task-text and repository bindings")
+        loader = load_live_retrieval_query_context if require_current_source else load_historical_retrieval_query_context
+        native_retrieval = loader(repository=repository, binding=binding,
+            semantic_original_text=text, semantic_bindings=bindings)
+        validate_native_retrieval_references(wire=wire, binding=binding, native_text=native_retrieval)
+        retrieval_view = build_retrieval_query_reference(native_text=native_retrieval, binding=binding,
+            semantic_view=semantic_view, semantic_original_text=text, semantic_bindings=bindings, policy=selected)
+        restored = restore_retrieval_query_reference(view=retrieval_view, native_text=native_retrieval,
+            binding=binding, semantic_view=semantic_view, semantic_original_text=text,
+            semantic_bindings=bindings, policy=selected)
+        if restored != native_retrieval:
+            raise ValueError("typed historical retrieval inverse differs from the native original")
+        descriptor.update(schema="supervisor-semantic-decision-launch-policy@3",
+                          retrieval_query_binding=binding.to_dict())
     if (value["nomination"] != nomination or value["policy"] != selected.to_dict()
             or value["launch_policy"] != descriptor):
         raise ValueError("typed lineage does not reconstruct the exact derived nomination/launch policy")
@@ -353,7 +385,8 @@ def load_and_verify_typed_nomination_lineage(
         graph_root_id=graph_root, seed_symbol_ids=seeds, graph_scope=graph_scope)
     nomination, descriptor = _validate_lineage(lineage=lineage, native_prompt=native_prompt,
         expected_origin_nomination_sha256=expected_origin_nomination_sha256,
-        expected_task_id=expected_task_id, owner_binding=owner_binding, source_proposal=source)
+        expected_task_id=expected_task_id, owner_binding=owner_binding, source_proposal=source, repository=repository,
+        require_current_source=require_current_source)
     derived_raw = _owner_material(repository=repository, workspace=workspace,
         artifact=Path(commit["derived_nomination_artifact"]), digest=commit["derived_nomination_sha256"],
         directory="semantic-decision-nominations", maximum=256_000)

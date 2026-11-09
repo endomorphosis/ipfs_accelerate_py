@@ -186,8 +186,12 @@ def test_declared_runtime_inventory_retains_typed_graph_and_lineage_dependencies
     # This API returns declared paths; no directory scan, archive construction,
     # source reads or existence tests are needed to check the capability set.
     sources = benchmark._decision_runtime_sources()
-    assert len(sources) == 32 and len(sources) == len(set(sources))
+    assert len(sources) == 36 and len(sources) == len(set(sources))
     assert benchmark.TIMEOUT_RUNTIME_ARCHIVE_PREFIX + "terminal_context_evidence.py" in sources
+    assert {benchmark.TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name for name in (
+        "terminal_decision_policy.py", "terminal_decision_usage_projection.py",
+        "full_supervisor_benchmark.py", "benchmark_controls.py",
+    )} <= set(sources)
     required = {
         benchmark.DECISION_RUNTIME_ARCHIVE_PREFIX + name for name in (
             "semantic_typed_owner_policy.py", "semantic_typed_source_context.py",

@@ -15,6 +15,7 @@ import tarfile
 from types import SimpleNamespace
 
 import pytest
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 from harbor.models.agent.context import AgentContext
 
 from benchmarks.agent_supervisor.container_coding import (
@@ -26,7 +27,7 @@ from benchmarks.agent_supervisor.container_coding import (
 from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import write_task_context_bundle
 from test.api.test_terminal_decision_archive import _decision_runtime_archive
 from test.api.test_terminal_prompt_tokenizer_forwarding import supervisor
-from test.api.test_terminal_timeout_configuration import _authored_prepare_dataset
+from test.api.test_current_terminal_archive_fixtures import _authored_prepare_dataset
 
 NOMINATION = {"semantic_decision_nomination_artifact": "/owner/nomination.json",
               "semantic_decision_nomination_sha256": "a" * 64,
@@ -94,7 +95,7 @@ def test_invalid_optin_refuses_before_host_or_driver_effects(tmp_path, monkeypat
     with pytest.raises(ValueError):
         benchmark.prepare(dataset=unread, output=tmp_path / "output", archive=unread, arm=arm, **options)
     with pytest.raises(ValueError):
-        adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+        adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"],
             runtime_archive=str(tmp_path / "missing"), arm=arm, **options)
     with pytest.raises(ValueError):
         driver.run(instruction=Path("/instruction"), state=Path("/state"), arm=arm, **options)
@@ -185,7 +186,7 @@ def test_actual_driver_derives_signed_group_from_authenticated_context_after_adm
 @pytest.mark.parametrize("selected", [False, True])
 def test_harbor_forwards_optin_once_without_unsigned_bundle_inputs(tmp_path, monkeypatch, selected):
     archive = tmp_path / "archive"; archive.mkdir()
-    (archive / "manifest.json").write_text(json.dumps({"archive_sha256": "authored", "learned_requirements": []}))
+    (archive / "manifest.json").write_text(json.dumps(_supervisor_manifest({"archive_sha256": "authored", "learned_requirements": []})))
     commands = []
     class Environment:
         async def upload_file(self, source, target): pass
@@ -196,7 +197,7 @@ def test_harbor_forwards_optin_once_without_unsigned_bundle_inputs(tmp_path, mon
     async def capture(*args, **kwargs): return {"status": "authored"}
     monkeypatch.setattr(adapter, "capture_public_inputs", capture)
     monkeypatch.setattr(adapter, "export_public_outputs", capture)
-    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"],
         runtime_archive=str(archive), arm="full", semantic_retrieval_query_reference=selected, **NOMINATION)
     context = AgentContext()
     asyncio.run(agent.run("Authored public task.", Environment(), context))
@@ -212,6 +213,8 @@ def _reference_archive(tmp_path):
         rows = [(m.name, original.extractfile(m).read()) for m in original]
     extra = {k: v for k, v in benchmark._decision_runtime_sources(retrieval_query_reference=True).items()
              if k not in benchmark._decision_runtime_sources()}
+    rows = [(name, raw) for name, raw in rows if name not in extra]
+    manifest["files"] = [row for row in manifest["files"] if row["path"] not in extra]
     for name, source in extra.items():
         raw = source.read_bytes(); rows.append((name, raw))
         manifest["files"].append({"path": name, "bytes": len(raw), "sha256": benchmark._hash(source), "mode": 0o644})
@@ -279,15 +282,28 @@ def test_cli_forwards_explicit_optin_and_keeps_default_keyword_absent(tmp_path, 
     monkeypatch.setattr(benchmark, "prepare", lambda **kwargs: calls.append(kwargs) or {"provider_calls": 0})
     argv = ["full-supervisor", "prepare", "--output", str(tmp_path / "output"),
             "--dataset", str(tmp_path / "dataset"), "--archive", str(tmp_path / "archive")]
+    reference_arguments = [
+        "--semantic-decision-nomination-artifact", NOMINATION["semantic_decision_nomination_artifact"],
+        "--semantic-decision-nomination-sha256", NOMINATION["semantic_decision_nomination_sha256"],
+        "--disable-semantic-typed-nomination", "--semantic-retrieval-query-reference",
+    ]
+    monkeypatch.setattr(sys, "argv", argv + ["--semantic-retrieval-query-reference"])
+    with pytest.raises(ValueError, match="owner nomination with typed nomination disabled"):
+        benchmark.main()
+    assert calls == []
     for selected in (False, True):
-        monkeypatch.setattr(sys, "argv", argv + (["--semantic-retrieval-query-reference"] if selected else []))
-        benchmark.main(); assert json.loads(capsys.readouterr().out) == {"provider_calls": 0}
+        monkeypatch.setattr(sys, "argv", argv + (reference_arguments if selected else []))
+        benchmark.main()
+        assert json.loads(capsys.readouterr().out) == {"provider_calls": 0}
         assert ("semantic_retrieval_query_reference" in calls[-1]) is selected
+        if selected:
+            assert calls[-1]["disable_semantic_typed_nomination"] is True
+            assert str(calls[-1]["semantic_decision_nomination_artifact"]) == NOMINATION["semantic_decision_nomination_artifact"]
     driver_result = {"task_completed": True, "arm": "full", "seconds": 0, "provider_invocations": []}
     monkeypatch.setattr(driver, "run", lambda **kwargs: calls.append(kwargs) or driver_result)
     for selected in (False, True):
         monkeypatch.setattr(sys, "argv", ["terminal-driver", "--instruction", "/instruction", "--state", "/state", "--arm", "full"]
-            + (["--semantic-retrieval-query-reference"] if selected else []))
+            + (reference_arguments if selected else []))
         assert driver.main() == 0
         assert json.loads(capsys.readouterr().out) == driver_result
-        assert ("semantic_retrieval_query_reference" in calls[-1]) is selected
+        assert calls[-1]["semantic_retrieval_query_reference"] is selected

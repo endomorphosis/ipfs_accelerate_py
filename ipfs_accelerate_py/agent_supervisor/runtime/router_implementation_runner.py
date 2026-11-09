@@ -207,7 +207,8 @@ def _source_broker_observation(*, path, digest, workspace, encoded, boundary_sha
         raise ValueError("source descriptor differs from validated semantic evidence")
     if descriptor.get("source_edit_mode", "disabled") != source_edit_mode:
         raise ValueError("source edit mode differs from owner descriptor")
-    expected_evidence = "selected-capsules@1" if semantic_working_set == "capsule-references@1" else "disabled"
+    expected_evidence = "selected-capsules@1" if semantic_working_set in {
+        "capsule-references@1", "capsule-token-minimum@1"} else "disabled"
     if descriptor.get("semantic_evidence_mode", "disabled") != expected_evidence:
         raise ValueError("semantic working set differs from owner evidence service")
     advice = guidance(profile, **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {})).encode()
@@ -537,6 +538,11 @@ def _measure_world_packet_prompt(*, model_prompt, provider, model, token_counter
         provider=provider, model=model, token_counter=token_counter,
         max_input_tokens=max_input_tokens, native_output_schema=native_output_schema,
     )
+    return _world_packet_prompt_measurement(model_prompt=model_prompt, measured=measured)
+
+
+def _world_packet_prompt_measurement(*, model_prompt, measured):
+    """Project the selected observation without recounting the same input."""
     receipt = {
         "schema": "supervisor-world-task-prompt-measurement@1",
         "measurement_kind": ("declared_local_estimate" if measured["measurement_status"] == "estimated"
@@ -809,6 +815,7 @@ def _refuse_candidate_preparation(prompt):
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
+        resume_session_id: str | None = None,
         semantic_repository: Path | None = None,
         source_formalization_handoff: Path | None = None,
         source_formalization_handoff_sha256: str | None = None,
@@ -841,6 +848,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         max_input_tokens: int | None = None,
         world_task_packet: PreparedRepositoryWorldPacket | None = None,
         world_packet_audit_directory: Path | None = None,
+        compact_world_prompt: bool = True,
         codex_cli_literal_response: bool = False,
         receipt_observer: Callable[[dict], None] | None = None) -> tuple[str, dict]:
     """Dispatch once; an optional owner-prepared packet replaces task context."""
@@ -852,12 +860,23 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     from ipfs_accelerate_py.router_deps import RouterDeps
 
     failure_phase = "argument_validation"
+    if type(compact_world_prompt) is not bool:
+        raise ValueError("world prompt compaction must be an explicit Boolean")
     if type(codex_cli_literal_response) is not bool:
         raise ValueError("Codex literal response must be an explicit Boolean")
     if codex_cli_literal_response and provider != "codex_cli":
         raise ValueError("Codex literal response requires the Codex CLI provider")
     if receipt_observer is not None and not callable(receipt_observer):
         raise ValueError("explicit receipt observer callback required")
+    if resume_session_id is not None:
+        if provider != "grok_cli" or type(resume_session_id) is not str:
+            raise ValueError("explicit native resume requires the Grok CLI provider and a canonical session UUID")
+        try:
+            canonical_session_id = str(uuid.UUID(resume_session_id))
+        except (ValueError, AttributeError):
+            raise ValueError("explicit native resume requires a canonical session UUID") from None
+        if canonical_session_id != resume_session_id:
+            raise ValueError("explicit native resume requires a canonical session UUID")
     if world_packet_audit_directory is not None and world_task_packet is None:
         raise ValueError("world packet audit capture requires a prepared world packet")
     if world_task_packet is not None:
@@ -970,7 +989,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider, purpose=purpose)
     if grok_coding_max_turns != 128 and census_only:
         raise ValueError("nondefault coding turns require generation, not metadata census")
-    if type(semantic_working_set) is not str or semantic_working_set not in {"legacy", "capsule-references@1"}:
+    if type(semantic_working_set) is not str or semantic_working_set not in {
+            "legacy", "capsule-references@1", "capsule-token-minimum@1"}:
         raise ValueError("unsupported semantic working set")
     if semantic_working_set != "legacy" and (purpose != "coding" or not source_selected
             or semantic_repository is None or semantic_transport_schema != "supervisor-semantic-router-input@1"
@@ -996,15 +1016,19 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                                                  compatibility_basis="owner_declaration")
         tokenizer_source = local.provenance()
     elif (prompt_token_counter is None and purpose == "coding"
-            and semantic_repository is None and world_task_packet is None and not census_only
+            and semantic_repository is None and not census_only
             and not source_lookup_selected
             and all(policy == "legacy" for policy in (
                 semantic_metadata_view, semantic_working_set, tool_output_policy,
                 source_view_advisory_policy, repository_source_policy, source_input_policy,
                 query_reference_policy, coding_reply_mode))):
-        # Default calibration is confined to the ordinary coding route. Prepared
-        # world/semantic and explicitly selected source/tool routes retain their
-        # existing owner-controlled measurement and selection contracts.
+        # Ordinary coding and prepared-world inputs use the same offline default
+        # counter. World measurement happens after the final workspace/reply
+        # wrappers and never compares the packet with the unlike raw task.
+        # Semantic and explicit source/tool routes retain their owner counters.
+        from .automatic_prompt_tokenizer import resolve_prompt_tokenizer
+        prompt_token_counter, tokenizer_source = resolve_prompt_tokenizer(provider=provider, model=model)
+    if semantic_working_set == "capsule-token-minimum@1" and prompt_token_counter is None:
         from .automatic_prompt_tokenizer import resolve_prompt_tokenizer
         prompt_token_counter, tokenizer_source = resolve_prompt_tokenizer(provider=provider, model=model)
     failure_phase = "planning_contract"
@@ -1217,6 +1241,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         model_prompt, coding_reply_receipt = apply_coding_reply_contract(
             model_prompt=model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
     semantic_model_prompt = model_prompt
+    semantic_router_prompt = router_prompt
     semantic_reply_receipt = coding_reply_receipt
     metadata_receipt = None
     metadata_native_reply = None
@@ -1280,6 +1305,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if coding_reply_mode != "legacy" and model_prompt == candidate_model:
             coding_reply_receipt = candidate_reply
     working_set_receipt = None
+    working_set_dispatch = None
+    working_set_evaluated = None
+    working_set_counter_inputs = None
+    working_set_native_schema = None
     if semantic_working_set != "legacy":
         failure_phase = "semantic_working_set"
         from .semantic_working_set import project_semantic_working_set, select_working_set
@@ -1299,25 +1328,116 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if coding_reply_mode != "legacy":
             candidate_model, candidate_reply = apply_coding_reply_contract(model_prompt=candidate_model,
                 mode=coding_reply_mode, purpose=purpose, provider=provider)
-        selection = select_working_set(view, native_complete_prompt=model_prompt,
-            candidate_complete_prompt=candidate_model)
-        working_set_receipt = selection.receipt
-        model_prompt = selection.provider_prompt
-        if selection.selected_mode != "legacy":
-            router_prompt = candidate_router
-            coding_reply_receipt = candidate_reply
+        if semantic_working_set == "capsule-token-minimum@1":
+            from .semantic_working_set_selection import select_complete_working_set
+            from .semantic_working_set_dispatch import bind_working_set_dispatch
+            # Raw fallback has no advertised source-helper route. Literal task,
+            # public requirements and residual obligations remain unchanged.
+            if not source_guidance or not required_suffix.startswith(source_guidance):
+                raise ValueError("working set raw requirements differ from the source guidance")
+            native_router_prompt = prompt + required_suffix[len(source_guidance):]
+            native_model_prompt, native_advisory = render_model_prompt(
+                prompt=native_router_prompt, purpose=purpose, workspace=root,
+                tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
+                repository_source_binding=repository_source_binding)
+            from .coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
+            native_model_prompt, native_reply_receipt = apply_coding_reply_contract(
+                model_prompt=native_model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
+            working_set_native_schema = coding_completion_schema() if native_reply_receipt is not None else None
+            selection = select_complete_working_set(view=view,
+                native_complete_prompt=native_model_prompt, semantic_complete_prompt=semantic_model_prompt,
+                working_set_complete_prompt=candidate_model, provider=provider, model=model,
+                token_counter=prompt_token_counter, native_output_schema=working_set_native_schema,
+                max_input_tokens=max_input_tokens)
+            if selection.receipt["measurement_status"] not in {"measured", "estimated"}:
+                raise ValueError("working set dispatch requires a consistent known local counter")
+            working_set_counter_inputs = dict(raw_native=native_model_prompt,
+                semantic_full=semantic_model_prompt, working_set=candidate_model)
+            model_prompt = selection.selected_prompt
+            if selection.selected_representation == "raw_native":
+                working_set_evaluated = dict(semantic_translation=dict(encoded.receipt),
+                    source_view_retrieval=dict(source_receipt))
+                router_prompt, advisory = native_router_prompt, native_advisory
+                coding_reply_receipt = native_reply_receipt
+                encoded = None
+                semantic_component_census = None
+            elif selection.selected_representation == "semantic_full":
+                router_prompt, coding_reply_receipt = semantic_router_prompt, semantic_reply_receipt
+            else:
+                router_prompt, coding_reply_receipt = candidate_router, candidate_reply
+            working_set_dispatch = bind_working_set_dispatch(selection=selection.receipt,
+                router_prompt=router_prompt, model_prompt=model_prompt, reply_contract=coding_reply_receipt)
+        else:
+            selection = select_working_set(view, native_complete_prompt=model_prompt,
+                candidate_complete_prompt=candidate_model)
+            working_set_receipt = selection.receipt
+            model_prompt = selection.provider_prompt
+            if selection.selected_mode != "legacy":
+                router_prompt = candidate_router
+                coding_reply_receipt = candidate_reply
     prompt_selection = None
     world_prompt_measurement = None
+    world_prompt_compaction = None
     metadata_candidate_receipt = None
+    if world_task_packet is not None:
+        failure_phase = "prompt_selection"
+        world_prompt_compaction = {
+            "schema": "supervisor-world-prompt-compaction@1",
+            "enabled": compact_world_prompt,
+            "projection": None,
+            "selection": None,
+            "selected_mode": "native",
+        }
+        if compact_world_prompt:
+            from .repository_world_packet import project_repository_world_prompt, restore_repository_world_prompt
+            from .coding_reply_contract import coding_completion_schema
+            world_view = project_repository_world_prompt(world_task_packet.prompt)
+            if (restore_repository_world_prompt(world_view.provider_prompt, world_view.receipt)
+                    != world_task_packet.prompt or not router_prompt.startswith(world_task_packet.prompt)):
+                raise ValueError("world prompt view differs from the issued packet")
+            world_prompt_compaction["projection"] = world_view.receipt
+            candidate_router = world_view.provider_prompt + router_prompt[len(world_task_packet.prompt):]
+            candidate_model, candidate_advisory = render_model_prompt(
+                prompt=candidate_router, purpose=purpose, workspace=root, world_packet=True,
+                tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
+                repository_source_binding=repository_source_binding)
+            if candidate_advisory != advisory:
+                raise ValueError("world prompt view changed the workspace advisory")
+            candidate_reply = None
+            if coding_reply_mode != "legacy":
+                candidate_model, candidate_reply = apply_coding_reply_contract(
+                    model_prompt=candidate_model, mode=coding_reply_mode, purpose=purpose, provider=provider)
+                prompt_fields = {"model_prompt_before_sha256", "model_prompt_before_bytes",
+                                 "model_prompt_after_sha256", "model_prompt_after_bytes"}
+                if ({key: value for key, value in candidate_reply.items() if key not in prompt_fields}
+                        != {key: value for key, value in coding_reply_receipt.items() if key not in prompt_fields}):
+                    raise ValueError("world prompt view changed the coding response contract")
+            # Compare complete inputs, including every advisory and reply
+            # instruction. Equal or larger byte representations stay native.
+            if len(candidate_model.encode("utf-8")) < len(model_prompt.encode("utf-8")):
+                model_prompt, selection = select_model_prompt(
+                    native_complete_prompt=model_prompt, candidate_complete_prompt=candidate_model,
+                    provider=provider, model=model, token_counter=prompt_token_counter,
+                    max_input_tokens=max_input_tokens,
+                    native_output_schema=coding_completion_schema() if coding_reply_receipt is not None else None,
+                    candidate_representation="semantic_metadata")
+                world_prompt_compaction["selection"] = selection
+                if selection["selected_representation"] == "semantic_metadata":
+                    world_prompt_compaction["selected_mode"] = "compact"
+                    coding_reply_receipt = candidate_reply
     if world_task_packet is not None and (prompt_token_counter is not None or max_input_tokens is not None):
         failure_phase = "prompt_selection"
         from .coding_reply_contract import coding_completion_schema
-        world_prompt_measurement = _measure_world_packet_prompt(
-            model_prompt=model_prompt, provider=provider, model=model,
-            token_counter=prompt_token_counter, max_input_tokens=max_input_tokens,
-            native_output_schema=coding_completion_schema() if coding_reply_receipt is not None else None,
-        )
-    elif prompt_token_counter is not None or max_input_tokens is not None:
+        if world_prompt_compaction["selection"] is not None:
+            world_prompt_measurement = _world_packet_prompt_measurement(
+                model_prompt=model_prompt, measured=world_prompt_compaction["selection"])
+        else:
+            world_prompt_measurement = _measure_world_packet_prompt(
+                model_prompt=model_prompt, provider=provider, model=model,
+                token_counter=prompt_token_counter, max_input_tokens=max_input_tokens,
+                native_output_schema=coding_completion_schema() if coding_reply_receipt is not None else None,
+            )
+    elif working_set_dispatch is None and (prompt_token_counter is not None or max_input_tokens is not None):
         failure_phase = "prompt_selection"
         native_router_prompt = prompt + required_suffix
         native_model_prompt, native_advisory = render_model_prompt(
@@ -1481,6 +1601,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "provider_attempted": False,
             "provider_retained_parent": False,
             "prompt_measurement": world_prompt_measurement,
+            "prompt_compaction": world_prompt_compaction,
         }
     if semantic_component_census is not None:
         receipt["semantic_prompt_components"] = semantic_component_census
@@ -1504,6 +1625,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["semantic_metadata_view"] = metadata_receipt
     if working_set_receipt is not None:
         receipt["semantic_working_set"] = working_set_receipt
+    if working_set_dispatch is not None:
+        receipt["semantic_working_set_dispatch"] = working_set_dispatch
+    if working_set_evaluated is not None:
+        receipt["semantic_working_set_evaluated"] = working_set_evaluated
     if displacement_receipt is not None:
         receipt["representation_displacement"] = displacement_receipt
     if metadata_native_reply is not None:
@@ -1544,7 +1669,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["numerical_obligation_retrieval"] = numerical_receipt
     if source_lookup_receipt is not None:
         receipt["source_lookup_retrieval"] = source_lookup_receipt
-    if source_receipt is not None:
+    if source_receipt is not None and working_set_evaluated is None:
         receipt["source_view_retrieval"] = source_receipt
     if provider == "grok_cli":
         # Grok treats an empty allowlist as its default toolset. A nonempty
@@ -1566,6 +1691,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "disallowed_tools": provider_options["grok_disallowed_tools"].split(","),
             "effective_toolset_verified": False,
         }
+        if resume_session_id is not None:
+            # An owner may resume a genuinely created and independently
+            # attested native session. Explicit kwargs keep allocation routing
+            # from creating a different chat session. This does not create,
+            # inspect or qualify the supplied session's content or toolset.
+            provider_options["resume_session_id"] = resume_session_id
+            receipt["provider_invocation_policy"]["native_resume_session_id"] = resume_session_id
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = False
         if purpose == "coding":
             provider_options.update(grok_stream_progress=True,
                                     grok_progress_callback=_grok_progress_emitter(invocation))
@@ -1647,7 +1780,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 boundary_sha256=container_boundary_sha256, formalization_receipt=formalization_receipt)
             if current != source_lookup_receipt:
                 raise ValueError("source descriptor changed before provider dispatch")
-        if working_set_receipt is not None and working_set_receipt["selected_mode"] != "legacy":
+        if (working_set_receipt is not None and working_set_receipt["selected_mode"] != "legacy"
+                or working_set_dispatch is not None and working_set_dispatch["selected_representation"] == "working_set"):
             failure_phase = "semantic_working_set"
             from .worker_semantic_evidence_client import request_page
             references = json.loads(view.provider_prompt)["working_set"]["capsule_references"]
@@ -1679,6 +1813,44 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
                                                       source_lookup_descriptor_sha256):
+            if working_set_dispatch is not None:
+                failure_phase = "semantic_working_set_currentness"
+                selected = working_set_dispatch["selection"]
+                def counter_binding():
+                    return (prompt_token_counter.binding(), prompt_token_counter.count_kind,
+                        prompt_token_counter.compatibility_basis)
+                expected_counter = (selected["tokenizer_binding"], selected["token_count_kind"],
+                    selected["tokenizer_compatibility_basis"])
+                if counter_binding() != expected_counter:
+                    raise ValueError("working set counter binding changed before dispatch")
+                count_field = "estimated_content_tokens" if selected["token_count_kind"] == "estimate" else "content_tokens"
+                observations = {}
+                for name, complete in working_set_counter_inputs.items():
+                    measured = selected["candidates"][name]
+                    if measured["byte_eligible"]:
+                        observations[complete] = measured[count_field]
+                if working_set_native_schema is not None:
+                    observations[json.dumps(working_set_native_schema, sort_keys=True,
+                        separators=(",", ":"), ensure_ascii=False, allow_nan=False)] = selected["native_output_schema"][count_field]
+                for complete, expected_count in observations.items():
+                    try:
+                        observed_count = prompt_token_counter.count(complete)
+                    except Exception as error:
+                        raise ValueError("working set counter failed before dispatch") from error
+                    if observed_count != expected_count or counter_binding() != expected_counter:
+                        raise ValueError("working set counter changed before dispatch")
+                # Counter/initialization/preflight callbacks can edit sources.
+                # Close the native source and descriptor fences after them for
+                # every winner, including raw and nondeferred semantic input.
+                from .source_input_view import recheck_source_input_freshness
+                recheck_source_input_freshness(encoded=source_view_encoded,
+                    repository=semantic_repository, workspace=root)
+                current = _source_broker_observation(path=source_view_descriptor,
+                    digest=source_view_descriptor_sha256, workspace=root, encoded=source_view_encoded,
+                    boundary_sha256=container_boundary_sha256, profile=source_view_profile,
+                    semantic_working_set=semantic_working_set, **source_edit_options)
+                if current != source_receipt or Path.cwd().resolve(strict=True) != root:
+                    raise ValueError("working set source or descriptor changed before dispatch")
             if scoped_instruction:
                 # Initialization, descriptor checks and working-set preflight
                 # may run caller code. Close the complete signed source replay
@@ -1713,11 +1885,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 side_effecting=True,
                 task_kind="coding", allocation_path="cli", allocation_session_id=invocation,
                 codex_cli_literal_response=codex_cli_literal_response,
-                **({"temperature": 0} if provider == "codex_cli" else {}),
+                temperature=0,
                 **provider_options,
             )
         failure_phase = "provider_result_validation"
         observation = get_last_cli_observation(provider)
+        if resume_session_id is not None:
+            if observation.get("session_id") != resume_session_id:
+                raise RuntimeError("observed Grok native resume session differs from the explicit request")
+            receipt["provider_invocation_policy"]["native_resume_identity_verified"] = True
         if repository_source_binding is not None and (
                 observation.get("codex_repository_source_config_sha256") != repository_source_binding["config_sha256"]
                 or observation.get("codex_repository_source_configured") is not True):
@@ -1920,7 +2096,7 @@ def main():
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
-    parser.add_argument("--semantic-working-set", default="legacy", choices=["legacy", "capsule-references@1"])
+    parser.add_argument("--semantic-working-set", default="legacy", choices=["legacy", "capsule-references@1", "capsule-token-minimum@1"])
     from .tool_output_policy import POLICIES as TOOL_OUTPUT_POLICIES
     parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
     from .source_view_policy import POLICIES as SOURCE_VIEW_POLICIES

@@ -1912,6 +1912,9 @@ class EAAEFBorrowedTransactionAdapter:
         task = self._task_record(owned, task_cid)
         if task is None:
             raise EAAEFBorrowedTransactionConflict("task is absent")
+        from .execution_packet_admission import require_execution_packet_on, DISPATCH_STATUSES
+        if status in DISPATCH_STATUSES:
+            require_execution_packet_on(owned, task_cid)
         live_claim = self._protect_current_task(
             owned,
             task_cid=task_cid,
@@ -2178,13 +2181,16 @@ class EAAEFBorrowedTransactionAdapter:
             )
         task_id = _identifier(args["task_id"], "task_id")
         registration_body = _object(args["body"], "coordination task projection")
-        basic = {"task_alias", "status"}
+        from .execution_packet_admission import execution_packet_required
+        packet_required = execution_packet_required(task["body"])
+        basic = {"task_alias", "status"} | ({"execution_packet_required"} if packet_required else set())
         with_priority = basic | {"priority"}
         if (
             task_id != task["task_alias"]
             or set(registration_body) not in (basic, with_priority)
             or registration_body.get("task_alias") != task["task_alias"]
             or registration_body.get("status") != task["status"]
+            or (packet_required and registration_body.get("execution_packet_required") is not True)
             or (
                 "priority" in registration_body
                 and registration_body["priority"] != task["priority"]
@@ -2251,6 +2257,11 @@ class EAAEFBorrowedTransactionAdapter:
             task_cid_raw, status_raw = task_row[0], task_row[2]
             task_cid = str(task_cid_raw)
             if task_cid in excluded or str(status_raw) not in _READY:
+                continue
+            from .execution_packet_admission import require_execution_packet_on, ExecutionPacketAdmissionError
+            try:
+                require_execution_packet_on(owned, task_cid, phase="claim")
+            except ExecutionPacketAdmissionError:
                 continue
             blocked = owned.execute(
                 "SELECT 1 FROM task_blocks WHERE task_cid=? AND state='active' LIMIT 1",
@@ -3128,6 +3139,9 @@ class EAAEFBorrowedTransactionAdapter:
             "lease_state": lease_state,
             "replayed": False,
         }
+        if target == "aborted":
+            from .execution_packet_admission import require_execution_packet_on
+            require_execution_packet_on(owned, task_cid)
         if target == "succeeded":
             owned.execute(
                 "UPDATE eaaef_completion_barriers SET status=?, "
@@ -3699,6 +3713,8 @@ class EAAEFBorrowedTransactionAdapter:
                 raise EAAEFBorrowedTransactionConflict(
                     "expired attempt task is not safely retryable"
                 )
+            from .execution_packet_admission import require_execution_packet_on
+            require_execution_packet_on(owned, identity["task_cid"])
             if task["status"] != "ready":
                 task_revision = task["revision"] + 1
                 owned.execute(
@@ -3877,6 +3893,10 @@ class EAAEFBorrowedTransactionAdapter:
                     "reason": str(body["reason"]),
                 },
             }
+            from .execution_packet_admission import require_execution_packet_on, task_record_on
+            prospective = task_record_on(owned, current["task_cid"])
+            prospective["body"] = task_body
+            require_execution_packet_on(owned, current["task_cid"], record=prospective)
             task_change = owned.execute(
                 "UPDATE tasks SET status='ready', revision=?, updated_at=?, body_json=? "
                 "WHERE task_cid=? AND revision=? RETURNING task_cid",
@@ -4127,6 +4147,9 @@ class EAAEFBorrowedTransactionAdapter:
             "result",
         }
         args = _exact(arguments, fields, operation)
+        if operation.endswith("reserve"):
+            from .execution_packet_admission import require_execution_packet_on
+            require_execution_packet_on(owned, str(args["task_cid"]), phase="provider")
         if args["kind"] != EAAEF_CONTAINER_DISPATCH_OPERATION_KIND:
             raise EAAEFBorrowedTransactionError(
                 "container dispatch operation kind differs"
@@ -4272,6 +4295,11 @@ class EAAEFBorrowedTransactionAdapter:
                 raise EAAEFBorrowedTransactionError("reservation kind differs")
             attempt_id = _identifier(args["attempt_id"], "attempt_id")
             key = _identifier(args["idempotency_key"], "idempotency_key")
+            if kind == "provider":
+                task_row = owned.execute("SELECT task_cid FROM task_attempts WHERE attempt_id=?", [attempt_id]).fetchone()
+                if task_row is not None:
+                    from .execution_packet_admission import require_execution_packet_on
+                    require_execution_packet_on(owned, str(task_row[0]), phase="provider")
             row = owned.execute(
                 f"SELECT {id_column}, result_json, {status_column}, task_cid FROM {table} "
                 "WHERE attempt_id=? AND idempotency_key=?",

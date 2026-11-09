@@ -3285,3 +3285,90 @@ def test_collapse_extra_gate_recursion_binds_live_unit_not_inventory(tmp_path):
     assert skipped["status"] == "wait"
     assert skipped["completion_authority"] is False
     assert skipped["reason"] == "retain_owner_not_rewrapped"
+
+
+def test_repair_job_unit_default_and_reclaim_identity_are_preserved(tmp_path):
+    cfg = config(tmp_path)
+    assert repair.repair_job_unit(cfg) == "ipfs-taskboard-repair-job.service"
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": "running", "repair_workspace": "/old/shared/tree"})
+    assert repair.should_reclaim_repair_unit(cfg) is True  # Legacy unlabelled jobs use the default.
+    cfg["repair_worker"]["job_unit"] = "ipfs-taskboard-legal-ir-repair-job.service"
+    assert repair.should_reclaim_repair_unit(cfg) is False  # A foreign unit is not this profile's job.
+    job = read_json(path)
+    job["repair_job_unit"] = cfg["repair_worker"]["job_unit"]
+    write_json(path, job)
+    assert repair.should_reclaim_repair_unit(cfg) is True
+
+
+@pytest.mark.parametrize("configured_unit", [None, "ipfs-taskboard-legal-ir-repair-job.service"])
+def test_repair_launch_and_timeout_stop_use_same_configured_unit(tmp_path, monkeypatch, configured_unit):
+    cfg = config(tmp_path)
+    cfg["repair_worker"].update(argv=["codex", "exec"], timeout_seconds=1)
+    if configured_unit is not None: cfg["repair_worker"]["job_unit"] = configured_unit
+    unit = configured_unit or "ipfs-taskboard-repair-job.service"
+    board = cfg["boards"][0]
+    board["probe"] = {"argv": ["probe"]}
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": "queued", "attempts": 0,
+        "latest_incident": {"observation": {"health": "stalled", "reason_codes": ["no_task_progress"]}}})
+    monkeypatch.setattr(repair, "_launch_preflight", lambda *a: None)
+    monkeypatch.setattr(repair, "_storage_preflight", lambda *a: None)
+    monkeypatch.setattr(repair, "_repair_temporary_directory", lambda *a: tmp_path)
+    commands, launched = [], []
+    def command(spec, **kwargs):
+        commands.append(spec["argv"])
+        if spec["argv"][0] == "systemctl": return {"returncode": 3, "stdout": "inactive"}
+        return {"returncode": 0, "stdout": json.dumps({"board_id": "spar", "health": "unknown"})}
+    class Process:
+        def __init__(self, argv, **kwargs):
+            launched.append(argv)
+            self.waits = 0
+        def wait(self, timeout):
+            self.waits += 1
+            if self.waits == 1: raise subprocess.TimeoutExpired("repair", timeout)
+            return 0
+        def kill(self): pass
+    monkeypatch.setattr(repair, "command", command)
+    monkeypatch.setattr(repair.subprocess, "Popen", Process)
+    assert repair.run_job(cfg, board, path)["returncode"] == 124
+    assert commands[0] == ["systemctl", "--user", "is-active", unit]
+    assert ["systemctl", "--user", "stop", unit] in commands
+    assert f"--unit={unit}" in launched[0]
+    assert read_json(path)["repair_job_unit"] == unit
+
+
+def test_worker_reclaims_only_configured_repair_unit(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    unit = "ipfs-taskboard-legal-ir-repair-job.service"
+    cfg["repair_worker"]["job_unit"] = unit
+    monkeypatch.setattr(repair, "load_config", lambda *a: cfg)
+    monkeypatch.setattr(repair.signal, "signal", lambda *a: None)
+    monkeypatch.setattr(repair, "reconcile_queued_jobs", lambda *a: [])
+    monkeypatch.setattr(repair, "should_reclaim_repair_unit", lambda *a: True)
+    monkeypatch.setattr(repair, "next_job", lambda *a: None)
+    monkeypatch.setattr(repair, "queue_status", lambda *a: {"status": "idle"})
+    commands = []
+    monkeypatch.setattr(repair, "command", lambda spec, **kw: commands.append(spec["argv"]))
+    assert repair.main(["run", "--config", str(tmp_path / "config.json"), "--once"]) == 0
+    assert commands == [["systemctl", "--user", "stop", unit]]
+
+
+@pytest.mark.parametrize("unit", [None, "", "foreign", "foreign.timer", "--all.service",
+    "../foreign.service", "a/b.service", "a*.service", "a%u.service", "a service.service", "a\n.service", 3])
+def test_configured_unit_invalid_names_refuse_before_reclaim_launch_or_worker_commands(tmp_path, monkeypatch, unit):
+    cfg = config(tmp_path)
+    cfg["repair_worker"]["job_unit"] = unit
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": "queued", "attempts": 1, "next_attempt_at": 9000})
+    before = path.read_bytes()
+    monkeypatch.setattr(repair, "load_config", lambda *a: cfg)
+    monkeypatch.setattr(repair, "command", lambda *a, **kw: pytest.fail("invalid unit cannot invoke commands"))
+    monkeypatch.setattr(repair.subprocess, "Popen", lambda *a, **kw: pytest.fail("invalid unit cannot launch a process"))
+    for operation in [lambda: repair.should_reclaim_repair_unit(cfg),
+        lambda: repair.run_job(cfg, cfg["boards"][0], path),
+        lambda: repair.main(["run", "--config", str(tmp_path / "config.json"), "--once"])]:
+        with pytest.raises(ValueError, match="job_unit must be a literal service unit"):
+            operation()
+        assert path.read_bytes() == before
+    assert not (tmp_path / "repair-worker.lock").exists()

@@ -220,7 +220,8 @@ def test_driver_retains_changed_log_receipts_and_deduplicates_exact_observations
         assert session["known_provider_token_subtotal"] == 120
 
 
-def test_harbor_keeps_readable_report_when_accounting_fails(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure_stage", ["measurement", "population"])
+def test_harbor_keeps_readable_report_when_accounting_fails(tmp_path, monkeypatch, failure_stage):
     from harbor.models.agent.context import AgentContext
 
     report = {"task_completed": True, "seconds": 1.5, "phases": {"prepare_seconds": 0.25},
@@ -240,15 +241,30 @@ def test_harbor_keeps_readable_report_when_accounting_fails(tmp_path, monkeypatc
     def broken(_):
         raise RuntimeError("private counter exception must not be exported")
 
+    def broken_population(context, _):
+        context.n_input_tokens, context.n_cache_tokens, context.n_output_tokens = 100, 80, 20
+        raise RuntimeError("private counter exception must not be exported")
+
     public_inputs = AsyncMock(return_value={"status": "captured"})
     public_outputs = AsyncMock(return_value={"status": "captured"})
     monkeypatch.setattr(adapter, "capture_public_inputs", public_inputs)
     monkeypatch.setattr(adapter, "export_public_outputs", public_outputs)
-    monkeypatch.setattr(adapter, "measured_usage", broken)
+    if failure_stage == "measurement":
+        monkeypatch.setattr(adapter, "measured_usage", broken)
+    else:
+        monkeypatch.setattr(adapter, "populate_harbor_usage", broken_population)
     archive = tmp_path / "archive"
     archive.mkdir()
-    (archive / "manifest.json").write_text(json.dumps({"archive_sha256": "fixture", "learned_requirements": []}))
-    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+    from benchmarks.agent_supervisor.container_coding import terminal_worker_capability as capability
+    # Authored transport fixture; deployment is mocked and the real guard checks
+    # current source pins. This does not qualify a deployed runtime archive.
+    held = capability._current_capability()
+    (archive / "manifest.json").write_text(json.dumps({
+        "archive_sha256": "authored-runtime", "learned_requirements": [], capability.KEY: held,
+        "files": [{"path": name, "sha256": digest} for name, digest in held["source_sha256"].items()],
+    }))
+    agent = adapter.FullSupervisorAgent(logs_dir=tmp_path / "logs",
+                                        model_name=adapter.resolve_provider_profile(None)["model"],
                                         runtime_archive=str(archive), arm="no-index")
     context = AgentContext()
     asyncio.run(agent.run("Public task fixture", Environment(), context))
@@ -258,8 +274,9 @@ def test_harbor_keeps_readable_report_when_accounting_fails(tmp_path, monkeypatc
     assert context.metadata["error"] == report["error"]
     assert context.metadata["remaining_processes"] == 0
     assert context.metadata["usage_accounting_error_type"] == "RuntimeError"
+    assert "usage" not in context.metadata
     assert "report_unavailable" not in context.metadata
-    assert context.n_input_tokens is context.n_output_tokens is None
+    assert context.n_input_tokens is context.n_cache_tokens is context.n_output_tokens is None
     assert "private counter exception" not in json.dumps(context.metadata)
     public_outputs.assert_awaited_once()
 

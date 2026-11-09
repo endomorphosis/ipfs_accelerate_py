@@ -6,6 +6,15 @@ work published through `f86f955eb4bb63613a2c3aaffa968e87382044f1`, plus the
 host-side compact-edit mapper and isolated application qualified below.
 The contracts and stages below are proposed unless explicitly marked current.
 
+The October 16 current-world prompt view adds a separate reversible operation:
+factor identical reference metadata into an inline table while retaining every
+selected evidence body and ID. It restores the exact native packet and is
+default-on only when complete rendered bytes and declared local counts or
+labelled estimates both decrease, with `compact_world_prompt=False` as opt-out. This does not transform
+the executable source tree. The
+[current-world qualification](compact_worker_benchmark.md#current-world-inline-metadata-compaction-2026-10-16)
+keeps this local input reduction separate from whole-session token savings.
+
 The October 13 [reading-workflow audit](evidence/context-reading-audit-20261013/README.md)
 reconciles accelerator `cdca08b03c9ca015b7ba8799b9161de6ac20ce4d` and the parent
 datasets pin `b95938c2a816075466f8dc84f339cf622414030d`, including parallel

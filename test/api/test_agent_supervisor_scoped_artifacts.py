@@ -68,3 +68,56 @@ def test_opaque_sides_count_toward_policy_aggregate(tmp_path):
     assert 'patch_too_large' in codes(p,policy(('out/paper.pdf','out/second.pdf'),max_patch_bytes=1_000_000))
 
 
+@pytest.mark.parametrize('value', [None, 'out/paper.pdf', {'out/paper.pdf': True},
+    ['out/paper.pdf', 'out/paper.pdf'], ['out/paper.pdf'] * 257])
+def test_policy_from_dict_rejects_noncanonical_or_unbounded_artifact_authority(value):
+    payload = policy().to_dict()
+    payload.pop('policy_id')
+    payload['binary_artifact_paths'] = value
+    with pytest.raises(P.ProposalValidationError):
+        P.ProposalValidationPolicy.from_dict(payload)
+
+
+def test_exact_binary_authority_cannot_widen_immutable_task_scope():
+    with pytest.raises(P.ProposalValidationError):
+        T._policy(allowed_paths=('out/',), task_owned_paths=('out/exact/',),
+            binary_artifact_paths=('out/foreign.zip',))
+
+
+@pytest.mark.parametrize('field,value', [
+    ('after_sha256', ''), ('after_sha256', 'g' * 64),
+    ('after_size_bytes', True), ('after_size_bytes', -1), ('after_size_bytes', 1),
+    ('after_magic_hex', '255044462d'), ('after_magic_hex', 'nothex'),
+    ('after_magic_hex', '504b0304'),
+])
+def test_native_zip_identity_must_have_bounded_hash_size_and_matching_magic(tmp_path, field, value):
+    p = collect(tmp_path, {'out/evidence.zip': zip_bytes()})
+    entry = p.candidate_diff[0]
+    entry = replace(entry, metadata={**entry.metadata, field: value})
+    p = replace(p, candidate_diff=(entry,), proposal_id='')
+    assert 'binary_change_forbidden' in codes(p, policy(('out/evidence.zip',)))
+
+
+def test_binary_patch_parser_cannot_use_one_artifact_to_admit_another_path():
+    patch = ('diff --git a/out/unlisted.zip b/out/unlisted.zip\n'
+        'new file mode 100644\nBinary files /dev/null and b/out/unlisted.zip differ\n')
+    with pytest.raises(P.ProposalValidationError, match='exact artifact authority'):
+        P.parse_unified_patch(patch, binary_artifact_paths=('out/listed.zip',))
+    assert P.parse_unified_patch(patch,
+        binary_artifact_paths=('out/unlisted.zip',))[0].binary is True
+
+
+def test_both_rename_paths_need_exact_opaque_authority():
+    patch = ('diff --git a/out/old.zip b/out/new.zip\n'
+        'similarity index 100%\nrename from out/old.zip\nrename to out/new.zip\n'
+        'Binary files a/out/old.zip and b/out/new.zip differ\n')
+    with pytest.raises(P.ProposalValidationError, match='exact artifact authority'):
+        P.parse_unified_patch(patch, binary_artifact_paths=('out/new.zip',))
+
+
+@pytest.mark.parametrize('path', ['out/bad\ud800.zip', 'out/bad\x7f.zip'])
+def test_exact_artifact_authority_rejects_noncanonical_utf8_and_control_paths(path):
+    with pytest.raises(P.ProposalValidationError):
+        policy((path,))
+
+

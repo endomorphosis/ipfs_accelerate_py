@@ -289,14 +289,20 @@ def collect(*, legacy: list[Path], one: list[Path], two: list[Path]) -> dict:
                 match["reasons"].append("frozen_runtime_or_assets_differ")
             match["matches"] = not match["reasons"]
         attempt["experiment_control_comparison"] = match
+    # Observe the complete deduplicated population before splitting treatments.
+    # Different wrapper IDs can still report the same cumulative native session.
+    native._annotate_native_session_reuse(rows)
     groups = {}
     for budget in CAPSULE_BUDGETS:
         selected = [row for row in rows if row["capsule_budget"] == budget]
         registrations = [attempt for attempt in attempts if attempt["capsule_budget"] == budget]
         aggregate = native._aggregate(selected)
         missing = sum(attempt["trial_count"] == 0 for attempt in registrations)
-        complete = bool(selected) and missing == 0 and all(row["native_usage_complete_observed"] is True
-            and row["tokens"]["total_tokens"] is not None for row in selected)
+        complete = (bool(selected) and missing == 0
+            and not aggregate["native_session_overlap_prevents_complete_total"]
+            and aggregate["tokens"]["total_tokens"] is not None
+            and all(row["native_usage_complete_observed"] is True
+                and row["tokens"]["total_tokens"] is not None for row in selected))
         if missing:
             # The generic aggregate only sees actual trials. Missing registered
             # attempts cannot silently turn its known subtotal into a full cost.

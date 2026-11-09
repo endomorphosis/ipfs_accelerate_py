@@ -40,7 +40,7 @@ RECEIPT_FIELDS = (
     "model_prompt_sha256", "model_prompt_bytes", "workspace_advisory_sha256",
     "workspace_advisory_bytes",
 )
-TRANSLATION_FIELDS = ('router_prompt_sha256', 'router_prompt_bytes', 'semantic_translation', 'doctor_residual_context', 'public_instruction', 'coding_reply_contract', 'semantic_metadata_view', 'semantic_metadata_native_coding_reply_contract', 'source_formalization_context', 'source_view_retrieval', 'representation_displacement', 'terminal_semantic_scope_dispatch_rechecked', 'semantic_prompt_components', 'tool_output_policy', 'source_view_advisory_policy', 'repository_source_policy', 'source_input_policy', 'source_input_view', 'source_input_dispatched', 'query_reference_policy', 'query_reference_view', 'query_reference_selected', 'query_reference_dispatched', 'query_reference_provider_attempted', 'semantic_working_set', 'semantic_working_set_preflight')
+TRANSLATION_FIELDS = ('router_prompt_sha256', 'router_prompt_bytes', 'semantic_translation', 'doctor_residual_context', 'public_instruction', 'coding_reply_contract', 'semantic_metadata_view', 'semantic_metadata_native_coding_reply_contract', 'source_formalization_context', 'source_view_retrieval', 'representation_displacement', 'terminal_semantic_scope_dispatch_rechecked', 'semantic_prompt_components', 'tool_output_policy', 'source_view_advisory_policy', 'repository_source_policy', 'source_input_policy', 'source_input_view', 'source_input_dispatched', 'query_reference_policy', 'query_reference_view', 'query_reference_selected', 'query_reference_dispatched', 'query_reference_provider_attempted', 'semantic_working_set', 'semantic_working_set_preflight', 'semantic_working_set_dispatch', 'semantic_working_set_evaluated')
 
 DECISION_REPORT_FIELDS = (
     "semantic_decision_dialogues", "semantic_decision_dialogue_expected",
@@ -410,6 +410,82 @@ def _token_selection_receipt(metadata: dict, item: dict) -> None:
         raise ValueError("token-counted metadata selection arithmetic differs")
 
 
+def _token_working_set(receipt):
+    """Validate recorded active selection; its counts are still declarations."""
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set_dispatch import validate_working_set_dispatch
+    dispatch = validate_working_set_dispatch(receipt["semantic_working_set_dispatch"])
+    selection, winner = dispatch["selection"], dispatch["selected_representation"]
+    if (selection["provider"] != receipt.get("provider") or selection["model"] != receipt.get("model")
+            or any(receipt.get(key) is not None for key in ("semantic_working_set", "semantic_metadata_view",
+                "source_input_view", "query_reference_view", "representation_displacement"))
+            or dispatch["selected_model_prompt_sha256"] != receipt["model_prompt_sha256"]
+            or dispatch["selected_model_prompt_bytes"] != receipt["model_prompt_bytes"]
+            or dispatch["selected_router_prompt_sha256"] != receipt.get("router_prompt_sha256")
+            or dispatch["selected_router_prompt_bytes"] != receipt.get("router_prompt_bytes")):
+        raise ValueError("token working set differs from the selected router input")
+    if winner == "raw_native":
+        lineage = receipt.get("semantic_working_set_evaluated")
+        if (type(lineage) is not dict or set(lineage) != {"semantic_translation", "source_view_retrieval"}
+                or any(receipt.get(key) is not None for key in ("semantic_translation", "source_view_retrieval",
+                    "semantic_prompt_components", "semantic_working_set_preflight"))):
+            raise ValueError("raw token working set has active semantic delivery claims")
+    else:
+        if "semantic_working_set_evaluated" in receipt:
+            raise ValueError("selected semantic input has unexpected evaluated-only lineage")
+        lineage = {key: receipt.get(key) for key in ("semantic_translation", "source_view_retrieval")}
+    translation, source = lineage["semantic_translation"], lineage["source_view_retrieval"]
+    if (type(translation) is not dict or translation.get("schema") != "supervisor-semantic-router-encoding@1"
+            or translation.get("transport_schema", "supervisor-semantic-router-input@1") != "supervisor-semantic-router-input@1"
+            or translation.get("freshness_checked") is not True
+            or type(source) is not dict or source.get("schema") != "worker-source-dispatch-observation@4"):
+        raise ValueError("token working set lacks its evaluated source lineage")
+    _identity(translation.get("translation_cid"))
+    binding = selection["view_validation_receipt"]["view_receipt"]["binding"]
+    if (binding["descriptor_sha256"] != source.get("descriptor_sha256")
+            or binding["descriptor_session_id"] != source.get("session_id")
+            or binding["semantic_evidence_mode"] != source.get("semantic_evidence_mode")
+            or any(value != source.get(key) for key, value in binding["semantic_binding"].items())):
+        raise ValueError("token working set differs from its source session")
+    preflight = receipt.get("semantic_working_set_preflight")
+    if winner == "working_set":
+        if (type(preflight) is not dict or set(preflight) != {"schema", "requests", "session_id",
+                "capsule_index", "capsule_sha256", "response_bytes", "response_sha256",
+                "provider_input_bytes", "source_freshness_checked", "proof_authority"}
+                or preflight["schema"] != "supervisor-semantic-working-set-preflight@1"
+                or type(preflight["requests"]) is not int or preflight["requests"] != 1
+                or type(preflight["capsule_index"]) is not int or preflight["capsule_index"] != 0
+                or preflight["session_id"] != source["session_id"]
+                or type(preflight["response_bytes"]) is not int or not 1 <= preflight["response_bytes"] <= 4096
+                or type(preflight["provider_input_bytes"]) is not int or preflight["provider_input_bytes"] != 0
+                or preflight["source_freshness_checked"] is not True or preflight["proof_authority"] is not False):
+            raise ValueError("token working set lacks its bounded endpoint preflight")
+        _digest(preflight["capsule_sha256"]); _digest(preflight["response_sha256"])
+    elif preflight is not None:
+        raise ValueError("nondeferred token working set has an unexpected preflight")
+    source_provenance = receipt.get("prompt_tokenizer_source")
+    if source_provenance is not None:
+        if type(source_provenance) is not dict:
+            raise ValueError("token working set tokenizer provenance is malformed")
+        if source_provenance.get("schema") == "supervisor-automatic-prompt-tokenizer@1":
+            from .automatic_tokenizer_audit import _SOURCE_FIELDS
+            if (set(source_provenance) != _SOURCE_FIELDS or source_provenance.get("offline") is not True
+                    or source_provenance.get("remote_tokenizer_compatibility_verified") is not False
+                    or source_provenance.get("provider_usage") is not False
+                    or source_provenance.get("completion_authority") is not False
+                    or source_provenance.get("count_kind") != selection["token_count_kind"]
+                    or source_provenance.get("compatibility_basis") != selection["tokenizer_compatibility_basis"]):
+                raise ValueError("token working set tokenizer provenance differs")
+    reply = receipt.get("coding_reply_contract")
+    if reply is not None and type(reply) is not dict:
+        raise ValueError("token working set reply contract is malformed")
+    normalized_reply = None if reply is None else {**reply, "response_validated": False}
+    reply_sha = None if normalized_reply is None else _sha(json.dumps(normalized_reply,
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
+    if dispatch["selected_reply_contract_sha256"] != reply_sha:
+        raise ValueError("token working set differs from the selected reply contract")
+    return dispatch, lineage
+
+
 def _receipt(item: dict, workspace_root: Path) -> dict:
     if not isinstance(item, dict) or item.get("schema") != "router-implementation-invocation@1":
         raise ValueError("invalid router receipt")
@@ -422,6 +498,8 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         raise ValueError("non-coding router receipt")
     result = {key: item[key] for key in RECEIPT_FIELDS}
     result.update({key: item[key] for key in TRANSLATION_FIELDS if key in item})
+    if "semantic_working_set_dispatch" in item and "prompt_tokenizer_source" in item:
+        result["prompt_tokenizer_source"] = item["prompt_tokenizer_source"]
     # Historical dialogue joins require the independently recorded route. A
     # selected policy cannot supply a missing provider or model identity.
     for field in ("provider", "model"):
@@ -444,6 +522,9 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
         if type(result[field]) is not int or not 0 < result[field] <= 262_144:
             raise ValueError("invalid input byte count")
     translated = result.get("semantic_translation") is not None
+    active = _token_working_set(result)[0] if "semantic_working_set_dispatch" in result else None
+    if active is None and "semantic_working_set_evaluated" in result:
+        raise ValueError("evaluated working set lineage lacks its active selection")
     if "semantic_prompt_components" in result:
         if not translated:
             raise ValueError("semantic component census requires its translated input")
@@ -519,7 +600,8 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
             _digest(instruction[key])
         _identity(instruction["task_cid"])
         if instruction["schema"] == "supervisor-public-instruction-inclusion@5":
-            if not translated or result.get("terminal_semantic_scope_dispatch_rechecked") is not True:
+            if ((not translated and not (active is not None and active["selected_representation"] == "raw_native"))
+                    or result.get("terminal_semantic_scope_dispatch_rechecked") is not True):
                 raise ValueError("signed Terminal scope lacks its compiled dispatch replay")
             _terminal_scope_inclusion(instruction.get("terminal_semantic_scope"))
             if instruction["terminal_semantic_scope"]["manifest_cid"] != instruction["manifest_cid"]:
@@ -565,7 +647,7 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     metadata = result.get("semantic_metadata_view")
     working_set = result.get("semantic_working_set")
     preflight = result.get("semantic_working_set_preflight")
-    if preflight is not None and working_set is None:
+    if preflight is not None and working_set is None and active is None:
         raise ValueError("working set preflight requires its projection")
     if working_set is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set import validate_working_set_selection_receipt
@@ -677,11 +759,133 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     return result
 
 
+def _token_working_set_projection(*, rendered, receipt, repository, formalization, token_counter):
+    """Replay candidate bytes historically; count verification is separately scoped."""
+    from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as codec
+    from ipfs_accelerate_py.agent_supervisor.runtime import semantic_working_set as working
+    from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import PromptTokenCounter, render_model_prompt
+    from ipfs_accelerate_py.agent_supervisor.runtime.worker_source_client import guidance
+    from ipfs_accelerate_py.agent_supervisor.runtime.coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
+    dispatch, lineage = _token_working_set(receipt)
+    selection = dispatch["selection"]
+    evaluated = dict(receipt)
+    for key in ("semantic_working_set_dispatch", "semantic_working_set_evaluated",
+                "semantic_working_set_preflight", "coding_reply_contract", "semantic_prompt_components"):
+        evaluated.pop(key, None)
+    evaluated.update(lineage)
+    semantic, semantic_advisory, checks = _model_projection(rendered=rendered, receipt=evaluated,
+        repository=repository, formalization=formalization)
+    # Those identities describe the selected input; this recursive pass rebuilt
+    # the evaluated semantic baseline and must not compare it with that winner.
+    for key in ("router_prompt_sha256", "router_prompt_bytes", "model_prompt_sha256", "model_prompt_bytes",
+                "workspace_advisory_sha256", "workspace_advisory_bytes"):
+        checks.pop(key, None)
+    if not semantic.startswith(semantic_advisory):
+        raise ValueError("evaluated working set changed its workspace wrapper")
+    semantic_router = semantic[len(semantic_advisory):]
+    encoded = codec.replay_semantic_router_prompt_for_audit(prompt=rendered, repository=repository,
+        transport_schema="supervisor-semantic-router-input@1")
+    view = working.replay_semantic_working_set_for_audit(encoded,
+        selection["view_validation_receipt"]["view_receipt"])
+    if not semantic_router.startswith(encoded.provider_prompt):
+        raise ValueError("evaluated working set differs from reconstructed transport")
+    suffix = semantic_router[len(encoded.provider_prompt):]
+    source = lineage["source_view_retrieval"]
+    edit_mode = source.get("source_edit_mode", "disabled")
+    advice = guidance(source["profile"], **({"source_edit_mode": edit_mode} if edit_mode != "disabled" else {}))
+    if not suffix.startswith(advice):
+        raise ValueError("evaluated working set lacks its exact source guidance")
+    routers = dict(raw_native=rendered + suffix[len(advice):], semantic_full=semantic_router,
+        working_set=view.provider_prompt + suffix)
+    mode = (receipt.get("coding_reply_contract") or {}).get("mode", "legacy")
+    models, advisories, replies = {}, {}, {}
+    for name, router in routers.items():
+        model, advisory = render_model_prompt(prompt=router, purpose="coding", workspace=Path(receipt["workspace"]),
+            semantic_transport=name != "raw_native", tool_output_binding=receipt.get("tool_output_policy"),
+            source_view_binding=receipt.get("source_view_advisory_policy"),
+            repository_source_binding=receipt.get("repository_source_policy"))
+        model, reply = apply_coding_reply_contract(model_prompt=model, mode=mode, purpose="coding", provider=receipt["provider"])
+        models[name], advisories[name], replies[name] = model, advisory, reply
+    legacy = working.select_working_set(view, native_complete_prompt=models["semantic_full"],
+        candidate_complete_prompt=models["working_set"])
+    checks["token_working_set_view_receipt"] = _same_json(legacy.receipt, selection["view_validation_receipt"])
+    checks["token_working_set_candidate_inputs"] = all(
+        row["model_prompt_sha256"] == _sha(models[name].encode()) and row["model_prompt_bytes"] == len(models[name].encode())
+        for name, row in selection["candidates"].items())
+    winner = dispatch["selected_representation"]
+    model, advisory, reply = models[winner], advisories[winner], replies[winner]
+    checks["token_working_set_selected_router"] = (
+        _sha(routers[winner].encode()) == dispatch["selected_router_prompt_sha256"]
+        and len(routers[winner].encode()) == dispatch["selected_router_prompt_bytes"])
+    reply_sha = None if reply is None else _sha(json.dumps(reply, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False).encode())
+    checks["token_working_set_selected_reply"] = reply_sha == dispatch["selected_reply_contract_sha256"]
+    if winner == "working_set":
+        reference = json.loads(view.provider_prompt)["working_set"]["capsule_references"][0]
+        checks["token_working_set_preflight_capsule"] = all(
+            receipt["semantic_working_set_preflight"][key] == reference[key] for key in ("capsule_index", "capsule_sha256"))
+    schema = None if reply is None else coding_completion_schema()
+    schema_text = None if schema is None else json.dumps(schema, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    schema_row = selection["native_output_schema"]
+    checks["token_working_set_native_schema"] = (
+        schema_row["canonical_json_sha256"] == (None if schema_text is None else _sha(schema_text.encode()))
+        and schema_row["canonical_json_bytes"] == (0 if schema_text is None else len(schema_text.encode())))
+    checks["token_working_set_declared_selection"] = True  # Closed validator checked route, quality, arithmetic and winner.
+    checks["token_working_set_token_winner_recounted"] = None
+    source_provenance = receipt.get("prompt_tokenizer_source")
+    source_snapshot = json.loads(json.dumps(source_provenance, sort_keys=True, ensure_ascii=False, allow_nan=False))
+    provenance_matches = True
+    if type(source_provenance) is dict and source_provenance.get("schema") == "supervisor-automatic-prompt-tokenizer@1":
+        provenance_matches = False
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime.automatic_prompt_tokenizer import resolve_prompt_tokenizer
+            resolved, provenance = resolve_prompt_tokenizer(provider=receipt["provider"], model=receipt["model"])
+            if _same_json(source_provenance, provenance):
+                provenance_matches = True
+                if token_counter is None:
+                    token_counter = resolved
+        except Exception:
+            pass
+    def counter_matches():
+        return (provenance_matches and _same_json(source_provenance, source_snapshot)
+            and type(token_counter) is PromptTokenCounter and token_counter.binding() == selection["tokenizer_binding"]
+            and token_counter.count_kind == selection["token_count_kind"]
+            and token_counter.compatibility_basis == selection["tokenizer_compatibility_basis"])
+    if counter_matches():
+        field = "estimated_content_tokens" if token_counter.count_kind == "estimate" else "content_tokens"
+        population = [(models[name], row[field]) for name, row in selection["candidates"].items() if row["byte_eligible"]]
+        if schema_text is not None:
+            population.append((schema_text, schema_row[field]))
+        try:
+            def count(text):
+                if not counter_matches():
+                    raise ValueError("working set audit counter binding changed")
+                amount = token_counter.count(text)
+                if not counter_matches():
+                    raise ValueError("working set audit counter binding changed")
+                return amount
+            observed = [(text, amount, count(text)) for text, amount in population]
+            verified = all(expected == measured for _, expected, measured in observed)
+            for text in dict.fromkeys(text for text, _, _ in observed):
+                verified = (count(text) == next(amount for item, _, amount in observed if item == text)) and verified
+            checks["token_working_set_token_winner_recounted"] = verified and counter_matches()
+        except Exception:
+            checks["token_working_set_token_winner_recounted"] = False
+    checks.update(model_prompt_sha256=_sha(model.encode()) == receipt["model_prompt_sha256"],
+        model_prompt_bytes=len(model.encode()) == receipt["model_prompt_bytes"],
+        workspace_advisory_sha256=_sha(advisory.encode()) == receipt["workspace_advisory_sha256"],
+        workspace_advisory_bytes=len(advisory.encode()) == receipt["workspace_advisory_bytes"])
+    return model, advisory, checks
+
+
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                       formalization: dict | None = None, token_counter=None):
     """Reconstruct historical provider bytes without granting freshness."""
     if "world_task_packet" in receipt:
         raise ValueError("world task packet requires qualified Terminal Bench replay")
+    if "semantic_working_set_dispatch" in receipt:
+        return _token_working_set_projection(rendered=rendered, receipt=receipt, repository=repository,
+            formalization=formalization, token_counter=token_counter)
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
     translated = receipt.get("semantic_translation") is not None
     router_prompt, checks = rendered, {}

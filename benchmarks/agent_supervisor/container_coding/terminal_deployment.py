@@ -1026,9 +1026,10 @@ def build_runtime_archive(
     portable_assets.extend(intent_action_assets)
     portable_assets.extend(source384_assets)
     portable_assets.extend(numerical_assets)
-    torch_required = bool(model_snapshot or portable_assets)
-    if torch_cpu_wheel is not None and not torch_required:
-        raise ValueError("Torch wheel requires an already selected Torch runtime feature")
+    # A caller-pinned CPU runtime also supports local codebase training without
+    # selecting pretrained model weights. The wheel still needs its exact pair
+    # and the same independent byte/metadata/archive checks below.
+    torch_required = bool(model_snapshot or portable_assets or torch_cpu_wheel is not None)
     torch_assets, torch_binding = _torch_cpu_wheel_assets(torch_cpu_wheel, torch_cpu_wheel_sha256)
     portable_assets.extend(torch_assets)
     security_bindings["security_checkpoint"] = checkpoint_binding

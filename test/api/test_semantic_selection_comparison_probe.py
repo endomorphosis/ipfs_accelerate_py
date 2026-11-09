@@ -183,7 +183,7 @@ def test_native_selection_and_v2_four_arm_probe(tmp_path, record_property):
     independently_rendered = {}
     for arm, native in prompts.items():
         encoded = codec.encode_semantic_router_prompt(
-            prompt=native, repository=repository, slot_policy_revision=codec.SLOT_POLICY_V2
+            prompt=native, repository=repository, transport_schema=codec.COMPACT_TRANSPORT_SCHEMA
         )
         assert codec.restore_semantic_router_prompt(
             provider_prompt=encoded.provider_prompt, table=encoded.table, repository=repository

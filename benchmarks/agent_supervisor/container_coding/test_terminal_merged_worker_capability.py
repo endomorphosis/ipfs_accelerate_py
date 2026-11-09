@@ -147,7 +147,13 @@ def test_every_mapped_edit_pin_refuses_before_harbor_when_selected(packaged, tmp
     archive = changed_archive(packaged, manifest, tmp_path)
     forbid_harbor(monkeypatch)
     output = tmp_path / "trial"
-    with pytest.raises(ValueError, match="matching worker archive capability|newly qualified runtime archive"):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if name in {
+            "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+            "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+            "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        } else "matching worker archive capability|newly qualified runtime archive")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=packaged[2], output=output, archive=archive, arm="full",
             source_view_profile="identity@1", source_edit_mode=edits.REPEATED_SOURCE_EDIT_MODE)
     assert not output.exists()
@@ -163,7 +169,12 @@ def test_every_declared_planning_pin_refuses_before_harbor_when_selected(package
     archive = changed_archive(packaged, manifest, tmp_path)
     forbid_harbor(monkeypatch)
     output = tmp_path / "trial"
-    with pytest.raises(ValueError, match="matching worker archive capability|newly qualified runtime archive"):
+    expected_failure = (r"^runtime deadline sources differ; rebuild the runtime archive$"
+        if name in {
+            "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+            "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        } else "matching worker archive capability|newly qualified runtime archive")
+    with pytest.raises(ValueError, match=expected_failure):
         benchmark.prepare(dataset=packaged[2], output=output, archive=archive, arm="full",
             planning_mode=planning.DECLARED_PLANNING_MODE)
     assert not output.exists()

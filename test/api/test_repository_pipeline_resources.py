@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     ResourceScheduler, ResourcePolicy, HostResourceSnapshot,
 )
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_daemon_resources as daemon
+from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import policy_sha256
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import ProofHostResources
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import (
     GlobalResourceScheduler, ResourceSchedulerConfig, ResourceLane, get_global_resource_scheduler,
@@ -36,6 +37,7 @@ def injected_owners(tmp_path, monkeypatch):
         HostResourceSnapshot(memory_total_bytes=8*1024**3, memory_available_bytes=8*1024**3,
             disk_total_bytes=16*1024**3, disk_available_bytes=16*1024**3,
             worker_limit=8, available_worker_capacity=8))
+    supervisor._test_native_scheduler = shared
     yield supervisor, shared
     assert not supervisor.active_leases
     assert shared.snapshot()['active_lease_count'] == shared.snapshot()['waiting_request_count'] == 0
@@ -55,9 +57,17 @@ def demand(phase, **changes):
 def reserve(tmp_path, supervisor, *, policy=None, limits=None, cancel=None):
     roots = tmp_path / 'disk'
     roots.mkdir(exist_ok=True)
+    shared = supervisor._test_native_scheduler
+    ledger = tmp_path / 'disk-ledger.json'
+    if not ledger.exists():
+        ledger.write_text(json.dumps({'schema': daemon.SCHEMA,
+            'roots': [daemon._root_identity(roots)], 'limit_bytes': daemon.MAX_STORAGE_BYTES,
+            'reservations': {}}))
     with pipeline.RepositoryPipelineResources(supervisor).reserve(repository_id='rpi022-pipeline',
             workspace=tmp_path, budget=limits or budget(), policy=policy or pipeline.PipelineResourcePolicy(),
-            ledger_path=tmp_path / 'disk-ledger.json', roots=[roots], cancel_event=cancel) as parent:
+            ledger_path=ledger, roots=[roots], cancel_event=cancel,
+            scheduler_state_path=shared.state_path,
+            expected_scheduler_policy_sha256=policy_sha256(json.loads(shared.state_path.read_bytes())['config'])) as parent:
         yield parent
 
 
@@ -270,7 +280,12 @@ def test_injected_process_cancellation_reaps_and_retains_disk(injected_owners, t
 def test_live_pipeline_composes_actual_host_and_named_disk_owners(tmp_path):
     """This can be refused by current host pressure; never substitute telemetry."""
     supervisor = ResourceScheduler(ResourcePolicy(max_lanes=8))
-    shared = get_global_resource_scheduler()
+    shared = GlobalResourceScheduler(ResourceSchedulerConfig(
+        total_cpu_slots=4, total_memory_mb=4096, total_child_process_slots=4,
+        state_path=tmp_path / 'actual-private-native.json', proof_safety_enabled=True,
+        lane_reservations={'validation': {'cpu_slots': 1, 'memory_mb': 0}},
+        max_waiting_requests=32, auto_renew_leases=False))
+    supervisor._test_native_scheduler = shared
     with reserve(tmp_path, supervisor, limits=budget(wall_time_ms=15000)) as parent:
         with parent.phase(demand('validation'), payload=b'live', attempt_directory=attempt(tmp_path, 'live')) as phase:
             result = phase.run([str(Path(sys.executable).resolve()), '-I', '-B', '-c',
@@ -451,6 +466,7 @@ def test_injected_unsafe_outer_exit_survives_gc_until_new_admitted_cleanup(injec
         retained = recovered.receipt()['retained_disk_reservations'][0]
         replacement_supervisor = ResourceScheduler(ResourcePolicy(max_lanes=8),
                                                    host_sampler=supervisor.host_sampler)
+        replacement_supervisor._test_native_scheduler = shared
         with reserve(tmp_path, replacement_supervisor) as replacement:
             with replacement.phase(demand('cleanup'), attempt_directory=attempt(tmp_path, 'recovery')) as cleanup:
                 cleanup.recover_retained(retained, artifacts_durable=True, owner=recovered)

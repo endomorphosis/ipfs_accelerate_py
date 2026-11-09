@@ -196,20 +196,30 @@ def test_every_identified_session_must_complete(tmp_path):
     assert any(row["session_id"].startswith("unidentified:") for row in result["sessions"])
 
 
-def test_synthesized_native_completion_flows_into_comparison(tmp_path):
+@pytest.mark.parametrize("usage_complete", [False, True])
+def test_synthesized_native_completion_flows_into_comparison(tmp_path, usage_complete):
     from benchmarks.agent_supervisor.container_coding.benchmark_comparison import BASELINE, collect
-    path = write_session(tmp_path, "a", [{"input_tokens": 8, "total_tokens": 11}])
+    counters = {"input_tokens": 8, "total_tokens": 11}
+    if usage_complete:
+        counters.update(cached_input_tokens=0, output_tokens=3)
+    path = write_session(tmp_path, "a", [counters])
     receipt = tmp_path / "receipt.json"
     for complete in (False, True):
         if complete:
             append_records(path, COMPLETE)
+        usage = rollout_usage(tmp_path)
+        assert usage["task_complete_observed"] is complete
         receipt.write_text(json.dumps({"schema": BASELINE, "task": "authored-task", "trial_count": 1,
             "trials": [{"trial": "authored-trial", "reward": {"reward": 1},
-                        "raw_usage": rollout_usage(tmp_path)}]}))
+                        "raw_usage": usage}]}))
         row = collect(baseline=receipt, supervisors=[])["rows"][0]
-        assert row["native_usage_complete_observed"] is complete
-        assert row["tokens"]["total_tokens"] == (11 if complete else None)
+        usable = complete and usage_complete
+        assert row["native_usage_complete_observed"] is usable
+        assert row["tokens"]["total_tokens"] == (11 if usable else None)
         assert row["known_token_subtotals"]["total_tokens"] == 11
+        identity = row["baseline_native_session_identity_observation"]
+        assert identity["inventory_complete"] is True
+        assert identity["usage_population_coherent"] is (True if usage_complete else None)
 
 
 def test_multi_session_partial_field_remains_unknown(tmp_path):

@@ -9,6 +9,7 @@ from benchmarks.agent_supervisor.container_coding.benchmark_comparison import (
     collect,
     markdown,
 )
+from benchmarks.agent_supervisor.container_coding import benchmark_comparison as comparison
 
 
 def _receipt(tmp_path, name, schema, trials, arm=None):
@@ -87,6 +88,546 @@ def _grok_invocation(identity="grok-call", complete=None):
                       "output_tokens": 2, "total_tokens": 42},
         },
     }
+
+
+def _identified_invocation(identity="modern", *, thread="native-session-123456789", records=1,
+                           inputs=100, outputs=20, complete=True, phase="coding", artifact=None):
+    """Authored native receipt shape; no provider process or token savings claim."""
+    artifact = artifact or identity
+    return dict(schema="router-implementation-invocation@1", invocation_id=identity,
+        provider="codex_cli", model="pinned-model", phase=phase, purpose=phase, status="provider_returned",
+        model_prompt_sha256="a" * 64, model_prompt_bytes=123, workspace="/authored/worktree",
+        native_rollout_usage=dict(schema="native-codex-cumulative-usage@1", thread_id=thread,
+            usage_available=True, task_complete_observed=complete, cache_included_in_input=True,
+            rollout_sha256=hashlib.sha256(artifact.encode()).hexdigest(), observed_token_count_records=records,
+            billing_total_verified=False, latest_usage_snapshot_valid=True, counter_regression_observed=False,
+            usage=dict(input_tokens=inputs, cached_input_tokens=inputs // 2, output_tokens=outputs,
+                       reasoning_output_tokens=outputs // 2, total_tokens=inputs + outputs)))
+
+
+def _interaction_trial(calls, *, marker=False, **report_fields):
+    report = dict(provider_invocations=calls, unreceipted_provider_attempt=marker, **report_fields)
+    return comparison._trial(dict(schema=SUPERVISOR, arm="full", task="authored-task", model="pinned-model"),
+        dict(trial="authored-trial", reward={"reward": 1}, supervisor=report),
+        source=dict(path="authored-receipt", sha256="b" * 64))
+
+
+def _baseline_native(identities=("baseline-session-123456789",)):
+    """Authored current baseline producer shape, not native provider execution."""
+    usage = dict(input_tokens=100, cached_input_tokens=60, cache_write_input_tokens=None,
+                 output_tokens=10, reasoning_output_tokens=5, total_tokens=110)
+    sessions = [dict(session_id=identity, sha256=hashlib.sha256(str(index).encode()).hexdigest(),
+                     task_complete_observed=True, usage=dict(usage)) for index, identity in enumerate(identities)]
+    total = {key: value * len(sessions) if value is not None else None for key, value in usage.items()}
+    return dict(source="native_rollout_observed_cumulative_totals", sessions=sessions, usage=total,
+                task_complete_observed=True, reported_cost_usd=0.125 * len(sessions))
+
+
+def _baseline_trial(native, *, identity="authored-baseline", reward=1, **fields):
+    return comparison._trial(dict(schema=BASELINE, task="authored-task", model="pinned-model"),
+        dict(trial=identity, reward={"reward": reward}, raw_usage=native, **fields),
+        source=dict(path="authored-baseline-receipt", sha256="c" * 64))
+
+
+def _decision_dialogue(*natives):
+    """Authored dialogue bindings; wrapper/local counts never represent charges."""
+    attempts = []
+    for index, native in enumerate(natives):
+        call = "authored-decision-call-" + str(index)
+        receipt = dict(schema="router-semantic-decision-provider@1", call_id=call,
+            session_id="authored-dialogue-session", provider=native["provider"], model=native["model"],
+            workspace=native["workspace"], model_prompt_sha256=native["model_prompt_sha256"],
+            provider_called=True, native_invocation=native, usage={"prompt_tokens": 999999})
+        attempts.append(dict(call_id=call, model_prompt_sha256=native["model_prompt_sha256"],
+            provider_receipt_bound=True, provider_receipt=receipt, content_tokens=999999))
+    return dict(schema="supervisor-semantic-decision-dialogue@1", session_id="authored-dialogue-session",
+        provider=natives[0]["provider"], model=natives[0]["model"], workspace=natives[0]["workspace"],
+        invocation_attempt_count=len(attempts), attempts=attempts,
+        provider_usage_complete=True, codex_cumulative_usage={"provider_total_tokens": 1})
+
+
+def _reported_collection(*, complete=True):
+    """Authored local scan observation, not authenticated or exhaustive coverage."""
+    counts = dict.fromkeys(comparison._COLLECTION_COUNTERS, 0)
+    counts.update(entries_examined=1, log_files_seen=1, log_files_read=1,
+        bytes_read=100, lines_examined=3, provider_observations=1)
+    reasons = []
+    if not complete:
+        counts.update(entries_examined=2, log_files_seen=2, oversized_logs=1)
+        reasons = ["oversized_log"]
+    return dict(schema="terminal-provider-receipt-collection@1", status="observed" if complete else "incomplete",
+        complete=complete, counts=counts, reason_codes=reasons, scope="retained_state_logs_only",
+        attempt_population_complete=None, provider_call_count=None, campaign_call_population_complete=None,
+        observation_only=True, provider_usage_authenticity_verified=False, provider_dispatch_count_verified=False,
+        token_savings_measured=False, completion_authority=False, execution_authority=False)
+
+
+def test_missing_selected_semantic_dialogue_blocks_outer_usage_without_rewriting_native_facts():
+    native = _identified_invocation()
+    native["native_rollout_usage"]["dollar_cost"] = 1
+    row = _interaction_trial([native], semantic_decision_dialogue_expected=True,
+        semantic_decision_coverage={"authoritative_usage_coverage_complete": True},
+        provider_usage_accounting={"report_provider_total_tokens": 1})
+    assert row["tokens"] == dict.fromkeys(comparison.TOKENS)
+    assert row["reported_cost_usd"] is None and row["provider_calls"] is None
+    assert row["known_token_subtotals"]["total_tokens"] == 120
+    assert row["known_reported_cost_subtotal_usd"] == 1 and row["observed_provider_invocations"] == 1
+    assert row["native_session_accounting"]["complete_native_total_tokens"] == 120
+    observation = row["usage_coverage_observation"]
+    assert observation["complete_usage_blocked"] is True
+    assert observation["semantic_decision_coverage_recomputed"] is True
+    assert observation["stored_usage_summary_trusted"] is False
+    assert "expected_dialogue_receipt_missing" in {issue["reason"]
+        for issue in observation["semantic_decision_coverage"]["issues"]}
+    assert observation["campaign_usage_complete"] is None and observation["whole_interaction_qualified"] is False
+
+
+def test_semantic_accounting_owner_retains_native_receipt_found_only_inside_dialogue():
+    planning = _identified_invocation("planning", phase="planning")
+    nested = _identified_invocation("nested", thread="nested-native-session-123456789", inputs=70, outputs=7)
+    dialogue = _decision_dialogue(nested)
+    before = copy.deepcopy(dialogue)
+    row = _interaction_trial([planning], semantic_decision_dialogue_expected=True,
+        semantic_decision_dialogues=[dialogue], provider_usage_accounting={"report_provider_total_tokens": 1})
+    assert dialogue == before
+    assert row["tokens"]["total_tokens"] == row["known_token_subtotals"]["total_tokens"] == 197
+    assert row["provider_calls"] == row["observed_provider_invocations"] == 2
+    assert row["native_session_accounting"]["native_session_count"] == 2
+    assert row["interaction_phase_coverage"]["planning_invocations"] == 1
+    assert row["interaction_phase_coverage"]["coding_invocations"] == 1
+    assert row["interaction_phase_coverage"]["all_phase_calls_retained"] is None
+    coverage = row["usage_coverage_observation"]
+    assert coverage["complete_usage_blocked"] is False
+    assert coverage["semantic_decision_coverage"]["reported_provider_dispatches"] == 1
+    assert coverage["semantic_decision_coverage"]["authoritative_usage_coverage_complete"] is True
+    assert coverage["campaign_usage_complete"] is None
+    assert "999999" not in json.dumps(row)
+
+
+@pytest.mark.parametrize("key", ["semantic_decision_dialogue_expected", "semantic_decision_owner_binding_expected",
+    "semantic_decision_typed_nomination_expected"])
+def test_invalid_selected_semantic_expected_mode_withholds_complete_native_subset(key):
+    row = _interaction_trial([_identified_invocation()], **{key: 1})
+    assert row["tokens"]["total_tokens"] is None and row["provider_calls"] is None
+    assert row["known_token_subtotals"]["total_tokens"] == 120
+    assert "invalid_expected_decision_mode" in {issue["reason"]
+        for issue in row["usage_coverage_observation"]["semantic_decision_coverage"]["issues"]}
+
+
+def test_missing_expected_semantic_owner_binding_cannot_be_repaired_by_complete_native_receipt():
+    native = _identified_invocation()
+    row = _interaction_trial([], semantic_decision_owner_binding_expected=True,
+        semantic_decision_dialogues=[_decision_dialogue(native)])
+    assert row["known_token_subtotals"]["total_tokens"] == 120
+    assert row["tokens"]["total_tokens"] is None and row["provider_calls"] is None
+    assert row["usage_coverage_observation"]["semantic_decision_coverage"]["owner_binding_coverage_complete"] is False
+
+
+def test_unsupported_semantic_provider_keeps_native_observation_without_complete_outer_total():
+    native = _grok_invocation(complete=True)
+    native.update(schema="router-implementation-invocation@1", model="grok-4.7", purpose="coding",
+        workspace="/authored/worktree", model_prompt_sha256="a" * 64, model_prompt_bytes=123)
+    native["native_rollout_usage"].update(usage_observation_sha256="c" * 64, observed_final_usage_records=1)
+    row = _interaction_trial([], semantic_decision_dialogues=[_decision_dialogue(native)])
+    assert row["known_token_subtotals"]["total_tokens"] == 42
+    assert row["tokens"]["total_tokens"] is None and row["provider_calls"] is None
+    assert row["observed_provider_invocations"] == 1
+    assert "unsupported_dialogue_provider_usage" in {issue["reason"]
+        for issue in row["usage_coverage_observation"]["semantic_decision_coverage"]["issues"]}
+
+
+def test_incomplete_plain_collection_with_good_receipts_blocks_only_complete_public_usage():
+    native = _identified_invocation()
+    native["native_rollout_usage"]["dollar_cost"] = 1
+    row = _interaction_trial([native], provider_receipt_collection=_reported_collection(complete=False),
+        usage_coverage_observation={"complete_usage_blocked": False})
+    assert row["tokens"] == dict.fromkeys(comparison.TOKENS)
+    assert row["reported_cost_usd"] is None and row["provider_calls"] is None
+    assert row["known_token_subtotals"]["total_tokens"] == 120
+    assert row["known_reported_cost_subtotal_usd"] == 1 and row["observed_provider_invocations"] == 1
+    assert row["native_session_accounting"]["complete_native_total_tokens"] == 120
+    observation = row["usage_coverage_observation"]
+    assert observation["provider_receipt_collection_status"] == "reported"
+    assert observation["provider_receipt_collection"]["counts"]["oversized_logs"] == 1
+    assert observation["complete_usage_blocked"] is True and observation["campaign_usage_complete"] is None
+
+
+@pytest.mark.parametrize("explicit_marker", [True, False])
+def test_clean_collection_never_repairs_unknown_attempt_marker_or_proves_campaign_coverage(explicit_marker):
+    report = dict(provider_invocations=[_identified_invocation()], provider_receipt_collection=_reported_collection())
+    if explicit_marker:
+        report["unreceipted_provider_attempt"] = False
+    row = comparison._trial(dict(schema=SUPERVISOR, arm="full", task="authored-task", model="pinned-model"),
+        dict(trial="authored-trial", reward={"reward": 1}, supervisor=report),
+        source=dict(path="authored-receipt", sha256="b" * 64))
+    assert row["tokens"]["total_tokens"] == (120 if explicit_marker else None)
+    assert row["known_token_subtotals"]["total_tokens"] == 120
+    assert row["unreceipted_provider_attempt"] is (False if explicit_marker else None)
+    observation = row["usage_coverage_observation"]
+    assert observation["complete_usage_blocked"] is False
+    assert observation["provider_receipt_collection"]["attempt_population_complete"] is None
+    assert observation["campaign_usage_complete"] is None and row["whole_interaction_qualified"] is False
+
+
+@pytest.mark.parametrize("gap", ["boolean_count", "authority", "complete_claim", "unknown_reason", "extra", "bound",
+    "clean_unread_log", "clean_entry_overshoot", "clean_file_overshoot", "clean_line_overshoot"])
+def test_invalid_reported_collection_never_qualifies_complete_usage_or_exports_raw_text(gap):
+    collection = _reported_collection()
+    if gap == "boolean_count":
+        collection["counts"]["provider_observations"] = True
+    elif gap == "authority":
+        collection["provider_usage_authenticity_verified"] = True
+    elif gap == "complete_claim":
+        collection["attempt_population_complete"] = True
+    elif gap == "unknown_reason":
+        collection.update(status="incomplete", complete=False, reason_codes=["MUST NOT APPEAR"])
+    elif gap == "extra":
+        collection["transcript"] = "MUST NOT APPEAR"
+    elif gap == "clean_unread_log":
+        collection["counts"]["log_files_read"] = 0
+    elif gap == "clean_entry_overshoot":
+        collection["counts"]["entries_examined"] = 4097
+    elif gap == "clean_file_overshoot":
+        collection["counts"].update(entries_examined=129, log_files_seen=129, log_files_read=128)
+    elif gap == "clean_line_overshoot":
+        collection["counts"]["lines_examined"] = 131073
+    else:
+        collection["counts"]["entries_examined"] = 4098
+    row = _interaction_trial([_identified_invocation()], provider_receipt_collection=collection)
+    assert row["tokens"]["total_tokens"] is None
+    assert row["known_token_subtotals"]["total_tokens"] == 120
+    observation = row["usage_coverage_observation"]
+    assert observation["provider_receipt_collection_status"] == "invalid"
+    assert observation["provider_receipt_collection"] is None
+    assert observation["complete_usage_blocked"] is True
+    assert "MUST NOT APPEAR" not in json.dumps(row)
+
+
+@pytest.mark.parametrize("different_artifact", [False, True])
+def test_baseline_session_reuse_across_trials_is_not_additive(different_artifact):
+    first = _baseline_native()
+    second = copy.deepcopy(first)
+    if different_artifact:
+        second["sessions"][0]["sha256"] = "f" * 64
+    rows = [_baseline_trial(first), _baseline_trial(second, identity="second-baseline", reward=0)]
+    comparison._annotate_native_session_reuse(rows)
+    assert [row["tokens"]["total_tokens"] for row in rows] == [110, 110]
+    aggregate = comparison._aggregate(rows)
+    assert aggregate["native_session_overlap_count"] == 1
+    assert aggregate["tokens"] == dict.fromkeys(comparison.TOKENS)
+    assert aggregate["reported_cost_usd"] is None
+    assert aggregate["known_token_subtotals"]["total_tokens"] == 220
+    assert aggregate["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    failed = comparison._aggregate([row for row in rows if row["official_reward"] == 0])
+    assert failed["trials"] == 1 and failed["native_session_overlap_count"] == 1
+    assert failed["tokens"]["total_tokens"] is None and failed["reported_cost_usd"] is None
+
+
+def test_baseline_and_supervisor_share_exact_native_identity_without_artifact_join():
+    identity = "native-session-123456789"
+    native = _baseline_native((identity,))
+    native["sessions"][0]["sha256"] = "d" * 64
+    rows = [_baseline_trial(native), _interaction_trial([_identified_invocation(artifact="different-artifact")])]
+    comparison._annotate_native_session_reuse(rows)
+    expected = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    assert [row["native_sessions_reused_across_comparison_trials"] for row in rows] == [[expected], [expected]]
+    assert rows[0]["baseline_native_session_identity_observation"]["identity_sha256"] == [expected]
+    assert [row["tokens"]["total_tokens"] for row in rows] == [110, 120]
+    for row in rows:
+        aggregate = comparison._aggregate([row])
+        assert aggregate["native_session_overlap_count"] == 1
+        assert aggregate["tokens"]["total_tokens"] is None
+        assert aggregate["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert identity not in json.dumps(rows)
+
+
+def test_duplicate_baseline_ids_withhold_totals_and_retain_raw_unreconciled_subtotal():
+    row = _baseline_trial(_baseline_native(("duplicate-session", "duplicate-session")))
+    observation = row["baseline_native_session_identity_observation"]
+    assert observation["status"] == "invalid" and observation["inventory_complete"] is False
+    assert observation["reason"] == "native_session_identity_duplicate"
+    assert observation["observed_session_count"] == 2 and len(observation["identity_sha256"]) == 1
+    assert row["tokens"] == dict.fromkeys(comparison.TOKENS)
+    assert row["provider_calls"] is None and row["reported_cost_usd"] is None
+    assert row["known_token_subtotals"]["total_tokens"] == 220
+    assert row["known_token_subtotals_basis"] == "raw_baseline_usage_unreconciled"
+    assert row["known_reported_cost_subtotal_usd"] == 0.25
+    assert row["reported_cost_accounting_basis"] == "raw_baseline_cost_subtotal_unreconciled"
+
+
+@pytest.mark.parametrize("gap", ["missing", "boolean", "empty", "synthetic", "path", "partial", "artifact_only", "overlimit"])
+def test_modern_baseline_invalid_identity_inventory_never_gains_complete_totals(gap):
+    identity = "native-session-123456789"
+    native = _baseline_native((identity,))
+    session = native["sessions"][0]
+    if gap in {"missing", "artifact_only"}:
+        session.pop("session_id")
+        if gap == "artifact_only":
+            session.update(path="sessions/rollout-observed.jsonl", sha256="a" * 64)
+    elif gap == "boolean":
+        session["session_id"] = True
+    elif gap == "empty":
+        session["session_id"] = ""
+    elif gap == "synthetic":
+        session["session_id"] = "unidentified:sessions/rollout-observed.jsonl"
+    elif gap == "path":
+        session["session_id"] = "sessions/rollout-observed.jsonl"
+    elif gap == "overlimit":
+        native["sessions"] *= comparison.BASELINE_SESSION_LIMIT + 1
+    else:
+        extra = copy.deepcopy(session)
+        extra.pop("session_id")
+        native["sessions"].append(extra)
+        native["usage"] = {key: value * 2 if value is not None else None for key, value in native["usage"].items()}
+    row = _baseline_trial(native)
+    observation = row["baseline_native_session_identity_observation"]
+    assert observation["status"] == "invalid" and observation["inventory_complete"] is False
+    assert row["tokens"] == dict.fromkeys(comparison.TOKENS)
+    assert row["native_usage_complete_observed"] is False and row["reported_cost_usd"] is None
+    if gap == "partial":
+        expected = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        assert observation["identity_sha256"] == [expected]
+        rows = [row, _interaction_trial([_identified_invocation()])]
+        comparison._annotate_native_session_reuse(rows)
+        assert rows[1]["native_sessions_reused_across_comparison_trials"] == [expected]
+        assert comparison._aggregate([rows[1]])["tokens"]["total_tokens"] is None
+    else:
+        assert observation["identity_sha256"] == []
+        assert comparison._native_session_keys(row) == set()
+
+
+@pytest.mark.parametrize("gap", ["aggregate_usage", "session_usage", "boolean_usage", "missing_usage",
+    "missing_completion", "unknown_completion", "malformed_completion"])
+def test_current_baseline_usage_and_completion_bind_every_supplied_session(gap):
+    native = _baseline_native()
+    session = native["sessions"][0]
+    if gap == "aggregate_usage":
+        native["usage"]["input_tokens"] += 1
+    elif gap == "session_usage":
+        session["usage"]["cached_input_tokens"] = 101
+    elif gap == "boolean_usage":
+        session["usage"]["cached_input_tokens"] = True
+    elif gap == "missing_usage":
+        session.pop("usage")
+    elif gap == "missing_completion":
+        session.pop("task_complete_observed")
+    elif gap == "malformed_completion":
+        session["task_complete_observed"] = "true"
+    else:
+        session["task_complete_observed"] = None
+    row = _baseline_trial(native)
+    observation = row["baseline_native_session_identity_observation"]
+    assert observation["inventory_complete"] is True
+    assert row["tokens"] == dict.fromkeys(comparison.TOKENS)
+    assert row["native_usage_complete_observed"] is not True and row["reported_cost_usd"] is None
+    assert comparison._native_session_keys(row) == {("codex_cli", observation["identity_sha256"][0])}
+    if gap in {"missing_completion", "unknown_completion", "malformed_completion"}:
+        assert observation["usage_population_coherent"] is True
+    else:
+        assert observation["usage_population_coherent"] is not True
+
+
+def test_historical_baseline_without_ids_stays_explicitly_unverified():
+    native = dict(sessions=[{"task_complete_observed": True}], usage=dict(input_tokens=100,
+        cached_input_tokens=60, output_tokens=10, total_tokens=110), reported_cost_usd=0.125)
+    row = _baseline_trial(native)
+    assert row["tokens"]["total_tokens"] == 110 and row["reported_cost_usd"] == 0.125
+    assert row["native_token_accounting_basis"] == "legacy_baseline_identity_unverified"
+    assert row["baseline_native_session_identity_observation"]["status"] == "unverified"
+    assert comparison._native_session_keys(row) == set()
+    assert row["whole_interaction_qualified"] is False
+
+
+def test_declared_hex_native_id_is_hashed_exactly_and_supplied_annotations_are_replaced():
+    identity = "a" * 64
+    native = _baseline_native((identity,))
+    row = _baseline_trial(native, baseline_native_session_identity_observation={"identity_sha256": ["f" * 64]},
+                          native_sessions_reused_across_comparison_trials=["f" * 64])
+    expected = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    assert comparison._native_session_keys(row) == {("codex_cli", expected)}
+    row["native_sessions_reused_across_comparison_trials"] = [expected]
+    comparison._annotate_native_session_reuse([row])
+    assert row["native_sessions_reused_across_comparison_trials"] == []
+    assert comparison._aggregate([row])["tokens"]["total_tokens"] == 110
+
+
+def test_malformed_supplied_baseline_identity_projection_cannot_create_owner_keys():
+    row = _baseline_trial(_baseline_native())
+    row["baseline_native_session_identity_observation"]["observed_session_count"] = True
+    assert comparison._native_session_keys(row) == set()
+    row = _baseline_trial(_baseline_native())
+    row["baseline_native_session_identity_observation"]["source_authenticity_verified"] = True
+    assert comparison._native_session_keys(row) == set()
+    row = _baseline_trial(_baseline_native())
+    row["baseline_native_session_identity_observation"]["unknown"] = "must not qualify"
+    assert comparison._native_session_keys(row) == set()
+
+
+def test_identified_session_selects_latest_snapshot_once_and_keeps_failed_wrappers():
+    early = _identified_invocation("planning", phase="planning", complete=False)
+    late = _identified_invocation("coding", records=2, inputs=150, outputs=30)
+    late.update(status="failed", error_type="ResponseDecodeError")
+    for call in (early, late):
+        call["native_rollout_usage"]["dollar_cost"] = 1
+    row = _interaction_trial([early, late, late])
+    assert row["tokens"] == dict(input_tokens=150, cached_input_tokens=75, output_tokens=30, total_tokens=180)
+    assert row["observed_provider_invocations"] == 2
+    assert row["native_session_accounting"]["native_session_count"] == 1
+    assert row["native_session_accounting"]["failed_invocation_count"] == 1
+    assert row["native_session_reconciliation_available"] is True
+    assert row["native_token_accounting_basis"] == "native_session_reconciled"
+    assert row["input_token_scope"] == "native_input_including_cache"
+    assert row["interaction_phase_coverage"]["planning_observed"] is True
+    assert row["interaction_phase_coverage"]["coding_observed"] is True
+    assert row["whole_interaction_qualified"] is False
+    assert row["reported_cost_usd"] is None
+    assert row["known_reported_cost_subtotal_usd"] == 2
+    assert row["reported_cost_accounting_basis"] == "raw_invocation_cost_subtotal_unreconciled"
+
+
+def test_identical_session_snapshot_in_distinct_wrappers_is_not_charged_twice():
+    one = _identified_invocation("one", artifact="same")
+    two = _identified_invocation("two", artifact="same")
+    row = _interaction_trial([one, two])
+    assert row["tokens"]["total_tokens"] == 120
+    assert row["native_session_accounting"]["supplied_invocation_count"] == 2
+    assert row["shared_native_session_count"] == 1
+
+
+@pytest.mark.parametrize("gap", ["regression", "equal_conflict", "missing_identity", "malformed_identity",
+    "missing_model", "foreign_model", "foreign_workspace", "unreceipted", "unknown_marker", "failed_retry"])
+def test_modern_native_gaps_withhold_complete_trial_totals_without_legacy_fallback(gap):
+    one = _identified_invocation("one")
+    two = _identified_invocation("two", records=2, inputs=150, outputs=30)
+    marker = False
+    if gap == "regression":
+        two["native_rollout_usage"]["usage"].update(input_tokens=80, cached_input_tokens=40, output_tokens=20, total_tokens=100)
+    elif gap == "equal_conflict":
+        two["native_rollout_usage"]["observed_token_count_records"] = 1
+    elif gap == "missing_identity":
+        two["native_rollout_usage"].pop("thread_id")
+    elif gap == "malformed_identity":
+        two["native_rollout_usage"]["thread_id"] = True
+    elif gap == "missing_model":
+        two.pop("model")
+    elif gap == "foreign_model":
+        two["model"] = "foreign-model"
+    elif gap == "foreign_workspace":
+        two["workspace"] = "/authored/other-worktree"
+    elif gap == "unreceipted":
+        marker = {"phase": "coding"}
+    elif gap == "unknown_marker":
+        marker = None
+    else:
+        two.update(status="failed", error_type="TimeoutError")
+        two["native_rollout_usage"].update(thread_id="failed-retry-session-123456789", task_complete_observed=False)
+    row = _interaction_trial([one, two], marker=marker)
+    assert row["native_token_accounting_basis"] == "native_session_reconciled"
+    assert all(value is None for value in row["tokens"].values())
+    assert row["native_usage_complete_observed"] is False
+    assert row["observed_provider_invocations"] == 2
+    assert row["reported_cost_usd"] is None
+    if gap == "failed_retry":
+        assert row["known_token_subtotals"]["total_tokens"] == 300
+        assert row["native_session_accounting"]["failed_invocation_count"] == 1
+    if gap == "unknown_marker":
+        assert row["unreceipted_provider_attempt"] is None
+
+
+@pytest.mark.parametrize("provider", ["foreign-provider", None])
+def test_native_codex_thread_with_wrong_or_missing_provider_cannot_regain_legacy_totals(provider):
+    call = _identified_invocation()
+    if provider is None:
+        call.pop("provider")
+    else:
+        call["provider"] = provider
+    row = _interaction_trial([call])
+    assert row["native_token_accounting_basis"] == "native_session_reconciled"
+    assert all(value is None for value in row["tokens"].values())
+    assert row["native_usage_complete_observed"] is False
+    assert row["whole_interaction_qualified"] is False
+
+
+@pytest.mark.parametrize("invocation_count", [1, 2])
+def test_modern_codex_receipts_with_no_thread_ids_cannot_regain_legacy_totals(invocation_count):
+    calls = [_identified_invocation("missing-identity-" + str(index)) for index in range(invocation_count)]
+    for call in calls:
+        call["native_rollout_usage"].pop("thread_id")
+        call["native_rollout_usage"]["dollar_cost"] = 1
+    row = _interaction_trial(calls)
+    assert row["native_token_accounting_basis"] == "native_session_reconciled"
+    assert row["tokens"] == dict.fromkeys(comparison.TOKENS)
+    assert row["native_usage_complete_observed"] is False
+    assert row["observed_provider_invocations"] == invocation_count
+    assert row["native_session_accounting"]["native_session_count"] == 0
+    assert row["reported_cost_usd"] is None
+    assert row["known_reported_cost_subtotal_usd"] == invocation_count
+    assert row["observed_counts_are_lower_bounds"] is False
+    assert row["whole_interaction_qualified"] is False
+
+
+def test_recomputed_context_ignores_forged_summary_and_keeps_local_counts_out_of_usage():
+    call = _identified_invocation()
+    call["local_token_count"] = 1
+    row = _interaction_trial([call], context_delivery_observation={"native_invocations": {"complete_native_total_tokens": 1}})
+    assert row["tokens"]["total_tokens"] == 120
+    assert row["context_delivery_observation"]["native_invocations"]["complete_native_total_tokens"] == 120
+    assert row["native_session_accounting"]["local_tokenizer_counts_used_as_native_usage"] is False
+    assert row["native_session_accounting_source_sha256"]
+    assert row["context_delivery_observation_source_sha256"]
+
+
+@pytest.mark.parametrize("codex_complete", [True, False])
+def test_identified_mixed_provider_input_is_normalized_without_recharging_cache(codex_complete):
+    grok = _grok_invocation(complete=True)
+    grok.update(schema="router-implementation-invocation@1", model="grok-4.7", purpose="coding",
+                workspace="/authored/worktree", model_prompt_sha256="a" * 64, model_prompt_bytes=123)
+    grok["native_rollout_usage"].update(usage_observation_sha256="c" * 64, observed_final_usage_records=1)
+    row = _interaction_trial([_identified_invocation(complete=codex_complete), grok])
+    expected = dict(input_tokens=140, cached_input_tokens=80, output_tokens=22, total_tokens=162)
+    assert row["known_token_subtotals"] == expected
+    assert row["tokens"] == (expected if codex_complete else dict.fromkeys(comparison.TOKENS))
+    assert row["input_token_scope"] == "native_input_including_cache"
+    assert row["cache_included_in_input"] is None
+    assert row["observed_counts_are_lower_bounds"] is False
+    assert row["invocations"][1]["tokens"]["input_tokens"] == 10
+
+
+def test_legacy_receipts_keep_explicitly_unreconciled_descriptive_totals():
+    row = _interaction_trial([_invocation()])
+    assert row["tokens"]["total_tokens"] == 22
+    assert row["native_token_accounting_basis"] == "legacy_invocation_sum_unreconciled"
+    assert row["native_session_reconciliation_available"] is False
+    assert row["native_session_accounting"] is None
+    assert row["whole_interaction_qualified"] is False
+
+
+def test_shared_native_session_across_retained_trials_withholds_aggregate_tokens_and_cost():
+    first = _interaction_trial([_identified_invocation("first")])
+    second = _interaction_trial([_identified_invocation("second", records=2, inputs=150, outputs=30)])
+    totals = comparison._aggregate([first, second])
+    assert totals["native_session_overlap_count"] == 1
+    assert all(value is None for value in totals["tokens"].values())
+    assert totals["reported_cost_usd"] is None
+    assert totals["known_token_subtotals"]["total_tokens"] == 300
+    assert totals["known_token_subtotals_basis"] == "per_trial_observations_unreconciled_across_shared_sessions"
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert "native_session_reused_across_retained_trials" in totals["observed_efficiency"]["token_ratio_unavailable_reasons"]
+
+
+def test_same_native_session_cannot_be_charged_to_distinct_comparison_arms(tmp_path):
+    paths = []
+    for arm in ("full", "no-index"):
+        trial = dict(trial="trial-" + arm, reward={"reward": 1}, supervisor=dict(
+            provider_invocations=[_identified_invocation("call-" + arm)], unreceipted_provider_attempt=False))
+        paths.append(_receipt(tmp_path, arm + ".json", SUPERVISOR, [trial], arm))
+    result = collect(baseline=_baseline(tmp_path), supervisors=paths)
+    for arm in ("full", "no-index"):
+        totals = result["arm_totals"][arm]
+        assert totals["native_session_overlap_count"] == 1
+        assert totals["tokens"]["total_tokens"] is None
+        assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert len(result["rows"][1]["native_sessions_reused_across_comparison_trials"]) == 1
 
 
 def test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts(tmp_path):
@@ -203,6 +744,7 @@ def test_native_baseline_efficiency_uses_all_failed_session_costs(tmp_path):
     receipt = json.loads(baseline.read_text())
     failed = copy.deepcopy(receipt["trials"][0])
     failed.update(trial="failed-native", reward={"reward": 0})
+    failed["raw_usage"]["sessions"][0]["session_id"] = "independent-failed-session"
     receipt["trials"].append(failed)
     receipt["trial_count"] = 2
     for trial in receipt["trials"]:

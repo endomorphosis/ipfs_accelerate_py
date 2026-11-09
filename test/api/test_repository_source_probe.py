@@ -22,9 +22,76 @@ def test_actual_installed_runtime_probe_and_closed_receipt(observed):
     assert observed["schema"] == "repository-source-runtime-probe@2"
     assert observed["usage"]["canonical_edits"] == 2
     assert observed["usage"]["retrieval_observation"]["generation_bindings_observed"] == 2
+    reads = observed["usage"]["read_observation"]
+    assert reads["complete"] is True
+    assert (reads["read_calls"], reads["successful_reads"], reads["failed_reads"]) == (7, 5, 2)
+    assert (reads["full_file_reads"], reads["definition_reads"], reads["line_range_reads"]) == (3, 2, 0)
+    assert (reads["original_reads"], reads["compact_reads"]) == (3, 2)
+    assert reads["line_range_selected_lines"] == reads["line_range_total_lines"] == reads["line_range_omitted_lines"] == 0
+    assert reads["provider_usage_measured"] is reads["token_savings_measured"] is False
     assert observed["provider_calls"] == 0 and observed["target_code_executed"] is False
     encoded = json.dumps(observed)
     assert "def value" not in encoded and "authored cache" not in encoded
+
+
+def test_probe_read_metadata_matches_the_fixed_workload_without_false_coverage(observed):
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_mcp import validate_read_observation
+
+    mutations = {"missing": "invalid_read_observation", "null": "invalid_read_observation",
+        "bool_count": "invalid_read_observation", "authority": "invalid_read_observation",
+        "extra": "invalid_read_observation", "wrong_sum": "invalid_read_observation",
+        "digest": "invalid_read_observation", "exposure": "invalid_read_observation",
+        "scopes": "repository runtime probe read usage differs",
+        "range": "repository runtime probe read usage differs",
+        "legacy": "repository runtime probe read usage differs",
+        "unbound": "repository runtime probe read usage differs"}
+    for mutation, reason in mutations.items():
+        value = copy.deepcopy(observed)
+        usage = value["usage"]
+        reads = usage["read_observation"]
+        if mutation == "missing":
+            reads.pop("event_chain_sha256")
+        elif mutation == "null":
+            usage["read_observation"] = None
+        elif mutation == "bool_count":
+            reads["successful_reads"] = True
+        elif mutation == "authority":
+            reads["token_savings_measured"] = True
+        elif mutation == "extra":
+            reads["source_text"] = "private source must not qualify"
+        elif mutation == "wrong_sum":
+            reads["read_calls"] += 1
+        elif mutation == "digest":
+            reads["event_chain_sha256"] = "foreign"
+        elif mutation == "exposure":
+            reads["exposed_content_utf8_bytes"] = 0
+        elif mutation == "scopes":
+            reads.update(full_file_reads=2, definition_reads=3)
+        elif mutation == "range":
+            reads.update(full_file_reads=2, line_range_reads=1,
+                line_range_selected_lines=1, line_range_total_lines=1, line_range_omitted_lines=0)
+        elif mutation == "legacy":
+            reads.update(read_calls=6, successful_reads=4, full_file_reads=3, definition_reads=1,
+                original_reads=2, generation_bindings_observed=4, legacy_read_calls=1,
+                legacy_successful_reads=1, complete=False)
+        else:
+            reads.update(full_file_reads=2, original_reads=2, generation_bindings_observed=4,
+                unbound_successes=1, complete=False)
+        if mutation in {"scopes", "range", "legacy", "unbound"}:
+            # These are otherwise coherent read populations. Only the fixed
+            # installed-probe workload can rule out invented scope coverage.
+            validate_read_observation(reads, **{key: usage[key] for key in
+                ("tool_calls", "errors", "successful_reads", "compact_reads")})
+        with pytest.raises(ValueError) as rejected:
+            probe.validate_probe(value)
+        assert str(rejected.value) == reason, mutation
+
+
+def test_historical_current_probe_without_read_metadata_remains_reviewable(observed):
+    value = copy.deepcopy(observed)
+    value["usage"].pop("read_observation")
+    assert probe.validate_probe(value) == value
+    assert "read_observation" not in value["usage"]
 
 
 @pytest.mark.parametrize("mutation", ["missing_check", "false_check", "provider_call", "extra",
@@ -86,13 +153,15 @@ def test_current_probe_requires_retrieval_even_during_historical_review():
 def test_clean_environment_forwards_deployed_dependency_paths(tmp_path):
     import duckdb
     import ipfs_datasets_py
+    import multiformats
     source = Path(probe.__file__).resolve().parents[3]
     datasets = Path(ipfs_datasets_py.__file__).resolve().parent.parent
-    # This host installs dependencies in the user site, whereas deployment uses
-    # a dedicated venv. Bind the installed dependency directory explicitly so
-    # -I and the disposable HOME model that venv without ambient user imports.
+    # The native owner requires both DuckDB and multiformats for source CIDs.
+    # They may occupy separate installed dependency directories. Bind those
+    # actual package origins explicitly, without inheriting ambient source roots.
     dependencies = Path(duckdb.__file__).resolve().parent.parent
-    roots = [str(source), str(datasets), str(dependencies)]
+    cid_dependencies = Path(multiformats.__file__).resolve().parent.parent
+    roots = list(dict.fromkeys(map(str, (source, datasets, dependencies, cid_dependencies))))
     environment = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                    "HOME": str(tmp_path), "PYTHONPATH": os.pathsep.join(roots),
                    "PYTHONDONTWRITEBYTECODE": "1", "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1",
@@ -106,5 +175,5 @@ def test_clean_environment_forwards_deployed_dependency_paths(tmp_path):
     script = "import sys; sys.path[:0]=" + repr(roots) + "; from " + probe.__name__ + " import main; raise SystemExit(main())"
     result = subprocess.run([sys.executable, "-I", "-c", script], cwd=tmp_path,
                             env=environment, capture_output=True, text=True, timeout=75, check=False)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, (result.stdout, result.stderr)
     assert probe.validate_probe(json.loads(result.stdout))["qualified"]

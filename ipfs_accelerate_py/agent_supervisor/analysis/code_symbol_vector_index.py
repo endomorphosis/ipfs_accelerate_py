@@ -1121,7 +1121,8 @@ def search_code_symbol_vector_index(snapshot: CodeVectorIndexSnapshot | Mapping[
             query = CodeVectorQuery.for_snapshot(snapshot, query_vector=query, max_results=max_results or DEFAULT_MAX_RESULTS)
     if max_results is not None and max_results != query.max_results:
         query = CodeVectorQuery(query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric, query.query_vector, max_results)
-    if (query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric) != (snapshot.forest_id, snapshot.tree_id, snapshot.index_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric):
+    snapshot_id = snapshot.index_id
+    if (query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric) != (snapshot.forest_id, snapshot.tree_id, snapshot_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric):
         raise CodeSymbolVectorIndexStaleError("code vector query roots/configuration do not match the current snapshot")
     # A zero cosine query has no direction (for example, a lexical query with
     # no indexed vocabulary). It nominates no rows. Keep it replayable against
@@ -1130,12 +1131,12 @@ def search_code_symbol_vector_index(snapshot: CodeVectorIndexSnapshot | Mapping[
     # all nonzero query normalization checks remain unchanged.
     if snapshot.config.metric == "cosine" and not any(query.query_vector):
         return validate_code_vector_search_result(snapshot, CodeVectorSearchResult(
-            query, snapshot.index_id, (), complete=True, searched_row_count=len(snapshot.rows)))
+            query, snapshot_id, (), complete=True, searched_row_count=len(snapshot.rows)))
     if snapshot.config.normalization == "l2" and not _is_l2_normalized(query.query_vector):
         raise CodeSymbolVectorIndexError("query vector violates configured l2 normalization")
     ranked = sorted(((_score(snapshot.config.metric, query.query_vector, row.embedding), row) for row in snapshot.rows), key=lambda item: (-item[0], item[1].path, item[1].qualified_symbol, item[1].row_id))
-    hits = tuple(CodeVectorHit(row, snapshot.index_id, query.query_id, score, rank + 1) for rank, (score, row) in enumerate(ranked[:query.max_results]))
-    result = CodeVectorSearchResult(query, snapshot.index_id, hits, complete=True, searched_row_count=len(snapshot.rows))
+    hits = tuple(CodeVectorHit(row, snapshot_id, query.query_id, score, rank + 1) for rank, (score, row) in enumerate(ranked[:query.max_results]))
+    result = CodeVectorSearchResult(query, snapshot_id, hits, complete=True, searched_row_count=len(snapshot.rows))
     return validate_code_vector_search_result(snapshot, result)
 
 
@@ -1154,9 +1155,10 @@ def validate_code_vector_search_result(
     if not isinstance(result, CodeVectorSearchResult):
         result = CodeVectorSearchResult.from_dict(result)
     query = result.query
-    if (query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric) != (snapshot.forest_id, snapshot.tree_id, snapshot.index_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric):
+    snapshot_id = snapshot.index_id
+    if (query.forest_id, query.tree_id, query.index_id, query.config_id, query.dimensions, query.metric) != (snapshot.forest_id, snapshot.tree_id, snapshot_id, snapshot.config.config_id, snapshot.config.dimensions, snapshot.config.metric):
         raise CodeSymbolVectorIndexStaleError("code vector result roots/configuration do not match the current snapshot")
-    if result.index_id != snapshot.index_id or result.complete is not True or result.searched_row_count != len(snapshot.rows):
+    if result.index_id != snapshot_id or result.complete is not True or result.searched_row_count != len(snapshot.rows):
         raise CodeSymbolVectorIndexIntegrityError("incomplete or stale code vector result")
     if query.metric == "cosine" and not any(query.query_vector) and result.hits:
         raise CodeSymbolVectorIndexIntegrityError("zero cosine query cannot nominate vector hits")

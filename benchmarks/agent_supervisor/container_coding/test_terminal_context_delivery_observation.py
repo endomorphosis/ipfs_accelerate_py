@@ -56,6 +56,127 @@ def mcp_binding(status="observed"):
                    artifacts_retained_after_invocation=False))
 
 
+def mcp_with_optional_observations():
+    """Authored prepared replies; these counters are not native token usage."""
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp as mcp
+    from benchmarks.agent_supervisor.container_coding.test_terminal_repository_source_policy import authored_read_observation
+
+    binding = mcp_binding()
+    usage = binding["usage"]
+    usage.update(tool_calls=4, successful_reads=2, compact_reads=1, returned_bytes=400)
+    usage["read_observation"] = authored_read_observation(successful_reads=2, compact_reads=1)
+    usage["token_selection"] = dict(schema="repository-source-token-selection-summary@1", status="valid",
+        audit_closed=True, read_count=2, compact_selected=1, original_selected=1,
+        measured_comparisons=1, unmeasured_fallbacks=0, explicit_original=1,
+        selected_reply_tokens=30, provider_usage_measured=False)
+    usage["retrieval_observation"] = dict(schema="repository-source-retrieval-observation@1", complete=True,
+        event_chain_sha256="d" * 64, **{**dict.fromkeys(mcp.RETRIEVAL_COUNTERS, 0),
+            "query_calls": 1, "successful_queries": 1, "nonempty_queries": 1, "candidates_returned": 1,
+            "expansion_calls": 1, "successful_expansions": 1, "nonempty_expansions": 1,
+            "capsules_returned": 1, "generation_bindings_observed": 2}, **dict.fromkeys(mcp.RETRIEVAL_FALSE, False))
+    return binding
+
+
+def test_valid_optional_repository_observations_survive_projection_without_changing_native_usage():
+    binding = mcp_with_optional_observations()
+    row = invocation(repository_source_policy=binding)
+    report = dict(provider_invocations=[row], unreceipted_provider_attempt=False)
+    baseline = deepcopy(report)
+    for key in ("token_selection", "retrieval_observation", "read_observation"):
+        baseline["provider_invocations"][0]["repository_source_policy"]["usage"].pop(key)
+    result = adapter.collect(report=report)
+    assert result["native_invocations"] == adapter.collect(report=baseline)["native_invocations"]
+    projected = result["repository_source_mcp"]["observations"][0]
+    for key in ("token_selection", "retrieval_observation", "read_observation"):
+        assert projected[key] == binding["usage"][key]
+    assert projected["token_selection_summary_valid"] is True
+    assert projected["retrieval_observation_valid"] is True
+    assert projected["read_observation_valid"] is True
+    projected["read_observation"]["line_range_reads"] = 100
+    assert binding["usage"]["read_observation"]["line_range_reads"] == 1
+    assert result["token_savings_established"] is False
+    assert result["provider_ingestion_verified"] is False
+
+
+def test_complete_read_scope_aggregation_retains_failed_provider_attempts():
+    # Both native receipts are authored and have no native token observations.
+    # Retained prepared reads remain useful even when an invocation failed.
+    rows = [invocation("successful", repository_source_policy=mcp_with_optional_observations()),
+        invocation("failed", status="failed", repository_source_policy=mcp_with_optional_observations())]
+    result = adapter.collect(report=dict(provider_invocations=rows, unreceipted_provider_attempt=False))
+    repository = result["repository_source_mcp"]
+    assert repository["selected_invocation_count"] == 2
+    assert repository["read_scope_status"] == "observed" and repository["read_scope_complete"] is True
+    assert repository["read_scope_counts"]["successful_reads"] == 4
+    assert repository["read_scope_counts"]["line_range_reads"] == 2
+    assert repository["read_scope_counts"]["exposed_content_utf8_bytes"] == 128
+    assert result["native_invocations"]["failed_invocation_count"] == 1
+    assert result["native_invocations"]["complete_native_total_tokens"] is None
+    assert result["native_invocations"]["local_tokenizer_counts_used_as_native_usage"] is False
+    assert repository["provider_ingestion_observed"] is repository["tool_token_attribution"] is None
+
+
+def test_incomplete_invalid_or_duplicate_read_scope_never_becomes_an_aggregate():
+    from benchmarks.agent_supervisor.container_coding.test_terminal_repository_source_policy import authored_read_observation
+
+    for fault in ("missing", "invalid", "legacy_mix", "duplicate"):
+        rows = [invocation("first", repository_source_policy=mcp_with_optional_observations()),
+            invocation("second", repository_source_policy=mcp_with_optional_observations())]
+        usage = rows[1]["repository_source_policy"]["usage"]
+        if fault == "missing":
+            usage.pop("read_observation")
+        elif fault == "invalid":
+            usage["read_observation"]["line_range_reads"] = True
+        elif fault == "legacy_mix":
+            usage["read_observation"] = authored_read_observation(
+                successful_reads=2, compact_reads=1, line_reads=0, legacy_reads=1)
+        else:
+            rows[1] = deepcopy(rows[0])
+        repository = adapter.collect(report=dict(provider_invocations=rows))["repository_source_mcp"]
+        assert repository["read_scope_status"] == "partial"
+        assert repository["read_scope_complete"] is False
+        assert repository["read_scope_counts"] is None
+        assert repository["observations"][0]["read_observation"]["line_range_reads"] == 1
+        assert repository["observations"][1]["prepared_counts"]["successful_reads"] == 2
+
+
+def test_historical_missing_read_scope_is_unknown_and_invalid_optional_content_is_not_exported():
+    original = invocation(repository_source_policy=mcp_binding())
+    historical = adapter.collect(report=dict(provider_invocations=[original]))["repository_source_mcp"]
+    assert historical["read_scope_status"] == "not_observed"
+    assert historical["read_scope_complete"] is historical["read_scope_counts"] is None
+    for name in ("token_selection", "retrieval_observation", "read_observation"):
+        row = invocation(repository_source_policy=mcp_with_optional_observations())
+        row["repository_source_policy"]["usage"][name]["source"] = "private-extra-evidence"
+        repository = adapter.collect(report=dict(provider_invocations=[row]))["repository_source_mcp"]
+        projected = repository["observations"][0]
+        assert projected["status"] == "observed"
+        assert projected["prepared_counts"]["successful_reads"] == 2
+        assert projected[name] is None
+        assert "private-extra-evidence" not in json.dumps(repository)
+
+
+def test_read_and_retrieval_observations_cannot_reuse_call_or_failure_populations():
+    for overlap in ("calls", "errors"):
+        binding = mcp_with_optional_observations()
+        usage = binding["usage"]
+        reads, retrieval = usage["read_observation"], usage["retrieval_observation"]
+        if overlap == "calls":
+            retrieval.update(legacy_retrieval_calls=1, complete=False)
+        else:
+            usage.update(tool_calls=5, errors=1)
+            reads.update(read_calls=3, failed_reads=1)
+            retrieval.update(successful_expansions=0, nonempty_expansions=0, capsules_returned=0,
+                errors=1, generation_bindings_observed=1)
+        result = adapter.collect(report=dict(provider_invocations=[invocation(repository_source_policy=binding)]))
+        observed = result["repository_source_mcp"]["observations"][0]
+        assert observed["status"] == "observed"
+        assert observed["prepared_counts"]["successful_reads"] == 2
+        assert observed["read_observation_valid"] is observed["retrieval_observation_valid"] is False
+        assert observed["read_observation"] is observed["retrieval_observation"] is None
+        assert result["repository_source_mcp"]["read_scope_counts"] is None
+
+
 def test_complete_owner_join_keeps_delivery_and_native_usage_separate():
     report = report_with_source()
     original = deepcopy(report)

@@ -331,7 +331,7 @@ def prepare_worker_source_broker(*, argv, boundary, workspace, input_fd=0, view_
 
     profile = _argument(argv, "--source-view-profile", "disabled")
     working_set = _argument(argv, "--semantic-working-set", "legacy")
-    if working_set not in ("legacy", "capsule-references@1"):
+    if working_set not in ("legacy", "capsule-references@1", "capsule-token-minimum@1"):
         raise ValueError("unsupported semantic working set")
     if working_set != "legacy" and profile == "disabled":
         raise ValueError("capsule references require an enabled source view profile")

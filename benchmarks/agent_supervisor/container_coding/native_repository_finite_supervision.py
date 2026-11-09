@@ -165,7 +165,8 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         semantic_manifest: bool = False, checked_cache: bool = False,
         behavioral_evidence: bool = False, budgeted_preparation: bool = False,
         full_trial_resources: bool = False, pipeline_resources: bool = False,
-        preparation_profile=None):
+        preparation_profile=None, scheduler_state_path=None,
+        expected_scheduler_policy_sha256=None, resource_ledger=None, resource_roots=None):
     import duckdb
     from ipfs_datasets_py.logic.software_contracts.codebase_finite_integer_observation import seal_finite_integer_tools
     from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import get_global_resource_scheduler
@@ -187,6 +188,14 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         profile = (preparation_profile if type(preparation_profile) is RepositoryPreparationProfile
                    else load_profile(preparation_profile))
         pipeline_resources = True
+    if pipeline_resources:
+        if (scheduler_state_path is None or expected_scheduler_policy_sha256 is None
+                or resource_ledger is None or not resource_roots):
+            raise ValueError("pipeline resources require explicit existing scheduler state, policy, ledger and named roots")
+        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import open_existing_scheduler
+        selected_shared = open_existing_scheduler(scheduler_state_path, expected_scheduler_policy_sha256)
+    else:
+        selected_shared = None
     output = Path(output).absolute()
     if output.exists() or output.resolve() != output:
         raise ValueError("fresh exact qualification directory required")
@@ -255,7 +264,7 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
         managed_phase = managed_context = managed_before = None
         if error is None:
             try:
-                growth = max(0, phase.check_usage()["observed_apparent_bytes"]-before)
+                growth = max(0, phase.check_usage(full=True)["observed_apparent_bytes"]-before)
                 if growth > write_ceiling:
                     raise RuntimeError("trial phase exceeds sampled named-root write ceiling")
                 phase.finalize(artifacts_durable=True)
@@ -287,7 +296,7 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             managed_context = trial_pipeline.phase(RepositoryPhaseDemand(kind, memory_mb=1024,
                 disk_bytes=write_ceiling), payload=payload, attempt_directory=attempt)
             managed_phase = managed_context.__enter__()
-            managed_before = managed_phase.check_usage()["observed_apparent_bytes"]
+            managed_before = managed_phase.check_usage(full=True)["observed_apparent_bytes"]
             managed_phase.charge_external(output, write_ceiling)
     try:
         repository = output / "repository"; repository.mkdir()
@@ -322,7 +331,7 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
             if not report["initial_public_check_exit_code"]:
                 raise RuntimeError("independent public acceptance must initially fail")
         tools = seal_finite_integer_tools(python_executable=python, lean_executable=lean)
-        scheduler = get_global_resource_scheduler()
+        scheduler = selected_shared if selected_shared is not None else get_global_resource_scheduler()
         advance_phase("host_admission")
         if full_trial_resources:
             from ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge import (
@@ -344,7 +353,9 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                             disk_bytes=parent_disk_mb*1024**2, wall_time_ms=remaining_ms),
                         policy=PipelineResourcePolicy(protected_memory_mb=1024,
                             protected_disk_bytes=640*1024**2),
-                        ledger_path=output / "pipeline-disk-ledger.json", roots=[output]))
+                        ledger_path=resource_ledger, roots=resource_roots,
+                        scheduler_state_path=scheduler_state_path,
+                        expected_scheduler_policy_sha256=expected_scheduler_policy_sha256))
                 trial_envelope = trial_pipeline.parent
                 advance_phase("initial_public_validation")
                 report["initial_public_check_exit_code"] = managed_phase.run(
@@ -822,6 +833,14 @@ def main():
     parser.add_argument("--pipeline-resources", action="store_true")
     parser.add_argument("--preparation-profile", type=Path,
         help="Closed explicit preparation/checkpoint profile; implies the managed full trial")
+    parser.add_argument("--scheduler-state-path", type=Path,
+        help="Existing native scheduler; required for --pipeline-resources")
+    parser.add_argument("--expected-scheduler-policy-sha256",
+        help="Exact existing native policy digest")
+    parser.add_argument("--resource-ledger", type=Path,
+        help="Existing named-root storage ledger; never initialized by this trial")
+    parser.add_argument("--resource-root", dest="resource_roots", type=Path, action="append",
+        help="Exact existing ledger root, repeated in ledger order")
     result = qualify(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("qualified", "seconds", "provider_calls")}))
     return 0 if result["qualified"] else 1

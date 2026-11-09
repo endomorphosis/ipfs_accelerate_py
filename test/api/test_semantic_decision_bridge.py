@@ -76,7 +76,12 @@ def test_native_packet_reaches_pinned_router_and_selective_continuation(allocate
     assert result.receipt["provider_usage_complete"] is False
     assert [row["provider_receipt"]["usage"]["prompt_tokens"] for row in result.receipt["attempts"]] == [21, 22]
     if provider_name == "grok_cli":
-        assert all(options["grok_tools"] == "" and options["grok_max_turns"] == 1 for _, options in calls)
+        assert all(options["grok_tools"] == "read_file"
+                   and options["grok_disallowed_tools"] == "read_file,search_tool,use_tool"
+                   and options["grok_permission_mode"] == "dontAsk"
+                   and options["grok_max_turns"] == 1 for _, options in calls)
+        assert all(row["provider_receipt"]["effective_toolset_verified"] is False
+                   for row in result.receipt["attempts"])
         assert calls[0][1]["chat_session_id"] != calls[1][1]["chat_session_id"]
     else:
         assert (workspace / "mod.py").read_text() != source

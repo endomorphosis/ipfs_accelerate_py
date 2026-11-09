@@ -42,6 +42,8 @@ from .terminal_deployment import (
 from .benchmark_resource_profile import PROFILES, execution_budget, admission_environment
 from .native_codex_baseline import MODEL, CLI_VERSION
 from .benchmark_provider_profile import require_runtime_provider_profile, resolve_provider_profile
+from .full_supervisor_benchmark import _decision_options
+from .terminal_decision_policy import require_decision_archive
 from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection, _prompt_options
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
 from .terminal_retrieval_selection import require_retrieval_revision
@@ -331,7 +333,7 @@ async def _download_context_replay_evidence(environment, *, state: str,
 
 def _measured_native_usage(report: dict) -> dict:
     """Count observed native totals once, retaining provider-specific semantics."""
-    from .native_usage_accounting import native_usage_contract
+    from .native_usage_accounting import native_usage_contract, provider_receipt_collection_observation
 
     rows = report.get("provider_invocations", [])
     unique = {}
@@ -342,13 +344,21 @@ def _measured_native_usage(report: dict) -> dict:
         if identity in unique and unique[identity] != row:
             raise ValueError("conflicting provider receipts")
         unique[identity] = row
-    known = bool(unique) and not report.get("unreceipted_provider_attempt")
+    collection = (provider_receipt_collection_observation(report["provider_receipt_collection"])
+        if "provider_receipt_collection" in report else None)
+    collection_complete = ("provider_receipt_collection" not in report
+        or collection is not None and collection["complete"] is True)
+    known = bool(unique) and "unreceipted_provider_attempt" not in report and collection_complete
     result = {}
     for key in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens"):
         values = [(row.get("native_rollout_usage") or {}).get("usage", {}).get(key)
                   for row in unique.values()]
         result[key] = sum(values) if known and all(type(v) is int and v >= 0 for v in values) else None
-    result["provider_calls"] = len(unique)
+    result["provider_calls"] = (len(unique) if collection_complete
+        and "unreceipted_provider_attempt" not in report else None)
+    result["observed_provider_invocations"] = len(unique)
+    if "provider_receipt_collection" in report:
+        result.update(provider_receipt_collection=collection, provider_receipt_collection_valid=collection is not None)
     result["observed_complete_sessions"] = known and all(
         (row.get("native_rollout_usage") or {}).get("task_complete_observed") is True
         for row in unique.values()
@@ -396,10 +406,18 @@ def _measured_native_usage(report: dict) -> dict:
 
 
 def measured_usage(report: dict) -> dict:
-    """Apply decision coverage only when its explicit report scope is selected."""
+    """Reconcile recognized Codex sessions; retain ordinary Grok final scope.
+
+    Receipts lacking the existing reconciler's strict lifecycle evidence retain
+    known counters without gaining complete totals from a completion flag.
+    """
     from .terminal_decision_usage_projection import decision_usage_selected, measured_decision_usage
 
-    if decision_usage_selected(report):
+    rows = report.get("provider_invocations", [])
+    codex = type(rows) is list and any(type(row) is dict and (row.get("provider") == "codex_cli"
+        or type(row.get("native_rollout_usage")) is dict
+            and row["native_rollout_usage"].get("schema") == "native-codex-cumulative-usage@1") for row in rows)
+    if decision_usage_selected(report) or codex:
         return measured_decision_usage(report)
     return _measured_native_usage(report)
 
@@ -633,6 +651,8 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_decision_max_total_input_tokens: int | None = None,
                  doctor_dispatch_policy: str = "auto",
                  **kwargs):
+        decision = _decision_options({**kwargs, **locals()}, arm=arm,
+            provider=resolve_provider_profile(provider_profile)["provider"])
         doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
         prompt_options = _prompt_options(arm,
             prompt_tokenizer_artifact=prompt_tokenizer_artifact,
@@ -789,7 +809,21 @@ class FullSupervisorAgent(BaseAgent):
         self.intent_requirement_contract = intent_requirement_contract
         from .terminal_task_profile import validate_task_profile
         self.task_profile = validate_task_profile(task_profile) if task_profile is not None else None
+        self._decision_frozen_json = json.dumps(decision, sort_keys=True, allow_nan=False)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    def _checked_decision_selection(self, manifest):
+            selected = _decision_options(vars(self), arm=self.arm,
+                provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+            if json.dumps(selected, sort_keys=True, allow_nan=False) != getattr(self, "_decision_frozen_json", "{}"):
+                raise ValueError("prepared semantic decision selection changed")
+            if selected:
+                # Inferred archive assets cannot silently broaden the selected route.
+                _decision_options({**vars(self), "source384_config": validate_source384_binding(manifest),
+                    "numerical_selection_config": manifest.get("numerical_selection_384")}, arm=self.arm,
+                    provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
+                require_decision_archive(self.runtime_archive, manifest, selected)
+            return selected
 
     @staticmethod
     def name():
@@ -867,6 +901,7 @@ class FullSupervisorAgent(BaseAgent):
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
+        self._checked_decision_selection(manifest)
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
         require_planning_archive(manifest, self._checked_planning_mode())
@@ -971,6 +1006,8 @@ class FullSupervisorAgent(BaseAgent):
 
     async def run(self, instruction: str, environment, context: AgentContext):
         run_started = monotonic()
+        _decision_options(vars(self), arm=self.arm,
+            provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         doctor_arguments = doctor_dispatch_arguments(arm=self.arm,
             doctor_dispatch_policy=getattr(self, "doctor_dispatch_policy", "auto"))
         nomination_source = getattr(self, "semantic_decision_nomination_source", None)
@@ -1029,6 +1066,7 @@ class FullSupervisorAgent(BaseAgent):
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
+        self._checked_decision_selection(manifest)
         planning_mode = self._checked_planning_mode()
         require_planning_archive(manifest, planning_mode)
         retrieval_revision = require_retrieval_revision(manifest, self.arm,
@@ -1370,14 +1408,22 @@ class FullSupervisorAgent(BaseAgent):
                     context.metadata["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_turns)
                     context.metadata["grok_coding_not_applicable_provider_free"] = (
                         grok_coding_not_applicable_provider_free(report, grok_turns))
-                usage = measured_usage(report)
-                populate_harbor_usage(context, usage)
-                context.metadata.update(task_completed=report["task_completed"], usage=usage,
+                context.metadata.update(task_completed=report["task_completed"],
                                         supervisor_seconds=report["seconds"], phases=report["phases"],
                                         intent_preplanning=(report.get("planning") or {}).get(
                                             "intent_preplanning", report.get("intent_preplanning")),
                                         requirement_coverage=(report.get("planning") or {}).get("requirement_coverage"),
                                         error=report.get("error"), remaining_processes=report.get("remaining_processes"))
+                try:
+                    usage = measured_usage(report)
+                    populate_harbor_usage(context, usage)
+                    context.metadata["usage"] = usage
+                except Exception as exc:
+                    # Readable task/process facts survive accounting failures.
+                    # Population can fail after partially assigning counters.
+                    context.n_input_tokens = context.n_cache_tokens = context.n_output_tokens = None
+                    context.metadata.pop("usage", None)
+                    context.metadata["usage_accounting_error_type"] = type(exc).__name__[:128]
             except (Exception, asyncio.CancelledError) as exc:
                 context.metadata["report_unavailable"] = type(exc).__name__
                 if isinstance(exc, asyncio.CancelledError) and error is None:

@@ -4205,6 +4205,18 @@ class IntentRepository:
             # Its pending checks survive all ordinary task upserts; universal
             # admission and legacy task behavior are unchanged.
             previous_body = _decode_json(existing[2], noun="task body") if existing else {}
+            from .execution_packet_admission import (
+                execution_packet_required, preserve_execution_packet_requirement,
+                authority_spec_cid, task_record_on, require_execution_packet_on,
+                DISPATCH_STATUSES, ExecutionPacketAdmissionError,
+            )
+            try:
+                preserve_execution_packet_requirement(previous_body, body_map)
+                packet_guarded = execution_packet_required(previous_body) or execution_packet_required(body_map)
+            except ExecutionPacketAdmissionError as exc:
+                raise IntentRepositoryConflictError(str(exc)) from exc
+            previous_packet_record = task_record_on(connection, tcid) if packet_guarded and existing else None
+            previous_packet_spec = authority_spec_cid(previous_packet_record) if previous_packet_record else None
             if "local_planning_contract" in previous_body or "local_planning_contract" in body_map:
                 from ..runtime.local_planning_admission import guard_local_task_update
 
@@ -4344,6 +4356,17 @@ class IntentRepository:
                     else (dict(item) if isinstance(item, Mapping) else item)
                     for item in validations
                 ]
+            if packet_guarded:
+                packet_record = task_record_on(connection, tcid)
+                event_body["execution_packet_previous_spec_cid"] = previous_packet_spec
+                event_body["execution_packet_spec_cid"] = authority_spec_cid(packet_record)
+                event_body["execution_packet_previous_plan_cid"] = previous_packet_record["plan_cid"] if previous_packet_record else None
+                event_body["execution_packet_plan_cid"] = packet_record["plan_cid"]
+                if status_text in DISPATCH_STATUSES:
+                    try:
+                        require_execution_packet_on(connection, tcid, record=packet_record)
+                    except ExecutionPacketAdmissionError as exc:
+                        raise IntentRepositoryConflictError(str(exc)) from exc
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_UPSERTED,
@@ -4514,7 +4537,20 @@ class IntentRepository:
             contract = body.get("local_planning_contract")
             if contract is not None and list(dependencies) != contract["payload"]["dependencies"]:
                 raise IntentRepositoryIntegrityError("local pending dependencies are immutable")
+            from .execution_packet_admission import (
+                execution_packet_required, task_record_on, require_execution_packet_on,
+                DISPATCH_STATUSES, ExecutionPacketAdmissionError, authority_spec_cid,
+            )
+            packet_guarded = execution_packet_required(body)
+            previous_packet_spec = authority_spec_cid(task_record_on(connection, tcid)) if packet_guarded else None
             self._set_dependencies_on(connection, tcid, dependencies)
+            if packet_guarded:
+                current = task_record_on(connection, tcid)
+                if current["status"] in DISPATCH_STATUSES:
+                    try:
+                        require_execution_packet_on(connection, tcid, record=current)
+                    except ExecutionPacketAdmissionError as exc:
+                        raise IntentRepositoryConflictError(str(exc)) from exc
             return self._append_event(
                 connection,
                 event_type=IntentEventType.TASK_DEPENDENCIES_SET,
@@ -4527,6 +4563,8 @@ class IntentRepository:
                         for item in dependencies
                     ],
                     "revision": int(row[0]),
+                    **({"execution_packet_previous_spec_cid": previous_packet_spec,
+                        "execution_packet_spec_cid": authority_spec_cid(current)} if packet_guarded else {}),
                 },
             )
 
@@ -5065,6 +5103,19 @@ class IntentRepository:
                     raise IntentRepositoryIntegrityError("database claim has no owning goal")
                 if str(goal[0]) == "analysis_inconclusive":
                     raise IntentRepositoryConflictError("database claim goal is analysis_inconclusive")
+            from .execution_packet_admission import (
+                execution_packet_required, require_execution_packet_on,
+                task_record_on, DISPATCH_STATUSES, ExecutionPacketAdmissionError,
+            )
+            packet_record = None
+            try:
+                if status_text in DISPATCH_STATUSES and execution_packet_required(
+                    _decode_json(task_row[5], noun="task body")
+                ):
+                    packet_record = task_record_on(connection, resolved_cid)
+                    require_execution_packet_on(connection, resolved_cid, record=packet_record)
+            except ExecutionPacketAdmissionError as exc:
+                raise IntentRepositoryConflictError(str(exc)) from exc
             if previous_status == status_text:
                 return IntentReceipt(
                     event_id="",
@@ -5130,6 +5181,12 @@ class IntentRepository:
                 # Completion evidence must retain the exact supplied receipt.
                 body_map["completion_receipt"] = receipt_map if completing else retained
                 _apply_task_receipt_auxiliary_fields(body_map, receipt_map)
+            if packet_record is not None:
+                packet_record["body"] = body_map
+                try:
+                    require_execution_packet_on(connection, resolved_cid, record=packet_record)
+                except ExecutionPacketAdmissionError as exc:
+                    raise IntentRepositoryConflictError(str(exc)) from exc
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
@@ -5713,6 +5770,1866 @@ class IntentRepository:
                     "cleared_at": now,
                 },
             )
+
+    def _named_owner_sources(
+        self,
+        body: Mapping[str, Any],
+        roles: Mapping[str, str],
+    ) -> dict[str, dict[str, str]] | None:
+        owners = body.get("existing_owners")
+        if not isinstance(owners, list) or not owners or self._quack_transport:
+            return None
+        relative: list[str] = []
+        for item in owners:
+            if (
+                not isinstance(item, str)
+                or not item
+                or item.startswith("/")
+                or ".." in item.split("/")
+            ):
+                return None
+            relative.append(item)
+        start = self.database_path if self.database_path.is_dir() else self.database_path.parent
+        root = None
+        cursor = start
+        for _ in range(8):
+            if all((cursor / item).is_file() for item in relative):
+                root = cursor
+                break
+            if cursor.parent == cursor:
+                break
+            cursor = cursor.parent
+        if root is None:
+            return None
+        found: dict[str, dict[str, str]] = {}
+        for item in relative:
+            role = roles.get(item.rsplit("/", 1)[-1])
+            if role is None:
+                continue
+            path = root / item
+            size = path.stat().st_size
+            if size <= 0 or size > 2_000_000:
+                return None
+            raw = path.read_bytes()
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+            found[role] = {
+                "path": item,
+                "text": text,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+        if set(found) != set(roles.values()):
+            return None
+        return found
+
+    def _profile_owner_sources(
+        self, body: Mapping[str, Any]
+    ) -> dict[str, dict[str, str]] | None:
+        return self._named_owner_sources(
+            body,
+            {
+                "legal_relational_norm_v1.py": "relational",
+                "legal_counted_frame_v1.py": "counted_frame",
+                "legal_family_routes.py": "family",
+            },
+        )
+
+    def _dependency_evidence_records(self, task_cid: str) -> list[dict[str, Any]]:
+        with self._connection(write=False) as connection:
+            rows = connection.execute(
+                """
+                SELECT evidence_kind, digest, body_json
+                FROM evidence_nodes WHERE task_cid = ?
+                """,
+                [task_cid],
+            ).fetchall()
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            body = _decode_json(row[2], noun="evidence body")
+            records.append(
+                {
+                    "task_cid": task_cid,
+                    "evidence_kind": str(row[0]),
+                    "digest": str(row[1]),
+                    "body": body if isinstance(body, dict) else {},
+                }
+            )
+        return records
+
+    def _resolution_owner_sources(
+        self, body: Mapping[str, Any]
+    ) -> dict[str, dict[str, str]] | None:
+        owners = body.get("existing_owners")
+        if not isinstance(owners, list) or not owners:
+            return None
+        roles: dict[str, str] = {}
+        for item in owners:
+            if (
+                not isinstance(item, str)
+                or not item
+                or item.startswith("/")
+                or ".." in item.split("/")
+            ):
+                return None
+            roles[item.rsplit("/", 1)[-1]] = item.rsplit("/", 1)[-1]
+        if not roles:
+            return None
+        return self._named_owner_sources(body, roles)
+
+    def _finish_released_task(
+        self,
+        *,
+        task_cid: str,
+        task_alias: str,
+        revision: int,
+        evidence_body: Mapping[str, Any],
+        completed: list[dict[str, Any]],
+        held: list[dict[str, Any]],
+        completed_ids: set[str],
+        status_by_cid: dict[str, str],
+    ) -> bool:
+        from .dependency_block_resolution import dependency_resolution_receipt
+
+        operation = str(evidence_body.get("operation") or "")
+        try:
+            self.record_evidence(
+                task_cid=task_cid,
+                evidence_kind="validation",
+                digest=content_identity(dict(evidence_body)),
+                body=dict(evidence_body),
+            )
+        except (IntentRepositoryError, ControlPlaneContractError):
+            held.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": task_alias,
+                    "decision": "evidence_record_failed",
+                }
+            )
+            return False
+        try:
+            receipt = self.cas_task_status(
+                task_cid=task_cid,
+                expected_revision=revision,
+                new_status="completed",
+                receipt=dependency_resolution_receipt(operation),
+            )
+        except IntentRepositoryConflictError:
+            held.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": task_alias,
+                    "decision": "revision_conflict",
+                }
+            )
+            return False
+        except IntentCompletionError:
+            return False
+        status_by_cid[task_cid] = "completed"
+        completed_ids.add(task_cid)
+        completed.append(
+            {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "revision": int(receipt.revision),
+            }
+        )
+        return True
+
+    def _retire_restatement_task(
+        self,
+        *,
+        task_cid: str,
+        task_alias: str,
+        revision: int,
+        evidence_body: Mapping[str, Any],
+        retired: list[dict[str, Any]],
+        held: list[dict[str, Any]],
+        completed_ids: set[str],
+        status_by_cid: dict[str, str],
+    ) -> bool:
+        """Skip a restatement. The skip is not a satisfied obligation."""
+
+        from .dependency_block_resolution import (
+            RESTATEMENT_RETIRED_OPERATION,
+            dependency_resolution_receipt,
+        )
+
+        try:
+            digest = content_identity(dict(evidence_body))
+            self.record_evidence(
+                task_cid=task_cid,
+                evidence_kind="validation",
+                digest=digest,
+                body=dict(evidence_body),
+            )
+        except (IntentRepositoryError, ControlPlaneContractError):
+            held.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": task_alias,
+                    "decision": "evidence_record_failed",
+                }
+            )
+            return False
+        try:
+            receipt = self.cas_task_status(
+                task_cid=task_cid,
+                expected_revision=revision,
+                new_status="skipped",
+                receipt=dependency_resolution_receipt(RESTATEMENT_RETIRED_OPERATION),
+                evidence_digests=[digest],
+            )
+        except IntentRepositoryConflictError:
+            held.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": task_alias,
+                    "decision": "revision_conflict",
+                }
+            )
+            return False
+        except IntentCompletionError:
+            return False
+        status_by_cid[task_cid] = "skipped"
+        completed_ids.add(task_cid)
+        retired.append(
+            {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "revision": int(receipt.revision),
+            }
+        )
+        return True
+
+    def _spawn_resolution_obligations(
+        self,
+        pending: Sequence[Mapping[str, Any]],
+        held: Sequence[Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Create blocked obligations for one unresolved high-level task.
+
+        The obligations stay blocked. This call does not set them ready and
+        does not grant admission. A later pass completes an obligation only
+        when its recorded result is already true.
+        """
+
+        from .dependency_block_resolution import (
+            obligation_slug,
+            resolution_obligations,
+        )
+
+        spawned: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in (*pending, *held):
+            decision = str(item.get("decision") or "missing_evidence")
+            if decision in {
+                "evidence_record_failed",
+                "revision_conflict",
+                "substantive_review_or_publication_hold",
+                "substantive_authored_hold",
+            }:
+                continue
+            task_cid = str(item.get("task_cid") or "")
+            if not task_cid or task_cid in seen:
+                continue
+            seen.add(task_cid)
+            task = self.get_task(task_cid)
+            if task is None:
+                continue
+            body = task["body"] if isinstance(task["body"], Mapping) else {}
+            criteria = tuple(
+                str(entry.get("criterion") or "")
+                for entry in task["acceptance"]
+                if isinstance(entry, Mapping)
+            )
+            obligations = resolution_obligations(criteria=criteria, body=body)
+            if not obligations:
+                continue
+            attach = task
+            restatement = body.get("missing_record_subgoal") is True
+            parent_cid = str(body.get("parent_task_cid") or "")
+            if restatement and parent_cid:
+                parent = self.get_task(parent_cid)
+                if parent is not None:
+                    attach = parent
+            attach_body = attach["body"] if isinstance(attach["body"], Mapping) else {}
+            if attach_body.get("resolution_decomposed") is True and not restatement:
+                continue
+            base_dependencies = [
+                str(dependency)
+                for dependency in attach["dependencies"]
+                if str(dependency) != task_cid
+                and not str(dependency).endswith("--missing-record")
+            ]
+            owners = attach_body.get("existing_owners")
+            child_cids: list[str] = []
+            child_rows: list[dict[str, Any]] = []
+            for index, obligation in enumerate(obligations):
+                slug = obligation_slug(str(obligation["obligation"]), index)
+                child_cid = f"{attach['task_cid']}--{slug}"
+                child_alias = f"{attach['task_alias']}--{slug}"
+                child_body: dict[str, Any] = {
+                    "completion": "manual",
+                    "blocked_reason": (
+                        "This obligation stays blocked until its recorded "
+                        "result is stored."
+                    ),
+                    "resource_stage": "analysis",
+                    "resolution_subgoal": True,
+                    "obligation": str(obligation["obligation"]),
+                    "obligation_kind": str(obligation["kind"]),
+                    "parent_task_cid": str(attach["task_cid"]),
+                    "parent_task_alias": str(attach["task_alias"]),
+                    "spawn_decision": decision,
+                    "admitted": False,
+                    "formalized": False,
+                    "gold_or_teacher_admission_granted": False,
+                    "constitution_roundtrip_ok": False,
+                    "completion_authority": False,
+                }
+                if attach_body.get("execution_packet_required") is True:
+                    child_body["execution_packet_required"] = True
+                if isinstance(owners, list):
+                    child_body["existing_owners"] = list(owners)
+                if self.get_task(child_cid) is None:
+                    self.upsert_task(
+                        task_cid=child_cid,
+                        task_alias=child_alias,
+                        goal_cid=str(attach["goal_cid"]),
+                        plan_cid=str(attach["plan_cid"] or ""),
+                        objective_id=str(attach["objective_id"] or ""),
+                        status="blocked",
+                        priority=str(attach["priority"] or "P2"),
+                        body=child_body,
+                        dependencies=list(base_dependencies),
+                        acceptance=[str(obligation["obligation"])],
+                    )
+                child_cids.append(child_cid)
+                child_rows.append(
+                    {
+                        "task_cid": child_cid,
+                        "task_alias": child_alias,
+                        "parent_task_cid": str(attach["task_cid"]),
+                        "parent_task_alias": str(attach["task_alias"]),
+                        "decision": decision,
+                        "obligation": str(obligation["obligation"]),
+                        "obligation_kind": str(obligation["kind"]),
+                    }
+                )
+            current = self.get_task(str(attach["task_cid"]))
+            if current is None:
+                continue
+            current_body = current["body"] if isinstance(current["body"], Mapping) else {}
+            parent_body = dict(current_body)
+            parent_body["resolution_decomposed"] = True
+            dependencies = [
+                str(dependency)
+                for dependency in current["dependencies"]
+                if str(dependency) != task_cid
+                and not str(dependency).endswith("--missing-record")
+            ]
+            for child_cid in child_cids:
+                if child_cid not in dependencies:
+                    dependencies.append(child_cid)
+            identity = current["identity"] if isinstance(current["identity"], Mapping) else None
+            self.upsert_task(
+                task_cid=str(current["task_cid"]),
+                task_alias=str(current["task_alias"]),
+                goal_cid=str(current["goal_cid"]),
+                plan_cid=str(current["plan_cid"] or ""),
+                objective_id=str(current["objective_id"] or ""),
+                ordinal=int(current["ordinal"]),
+                status=str(current["status"]),
+                priority=str(current["priority"] or "P2"),
+                body=parent_body,
+                identity=dict(identity) if identity is not None else None,
+                expected_revision=int(current["revision"]),
+                dependencies=dependencies,
+            )
+            if restatement and str(current["task_cid"]) != task_cid:
+                rest = self.get_task(task_cid)
+                if rest is not None:
+                    rest_body = dict(rest["body"]) if isinstance(rest["body"], Mapping) else {}
+                    rest_body["resolution_decomposed"] = True
+                    rest_body["superseded_by"] = list(child_cids)
+                    self.upsert_task(
+                        task_cid=str(rest["task_cid"]),
+                        task_alias=str(rest["task_alias"]),
+                        goal_cid=str(rest["goal_cid"]),
+                        plan_cid=str(rest["plan_cid"] or ""),
+                        objective_id=str(rest["objective_id"] or ""),
+                        ordinal=int(rest["ordinal"]),
+                        status=str(rest["status"]),
+                        priority=str(rest["priority"] or "P2"),
+                        body=rest_body,
+                        expected_revision=int(rest["revision"]),
+                        dependencies=list(child_cids),
+                    )
+            spawned.extend(child_rows)
+        return spawned
+
+    def _spawn_resolution_work(
+        self,
+        pending: Sequence[Mapping[str, Any]],
+        held: Sequence[Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Create the next concrete task for an obligation that stays blocked.
+
+        The new tasks stay blocked. A task completes only when its own fact
+        is already recorded. The obligation stays blocked while any fact is
+        missing.
+        """
+
+        from .dependency_block_resolution import (
+            obligation_slug,
+            resolution_follow_on_work,
+        )
+
+        spawned: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in (*pending, *held):
+            task_cid = str(item.get("task_cid") or "")
+            if not task_cid or task_cid in seen:
+                continue
+            seen.add(task_cid)
+            task = self.get_task(task_cid)
+            if task is None:
+                continue
+            body = task["body"] if isinstance(task["body"], Mapping) else {}
+            if body.get("resolution_subgoal") is not True:
+                continue
+            if body.get("resolution_work") is True or body.get("resolution_decomposed") is True:
+                continue
+            criteria = tuple(
+                str(entry.get("criterion") or "")
+                for entry in task["acceptance"]
+                if isinstance(entry, Mapping)
+            )
+            obligation = criteria[0] if criteria else str(body.get("obligation") or "")
+            kind = str(body.get("obligation_kind") or "")
+            specs = resolution_follow_on_work(kind, obligation)
+            if not specs:
+                continue
+            owners = body.get("existing_owners")
+            base_dependencies = [str(dependency) for dependency in task["dependencies"]]
+            child_cids: list[str] = []
+            child_rows: list[dict[str, Any]] = []
+            for index, spec in enumerate(specs):
+                slug = obligation_slug(str(spec["obligation"]), index)
+                child_cid = f"{task['task_cid']}--{slug}"
+                child_alias = f"{task['task_alias']}--{slug}"
+                child_body: dict[str, Any] = {
+                    "completion": "manual",
+                    "blocked_reason": (
+                        "This fact stays blocked until that recorded result "
+                        "is stored."
+                    ),
+                    "resource_stage": "analysis",
+                    "resolution_work": True,
+                    "obligation": str(spec["obligation"]),
+                    "obligation_kind": str(spec["kind"]),
+                    "parent_task_cid": str(task["task_cid"]),
+                    "parent_task_alias": str(task["task_alias"]),
+                    "admitted": False,
+                    "formalized": False,
+                    "gold_or_teacher_admission_granted": False,
+                    "constitution_roundtrip_ok": False,
+                    "completion_authority": False,
+                }
+                if body.get("execution_packet_required") is True:
+                    child_body["execution_packet_required"] = True
+                if isinstance(owners, list):
+                    child_body["existing_owners"] = list(owners)
+                if self.get_task(child_cid) is None:
+                    self.upsert_task(
+                        task_cid=child_cid,
+                        task_alias=child_alias,
+                        goal_cid=str(task["goal_cid"]),
+                        plan_cid=str(task["plan_cid"] or ""),
+                        objective_id=str(task["objective_id"] or ""),
+                        status="blocked",
+                        priority=str(task["priority"] or "P2"),
+                        body=child_body,
+                        dependencies=list(base_dependencies),
+                        acceptance=[str(spec["obligation"])],
+                    )
+                child_cids.append(child_cid)
+                child_rows.append(
+                    {
+                        "task_cid": child_cid,
+                        "task_alias": child_alias,
+                        "parent_task_cid": str(task["task_cid"]),
+                        "parent_task_alias": str(task["task_alias"]),
+                        "obligation": str(spec["obligation"]),
+                        "obligation_kind": str(spec["kind"]),
+                    }
+                )
+            current = self.get_task(task_cid)
+            if current is None:
+                continue
+            current_body = dict(current["body"]) if isinstance(current["body"], Mapping) else {}
+            current_body["resolution_decomposed"] = True
+            dependencies = [str(dependency) for dependency in current["dependencies"]]
+            for child_cid in child_cids:
+                if child_cid not in dependencies:
+                    dependencies.append(child_cid)
+            identity = current["identity"] if isinstance(current["identity"], Mapping) else None
+            self.upsert_task(
+                task_cid=str(current["task_cid"]),
+                task_alias=str(current["task_alias"]),
+                goal_cid=str(current["goal_cid"]),
+                plan_cid=str(current["plan_cid"] or ""),
+                objective_id=str(current["objective_id"] or ""),
+                ordinal=int(current["ordinal"]),
+                status=str(current["status"]),
+                priority=str(current["priority"] or "P2"),
+                body=current_body,
+                identity=dict(identity) if identity is not None else None,
+                expected_revision=int(current["revision"]),
+                dependencies=dependencies,
+            )
+            spawned.extend(child_rows)
+        return spawned
+
+    def release_dependency_satisfied_blocks(
+        self, *, _resolution_depth: int = 0
+    ) -> dict[str, Any]:
+        """Complete dependency-met manual blocks whose evidence is already current.
+
+        A chain clears in this call: a later block sees an earlier completion
+        from the same call. A dependency-met block that stays unresolved is
+        split into concrete obligations when a recorded-result resolver can
+        attempt at least one of them. The parent depends on those obligations
+        and stays blocked until every obligation is positively recorded. An
+        obligation completes only from that recorded result. A single
+        unsplittable missing record is not restated. No obligation is set
+        ready, and none grants authority. A publication hold is completed only from stored
+        dependency facts that already separate qualification, engineering
+        gain, and statutory generalization, and the receipt grants no
+        promotion. A review hold is completed when every criterion allows an
+        explicit blocker. A reviewer-identity criterion is completed only as
+        an explicit blocker when the dependency packet records blank answer
+        slots; no reviewer is named. A profile comparison is completed from
+        owner source limits when that review selected no meanings. The
+        receipt records an empty selected set and approves no meaning. A
+        representation task is completed with no extension when that
+        comparison selected nothing and the current codec still round-trips
+        one formula, refuses unsupported forms, and keeps its fixed profile.
+        A scoped graph task is completed when that extension is still empty
+        and the current graph contract retains companions and ordered
+        arguments, keeps equal spellings apart, and refuses person and event
+        nodes. A family-route task is completed when that extension is still
+        empty and the current deontic route keeps obligation and permission
+        distinct, pins its import closure, and runs no Lake build. A
+        family-lowering task is completed when that route limit is already
+        recorded and the current relational profile preserves structure,
+        signature, and its deontic annotation, while counted-frame text and
+        DCEC ground fragments stay on separate supports. A definition
+        correspondence task is completed when that scoped graph stayed
+        unmerged and the current owners keep the two-unary alias unproved,
+        retain every declared argument and qualifier slot on a non-admitted
+        graph, refuse discarded qualifier text, and keep unresolved
+        alternatives on separate branches. A lookup task is completed when
+        that correspondence stayed unproved and the current owners retain
+        every searched partition, route, empty table, unavailable
+        placeholder, and competing candidate, while a nearest-scope hit
+        does not verify a governing scope or a justified binding. A
+        dependency-closure task is completed when that lookup stayed
+        unverified and the current owners report an explicit missing
+        dependency frontier for the declared population, while a new
+        competing definition makes the former unique resolution stale
+        and ambiguous instead of unioning the candidates.
+        legal_dependency_inventory_exhaustive stays false. A
+        meaning-material task is completed when that closure stayed
+        non-exhaustive and the current owners account for the selected
+        text as represented or explicitly unsupported, keep every rule
+        referenced once, retain a reversed rule order as an unapproved
+        difference, and preserve null conditions and exceptions, a
+        temporal leaf, unresolved approval, and the caller polarity. A
+        byte-target task is completed when that codec stayed a 259-symbol
+        byte export with no semantic-action extension and the current
+        example keeps source and context as the only model input, leaves
+        labels and embedding metadata separate, and fixes both eligibility
+        masks at zero. No fitting runs and no eligibility is granted. A
+        complete-interpretation review is completed only as an unreviewed
+        representation-phase boundary when that meaning stayed semantically
+        incomplete and the graph-review owner still refuses an accepted
+        view. No independent review is supplied, no omission audit is
+        claimed, and representation learning does not authorize legal
+        acceptance. A graph round-trip is completed when that unreviewed
+        boundary is already stored and the current candidate graph keeps
+        closed endpoints, role ordinals, source and interpretation
+        companions, and distinct alternatives through a bundle reload.
+        Review receipts stay separately addressed and no assertion is
+        accepted. A snapshot seal is completed when that round-trip stayed
+        unaccepted and the current bundle commits its own payload files
+        under an independently supplied manifest hash, refuses an
+        incomplete bundle, and leaves external source, interpretation, and
+        evidence payloads unauthenticated. A missing declared dependency
+        stays explicit and snapshot custody does not promote candidate
+        assertions or unsupported imports. A shared-module task is completed
+        when that custody stayed unpromoted and the current owners reuse
+        library target legal, keep each declaration's graph, interpretation,
+        and source identity, split the corpus into several module files, and
+        run no Lake build or admission. A V2 owner envelope is completed
+        when that shared-module preparation ran no Lake build and the
+        current native and bounded build owners share one historical schema
+        label, keep different profiles, and each bind the command, artifact
+        population, hypotheses, and source files before its runner call.
+        That receipt selects no profile, records no binary hash, and runs
+        no Lake build. A typed decoder task is completed when that
+        byte-target boundary granted no eligibility and the current owners
+        check binder, sort, arity, and reference constraints, reject invalid
+        and incomplete frames, retain a fresh head and a shape-compatible
+        warm start, and refuse direct KL across codec identities. The
+        training loss stays cross-entropy and no fitting runs. A shared
+        Lake build is completed when that V2 envelope ran no Lake build and
+        the recorded shared-owner receipt shows the pinned Lean 4.34.1
+        command succeeded for the authored official-shape O/P fixture, with
+        every expected nonempty olean, a complete prepared-module import
+        closure, no sorry or admit, unchanged binaries, and a cleaned
+        workspace. The native owner did not run. lean_compilation_verified
+        records that fixture command only and is not federal-corpus
+        acceptance, kernel admission, or legal acceptance. A consequence
+        audit is completed when that fixture compilation stayed unaccepted
+        as law and the current owners keep one shared definition for the
+        same source, refuse another edition and another definition
+        occurrence, require each definition, norm, and body hypothesis,
+        refuse a vacuous true and an invented axiom, and record a failed
+        entailment as a countermodel rather than a proof of negation.
+        Condition and exception resolution stays unclaimed. Alternative
+        deontic labels stay distinct and a non-deontic route stays refused.
+        This audit does not run Lake again. An invalidation-key task is
+        completed when that consequence audit stayed unaccepted as law and
+        the current owners stale an eligibility artifact when its review
+        pin or its applicability pin changes, keep the reusable conditional
+        compiled artifact and its bytes, and stale a prior user and its
+        reverse dependent when a competing definition is added. A cache pin
+        without those artifact bytes is refused. The incremental compiler
+        does not run, Lake does not run, and legal meaning stays
+        unverified. An incremental Lake comparison is completed when that
+        invalidation stayed unverified as law and the current owners run
+        bounded incremental and clean builds for an unchanged partition, a
+        changed definition partition, and a newly ambiguous definition
+        partition. Expected modules and semantic obligations agree with
+        the clean ``lake build legal`` result. The direct ``lean -o``
+        cache does not substitute for that command: its olean bytes stay
+        distinct and its argv stays ``lean -o``. Legal meaning stays
+        unverified. A release coordinator is completed when that comparison
+        stayed unverified as law and the current plan and reconciliation
+        owners seal referenced artifact bytes before the coordinator receipt,
+        refuse a commit hash inside that receipt, and keep candidate,
+        reviewed, replay-qualified, and promoted selectors disjoint. Remote
+        upload and Hub readback do not run. The October 16 inventory did not
+        construct ModelManager, and this seal does not mutate one. Legal
+        acceptance stays unclaimed. A causal comparison is completed when
+        that seal stayed unaccepted as law and the codec stayed a 259-symbol
+        export with no extension, and the current modality and plan owners
+        keep initialization, source cases, trainable mask, optimizer,
+        candidates, and budget identical across both arms, preserve the named
+        permission veto and the complete-rule loss-ID veto, and keep E1
+        engineering ranking in a separate record. No hypothesis is selected
+        and no training runs. An error report is completed when that
+        comparison selected no hypothesis and the current modality and
+        evaluation owners keep presence errors, owner errors, and critical
+        modality reversals in separate lists, keep a failed acceptance
+        failed when the aggregate gain is positive, refuse automatic
+        default and teacher promotion, and write the producer packet
+        before a separate post-freeze evaluation packet. The producer
+        packet receives no evaluation reference. No training runs. A
+        training-metric report is completed when that typed decoder ran no
+        training and granted no eligibility, and the current decoder and
+        example owners keep ordinary generation, full rules,
+        argument/attachment/modality, and protected retention in separate
+        engineering records, keep teacher-forced CE and compiler weak-label
+        scores separate from reviewed statutory fidelity, freeze outputs
+        before scoring, and write the producer packet before a separate
+        post-freeze evaluation packet. The producer packet receives no
+        evaluation reference. No training runs and the encoder stays frozen.
+        A width and control specification is completed when that
+        training-metric report ran no training and the current
+        reconciliation and native-input owners keep historical 8D variants,
+        active native vectors, and detached disabled-latent components
+        distinct, name correct, zero, branch-disabled, permuted,
+        source-only, and retrieval controls without executing them, and
+        keep mean-coordinate MSE from being semantic superiority. No MSE
+        is measured, no producer or encoder call runs, and no training
+        runs. A context-budget audit is completed when that training-metric
+        report ran no training and the declared closure stayed
+        non-exhaustive, and the current lookup and example owners bind
+        context, no-context, shuffled, unrelated-context, and
+        retrieval-only controls to one declared decoder and one source
+        budget without executing the decoder, keep definition pins separate
+        from context pins, and refuse a granted cross-split context
+        allowance. The allowance count stays 0. No decoder runs, no
+        training runs, and no federal corpus is scored. An
+        occurrence-visibility audit is completed when that context-budget
+        audit executed no decoder and granted no cross-split allowance,
+        and the current evaluation and lookup owners keep every selected
+        occurrence visible, keep the unsupported outcome and the missing
+        unresolved outcome visible, keep a retrieved locator on the lookup
+        record and off a governing-definition edge, and the current
+        training-metric materializer still writes the producer packet
+        before a separate post-freeze evaluation packet. The producer
+        packet receives no evaluation reference. The evaluation report's
+        metric reference access stays a metric flag and is not a producer
+        grant. No decoder runs, no training runs, and no federal corpus
+        is scored. A label-mask audit is completed when that
+        training-metric report ran no training and the current evaluation
+        and example owners keep solver or resource failure off a negative
+        legal label, keep reviewed, compiler-weak, synthetic, and
+        unresolved tiers on distinct masks and origins, and keep parser
+        or Lean success from creating gold. No solver runs, no Lean build
+        runs, no training runs, and no federal corpus is scored. A
+        teacher-identity audit is completed when that label-mask audit
+        created no gold and the current queue and example owners
+        invalidate split, experiment, and teacher identities when the
+        target changes, supply semantic distillation scope only for an
+        independently qualified teacher, and keep engineering retention
+        as a separate label. No independently qualified teacher is
+        supplied, no distillation scope is supplied, no training runs,
+        and no federal corpus is scored. A population-coverage audit is
+        completed when the consequence audit and the native handoff grant
+        no authority and the current evaluation and plan owners keep
+        inventory, eligible, attempted, missing, invalid, unsupported, and
+        accepted counts separate, keep compared off the accepted count,
+        include one review record on every attempted row, and refuse
+        throughput extrapolation from the small replay or the row-only
+        total. Accepted stays zero. The review records are an authored
+        fixture, not a measured pilot review cost, and no federal corpus
+        is scored. A storage-concurrency audit is completed when the
+        population-coverage audit grants no authority and the current
+        runtime and feed owners keep budget-expanded lineage, temporary
+        replay, retained evidence, and publication overlap separate, keep
+        the native grant purpose-specific to observation, preserve foreign
+        claims and assets, and refuse bypassing the recorded ledger cap
+        16777216 and external file cap 134217728. Accepted stays false.
+        This records an authored fixture, not a ledger write and not a
+        cap change. A comparison cell is completed when that width-control
+        specification granted no producer call, no encoder call, and no
+        authority, and the current owner is the cell's declared file. The
+        8D cell encodes the canonical sparse checkpoint. The 384D cell
+        matches the pinned gte-small execution profile and leaves the
+        detached placeholders unbound. The 768D cell authenticates the
+        complete local encoder identity and does not zero-pad a native
+        input. No training runs and no federal corpus is scored. Do not
+        complete LIR-2102 by changing its publication stage or inventing
+        a remote receipt. A modality
+        hypothesis is not selected from a retained training recipe. A task
+        with no current evidence stays blocked and is reported as pending.
+        Nothing here sets admission or gold.
+        """
+
+        from .codec_intact_probe import measure_codec_intact_probe
+        from .dependency_block_resolution import (
+            catalogue_resolution_decision,
+            codec_criteria_match,
+            codec_intact_evidence,
+            declared_closure_criteria_match,
+            declared_closure_evidence,
+            byte_target_criteria_match,
+            byte_target_eligibility_evidence,
+            declared_meaning_criteria_match,
+            declared_meaning_evidence,
+            dependency_resolution_receipt,
+            definition_correspondence_criteria_match,
+            definition_correspondence_evidence,
+            family_lowering_criteria_match,
+            family_lowering_evidence,
+            family_route_criteria_match,
+            family_route_evidence,
+            lookup_partition_criteria_match,
+            lookup_partition_evidence,
+            profile_limit_evidence,
+            scoped_graph_criteria_match,
+            scoped_graph_evidence,
+            substantive_resolution_evidence,
+            graph_roundtrip_criteria_match,
+            graph_roundtrip_evidence,
+            snapshot_custody_criteria_match,
+            snapshot_custody_evidence,
+            shared_module_criteria_match,
+            shared_module_evidence,
+            v2_owner_envelope_criteria_match,
+            v2_owner_envelope_evidence,
+            typed_decoder_criteria_match,
+            typed_decoder_evidence,
+            shared_lake_build_criteria_match,
+            shared_lake_build_evidence,
+            consequence_audit_criteria_match,
+            consequence_audit_evidence,
+            invalidation_keys_criteria_match,
+            invalidation_keys_evidence,
+            incremental_lake_agreement_criteria_match,
+            incremental_lake_agreement_evidence,
+            release_coordinator_criteria_match,
+            release_coordinator_evidence,
+            modality_causal_comparison_criteria_match,
+            modality_causal_comparison_evidence,
+            modality_error_report_criteria_match,
+            modality_error_report_evidence,
+            training_metric_criteria_match,
+            training_metric_evidence,
+            width_control_criteria_match,
+            width_control_evidence,
+            context_budget_criteria_match,
+            context_budget_evidence,
+            occurrence_visibility_criteria_match,
+            occurrence_visibility_evidence,
+            label_mask_criteria_match,
+            label_mask_evidence,
+            teacher_identity_criteria_match,
+            teacher_identity_evidence,
+            population_coverage_criteria_match,
+            population_coverage_evidence,
+            storage_concurrency_criteria_match,
+            storage_concurrency_evidence,
+            sparse8_criteria_match,
+            sparse8_comparison_evidence,
+            native384_criteria_match,
+            native384_comparison_evidence,
+            native768_criteria_match,
+            native768_comparison_evidence,
+            width_control_grants_no_authority,
+            unreviewed_representation_criteria_match,
+            unreviewed_representation_evidence,
+        )
+        from .definition_correspondence_probe import (
+            measure_definition_correspondence_probe,
+        )
+        from .dependency_closure_probe import measure_dependency_closure_probe
+        from .byte_target_eligibility_probe import (
+            measure_byte_target_eligibility_probe,
+        )
+        from .graph_roundtrip_probe import measure_graph_roundtrip_probe
+        from .snapshot_custody_probe import measure_snapshot_custody_probe
+        from .shared_module_probe import measure_shared_module_probe
+        from .v2_owner_envelope_probe import measure_v2_owner_envelope_probe
+        from .typed_decoder_probe import measure_typed_decoder_probe
+        from .shared_lake_build_probe import measure_shared_lake_build_probe
+        from .consequence_audit_probe import measure_consequence_audit_probe
+        from .invalidation_keys_probe import measure_invalidation_keys_probe
+        from .incremental_lake_agreement_probe import (
+            measure_incremental_lake_agreement_probe,
+        )
+        from .release_coordinator_probe import measure_release_coordinator_probe
+        from .modality_causal_comparison_probe import (
+            measure_modality_causal_comparison_probe,
+        )
+        from .modality_error_report_probe import (
+            measure_modality_error_report_probe,
+        )
+        from .training_metric_report_probe import measure_training_metric_probe
+        from .width_control_specification_probe import measure_width_control_probe
+        from .context_budget_audit_probe import measure_context_budget_audit_probe
+        from .occurrence_visibility_audit_probe import (
+            measure_occurrence_visibility_probe,
+        )
+        from .label_mask_audit_probe import measure_label_mask_probe
+        from .teacher_identity_audit_probe import measure_teacher_identity_probe
+        from .population_coverage_audit_probe import (
+            measure_population_coverage_probe,
+        )
+        from .storage_concurrency_audit_probe import (
+            measure_storage_concurrency_probe,
+        )
+        from .width_comparison_cell_probe import (
+            measure_native384_comparison_probe,
+            measure_native768_comparison_probe,
+            measure_sparse8_comparison_probe,
+        )
+        from .unreviewed_representation_probe import (
+            measure_unreviewed_representation_probe,
+        )
+        from .dependency_block_resolution import (
+            recorded_fact_evidence,
+            resolution_obligation_evidence,
+            resolution_work_evidence,
+            resolved_parent_evidence,
+            restatement_retirement,
+        )
+        from .meaning_material_probe import measure_declared_meaning_probe
+        from .lookup_partition_probe import measure_lookup_partition_probe
+        from .family_lowering_probe import measure_family_lowering_probe
+        from .family_route_probe import measure_family_route_probe
+        from .scoped_graph_probe import measure_scoped_graph_probe
+
+        with self._connection(write=False) as connection:
+            task_rows = connection.execute(
+                """
+                SELECT task_cid, task_alias, status, revision, body_json
+                FROM tasks ORDER BY task_alias, task_cid
+                """
+            ).fetchall()
+            dependency_rows = connection.execute(
+                "SELECT task_cid, dependency_task_cid FROM task_dependencies"
+            ).fetchall()
+            active_blocks = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT DISTINCT task_cid FROM task_blocks WHERE state = 'active'"
+                ).fetchall()
+            }
+            criteria: dict[str, list[str]] = {}
+            for row in connection.execute(
+                """
+                SELECT task_cid, criterion FROM task_acceptance
+                ORDER BY task_cid, ordinal
+                """
+            ).fetchall():
+                criteria.setdefault(str(row[0]), []).append(str(row[1]))
+        status_by_cid = {
+            str(row[0]): str(row[2]).strip().lower() for row in task_rows
+        }
+        bodies_by_cid = {
+            str(row[0]): body
+            if isinstance(body := _decode_json(row[4], noun="task body"), dict)
+            else {}
+            for row in task_rows
+        }
+        dependencies: dict[str, list[str]] = {}
+        for row in dependency_rows:
+            dependencies.setdefault(str(row[0]), []).append(str(row[1]))
+        completed: list[dict[str, Any]] = []
+        retired: list[dict[str, Any]] = []
+        pending: list[dict[str, Any]] = []
+        held: list[dict[str, Any]] = []
+        completed_ids: set[str] = set()
+        satisfied = {"completed", "complete", "done", "skipped"}
+        # One claim can sit behind a chain of evidence-backed blocks. Each
+        # pass sees completions from the previous pass. A pass that only
+        # reports pending or held work stops.
+        for _ in range(max(1, len(task_rows))):
+            pending = []
+            held = []
+            progressed = False
+            for row in task_rows:
+                task_cid = str(row[0])
+                if task_cid in completed_ids:
+                    continue
+                task_alias = str(row[1])
+                status = status_by_cid.get(task_cid, "")
+                revision = int(row[3])
+                body = _decode_json(row[4], noun="task body")
+                if not isinstance(body, dict):
+                    body = {}
+                dependency_ids = dependencies.get(task_cid, [])
+                decision = catalogue_resolution_decision(
+                    status=status,
+                    body=body,
+                    dependency_statuses=tuple(
+                        status_by_cid.get(dependency, "")
+                        for dependency in dependency_ids
+                    ),
+                    active_block=task_cid in active_blocks,
+                    criteria=tuple(criteria.get(task_cid, ())),
+                )
+                dependencies_met = bool(dependency_ids) and all(
+                    status_by_cid.get(dependency, "") in satisfied
+                    for dependency in dependency_ids
+                )
+                open_work = [
+                    dependency
+                    for dependency in dependency_ids
+                    if status_by_cid.get(dependency, "") not in satisfied
+                    and bodies_by_cid.get(dependency, {}).get("resolution_work")
+                    is True
+                ]
+                subgoal_ready = dependencies_met or (
+                    bool(dependency_ids)
+                    and len(open_work)
+                    == sum(
+                        1
+                        for dependency in dependency_ids
+                        if status_by_cid.get(dependency, "") not in satisfied
+                    )
+                )
+                if status == "blocked":
+                    retirement = restatement_retirement(
+                        body,
+                        self._resolution_owner_sources(body),
+                    )
+                    dependents = [
+                        cid
+                        for cid, deps in dependencies.items()
+                        if task_cid in deps
+                    ]
+                    dependent_is_obligation = all(
+                        bodies_by_cid.get(cid, {}).get("resolution_subgoal") is True
+                        for cid in dependents
+                    )
+                    if (
+                        retirement is not None
+                        and dependent_is_obligation
+                        and self._retire_restatement_task(
+                            task_cid=task_cid,
+                            task_alias=task_alias,
+                            revision=revision,
+                            evidence_body=retirement,
+                            retired=retired,
+                            held=held,
+                            completed_ids=completed_ids,
+                            status_by_cid=status_by_cid,
+                        )
+                    ):
+                        progressed = True
+                        continue
+                if (
+                    status == "blocked"
+                    and subgoal_ready
+                    and body.get("resolution_subgoal") is True
+                ):
+                    obligation_evidence: list[dict[str, Any]] = []
+                    for dependency in dependency_ids:
+                        if dependency in open_work:
+                            continue
+                        obligation_evidence.extend(
+                            self._dependency_evidence_records(dependency)
+                        )
+                    evidence_body = resolution_obligation_evidence(
+                        tuple(criteria.get(task_cid, ())),
+                        tuple(obligation_evidence),
+                        self._resolution_owner_sources(body),
+                    )
+                    if evidence_body is not None:
+                        if open_work:
+                            current = self.get_task(task_cid)
+                            if current is None:
+                                continue
+                            kept = [
+                                str(dependency)
+                                for dependency in current["dependencies"]
+                                if str(dependency) not in open_work
+                            ]
+                            identity = (
+                                current["identity"]
+                                if isinstance(current["identity"], Mapping)
+                                else None
+                            )
+                            self.upsert_task(
+                                task_cid=task_cid,
+                                task_alias=task_alias,
+                                goal_cid=str(current["goal_cid"]),
+                                plan_cid=str(current["plan_cid"] or ""),
+                                objective_id=str(current["objective_id"] or ""),
+                                ordinal=int(current["ordinal"]),
+                                status=str(current["status"]),
+                                priority=str(current["priority"] or "P2"),
+                                body=dict(current["body"])
+                                if isinstance(current["body"], Mapping)
+                                else {},
+                                identity=dict(identity) if identity is not None else None,
+                                expected_revision=int(current["revision"]),
+                                dependencies=kept,
+                            )
+                            revised = self.get_task(task_cid)
+                            if revised is None:
+                                continue
+                            revision = int(revised["revision"])
+                            dependencies[task_cid] = kept
+                        if self._finish_released_task(
+                            task_cid=task_cid,
+                            task_alias=task_alias,
+                            revision=revision,
+                            evidence_body=evidence_body,
+                            completed=completed,
+                            held=held,
+                            completed_ids=completed_ids,
+                            status_by_cid=status_by_cid,
+                        ):
+                            progressed = True
+                        continue
+                if (
+                    status == "blocked"
+                    and dependencies_met
+                    and body.get("resolution_work") is True
+                ):
+                    work_evidence: list[dict[str, Any]] = []
+                    for dependency in dependency_ids:
+                        work_evidence.extend(
+                            self._dependency_evidence_records(dependency)
+                        )
+                    evidence_body = resolution_work_evidence(
+                        tuple(criteria.get(task_cid, ())),
+                        tuple(work_evidence),
+                        self._resolution_owner_sources(body),
+                    )
+                    if evidence_body is not None:
+                        if self._finish_released_task(
+                            task_cid=task_cid,
+                            task_alias=task_alias,
+                            revision=revision,
+                            evidence_body=evidence_body,
+                            completed=completed,
+                            held=held,
+                            completed_ids=completed_ids,
+                            status_by_cid=status_by_cid,
+                        ):
+                            progressed = True
+                        continue
+                resolution_operation = ""
+                if decision != "release":
+                    if status != "blocked" or not dependencies_met:
+                        continue
+                    if decision not in {
+                        "substantive_review_or_publication_hold",
+                        "substantive_authored_hold",
+                    }:
+                        held.append(
+                            {
+                                "task_cid": task_cid,
+                                "task_alias": task_alias,
+                                "decision": decision,
+                            }
+                        )
+                        continue
+                    dependency_evidence: list[dict[str, Any]] = []
+                    for dependency in dependency_ids:
+                        dependency_evidence.extend(
+                            self._dependency_evidence_records(dependency)
+                        )
+                    evidence_body = None
+                    if body.get("resolution_decomposed") is True:
+                        evidence_body = resolved_parent_evidence(
+                            tuple(criteria.get(task_cid, ())),
+                            tuple(dependency_evidence),
+                        )
+                    if evidence_body is None:
+                        evidence_body = substantive_resolution_evidence(
+                            tuple(criteria.get(task_cid, ())),
+                            tuple(dependency_evidence),
+                        )
+                    if evidence_body is None and unreviewed_representation_criteria_match(
+                        tuple(criteria.get(task_cid, ()))
+                    ):
+                        evidence_body = unreviewed_representation_evidence(
+                            tuple(criteria.get(task_cid, ())),
+                            tuple(dependency_evidence),
+                            measure_unreviewed_representation_probe(),
+                        )
+                    if (
+                        evidence_body is None
+                        and body.get("resolution_decomposed") is not True
+                        and body.get("resolution_subgoal") is not True
+                        and body.get("resolution_work") is not True
+                    ):
+                        evidence_body = recorded_fact_evidence(
+                            tuple(criteria.get(task_cid, ())),
+                            tuple(dependency_evidence),
+                        )
+                    if evidence_body is None:
+                        held.append(
+                            {
+                                "task_cid": task_cid,
+                                "task_alias": task_alias,
+                                "decision": decision,
+                            }
+                        )
+                        continue
+                    resolution_operation = str(evidence_body["operation"])
+                    try:
+                        self.record_evidence(
+                            task_cid=task_cid,
+                            evidence_kind="validation",
+                            digest=content_identity(evidence_body),
+                            body=evidence_body,
+                        )
+                    except (IntentRepositoryError, ControlPlaneContractError):
+                        held.append(
+                            {
+                                "task_cid": task_cid,
+                                "task_alias": task_alias,
+                                "decision": "evidence_record_failed",
+                            }
+                        )
+                        continue
+                elif dependencies_met:
+                    dependency_evidence = []
+                    for dependency in dependency_ids:
+                        dependency_evidence.extend(
+                            self._dependency_evidence_records(dependency)
+                        )
+                    task_criteria = tuple(criteria.get(task_cid, ()))
+                    evidence_body = (
+                        resolved_parent_evidence(
+                            task_criteria,
+                            tuple(dependency_evidence),
+                        )
+                        if body.get("resolution_decomposed") is True
+                        else None
+                    )
+                    owners = self._profile_owner_sources(body)
+                    if evidence_body is None and owners is not None:
+                        evidence_body = profile_limit_evidence(
+                            task_criteria,
+                            tuple(dependency_evidence),
+                            owners,
+                        )
+                    if evidence_body is None and codec_criteria_match(task_criteria):
+                        codec_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "ast.py": "ast",
+                                "legal_relational_norm_v1.py": "relational",
+                                "legal_source_typed_norm_join_v1.py": "join",
+                            },
+                        )
+                        if codec_owners is not None:
+                            evidence_body = codec_intact_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                codec_owners,
+                                measure_codec_intact_probe(),
+                            )
+                    if evidence_body is None and scoped_graph_criteria_match(task_criteria):
+                        graph_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "corpus_graph.py": "graph",
+                                "legal_source_typed_norm_join_v1.py": "join",
+                            },
+                        )
+                        if graph_owners is not None:
+                            evidence_body = scoped_graph_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                graph_owners,
+                                measure_scoped_graph_probe(),
+                            )
+                    if evidence_body is None and family_route_criteria_match(task_criteria):
+                        route_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_family_routes.py": "routes",
+                                "legal_corpus_shared_lake.py": "lake",
+                            },
+                        )
+                        if route_owners is not None:
+                            evidence_body = family_route_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                route_owners,
+                                measure_family_route_probe(),
+                            )
+                    if evidence_body is None and family_lowering_criteria_match(
+                        task_criteria
+                    ):
+                        lowering_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_relational_norm_v1.py": "relational",
+                                "legal_counted_frame_v1.py": "counted",
+                                "legal_family_routes.py": "routes",
+                            },
+                        )
+                        if lowering_owners is not None:
+                            evidence_body = family_lowering_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                lowering_owners,
+                                measure_family_lowering_probe(),
+                            )
+                    if evidence_body is None and definition_correspondence_criteria_match(
+                        task_criteria
+                    ):
+                        correspondence_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "corpus_definition_use_v2.py": "definition_use",
+                                "legal_source_definition_norm_bridge.py": (
+                                    "definition_norm"
+                                ),
+                                "legal_source_typed_norm_join_v1.py": "join",
+                            },
+                        )
+                        if correspondence_owners is not None:
+                            evidence_body = definition_correspondence_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                correspondence_owners,
+                                measure_definition_correspondence_probe(),
+                            )
+                    if evidence_body is None and lookup_partition_criteria_match(
+                        task_criteria
+                    ):
+                        lookup_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "scoped_definition_resolution.py": "lookup",
+                                "legal_source_norm_scope_v1.py": "scope",
+                            },
+                        )
+                        if lookup_owners is not None:
+                            evidence_body = lookup_partition_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                lookup_owners,
+                                measure_lookup_partition_probe(),
+                            )
+                    if evidence_body is None and declared_closure_criteria_match(
+                        task_criteria
+                    ):
+                        closure_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_graph_dependencies.py": "dependencies",
+                                "scoped_definition_resolution.py": "lookup",
+                            },
+                        )
+                        if closure_owners is not None:
+                            evidence_body = declared_closure_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                closure_owners,
+                                measure_dependency_closure_probe(),
+                            )
+                    if evidence_body is None and declared_meaning_criteria_match(
+                        task_criteria
+                    ):
+                        meaning_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_source_norm_scope_v1.py": "scope",
+                                "legal_source_typed_norm_join_v1.py": "join",
+                            },
+                        )
+                        if meaning_owners is not None:
+                            evidence_body = declared_meaning_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                meaning_owners,
+                                measure_declared_meaning_probe(),
+                            )
+                    if evidence_body is None and byte_target_criteria_match(
+                        task_criteria
+                    ):
+                        byte_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_relational_target_codec_v1.py": "codec",
+                                "legal_relational_decoder_example_v1.py": "example",
+                            },
+                        )
+                        if byte_owners is not None:
+                            evidence_body = byte_target_eligibility_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                byte_owners,
+                                measure_byte_target_eligibility_probe(),
+                            )
+                    if evidence_body is None and graph_roundtrip_criteria_match(
+                        task_criteria
+                    ):
+                        roundtrip_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "corpus_graph.py": "graph",
+                                "corpus_graph_exchange.py": "exchange",
+                            },
+                        )
+                        if roundtrip_owners is not None:
+                            evidence_body = graph_roundtrip_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                roundtrip_owners,
+                                measure_graph_roundtrip_probe(),
+                            )
+                    if evidence_body is None and snapshot_custody_criteria_match(
+                        task_criteria
+                    ):
+                        custody_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "corpus_graph_exchange.py": "exchange",
+                                "legal_graph_dependencies.py": "dependencies",
+                            },
+                        )
+                        if custody_owners is not None:
+                            evidence_body = snapshot_custody_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                custody_owners,
+                                measure_snapshot_custody_probe(),
+                            )
+                    if evidence_body is None and shared_module_criteria_match(
+                        task_criteria
+                    ):
+                        module_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_corpus_shared_lake.py": "shared",
+                                "legal_corpus_definition_use_lake_v2.py": (
+                                    "definition_use"
+                                ),
+                            },
+                        )
+                        if module_owners is not None:
+                            evidence_body = shared_module_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                module_owners,
+                                measure_shared_module_probe(),
+                            )
+                    if evidence_body is None and v2_owner_envelope_criteria_match(
+                        task_criteria
+                    ):
+                        envelope_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_corpus_definition_use_native_v2.py": "native",
+                                "legal_corpus_definition_use_build_v2.py": "build",
+                            },
+                        )
+                        if envelope_owners is not None:
+                            evidence_body = v2_owner_envelope_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                envelope_owners,
+                                measure_v2_owner_envelope_probe(),
+                            )
+                    if evidence_body is None and typed_decoder_criteria_match(
+                        task_criteria
+                    ):
+                        decoder_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_grouped_span_decoder.py": "decoder",
+                                "ast.py": "syntax",
+                                "legal_relational_target_codec_v1.py": "codec",
+                            },
+                        )
+                        if decoder_owners is not None:
+                            evidence_body = typed_decoder_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                decoder_owners,
+                                measure_typed_decoder_probe(),
+                            )
+                    if evidence_body is None and shared_lake_build_criteria_match(
+                        task_criteria
+                    ):
+                        lake_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_corpus_definition_use_native_v2.py": "native",
+                                "legal_corpus_shared_lake.py": "shared",
+                            },
+                        )
+                        if lake_owners is not None:
+                            evidence_body = shared_lake_build_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                lake_owners,
+                                measure_shared_lake_build_probe(),
+                            )
+                    if evidence_body is None and consequence_audit_criteria_match(
+                        task_criteria
+                    ):
+                        audit_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_corpus_shared_lake.py": "shared",
+                                "legal_family_routes.py": "routes",
+                            },
+                        )
+                        if audit_owners is not None:
+                            evidence_body = consequence_audit_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                audit_owners,
+                                measure_consequence_audit_probe(),
+                            )
+                    if evidence_body is None and invalidation_keys_criteria_match(
+                        task_criteria
+                    ):
+                        invalidation_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_graph_dependencies.py": "dependencies",
+                                "legal_corpus_incremental.py": "incremental",
+                            },
+                        )
+                        if invalidation_owners is not None:
+                            evidence_body = invalidation_keys_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                invalidation_owners,
+                                measure_invalidation_keys_probe(),
+                            )
+                    if evidence_body is None and incremental_lake_agreement_criteria_match(
+                        task_criteria
+                    ):
+                        agreement_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_corpus_incremental.py": "incremental",
+                                "legal_corpus_shared_lake.py": "shared",
+                            },
+                        )
+                        if agreement_owners is not None:
+                            evidence_body = incremental_lake_agreement_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                agreement_owners,
+                                measure_incremental_lake_agreement_probe(),
+                            )
+                    if evidence_body is None and release_coordinator_criteria_match(
+                        task_criteria
+                    ):
+                        coordinator_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_ir_span_graph_lean_execution_plan_20261016.md": "plan",
+                                "legal_ir_asset_reconciliation_20261016.md": "reconciliation",
+                            },
+                        )
+                        if coordinator_owners is not None:
+                            evidence_body = release_coordinator_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                coordinator_owners,
+                                measure_release_coordinator_probe(),
+                            )
+                    if evidence_body is None and modality_causal_comparison_criteria_match(
+                        task_criteria
+                    ):
+                        comparison_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_span_modality_conditions_retention.py": "modality",
+                                "legal_ir_span_graph_lean_execution_plan_20261016.md": "plan",
+                            },
+                        )
+                        if comparison_owners is not None:
+                            evidence_body = modality_causal_comparison_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                comparison_owners,
+                                measure_modality_causal_comparison_probe(),
+                            )
+                    if evidence_body is None and modality_error_report_criteria_match(
+                        task_criteria
+                    ):
+                        report_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_span_modality_conditions_retention.py": "modality",
+                                "legal_relational_batch_evaluation_v1.py": "evaluation",
+                            },
+                        )
+                        if report_owners is not None:
+                            evidence_body = modality_error_report_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                report_owners,
+                                measure_modality_error_report_probe(),
+                            )
+                    if evidence_body is None and training_metric_criteria_match(
+                        task_criteria
+                    ):
+                        metric_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_grouped_span_decoder.py": "decoder",
+                                "legal_relational_decoder_example_v1.py": "example",
+                            },
+                        )
+                        if metric_owners is not None:
+                            evidence_body = training_metric_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                metric_owners,
+                                measure_training_metric_probe(),
+                            )
+                    if evidence_body is None and width_control_criteria_match(
+                        task_criteria
+                    ):
+                        width_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_ir_asset_reconciliation_20261016.md": "reconciliation",
+                                "gte_decoder_native_inputs.md": "native_inputs",
+                            },
+                        )
+                        if width_owners is not None:
+                            evidence_body = width_control_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                width_owners,
+                                measure_width_control_probe(),
+                            )
+                    if evidence_body is None and context_budget_criteria_match(
+                        task_criteria
+                    ):
+                        context_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "scoped_definition_resolution.py": "lookup",
+                                "legal_relational_decoder_example_v1.py": "example",
+                            },
+                        )
+                        if context_owners is not None:
+                            evidence_body = context_budget_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                context_owners,
+                                measure_context_budget_audit_probe(),
+                            )
+                    if evidence_body is None and occurrence_visibility_criteria_match(
+                        task_criteria
+                    ):
+                        occurrence_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_relational_batch_evaluation_v1.py": "evaluation",
+                                "scoped_definition_resolution.py": "lookup",
+                            },
+                        )
+                        if occurrence_owners is not None:
+                            evidence_body = occurrence_visibility_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                occurrence_owners,
+                                measure_occurrence_visibility_probe(),
+                            )
+                    if evidence_body is None and label_mask_criteria_match(
+                        task_criteria
+                    ):
+                        label_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_relational_batch_evaluation_v1.py": "evaluation",
+                                "legal_relational_decoder_example_v1.py": "example",
+                            },
+                        )
+                        if label_owners is not None:
+                            evidence_body = label_mask_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                label_owners,
+                                measure_label_mask_probe(),
+                            )
+                    if evidence_body is None and teacher_identity_criteria_match(
+                        task_criteria
+                    ):
+                        teacher_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "supervisor_queue.py": "queue",
+                                "legal_relational_decoder_example_v1.py": "example",
+                            },
+                        )
+                        if teacher_owners is not None:
+                            evidence_body = teacher_identity_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                teacher_owners,
+                                measure_teacher_identity_probe(),
+                            )
+                    if evidence_body is None and population_coverage_criteria_match(
+                        task_criteria
+                    ):
+                        coverage_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_relational_batch_evaluation_v1.py": "evaluation",
+                                "legal_ir_span_graph_lean_execution_plan_20261016.md": "plan",
+                            },
+                        )
+                        if coverage_owners is not None:
+                            evidence_body = population_coverage_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                coverage_owners,
+                                measure_population_coverage_probe(),
+                            )
+                    if evidence_body is None and storage_concurrency_criteria_match(
+                        task_criteria
+                    ):
+                        storage_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "autoencoder_owned_runtime.py": "runtime",
+                                "span_cache_feed.py": "feed",
+                            },
+                        )
+                        if storage_owners is not None:
+                            evidence_body = storage_concurrency_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                storage_owners,
+                                measure_storage_concurrency_probe(),
+                            )
+                    if evidence_body is None and sparse8_criteria_match(
+                        task_criteria
+                    ):
+                        sparse_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "legal_ir_asset_reconciliation_20261016.md": "reconciliation",
+                            },
+                        )
+                        if (
+                            sparse_owners is not None
+                            and width_control_grants_no_authority(
+                                tuple(dependency_evidence)
+                            )
+                        ):
+                            evidence_body = sparse8_comparison_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                sparse_owners,
+                                measure_sparse8_comparison_probe(),
+                            )
+                    if evidence_body is None and native384_criteria_match(
+                        task_criteria
+                    ):
+                        native384_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "gte_decoder_native_inputs.md": "native_inputs",
+                            },
+                        )
+                        if (
+                            native384_owners is not None
+                            and width_control_grants_no_authority(
+                                tuple(dependency_evidence)
+                            )
+                        ):
+                            evidence_body = native384_comparison_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                native384_owners,
+                                measure_native384_comparison_probe(),
+                            )
+                    if evidence_body is None and native768_criteria_match(
+                        task_criteria
+                    ):
+                        native768_owners = self._named_owner_sources(
+                            body,
+                            {
+                                "gte_decoder_native_inputs.md": "native_inputs",
+                                "legal_ir_decoder_output_integration_20261016.md": "integration",
+                            },
+                        )
+                        if (
+                            native768_owners is not None
+                            and width_control_grants_no_authority(
+                                tuple(dependency_evidence)
+                            )
+                        ):
+                            evidence_body = native768_comparison_evidence(
+                                task_criteria,
+                                tuple(dependency_evidence),
+                                native768_owners,
+                                measure_native768_comparison_probe(),
+                            )
+                    if (
+                        evidence_body is None
+                        and body.get("resolution_decomposed") is not True
+                        and body.get("resolution_subgoal") is not True
+                        and body.get("resolution_work") is not True
+                    ):
+                        evidence_body = recorded_fact_evidence(
+                            task_criteria,
+                            tuple(dependency_evidence),
+                        )
+                    if evidence_body is not None:
+                        resolution_operation = str(evidence_body["operation"])
+                        try:
+                            self.record_evidence(
+                                task_cid=task_cid,
+                                evidence_kind="validation",
+                                digest=content_identity(evidence_body),
+                                body=evidence_body,
+                            )
+                        except (IntentRepositoryError, ControlPlaneContractError):
+                            held.append(
+                                {
+                                    "task_cid": task_cid,
+                                    "task_alias": task_alias,
+                                    "decision": "evidence_record_failed",
+                                }
+                            )
+                            continue
+                with self._connection(write=False) as connection:
+                    missing = self._missing_evidence_on(connection, task_cid)
+                if missing:
+                    pending.append(
+                        {
+                            "task_cid": task_cid,
+                            "task_alias": task_alias,
+                            "revision": revision,
+                            "missing": list(missing),
+                        }
+                    )
+                    continue
+                try:
+                    receipt = self.cas_task_status(
+                        task_cid=task_cid,
+                        expected_revision=revision,
+                        new_status="completed",
+                        receipt=dependency_resolution_receipt(
+                            resolution_operation
+                            or "dependency_block_resolved_from_current_evidence"
+                        ),
+                    )
+                except IntentRepositoryConflictError:
+                    held.append(
+                        {
+                            "task_cid": task_cid,
+                            "task_alias": task_alias,
+                            "decision": "revision_conflict",
+                        }
+                    )
+                    continue
+                except IntentCompletionError:
+                    pending.append(
+                        {
+                            "task_cid": task_cid,
+                            "task_alias": task_alias,
+                            "revision": revision,
+                            "missing": ["completion_refused"],
+                        }
+                    )
+                    continue
+                status_by_cid[task_cid] = "completed"
+                completed_ids.add(task_cid)
+                progressed = True
+                completed.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": task_alias,
+                        "revision": int(receipt.revision),
+                    }
+                )
+            if not progressed:
+                break
+        spawned = [
+            *self._spawn_resolution_obligations(pending, held),
+            *self._spawn_resolution_work(pending, held),
+        ]
+        if spawned and _resolution_depth < 2:
+            again = self.release_dependency_satisfied_blocks(
+                _resolution_depth=_resolution_depth + 1
+            )
+            return {
+                "completed": [*completed, *again["completed"]],
+                "retired": [*retired, *again.get("retired", [])],
+                "pending": again["pending"],
+                "held": again["held"],
+                "spawned": [*spawned, *again["spawned"]],
+            }
+        return {
+            "completed": completed,
+            "retired": retired,
+            "pending": pending,
+            "held": held,
+            "spawned": spawned,
+        }
 
     # -- readiness / selection -----------------------------------------------
 

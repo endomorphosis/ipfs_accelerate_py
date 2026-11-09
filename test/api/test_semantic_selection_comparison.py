@@ -2,7 +2,7 @@
 
 Native capsule/index records and reference chunking are real. Encode/restore
 seams are fixture callbacks, so these controls establish comparison behavior,
-not producer freshness, V2 compression, provider compatibility or acceptance.
+not producer freshness, compact transport savings, provider compatibility or acceptance.
 The companion probe supplies the genuine native producer/codec qualification.
 """
 from __future__ import annotations
@@ -98,11 +98,12 @@ def authored(tmp_path, monkeypatch):
         (blocks / root_cid).write_bytes(canonical_dag_json_bytes(root_identity))
         (blocks / index.index_cid).write_bytes(canonical_dag_json_bytes(index.identity_payload()))
 
-    state = {"fresh": True, "encodes": [], "restores": 0}
+    state = {"fresh": True, "encodes": [], "transport_schemas": [], "restores": 0}
 
-    def encode(*, prompt, repository, slot_policy_revision):
-        assert slot_policy_revision == codec.SLOT_POLICY_V2
+    def encode(*, prompt, repository, transport_schema):
+        assert transport_schema == codec.COMPACT_TRANSPORT_SCHEMA
         state["encodes"].append(prompt)
+        state["transport_schemas"].append(transport_schema)
         return SimpleNamespace(provider_prompt=codec._json({"authored_alias_wire": sha256(prompt.encode()).hexdigest()}),
                                table=SimpleNamespace(native=prompt))
 
@@ -144,6 +145,7 @@ def _compare(control, *, full_prompt=None, selected_prompt=None, **kwargs):
 
 def test_authored_complete_measurement_retains_only_identities_and_decision_differences(authored):
     result = _compare(authored, token_counter=_counter())
+    assert result["transport_schema"] == codec.COMPACT_TRANSPORT_SCHEMA
     assert result["measurement_status"] == "measured"
     assert all(row["input_tokens"] == row["model_prompt_bytes"] for row in result["representations"].values())
     assert result["matched_source_inventory"]["all_scoped_raw_sources_identically_embedded"] is True
@@ -159,6 +161,36 @@ def test_authored_complete_measurement_retains_only_identities_and_decision_diff
     assert authored.source not in json.dumps(result)
     assert "fetch-helper" not in json.dumps(result)
     assert authored.state["restores"] == 4
+
+
+def test_four_arm_comparison_uses_current_explicit_compact_transport(authored):
+    result = _compare(authored)
+    assert codec.COMPACT_TRANSPORT_SCHEMA == "supervisor-semantic-router-input@2"
+    assert authored.state["transport_schemas"] == [codec.COMPACT_TRANSPORT_SCHEMA] * 2
+    assert result["transport_schema"] == codec.COMPACT_TRANSPORT_SCHEMA
+    assert set(result["representations"]) == {
+        "full_native", "full_v2_aliases", "query_selected_native", "query_selected_v2_aliases",
+    }
+    assert result["exact_restoration_targets"] == {
+        "full_v2_aliases": "full_native", "query_selected_v2_aliases": "query_selected_native",
+    }
+    assert result["matched_source_inventory"]["all_scoped_raw_sources_identically_embedded"] is True
+    assert result["provider_compatibility_verified"] is False
+    assert result["whole_session_token_savings"] is None
+
+
+def test_current_compact_refusal_is_not_retried_with_legacy_transport(authored, monkeypatch):
+    requested = []
+
+    def refuse(*, prompt, repository, transport_schema):
+        requested.append(transport_schema)
+        raise ValueError("authored current compact admission refusal")
+
+    monkeypatch.setattr(codec, "encode_semantic_router_prompt", refuse)
+    with pytest.raises(ValueError, match="current compact admission refusal"):
+        _compare(authored)
+    assert requested == [codec.COMPACT_TRANSPORT_SCHEMA]
+    assert authored.state["restores"] == 0
 
 
 def test_absent_counter_reports_four_unknown_counts_and_no_local_token_delta(authored):

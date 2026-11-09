@@ -14548,6 +14548,14 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                 ),
             )
         )
+        if any(
+            item in {"--implement", "--no-implement"}
+            for item in args.common_arg
+        ):
+            # This list still contains only injected defaults. Remove their
+            # implementation mode once, leaving explicit arguments untouched
+            # so the child parser can reject conflicting operator choices.
+            common_args.remove("--implement")
     if (
         bool(
             getattr(

@@ -14,14 +14,16 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
 
 from benchmarks.agent_supervisor.container_coding import full_supervisor_benchmark as benchmark
 from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
 from test.api.test_benchmark_prompt_options import DEFAULTS
+from test.api.test_current_decision_configuration import _archive as _current_decision_archive
 from test.api.test_terminal_decision_configuration import DECISION
-from test.api.test_terminal_timeout_configuration import (
+from test.api.test_current_terminal_archive_fixtures import (
     _authored_prepare_dataset, _timeout_runtime_archive,
 )
 
@@ -32,6 +34,7 @@ NOMINATION = {
     "semantic_decision_nomination_sha256": NOMINATION_SHA,
     "semantic_decision_max_calls": 3,
     "semantic_decision_max_total_input_tokens": None,
+    "disable_semantic_typed_nomination": False,
 }
 
 
@@ -77,7 +80,7 @@ def test_invalid_nomination_or_mixed_variants_refuse_before_preparation_or_adapt
         benchmark.prepare(dataset=unread, output=tmp_path / "output", archive=unread, arm=arm, **options)
     with pytest.raises(ValueError):
         adapter.FullSupervisorAgent(
-            logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol", runtime_archive=str(tmp_path / "missing"),
+            logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"], runtime_archive=str(tmp_path / "missing"),
             arm=arm, **options)
     assert not (tmp_path / "output").exists() and not (tmp_path / "logs").exists()
 
@@ -118,8 +121,8 @@ def test_host_cli_forwards_nomination_without_exposing_owner_task_identity(tmp_p
     assert {key: calls[0][key] for key in NOMINATION} == {
         **NOMINATION, "semantic_decision_max_calls": 2, "semantic_decision_max_total_input_tokens": 30000,
     }
-    assert calls[0]["semantic_decision_policy_artifact"] is None
-    assert calls[0]["semantic_decision_policy_sha256"] is None
+    assert calls[0].get("semantic_decision_policy_artifact") is None
+    assert calls[0].get("semantic_decision_policy_sha256") is None
     assert not any("task_id" in key or "task_key" in key for key in calls[0])
 
 
@@ -174,9 +177,6 @@ def test_nomination_execute_requires_current_owner_source_pin(tmp_path, monkeypa
 
 
 def test_harbor_forwards_nomination_pair_and_budgets_without_upload_or_task_override(tmp_path, monkeypatch):
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    (archive / "manifest.json").write_text(json.dumps({"archive_sha256": "authored", "learned_requirements": []}))
     commands, uploads = [], []
     class Environment:
         async def upload_file(self, source, target):
@@ -191,15 +191,19 @@ def test_harbor_forwards_nomination_pair_and_budgets_without_upload_or_task_over
     monkeypatch.setattr(adapter, "capture_public_inputs", capture)
     monkeypatch.setattr(adapter, "export_public_outputs", capture)
     options = {**NOMINATION, "semantic_decision_max_calls": 2, "semantic_decision_max_total_input_tokens": 30000}
+    archive, _ = _current_decision_archive(tmp_path, options)
     agent = adapter.FullSupervisorAgent(
-        logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol", runtime_archive=str(archive), arm="full", **options)
+        logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"], runtime_archive=str(archive), arm="full", **options)
     context = AgentContext()
     asyncio.run(agent.run("Authored public instruction.", Environment(), context))
     assert len(commands) == 1
     command = commands[0]
     for key, value in options.items():
         flag = "--" + key.replace("_", "-")
-        assert command.count(flag) == 1 and command[command.index(flag) + 1] == str(value)
+        if key == "disable_semantic_typed_nomination":
+            assert value is False and flag not in command
+        else:
+            assert command.count(flag) == 1 and command[command.index(flag) + 1] == str(value)
     assert not any(argument.startswith("--semantic-decision-policy-") for argument in command)
     assert "--task-id" not in command and "--task-key" not in command
     assert NOMINATION_PATH not in uploads

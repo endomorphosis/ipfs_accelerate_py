@@ -2921,3 +2921,132 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     )
     assert report["passed"] is True
     assert report["validation_plan_binding"]["graph_id"] == graph.graph_id
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "expected"),
+    [
+        (b"last completed test\xff\n", b"diagnostic\xfe", "last completed test\ufffd\n\n[stderr]\ndiagnostic\ufffd"),
+        ("partial text", "separate error", "partial text\n[stderr]\nseparate error"),
+        (None, b"stderr only", "\n[stderr]\nstderr only"),
+        (None, None, ""),
+    ],
+)
+def test_scheduler_timeout_preserves_partial_streams_without_success_cache(
+    tmp_path: Path, stdout: object, stderr: object, expected: str,
+) -> None:
+    calls = []
+    def runner(*, spec, timeout_seconds, **_kwargs):
+        calls.append(timeout_seconds)
+        raise subprocess.TimeoutExpired(
+            spec.command, timeout_seconds, output=stdout, stderr=stderr,
+        )
+
+    cache = ValidationResultCache(tmp_path / "cache")
+    scheduler = ValidationScheduler(
+        runner=runner, cache=cache, default_timeout_seconds=7,
+    )
+    for _ in range(2):
+        report = scheduler.run(
+            ["git diff --check"], workspace_path=tmp_path,
+            changed_files=["src/alpha.py"], target_commit="abc", dependency_state="deps",
+        )
+        result = report["results"][0]
+        assert report["passed"] is False
+        assert report["returncode"] == result["returncode"] == 124
+        assert result["timed_out"] is True
+        assert result["output"] == expected
+        assert result["output_truncated"] is False
+        assert result["cache_hit"] is False
+        assert report["cache_hits"] == 0
+        assert not result.get("authoritative", False)
+        changed = dict(result, output=expected + "changed diagnostics")
+        assert _validation_result_digest(changed) != _validation_result_digest(result)
+    assert calls == [7, 7]
+
+
+@pytest.mark.parametrize("as_bytes", (False, True))
+def test_scheduler_timeout_bounds_both_streams_and_keeps_final_progress(
+    tmp_path: Path, as_bytes: bool,
+) -> None:
+    stdout = "stdout beginning\n" + "x" * 100_000 + "\nlast_completed_case"
+    stderr = "stderr beginning\n" + "y" * 100_000 + "\nlast_diagnostic"
+    if as_bytes:
+        stdout, stderr = stdout.encode(), stderr.encode()
+    def runner(*, spec, timeout_seconds, **_kwargs):
+        raise subprocess.TimeoutExpired(
+            spec.command, timeout_seconds, output=stdout, stderr=stderr,
+        )
+    report = ValidationScheduler(runner=runner).run(
+        ["git diff --check"], workspace_path=tmp_path,
+        changed_files=[], target_commit="abc", dependency_state="deps",
+    )
+    result = report["results"][0]
+    assert report["passed"] is False and result["returncode"] == 124
+    assert result["timed_out"] is True and result["output_truncated"] is True
+    assert len(result["output"]) <= 64 * 1024
+    assert result["output"].startswith("stdout beginning\n")
+    assert "last_completed_case\n[stderr]\nstderr beginning\n" in result["output"]
+    assert result["output"].endswith("last_diagnostic")
+    assert result["output"].count("[timeout output truncated]") == 2
+
+
+def test_default_validation_runner_preserves_timeout_stderr_and_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler as owner
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"], output=b"last case", stderr="error")
+    monkeypatch.setattr(owner.subprocess, "run", timeout)
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.validation.validation_runtime.apply_sealed_node_toolchain",
+        lambda environment, **kwargs: environment,
+    )
+    result = owner.run_validation_command(
+        spec=build_validation_commands(["git diff --check"])[0], workspace_path=tmp_path,
+        timeout_seconds=3, environment={},
+    )
+    assert result["returncode"] == 124 and result["timed_out"] is True
+    assert result["output"] == "last case\n[stderr]\nerror"
+    assert result["output_truncated"] is False
+
+
+def test_custom_runner_timeout_records_real_boundaries_and_is_not_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.validation import validation_scheduler as module
+
+    clock = [100.0]
+    calls = []
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(
+        module, "utc_now",
+        lambda: "2026-10-27T00:00:00+00:00" if clock[0] == 100.0
+        else "2026-10-27T00:00:07.250000+00:00",
+    )
+
+    def runner(*, spec, timeout_seconds, **_kwargs):
+        calls.append(spec.command)
+        clock[0] += 7.25
+        raise subprocess.TimeoutExpired(spec.command, timeout_seconds, output=b"partial")
+
+    scheduler = ValidationScheduler(cache_dir=tmp_path / "cache", runner=runner)
+    kwargs = dict(workspace_path=tmp_path, changed_files=["src/alpha.py"],
+                  target_commit="same-commit", dependency_state="same-dependencies")
+    report = scheduler.run(["pytest tests/test_alpha.py"], **kwargs)
+    result = report["results"][0]
+    assert result["started_at"] == "2026-10-27T00:00:00+00:00"
+    assert result["finished_at"] == "2026-10-27T00:00:07.250000+00:00"
+    assert result["execution_elapsed_seconds"] == 7.25
+    assert report["passed"] is False
+    assert report["returncode"] == 124
+    assert result["timed_out"] is True
+    assert not report.get("completion_authoritative", False)
+    assert not report.get("proof_authoritative", False)
+    assert not report.get("merge_eligible", False)
+
+    replay = scheduler.run(["pytest tests/test_alpha.py"], **kwargs)
+    assert calls == ["pytest tests/test_alpha.py"] * 2
+    assert replay["results"][0]["cache_hit"] is False
+    assert replay["returncode"] == 124
+    assert replay["passed"] is False

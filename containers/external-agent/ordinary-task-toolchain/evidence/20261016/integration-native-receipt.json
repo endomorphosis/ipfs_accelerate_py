@@ -1,0 +1,19 @@
+{
+  "child_pgid": 1118344,
+  "child_pid": 1118344,
+  "child_returncode": 0,
+  "completion_authority": false,
+  "disk_reservation_id": "baeb3d52469f43dc8f598e35fd84b10b",
+  "docker_container_absence_verified_by_parent": true,
+  "ended_at_epoch": 1792191502.0677123,
+  "failure_type": null,
+  "hard_enforcement": false,
+  "owned_group_quiescent": true,
+  "owner_pid": 1113485,
+  "phase_lease_id": "ab6830c754be47969ca082f2d02f66c2",
+  "purpose": "docker_preparation",
+  "request_sha256": "c11cecf7be0ac696065c9ff175e4f4f5f3bbcbd6e7d54efb2485ce4fc95d36ef",
+  "root_lease_id": "1ce003a5d278407f89aa9a436075ba54",
+  "schema": "legal-ir-native-orchestration-receipt@1",
+  "status": "completed"
+}

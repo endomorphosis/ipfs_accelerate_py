@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import stat
@@ -26,9 +27,22 @@ from .fleet_watchdog import (
 )
 from .fleet_watchdog import repair_hold_paths as hold_paths
 
+DEFAULT_REPAIR_JOB_UNIT = "ipfs-taskboard-repair-job.service"
 DEFAULT_REPAIR_DISK_AVAILABLE_BYTES = 8 * 1024 ** 3
 LLM_ROUTER_ROUTE = "llm_router_grok_then_codex"
 DEFAULT_REPAIR_DISK_AVAILABLE_INODES = 50_000
+
+
+def repair_job_unit(config: dict[str, Any]) -> str:
+    """A single literal service name; never an option, pattern, path or specifier."""
+    policy = config.get("repair_worker", {})
+    if not isinstance(policy, dict):
+        raise ValueError("repair_worker must be a mapping")
+    unit = policy.get("job_unit", DEFAULT_REPAIR_JOB_UNIT)
+    if (not isinstance(unit, str) or len(unit) > 255
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@:-]*\.service", unit) is None):
+        raise ValueError("repair_worker.job_unit must be a literal service unit")
+    return unit
 
 
 def repair_evidence(observation: dict[str, Any]) -> dict[str, Any]:
@@ -940,15 +954,17 @@ def _iter_repair_jobs(config: dict[str, Any]):
 
 def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
     """Stop a live cgroup that cannot heal the stall (orphan or wrong tree)."""
-    running = [(board, job) for board, job in _iter_repair_jobs(config)
-               if job.get("status") == "running"]
+    unit = repair_job_unit(config)
+    jobs = [(board, job) for board, job in _iter_repair_jobs(config)
+            if job.get("repair_job_unit", DEFAULT_REPAIR_JOB_UNIT) == unit]
+    running = [(board, job) for board, job in jobs if job.get("status") == "running"]
     if running:
         return any(
             repair_workspace_is_stale(job, board) or board_wait_stall(config, board["id"])
             for board, job in running
         )
     latest = max(
-        ((board, job) for board, job in _iter_repair_jobs(config)
+        ((board, job) for board, job in jobs
          if type(job.get("last_started_at")) in (int, float)),
         key=lambda item: item[1]["last_started_at"],
         default=None,
@@ -963,6 +979,7 @@ def should_reclaim_repair_unit(config: dict[str, Any]) -> bool:
 
 
 def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[str, Any]:
+    unit = repair_job_unit(config)
     policy = dict(config["repair_worker"])
     if hold_paths(board):
         return {"status": "operator_hold", "board_id": board["id"]}
@@ -978,18 +995,17 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
     selection = _launch_selection(read_json(path))
     if selection.get("status") not in {"queued", "running"}:
         return {"status": "completion_superseded"}
-    unit = "ipfs-taskboard-repair-job"
     # On worker restart, adopt the still-running bounded cgroup rather than
     # launching another coding process. The fixed unit name is also a mutex.
     try:
-        live = command({"argv": ["systemctl", "--user", "is-active", f"{unit}.service"]},
+        live = command({"argv": ["systemctl", "--user", "is-active", unit]},
                        cwd="/", timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return {"status": "repair_job_liveness_unknown"}
     if live["stdout"].strip() in {"active", "activating", "deactivating"}:
         if not should_reclaim_repair_unit(config):
             return {"status": "existing_repair_job_running"}
-        command({"argv": ["systemctl", "--user", "stop", f"{unit}.service"]},
+        command({"argv": ["systemctl", "--user", "stop", unit]},
                 cwd="/", timeout=45)
     if (live["stdout"].strip() not in {"inactive", "failed"}
             or live.get("returncode") not in {0, 3, 4}):
@@ -1045,7 +1061,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         report = directory / f"report-{stamp}.json"
         log_path = directory / f"worker-{stamp}.log"
         workspace = str(repair_workspace(board, policy))
-        job.update(status="running", last_started_at=now, attempts=attempts,
+        job.update(status="running", last_started_at=now, attempts=attempts, repair_job_unit=unit,
                    repair_route=LLM_ROUTER_ROUTE, repair_workspace=workspace,
                    report_path=str(report), log_path=str(log_path),
                    next_attempt_at=now + min(policy.get("max_backoff_seconds", 21600),
@@ -1092,7 +1108,7 @@ def run_job(config: dict[str, Any], board: dict[str, Any], path: Path) -> dict[s
         try:
             returncode = process.wait(timeout=policy.get("timeout_seconds", 2400) + 90)
         except subprocess.TimeoutExpired:
-            command({"argv": ["systemctl", "--user", "stop", f"{unit}.service"]},
+            command({"argv": ["systemctl", "--user", "stop", unit]},
                     cwd=policy["cwd"], timeout=45)
             process.kill()
             process.wait(timeout=10)
@@ -1160,6 +1176,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
     config = load_config(args.config)
+    repair_job_unit(config)
     config["_config_path"] = str(args.config.resolve())
     if args.mode == "enqueue":
         if args.incident is None:
@@ -1175,12 +1192,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         while not stop.is_set():
             try:
+                job_unit = repair_job_unit(config)
                 reconciled = reconcile_queued_jobs(config, time.time())
                 if reconciled:
                     print(json.dumps({"queue_reconciliation": reconciled}), flush=True)
                 if should_reclaim_repair_unit(config):
                     command({"argv": ["systemctl", "--user", "stop",
-                                      "ipfs-taskboard-repair-job.service"]},
+                                      job_unit]},
                             cwd="/", timeout=45)
                 selected = next_job(config, time.time())
                 if selected:

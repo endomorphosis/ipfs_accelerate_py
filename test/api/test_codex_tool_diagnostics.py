@@ -160,15 +160,15 @@ def test_malformed_records_cannot_establish_completion(tmp_path, corrupt):
     assert observed["tool_diagnostics"]["tool_event_counts_complete"] is False
 
 
-@pytest.mark.parametrize("invalid_info", [
-    False, [], {"total_token_usage": None}, {"total_token_usage": []},
-    {"total_token_usage": {"input_tokens": 20}},
-    *({"total_token_usage": {"input_tokens": value, "output_tokens": 2, "total_tokens": 22}}
+@pytest.mark.parametrize("invalid_info,expected_regression", [
+    (False, False), ([], False), ({"total_token_usage": None}, False), ({"total_token_usage": []}, False),
+    ({"total_token_usage": {"input_tokens": 20}}, True),
+    *(({"total_token_usage": {"input_tokens": value, "output_tokens": 2, "total_tokens": 22}}, True)
       for value in (-1, True, "20", 1 << 63)),
-    {"total_token_usage": {"input_tokens": 20, "output_tokens": 2, "total_tokens": 999}},
-    {"total_token_usage": {"input_tokens": 20, "output_tokens": 2, "total_tokens": 22, "cached_input_tokens": 21}},
+    ({"total_token_usage": {"input_tokens": 20, "output_tokens": 2, "total_tokens": 999}}, True),
+    ({"total_token_usage": {"input_tokens": 20, "output_tokens": 2, "total_tokens": 22, "cached_input_tokens": 21}}, True),
 ])
-def test_invalid_latest_counters_keep_lower_bound_without_completeness(tmp_path, invalid_info):
+def test_invalid_latest_counters_keep_lower_bound_without_completeness(tmp_path, invalid_info, expected_regression):
     home, workspace, path = rollout(tmp_path, [])
     first = path.read_text().splitlines()[0]
     valid = {"type": "event_msg", "payload": {"type": "token_count", "info": {
@@ -181,9 +181,17 @@ def test_invalid_latest_counters_keep_lower_bound_without_completeness(tmp_path,
     assert observed["latest_usage_snapshot_valid"] is False
     assert observed["task_complete_event_observed"] is True
     assert observed["task_complete_observed"] is False
-    # A later valid cumulative total can re-establish the snapshot binding.
+    assert observed["usage_lifecycle_complete"] is False
+    # A valid later snapshot restores its own binding and returned counters.
+    # It cannot erase decreases from individually valid earlier categories.
     path.write_text(path.read_text() + "\n".join(map(json.dumps, [valid, complete])) + "\n")
-    assert recover(home, workspace)["task_complete_observed"] is True
+    recovered = recover(home, workspace)
+    assert recovered["usage"] == valid["payload"]["info"]["total_token_usage"]
+    assert recovered["latest_usage_snapshot_valid"] is True
+    assert recovered["observed_token_count_records"] == 2
+    assert recovered["counter_regression_observed"] is expected_regression
+    assert recovered["task_complete_observed"] is (not expected_regression)
+    assert recovered["usage_lifecycle_complete"] is (not expected_regression)
 
 
 def test_unknown_token_updates_do_not_certify_completion_and_regressions_remain_visible(tmp_path):

@@ -363,3 +363,447 @@ compact read and 767 for a compact definition read. The latter is a 62.2%
 reduction relative to the full compact operation in this authored fixture.
 All 18 changed Python files retained identical hashes during final checks.
 No fresh runtime archive, container trial or live provider call was performed.
+
+## Exact original line ranges in the source working set (2026-10-15)
+
+The existing `repository_read` tool now accepts `start_line` and `end_line`
+together with `representation="original"`. This supports small exact reads of
+admitted UTF-8 files, including languages without indexed Python definitions:
+
+```json
+{"generation":1,"path":"app.js","representation":"original","start_line":301,"end_line":305}
+```
+
+Coordinates are one-based, inclusive physical LF lines. Returned content
+preserves original bytes, including CRLF, Unicode separators and an absent final
+newline. Replies retain the whole-file `source_sha256` and generation, and add
+`scope="line_range"`, `start_line`, `end_line`, `total_lines` and `omitted_lines`.
+The rest of the file is omitted explicitly; a range is not a complete program or
+an indexed symbol edit handle. Request surrounding lines, a supported definition
+or the original file when additional context is needed.
+
+Ranges cannot combine with `symbol_id` or a compact representation. Both bounds
+are required. Binary/empty files, invalid coordinates, more than 4,096 selected
+lines or more than 65,536 selected UTF-8 bytes refuse without truncation.
+Whole-file and definition reads keep their existing behavior. Whole-repository
+generation/currentness checks still surround the retained read; changing an
+unselected file also requires refresh. This changes model-visible source scope,
+not source integrity or executable checkout contents.
+
+This capability is available through the existing explicitly selected repository
+source policy and its ordinary tool discovery. It does not intercept shell
+reads, remove required initial evidence or guarantee model adoption. A local
+complete-MCP-reply comparison excludes request bytes, once-per-invocation
+guidance/tool schema costs and later conversation replay; it cannot establish
+whole-task savings.
+
+Fresh [qualification](evidence/source-working-set-20261015/qualification.json)
+passed all 451 selected checks across 12 test files, with no skips, fresh AST
+seals and optional proof reuse off. It used native DuckDB 1.5.5 and real MCP
+children on authored sources; runtime source hashes, membership and child import
+origins stayed bound to the captured checkouts. Native processes and the owned
+resource reservation closed successfully. Earlier failed attempts remain in the
+qualification history.
+
+The [authored reply comparison](evidence/source-working-set-20261015/wire-comparison.json)
+measured 32,495 bytes for a 600-line JavaScript file and 688 bytes for five exact
+lines, including the complete MCP reply envelope and range metadata: 97.9% fewer
+reply bytes. Counts from the authored local tokenizer were 5,457 and 122.
+These are fixture observations, with no live provider usage or complete-task
+token-saving claim. The [JUnit record](evidence/source-working-set-20261015/junit.xml)
+retains the original measurement property.
+
+## Retained read scope and complete local exchanges (2026-10-15)
+
+The existing private MCP audit now records content-free read-scope events and
+retains a validated `read_observation` after cleanup. It distinguishes full-file,
+indexed-definition and exact-line reads, original/compact representations,
+failures, generation bindings and exposed content-string bytes. Source paths and
+bodies are not retained in these events. Binary whole-file exposure counts its
+base64 text rather than decoded source bytes. These counts exclude JSON framing,
+requests, tool schemas and guidance.
+
+Historical journals without scope retain an unknown scope. Mixed historical or
+unbound observations are explicitly incomplete. Line totals count each range
+operation, including repeated reads and different generations; omitted lines
+describe unreturned context and do not establish avoided ordinary reads.
+
+The existing worker receipt and Terminal collectors preserve validated read,
+retrieval and tokenizer observations alongside native session accounting.
+Read-scope totals require complete observations for every selected invocation
+and distinct invocation identities. Failed attempts remain in the population.
+`line_reads_observed` requires the existing exact-input, native configuration,
+initialization and cleanup joins; missing evidence stays unknown. Prepared
+source replies do not establish model ingestion, displacement or saved tokens.
+
+The authored worker comparison uses the same canonical source edit and Python
+validation for full-file and line-range reads. It records actual pipe writes and
+reads from initialization through discovery, a context query, editing, a stale
+read refusal and a successor read, together with the identical rendered initial
+prompt and guidance. Local tokenizer counts cover that bounded exchange once;
+provider-internal history, reasoning, conversation replay and official task
+success remain unmeasured. Native provider totals remain a separate measure.
+
+Fresh [qualification](evidence/source-adoption-20261015/qualification.json)
+passed all 861 selected checks across 17 test files, with no skips, fresh AST
+seals and optional proof reuse off. This includes actual worker/MCP reads,
+failed-provider cleanup and collection, native isolated runtime probes, authored
+archive compatibility and signed-routing regressions. Earlier failed checks and
+the three reviewed corrections remain in the retained history; no production
+archive or source-integrity guard was relaxed. Captured source hashes and native
+child import origins stayed bound, and the owned processes and reservation
+closed successfully. These checks do not qualify a fresh runtime archive,
+Docker lifecycle or live model adoption.
+
+The [complete local exchange](evidence/source-adoption-20261015/session-comparison.json)
+used nine request frames and eight reply frames in each arm, with the identical
+2,886-byte initial prompt and the same validated canonical result. Full-file
+reads required 23,949 prompt-plus-wire bytes; line reads required 17,631, a 26.4%
+reduction. Authored local-tokenizer counts were 4,648 and 3,050, a 34.4%
+reduction. The extra line selectors increased request bytes from 1,494 to 1,596;
+reply bytes fell from 19,569 to 13,149. This includes discovery and a failed
+read, while provider history and whole-task tokens remain unmeasured. The
+[JUnit record](evidence/source-adoption-20261015/junit.xml) retains the original
+measurement property.
+
+## Native session reconciliation in comparisons (2026-10-15)
+
+The existing benchmark comparator now uses the existing context-delivery
+accounting owner for supervisor native Codex receipts. Distinct router wrappers
+can observe the same cumulative session; their snapshots are not additive. A
+consistent later snapshot counts once, while a separate failed retry remains
+included. Modern Codex receipts with missing identities, conflicting snapshots,
+or unknown missing-attempt markers withhold complete totals. Historical wrappers
+without identities retain explicitly labelled unreconciled descriptive sums.
+Grok-only populations retain the labelled invocation-accounting route in this
+increment.
+
+Input totals state their cache scope. Codex cache and reasoning counters remain
+subsets, and mixed Codex/Grok observations do not claim cumulative lower bounds.
+Shared-session dollar costs remain unknown unless their accounting semantics are
+established; raw reported cost subtotals stay explicitly unreconciled. Reusing an
+identified supervisor session across retained trials or comparison arms withholds
+aggregate totals and tokens per official pass. Baseline session identities were
+outside this initial increment; the [baseline and capsule overlap increment](#baseline-and-capsule-session-overlap-2026-10-15)
+below extends that coverage.
+
+The comparator recomputes its context observation from retained invocation
+receipts rather than accepting a precomputed summary. Read scopes, retrieval
+observations and local tokenizer counts remain separate diagnostics. Planning
+and coding phase presence does not establish that every campaign call was
+retained. No source byte count or local token estimate is added to native usage.
+
+The [authored integration observation](evidence/native-session-accounting-20261015/native-session-comparison.json)
+uses the actual local Codex JSONL parser and MCP audit producer. Three wrappers
+cover two sessions: a later shared-session total of 170 and a failed retry of
+77 yield 247, rather than the erroneous additive wrapper total of 357. Read
+exposure is separately recorded as 36 UTF-8 bytes. These are authored provider
+facts that qualify accounting behavior, not authenticated remote usage or token
+savings. A complete supplied receipt population still does not establish
+whole-run coverage, verified billing or a causal comparison.
+
+Fresh [qualification](evidence/native-session-accounting-20261015/qualification.json)
+passed 505 checks across 10 normal test modules with fresh AST seals, optional
+proof reuse disabled and no skipped cases. The [JUnit record](evidence/native-session-accounting-20261015/junit.xml)
+includes the integration measurement. Captured source membership, hashes and
+child import origins were verified; owned process groups and the reservation
+closed. The first attempt failed collection because an older lifecycle fixture
+imports an absent parser API. That failure and the explicit scope revision are
+retained; the current usage-growth tests cover the current parser lifecycle.
+This qualification covers neither that older fixture nor live provider runs,
+runtime archive/Docker lifecycle, CUDA performance or whole-task token savings.
+
+## Baseline and capsule session overlap (2026-10-15)
+
+The existing comparator now shares one overlap guard across reported baseline
+session identities and reconciled supervisor session identities. Exact declared
+baseline IDs are hashed in the same identity domain; transcript paths, artifact
+hashes and `unidentified:` fallbacks never substitute for IDs. Bounded identity
+coverage is an observation, not authentication of the supplied receipt or proof
+that every campaign call was retained.
+
+Duplicate, malformed or partial declared baseline identity inventories withhold
+complete row totals and costs. Current producer receipts also require coherent
+top-level and per-session counters and explicit per-session completion. Known
+reported subtotals remain labelled observations. Valid IDs from a partial
+inventory still participate conservatively in overlap checks. Historical
+identity-free receipts retain explicitly unverified descriptive accounting.
+The baseline producer continues to deduplicate identical transcript copies;
+the comparator withholds totals for duplicated IDs in a retained inventory
+rather than guessing how its top-level sum was constructed.
+
+Overlap is recomputed across all deduplicated rows before splitting baseline,
+supervisor, capsule-budget or unsuccessful-attempt groups. Reusing a native
+session with a different router wrapper ID therefore cannot produce complete
+contrasting totals. Capsule `complete_registered_native_usage` now requires a
+complete aggregate as well as complete individual rows. Distinct sessions
+retain their existing totals and descriptive contrasts.
+
+The [authored baseline observation](evidence/baseline-session-overlap-20261015/baseline-session-overlap.json)
+uses the actual baseline producer on authored JSONL shared with the supervisor
+fixture. Its row observations remain 170 baseline tokens and 247 supervisor
+tokens, including a separate failed retry. The shared session makes both arm
+totals and per-pass ratios unavailable. This is overlap detection, not a token
+reduction or a live provider measurement.
+
+Fresh [qualification](evidence/baseline-session-overlap-20261015/qualification.json)
+passed 564 checks across 12 normal modules, with fresh AST seals, optional proof
+reuse disabled and no skipped cases. The [JUnit record](evidence/baseline-session-overlap-20261015/junit.xml)
+retains both the original native-session observation and the new baseline
+overlap observation. Captured sources, membership and child import origins
+were checked; owned processes and the reservation closed. The initial failed
+staging attempt and the later 562/563 regression result remain unqualified in
+the history. The corrected producer test now checks complete and sparse
+counters separately, without weakening the production guard. This qualification
+does not establish live provider adoption, whole-task savings, verified billing,
+runtime archive/Docker lifecycle or neural-head/CUDA performance.
+
+## Local receipt collection and semantic attempt coverage (2026-10-16)
+
+The existing Terminal producer now retains a possible missing planning attempt
+when a normal planner response lacks its qualified final router receipt, as it
+already did for interrupted planning. Failed provider receipts remain visible.
+The existing missing-attempt marker preserves an earlier failure; an observed
+new gap supersedes a prior explicit no-gap declaration.
+
+Final log collection now uses bounded regular, stable file reads and records
+content-free scan diagnostics. Oversized, unreadable, changing or linked logs,
+linked subdirectories, truncated JSON-looking records and exhausted scan bounds
+leave collection incomplete even when other native receipts survived. Optional
+Doctor metadata cannot interrupt collection or admit unbound Doctor rows.
+Identical native observations deduplicate through the existing receipt owner;
+conflicting observations remain available for the existing consumer rejection.
+
+The comparator also reuses the existing semantic-decision coverage owner on
+original retained dialogue and owner-binding evidence. Native receipts found
+only inside a dialogue reach the existing native counter reconciler. Missing
+declared dialogue/owner coverage and malformed or incomplete scan diagnostics
+withhold complete public totals, costs and call counts while preserving known
+native subtotals and the native core's separately scoped observations. Stored
+usage summaries cannot repair those gaps.
+
+Ordinary runs now finalize the existing accounting observation before their
+final audit and again after a successful audit. The Harbor adapter routes
+recognized Codex receipts through the existing session reconciliation instead
+of summing cumulative wrapper snapshots. Ordinary Grok final-envelope accounting
+retains its provider-specific scope; missing-attempt markers and invalid or
+incomplete collection diagnostics withhold its complete export too. Both paths
+share the closed scan diagnostic validator with the comparator.
+
+The adapter also retains independently readable task-report diagnostics when
+usage calculation or Harbor export fails. It records the accounting exception
+type separately and clears all three Harbor token counters, including a partial
+export. Accounting failure does not turn the retained task report into an
+unavailable report, and exception messages are not exported.
+
+The adapter's existing lifecycle reconciler still requires its explicit
+lifecycle evidence. Current Codex parser receipts do not supply that older
+contract in full, so their Harbor export remains unknown. Authored fixtures
+with the complete lifecycle contract qualify only that contract; they do not
+establish current live-producer compatibility. The newer comparator retains its
+own separately scoped native evidence without upgrading the adapter's result.
+
+A clean scan describes the logs visited, not an exhaustive model-call census.
+It cannot repair an unknown missing-attempt marker, establish campaign coverage,
+or authenticate provider usage. Native provider callback counts describe outer
+execution callbacks, which can contain multiple model calls; they are not a
+substitute for model-attempt coverage. Expected attempt counts and whole-campaign
+completeness remain unknown, including on clean and provider-free paths.
+
+The [authored collection observation](evidence/usage-coverage-20261015/usage-coverage.json)
+runs the actual receipt collector and comparator on the existing native JSONL
+fixture plus one unavailable oversized log. All three retained invocations and
+the failed retry remain visible, with 247 known native tokens and 36 separately
+reported source bytes. The complete total and per-pass ratio stay unavailable.
+This observation establishes conservative accounting behavior, not that the
+unavailable log represents another dispatched call or that tokens were saved.
+
+The [current-source qualification](evidence/usage-coverage-20261015/qualification.json)
+passed 732 checks across 19 normal modules, with fresh mandatory AST seals,
+optional proof reuse disabled and no skipped cases. Captured runtime membership,
+source hashes and actual child import origins were checked; owned native
+processes and the reservation closed. The [JUnit record](evidence/usage-coverage-20261015/junit.xml)
+retains the native-session, baseline-overlap and collection observations.
+The earlier 702/712 and two 730/731 executions remain unqualified in the history.
+Their fixes address ordinary accounting/finalization/report retention and stale
+authored model/archive fixtures, while preserving production admission guards.
+This qualification covers local accounting behavior. Current Codex lifecycle
+compatibility, registered whole-run coverage and whole-task token savings remain
+separate work.
+
+Documentation evidence uses stable preflight snapshots. An interrupted seal
+caused by a concurrent shared-document edit is retained as unqualified; its
+partial source copies are not reused for the final seal. Later shared-document
+updates remain outside the captured documentation snapshots.
+
+## Codex lifecycle metadata through Harbor (2026-10-16)
+
+The current Codex receipt producer now emits the existing reconciler's explicit
+`native_lifecycle_after_latest_usage@1` completion basis, structural malformed
+record count and usage-lifecycle completion flag. Usage completion requires a
+validated full final snapshot, a positive validated snapshot count and native
+completion after the latest work, with the existing malformed-record and
+counter-consistency guards satisfied. A completion marker without usage still
+records that marker while leaving usage incomplete; missing categories remain
+unknown. Quota updates and sparse snapshots do not become validated full
+records or inflate the structural malformed count.
+
+Regression detection now retains a bounded per-category high-water value across
+sparse, quota and malformed gaps. A later lower valid numeric category sets the
+existing regression flag and invalidates the existing completion observation.
+For example, full input 50, sparse input 60, then full input 55 cannot regain
+completion merely because 55 exceeds the first full snapshot. Monotone recovery
+remains supported. Harbor and the comparator receive this correction through
+their existing guards; no alternative accounting owner is introduced.
+
+The existing reconciler, native context core, Terminal finalizer and Harbor
+adapter retain their receipt binding, alias, coverage and counter policies.
+Historical receipts without explicit lifecycle evidence remain unknown in the
+strict reconciler. Mixing historical and current re-parsed receipts for the
+same rollout digest can trigger its existing alias-conflict guard; this bridge
+does not upgrade historical receipts automatically.
+
+The authored parser-to-Harbor fixture retains a shared session's 120-token
+snapshot and its later 200-token snapshot, plus a separate completed failed
+retry with 80 tokens. It uses the actual JSONL parser and existing consumers:
+the wrapper sum of 400 becomes a supplied-session total of 280, with Harbor
+input/cache/output counters of 230/115/50. The failed retry stays charged even
+though its outer status is failed. An unfinished retry retains observed charges
+while withholding complete exports. This is an accounting correction;
+whole-campaign completeness and whole-task token savings remain unmeasured.
+
+The [current-source qualification](evidence/codex-lifecycle-20261016/qualification.json)
+passed 982 checks across 26 normal modules, with fresh mandatory AST seals,
+optional proof reuse disabled and no skipped cases. It covers native parser,
+router, telemetry, reconciliation, Terminal finalization and Harbor behavior.
+Captured source hashes, membership and actual child import origins were checked;
+owned native processes and the reservation closed. The
+[JUnit record](evidence/codex-lifecycle-20261016/junit.xml) retains the three prior
+accounting observations plus the new
+[parser-to-Harbor observation](evidence/codex-lifecycle-20261016/codex-lifecycle-harbor.json).
+The initial 974/982 execution remains unqualified. Its existing diagnostic
+tests now distinguish recoverable gaps from persistent numeric decreases, and
+the router fixture checks the current literal-response and temperature options;
+all original cases remain. The production implementation is identical in both
+executions.
+
+The next experiment needs a frozen runtime containing this producer revision,
+fresh native session state, registered dispatch coverage and unchanged task
+acceptance across matched arms. This local qualification does not establish
+runtime archive deployment, live provider coverage or whole-task savings.
+
+
+## Frozen runtime and capsule pilot preparation (2026-10-16)
+
+Benchmark preparation and execution now require the actual archived bytes of all
+four declared deadline owners and nine declared usage owners. The usage chain
+includes the Codex parser, interaction telemetry, native delivery, delivery
+accounting, cumulative reconciliation, semantic decision usage, Terminal usage
+finalization and the existing Harbor adapter observers. The worker capability
+also pins this declared chain. A refreshed outer archive hash or manifest label
+cannot hide stale, missing or duplicate required members. Execution checks this
+before creating its invocation marker or launching Harbor. Selected decision
+routes retain their additional source checks. This is a declared dependency
+check, not a proof of the complete imported dependency closure.
+
+The existing capsule matrix remains the sole owner of registered slots. It now
+uses the existing capsule comparator's frozen configuration, asset and control
+checks before reporting readiness. All slots are registered first, and the
+registry digest is held before preparation begins. Missing, corrupt or mismatched
+preparations, unexpected execution receipts and a changed registry prevent
+readiness while retaining the original planned population and completed
+preflight observations. This does not authenticate preregistration or certify
+complete future model dispatch coverage.
+
+The provider-free pilot is fixed to `fix-code-vulnerability`, three repeats of
+legacy/one-capsule/two-capsules, explicit model planning and the existing
+`codex-gpt-6.1-sol-0.160.0@1` profile. It uses the common
+`source384-5cpu-20gib-coding600@1` resource profile. Optional pretrained model,
+Torch and native toolchain assets are omitted equally from every arm. The
+experiment isolates capsule delivery; it does not qualify 384D/768D/4096D neural
+head performance, CodebaseIR training or CUDA inference. Archive input custody
+includes all code assets selected by the existing builder, including supported
+non-Python assets, rather than treating Python-only test capture as a complete
+archive input snapshot.
+
+The complete archive input snapshot is captured before native validation. Its
+13,102 Python files, 50 supported non-Python code assets and three existing
+extensions are stable across the original capture census. Later preparation
+uses these immutable inputs and rechecks their bytes, membership and modes; it
+does not chase unrelated later checkout edits or claim live checkout currentness.
+Earlier failed preparation attempts remain recorded with their actual causes.
+
+The [qualification](evidence/matched-preflight-20261016/qualification.json) passed
+1,429 cases across the same 32 normal modules, with fresh mandatory AST seals,
+optional proof reuse off and no skipped cases. The
+[JUnit record](evidence/matched-preflight-20261016/junit.xml) retains the four
+prior accounting observations. Native source hashes, membership and actual
+child import origins were checked. The owned capture, native test and
+preparation processes closed, and the unchanged MAIN reservation was released
+without requiring the global pool to be empty.
+
+The independently checked provider-free preparation produced a 13,155-member
+runtime archive with exact selected-asset bytes, sizes and executable modes,
+and nine actual successful Harbor dry-runs. All nine preparations satisfy the
+existing frozen control/asset comparison, and the originally held registry
+digest remains unchanged. Model planning is explicit in the matrix; omitted
+default planning fields are interpreted by the existing planning-policy owner.
+No provider, container, task code or benchmark verifier was run. Earlier failed
+preflights and native attempts retain their actual statuses and exact inputs;
+the earlier successful native-only run is not added to this case count.
+
+This completes local archive and matched-preparation qualification. Registered
+whole-run model dispatch coverage, runtime deployment, neural head/CUDA
+qualification and equivalent accepted-task token totals remain separate gates.
+A matching capsule setup alone does not establish whole-task savings.
+
+## Current-world inline metadata compaction (2026-10-16)
+
+The current-world runner now defaults to a reversible reference-metadata view
+for `run(world_task_packet=...)`. Identical scalar schema, version, kind, tier,
+repository, tree and path fields may be shared in one inline table. Every task,
+source/reference body, identity, coverage field and unresolved obligation stays
+recoverable from the single delivered input. The original issued packet and its
+late source/owner checks remain the admission authority. This route currently
+supports Codex coding. Set `compact_world_prompt=False` to retain native input.
+
+The existing complete-input selector compares both fully rendered alternatives,
+including workspace/source-tool guidance, reply instructions and the separate
+native reply schema. The compact form must use strictly fewer bytes and fewer
+declared local counts or labelled estimates. Ties, absent/failed counters and
+larger representations retain native input; explicit budget refusals remain.
+The selected measurement reuses this observation without a second token count.
+The projection creates no additional store and assumes no retained provider
+parent. Historical invocation replay reconstructs the selected bytes without a
+tokenizer or live source/intent owners; old records without the new marker keep
+native rendering. Replay does not reinstate live dispatch authority.
+
+The [local qualification](evidence/world-prompt-compaction-20261016/qualification.json)
+passed 589 cases across 20 normal modules with fresh mandatory AST seals,
+optional proof reuse off and no skipped cases. All 13,108 captured Python runtime
+sources and 126 normal test/configuration inputs were checked; their source
+bytes are retained with the campaign. The actual child import origins were
+checked, and the owned processes and reservation closed without requiring an
+empty global resource pool. Earlier unsuccessful attempts retain their actual
+diagnostics and are not added to the passing case count.
+
+In the authored-provider fixture, complete model input fell from 27,079 to
+25,923 bytes, a 4.3% reduction, with exact native restoration. The automatic
+UTF-8-based estimate fell from 6,770 to 6,481; the other declared counters are
+authored byte counters. These are local input observations, not provider-token
+or accepted-task session savings. The
+[JUnit record](evidence/world-prompt-compaction-20261016/junit.xml) binds the three
+observations to their exact passing test cases.
+
+The next integrations are the existing Terminal worker handoff to live world
+owners, the deterministic-first gate before retries, and checked Doctor results
+in successor obligations. Each needs current task, source and policy bindings
+and the existing independent validation/proof gates. Keep model-driven planning
+in the matched comparison. Total native planning, coding and retry input/output
+tokens at unchanged acceptance remain the outcome to measure. A byte-reversible
+prompt alone does not establish model behavior equivalence or session savings.
+
+For a matched world-input run, qualify the live Terminal handoff first, then
+compare `compact_world_prompt=False` with the default using fixed task, packet,
+model, source, tool, reply and resource controls. Retain complete native usage,
+failed attempts and acceptance outcomes across both arms.

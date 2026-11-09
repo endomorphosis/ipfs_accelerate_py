@@ -197,18 +197,44 @@ def _repository_mcp(invocations, raw_invocations):
             and invocation["provider"] == "codex_cli" and invocation["purpose"] == "coding")
         usage = binding.get("usage") if type(binding) is dict else None
         fields = {"status", *MCP_COUNTS, "store_cleanup_complete", "artifacts_retained_after_invocation",
-                  "store_cleanup_error"}
+                  "store_cleanup_error", "token_selection", "retrieval_observation", "read_observation"}
         usage = {key: usage[key] for key in fields if key in usage} if type(usage) is dict else None
         observed = _usage_observation(usage)
         valid = valid and observed["server_audit_valid"]
+        optional = {}
+        for name, validity in (("token_selection", "token_selection_summary_valid"),
+                ("retrieval_observation", "retrieval_observation_valid"),
+                ("read_observation", "read_observation_valid")):
+            if validity in observed:
+                accepted = bool(valid and observed[validity])
+                optional.update({validity: accepted, name: dict(observed[name]) if accepted else None})
         rows.append({"invocation_id_sha256": invocation["invocation_id_sha256"],
             "status": observed["server_audit_status"] if valid else "unavailable",
             "requested_policy": binding["requested_policy"] if valid else None,
             "prepared_counts": {key: observed[key] if valid else None for key in MCP_COUNTS},
-            "store_cleanup_complete": observed["store_cleanup_complete"] if valid else None})
+            "store_cleanup_complete": observed["store_cleanup_complete"] if valid else None,
+            **optional})
+    read_counts = None
+    read_status = "not_selected" if not rows else "not_observed"
+    read_complete = None
+    if any("read_observation_valid" in row for row in rows):
+        read_complete = False
+        read_status = "partial"
+        identities = [row["invocation_id_sha256"] for row in rows]
+        if (len(set(identities)) == len(identities)
+                and all(row.get("read_observation_valid")
+                    and row["read_observation"]["complete"] for row in rows)):
+            from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_mcp import READ_COUNTERS
+            try:
+                read_counts = _bounded_totals([row["read_observation"] for row in rows], READ_COUNTERS)
+                read_status, read_complete = "observed", True
+            except ValueError:
+                pass
     return {
         "status": "not_selected" if not rows else "observed" if all(row["status"] == "observed" for row in rows) else "partial",
         "observations": rows, "selected_invocation_count": len(rows),
+        "read_scope_status": read_status, "read_scope_complete": read_complete,
+        "read_scope_counts": read_counts,
         "count_scope": "prepared repository MCP replies; returned_bytes includes metadata and repeated replies",
         "delivery_acknowledgements": None, "displayed_source_bytes": None,
         "provider_ingestion_observed": None, "tool_token_attribution": None,

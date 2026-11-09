@@ -40,7 +40,10 @@ def observe(tmp_path, records):
     (folder / f"rollout-{THREAD}.jsonl").write_text(raw + "\n")
     result = recover_codex_usage(home=home, thread_id=THREAD, workspace=workspace)
     assert result is not None
+    assert USAGE_LIFECYCLE_COMPLETION_BASIS == "native_lifecycle_after_latest_usage@1"
     assert result["completion_basis"] == USAGE_LIFECYCLE_COMPLETION_BASIS
+    assert type(result["usage_lifecycle_complete"]) is bool
+    assert type(result["counter_regression_observed"]) is bool
     assert result["billing_total_verified"] is False and result["dollar_cost"] is None
     assert result["cache_included_in_input"] is True
     # The returned receipt contains no request/model/tool text or local paths.
@@ -86,12 +89,6 @@ def test_resumed_usage_requires_its_own_later_completion(tmp_path):
     "{incomplete", "null", "[]",
     {"type": "event_msg", "payload": []},
     event([]), event(None),
-    event("token_count", info=None),
-    event("token_count", info={}),
-    event("token_count", info={"total_token_usage": []}),
-    count({}),
-    count({"input_tokens": True, "output_tokens": 5}),
-    count({"input_tokens": -1, "output_tokens": 5}),
 ])
 def test_malformed_records_cannot_become_complete_after_a_later_marker(tmp_path, malformed):
     result = observe(tmp_path, [count(), malformed, event("task_complete")])
@@ -103,25 +100,55 @@ def test_malformed_records_cannot_become_complete_after_a_later_marker(tmp_path,
     assert result["tool_diagnostics"]["tool_event_counts_complete"] is False
 
 
+@pytest.mark.parametrize("invalid_snapshot", [
+    event("token_count", info=None),
+    event("token_count", info={}),
+    event("token_count", info={"total_token_usage": []}),
+    count({}),
+    count({"input_tokens": True, "output_tokens": 5}),
+    count({"input_tokens": -1, "output_tokens": 5}),
+])
+def test_quota_or_invalid_usage_snapshot_is_not_structurally_malformed(tmp_path, invalid_snapshot):
+    result = observe(tmp_path, [count(), invalid_snapshot, event("task_complete")])
+    assert result["usage"] == COUNTERS
+    assert result["observed_token_count_records"] == 1
+    assert result["task_complete_observed"] is False
+    assert result["usage_lifecycle_complete"] is False
+    assert result["lifecycle_malformed_records"] == 0
+    assert result["usage_growth"]["final_snapshot_valid"] is False
+    assert result["tool_diagnostics"]["tool_event_counts_complete"] is False
+
+
 def test_regressing_counters_retain_reported_observation_with_incomplete_lifecycle(tmp_path):
     latest = {**COUNTERS, "input_tokens": 40, "total_tokens": 45}
     result = observe(tmp_path, [count(), count(latest), event("task_complete")])
     assert result["usage"] == latest
     assert result["observed_token_count_records"] == 2
-    assert result["lifecycle_malformed_records"] == 1
+    assert result["lifecycle_malformed_records"] == 0
+    assert result["counter_regression_observed"] is True
     assert result["usage_lifecycle_complete"] is False
 
 
 @pytest.mark.parametrize("latest", [
     {**COUNTERS, "input_tokens": 70, "output_tokens": 4, "total_tokens": 74},
     {**COUNTERS, "input_tokens": 70, "cached_input_tokens": 29, "total_tokens": 75},
-    {**COUNTERS, "input_tokens": 70, "total_tokens": 54},
 ])
 def test_partial_snapshots_cannot_hide_category_regressions(tmp_path, latest):
     result = observe(tmp_path, [count(), count({"input_tokens": 60}), count(latest), event("task_complete")])
     assert result["usage"] == latest
-    assert result["observed_token_count_records"] == 3
-    assert result["lifecycle_malformed_records"] == 1
+    assert result["observed_token_count_records"] == 2
+    assert result["lifecycle_malformed_records"] == 0
+    assert result["counter_regression_observed"] is True
+    assert result["usage_lifecycle_complete"] is False
+
+
+def test_invalid_final_arithmetic_retains_earlier_observation_without_completeness(tmp_path):
+    latest = {**COUNTERS, "input_tokens": 70, "total_tokens": 54}
+    result = observe(tmp_path, [count(), count({"input_tokens": 60}), count(latest), event("task_complete")])
+    assert result["usage"] == COUNTERS
+    assert result["observed_token_count_records"] == 1
+    assert result["latest_usage_snapshot_valid"] is False
+    assert result["lifecycle_malformed_records"] == 0
     assert result["usage_lifecycle_complete"] is False
 
 
@@ -129,8 +156,43 @@ def test_partial_snapshots_do_not_invent_returned_categories_or_prevent_valid_gr
     latest = {**COUNTERS, "input_tokens": 70, "output_tokens": 8, "total_tokens": 78}
     result = observe(tmp_path, [count(), count({"input_tokens": 60}), count(latest), event("task_complete")])
     assert result["usage"] == latest
-    assert result["observed_token_count_records"] == 3
+    assert result["observed_token_count_records"] == 2
     assert result["lifecycle_malformed_records"] == 0
+    assert result["counter_regression_observed"] is False
+    assert result["usage_lifecycle_complete"] is True
+
+
+@pytest.mark.parametrize("sparse,changes", [
+    ({"input_tokens": 60}, {"input_tokens": 55, "output_tokens": 8, "total_tokens": 63}),
+    ({"cached_input_tokens": 40}, {"input_tokens": 70, "cached_input_tokens": 35,
+                                   "output_tokens": 8, "total_tokens": 78}),
+    ({"output_tokens": 9}, {"input_tokens": 70, "output_tokens": 8, "total_tokens": 78}),
+    ({"total_tokens": 90}, {"input_tokens": 70, "output_tokens": 8, "total_tokens": 78}),
+    ({"reasoning_output_tokens": 4}, {"input_tokens": 70, "output_tokens": 8,
+                                      "reasoning_output_tokens": 3, "total_tokens": 78}),
+    ({"cache_write_input_tokens": 5}, {"input_tokens": 70, "output_tokens": 8,
+                                       "cache_write_input_tokens": 4, "total_tokens": 78}),
+])
+def test_sparse_category_high_water_prevents_a_new_lifecycle_overclaim(tmp_path, sparse, changes):
+    latest = {**COUNTERS, **changes}
+    result = observe(tmp_path, [count(), count(sparse), count(latest), event("task_complete")])
+    assert result["usage"] == latest and result["observed_token_count_records"] == 2
+    # The intervening sparse observation still reports a cumulative category;
+    # its decrease invalidates both task and usage completion observations.
+    assert result["task_complete_observed"] is False
+    assert result["counter_regression_observed"] is True
+    assert result["usage_growth"]["cumulative_sequence_consistent"] is True
+    assert result["lifecycle_malformed_records"] == 0
+    assert result["usage_lifecycle_complete"] is False
+
+
+def test_quota_gap_can_recover_with_a_later_monotone_valid_snapshot(tmp_path):
+    latest = {**COUNTERS, "input_tokens": 70, "output_tokens": 8, "total_tokens": 78}
+    result = observe(tmp_path, [count(), event("token_count", info=None),
+                                count(latest), event("task_complete")])
+    assert result["observed_token_count_records"] == 2
+    assert result["lifecycle_malformed_records"] == 0
+    assert result["counter_regression_observed"] is False
     assert result["usage_lifecycle_complete"] is True
 
 
@@ -142,8 +204,11 @@ def test_completion_without_usage_never_invents_zero_totals(tmp_path):
     assert result["usage"] == {} and result["observed_token_count_records"] == 0
 
 
-def test_missing_categories_remain_missing_with_complete_lifecycle(tmp_path):
+def test_missing_categories_remain_sparse_without_a_complete_usage_lifecycle(tmp_path):
     result = observe(tmp_path, [count({"input_tokens": 50}), event("task_complete")])
     assert result["usage"] == {"input_tokens": 50}
-    assert result["usage_lifecycle_complete"] is True
+    assert result["observed_token_count_records"] == 0
+    assert result["task_complete_observed"] is False
+    assert result["usage_lifecycle_complete"] is False
+    assert result["lifecycle_malformed_records"] == 0
     assert "output_tokens" not in result["usage"] and "total_tokens" not in result["usage"]

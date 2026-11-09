@@ -823,7 +823,11 @@ def select_action(state: dict[str, Any], board: dict[str, Any], now: float) -> s
 
 
 def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
-               runner=command, now: float | None = None) -> dict[str, Any]:
+               runner=command, now: float | None = None,
+               repair_unit: str | None = None) -> dict[str, Any]:
+    if repair_unit is not None:
+        from .fleet_repair import repair_job_unit
+        repair_unit = repair_job_unit({"repair_worker": {"job_unit": repair_unit}})
     now = time.time() if now is None else now
     board_id = board["id"]
     directory = state_root / board_id
@@ -859,9 +863,12 @@ def tick_board(board: dict[str, Any], state_root: Path, *, apply: bool = False,
         if apply and state.get("stall_class") in WAIT_STALLS:
             job = read_json(state_root / "repairs" / board_id / "job.json")
             if job.get("status") == "running":
+                if repair_unit is None:
+                    from .fleet_repair import repair_job_unit
+                    repair_unit = repair_job_unit({})
                 try:
                     command({"argv": ["systemctl", "--user", "stop",
-                                      "ipfs-taskboard-repair-job.service"]},
+                                      repair_unit]},
                             cwd="/", timeout=45)
                 except (OSError, subprocess.TimeoutExpired, ValueError):
                     pass
@@ -1109,10 +1116,15 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def run_cycle(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
+    repair_unit = None
+    if "repair_worker" in config:
+        from .fleet_repair import repair_job_unit
+        repair_unit = repair_job_unit(config)
     root = Path(config["state_dir"])
     observations = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(config["boards"]))) as pool:
-        work = {pool.submit(tick_board, board, root, apply=apply): board["id"] for board in config["boards"]}
+        work = {pool.submit(tick_board, board, root, apply=apply,
+                            repair_unit=repair_unit): board["id"] for board in config["boards"]}
         for future in concurrent.futures.as_completed(work):
             identifier = work[future]
             try:

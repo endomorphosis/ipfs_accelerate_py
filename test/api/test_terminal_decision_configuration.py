@@ -14,13 +14,15 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_manifest
 from harbor.models.agent.context import AgentContext
 from harbor.models.job.config import JobConfig
 
 from benchmarks.agent_supervisor.container_coding import full_supervisor_benchmark as benchmark
 from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
 from test.api.test_benchmark_prompt_options import DEFAULTS
-from test.api.test_terminal_timeout_configuration import (
+from test.api.test_current_decision_configuration import _archive as _current_decision_archive
+from test.api.test_current_terminal_archive_fixtures import (
     _authored_prepare_dataset,
 )
 
@@ -86,7 +88,7 @@ def test_invalid_or_conflicting_decision_controls_refuse_before_preparation_or_a
         benchmark.prepare(dataset=unread, output=tmp_path / "output", archive=unread, arm=arm, **options)
     with pytest.raises(ValueError):
         adapter.FullSupervisorAgent(
-            logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol", runtime_archive=str(tmp_path / "missing"),
+            logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"], runtime_archive=str(tmp_path / "missing"),
             arm=arm, **options)
     assert not (tmp_path / "output").exists() and not (tmp_path / "logs").exists()
 
@@ -157,9 +159,6 @@ def test_host_cli_forwards_explicit_decision_controls(tmp_path, monkeypatch, cap
 
 @pytest.mark.parametrize("selected", [False, True])
 def test_harbor_run_forwards_policy_only_when_selected_without_uploading_it(tmp_path, monkeypatch, selected):
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    (archive / "manifest.json").write_text(json.dumps({"archive_sha256": "authored", "learned_requirements": []}))
     commands, uploads = [], []
     class Environment:
         async def upload_file(self, source, target):
@@ -175,8 +174,9 @@ def test_harbor_run_forwards_policy_only_when_selected_without_uploading_it(tmp_
     monkeypatch.setattr(adapter, "export_public_outputs", capture)
     options = {**DECISION, "semantic_decision_max_calls": 2,
                "semantic_decision_max_total_input_tokens": 30000} if selected else {}
+    archive, _ = _current_decision_archive(tmp_path, options)
     agent = adapter.FullSupervisorAgent(
-        logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol", runtime_archive=str(archive), arm="full", **options)
+        logs_dir=tmp_path / "logs", model_name=adapter.resolve_provider_profile()["model"], runtime_archive=str(archive), arm="full", **options)
     context = AgentContext()
     asyncio.run(agent.run("Authored public instruction.", Environment(), context))
     assert len(commands) == 1

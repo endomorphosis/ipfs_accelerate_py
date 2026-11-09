@@ -1,0 +1,43 @@
+{
+  "abrupt": {
+    "actual_owned_child_killed": true,
+    "container_absent": true,
+    "container_id": "8a1b53d5f99ad2d054638494f64ad63f1755294dae40ce1f328d4e87b3e24f23",
+    "custom_temporary_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-worker-image-20261016-integration02",
+    "daemon_id": "fbdf6019-97da-413c-802b-2625758234b9",
+    "endpoint": "unix:///var/run/docker.sock",
+    "image_acquired": false,
+    "immutable_image_id": "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e",
+    "lease_root_absent": true,
+    "owned_child_returncode": -9,
+    "passed": true,
+    "provider_task_dispatched": false,
+    "schema": "legal-ir-watchdog-abrupt-regression@1",
+    "watchdog_not_live": true,
+    "watchdog_returncode": null,
+    "watchdog_returncode_observable": false
+  },
+  "image_storage_released": false,
+  "legal_ir_worker_started": false,
+  "native_named_root_covers_daemon_storage": false,
+  "normal": {
+    "container_absent": true,
+    "container_id": "545a9e1cd34203b3495e64ac8541d90b4cadc6dbdc895f52462a3af9e301a7df",
+    "custom_temporary_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-worker-image-20261016-integration02",
+    "daemon_id": "fbdf6019-97da-413c-802b-2625758234b9",
+    "endpoint": "unix:///var/run/docker.sock",
+    "image_acquired": false,
+    "immutable_image_id": "sha256:a91a42c918514203bb6cfc7c38b320dfb68e9dfc0571bf01976c0db993e24e5e",
+    "lease_root_absent": true,
+    "observed_running": true,
+    "passed": true,
+    "preserve_for_recovery": false,
+    "provider_task_dispatched": false,
+    "schema": "legal-ir-watchdog-normal-regression@1",
+    "watchdog_returncode": 0
+  },
+  "passed": true,
+  "preexisting_image_retained": true,
+  "provider_task_dispatched": false,
+  "schema": "legal-ir-watchdog-regression@1"
+}

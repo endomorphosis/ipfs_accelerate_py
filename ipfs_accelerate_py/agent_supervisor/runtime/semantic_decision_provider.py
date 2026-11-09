@@ -202,6 +202,9 @@ class SharedRouterDecisionProvider:
         from ipfs_accelerate_py.cli_runtime.cli_metadata import (
             get_last_cli_observation, set_last_cli_observation,
         )
+        from ipfs_accelerate_py.cli_runtime.grok_native_usage import (
+            grok_outcome_receipt, grok_usage_receipt,
+        )
         from ipfs_accelerate_py.llm_allocation.intelligence_index import (
             discover_available_providers, select_efficient_route,
         )
@@ -235,7 +238,13 @@ class SharedRouterDecisionProvider:
         deps = RouterDeps()
         instance = llm_router.get_llm_provider(self.provider, deps=deps, use_cache=False)
         set_last_cli_observation(self.provider, {})
-        receipt.update(provider_called=True, native_tool_profile="none", native_max_turns=1)
+        # An empty Grok allowlist retains its default tools. Match the native
+        # planning boundary: request one named tool, then deny it and both MCP
+        # dispatch tools. These argv settings still need native qualification.
+        receipt.update(provider_called=True, native_tool_profile="none", native_max_turns=1,
+                       native_tool_allowlist=["read_file"],
+                       native_tool_denylist=["read_file", "search_tool", "use_tool"],
+                       effective_toolset_verified=False)
         try:
             output = llm_router.generate_text(
                 model_prompt, provider=self.provider, model_name=self.model,
@@ -245,7 +254,9 @@ class SharedRouterDecisionProvider:
                 max_new_tokens=call.max_output_tokens, reasoning_effort=self.reasoning_effort,
                 temperature=0, task_kind="coding", allocation_path="cli",
                 allocation_session_id=call.call_id,
-                grok_cli_cmd=command, grok_tools="", grok_max_turns=1,
+                grok_cli_cmd=command, grok_tools="read_file",
+                grok_disallowed_tools="read_file,search_tool,use_tool",
+                grok_permission_mode="dontAsk", grok_max_turns=1,
                 chat_session_id=call.call_id,
             )
             observed = get_last_cli_observation(self.provider)
@@ -259,6 +270,10 @@ class SharedRouterDecisionProvider:
             usage = {key: observed[key] for key in _USAGE_FIELDS if key in observed}
             receipt["usage"] = usage
             receipt["usage_status"] = self._usage_status(usage)
+            # Keep native final-envelope evidence on both return and failure.
+            # These closed projections do not establish complete task usage.
+            receipt["native_rollout_usage"] = grok_usage_receipt(observed)
+            receipt["native_provider_outcome"] = grok_outcome_receipt(observed)
 
 
 def run_shared_router_decision_dialogue(
@@ -269,6 +284,7 @@ def run_shared_router_decision_dialogue(
     container_boundary_sha256: str = "", max_calls: int = 3, timeout: int = 90,
     max_output_tokens: int = 4096, max_input_tokens: int | None = None,
     max_total_input_tokens: int | None = None,
+    max_observed_native_tokens_before_next_dispatch: int | None = None,
     max_expansion_bytes: int = 16384, max_expansion_tokens: int = 4096, cancelled=None,
     retrieval_query_binding=None,
 ):
@@ -278,8 +294,15 @@ def run_shared_router_decision_dialogue(
     usage. This library helper does not register a Terminal Bench launch route
     or grant a Grok worker tools for applying its structured response.
     """
+    budget_type = None
+    if max_observed_native_tokens_before_next_dispatch is not None:
+        from .observed_native_usage_budget import (
+            ObservedNativeUsageBudget, validate_observed_native_token_threshold,
+        )
+        validate_observed_native_token_threshold(max_observed_native_tokens_before_next_dispatch)
+        budget_type = ObservedNativeUsageBudget
     from .semantic_decision_dialogue import (
-        SemanticDecisionResult, run_semantic_decision_dialogue,
+        SemanticDecisionDialogueError, SemanticDecisionResult, run_semantic_decision_dialogue,
     )
 
     dialogue_options = {}
@@ -301,17 +324,32 @@ def run_shared_router_decision_dialogue(
         container_boundary=container_boundary,
         container_boundary_sha256=container_boundary_sha256,
     )
-    result = run_semantic_decision_dialogue(
-        native_prompt=native_prompt, repository=repository, workspace=workspace,
-        policy=policy, provider=provider, model=model, invoke=adapter,
-        count_tokens=prompt_token_counter, max_calls=max_calls, timeout=timeout,
-        max_output_tokens=max_output_tokens, max_input_tokens=max_input_tokens,
-        max_total_input_tokens=max_total_input_tokens,
-        max_expansion_bytes=max_expansion_bytes, max_expansion_tokens=max_expansion_tokens,
-        cancelled=cancelled, **dialogue_options,
-    )
-    if tokenizer_source is None:
+    budget = (budget_type(adapter, provider=provider, model=model, workspace=workspace,
+        max_observed_native_tokens_before_next_dispatch=max_observed_native_tokens_before_next_dispatch)
+        if budget_type is not None else None)
+    try:
+        result = run_semantic_decision_dialogue(
+            native_prompt=native_prompt, repository=repository, workspace=workspace,
+            policy=policy, provider=provider, model=model, invoke=budget if budget is not None else adapter,
+            count_tokens=prompt_token_counter, max_calls=max_calls, timeout=timeout,
+            max_output_tokens=max_output_tokens, max_input_tokens=max_input_tokens,
+            max_total_input_tokens=max_total_input_tokens,
+            max_expansion_bytes=max_expansion_bytes, max_expansion_tokens=max_expansion_tokens,
+            cancelled=cancelled, **dialogue_options,
+        )
+    except SemanticDecisionDialogueError as error:
+        if budget is None:
+            raise
+        receipt = error.receipt
+        receipt["observed_native_usage_stop"] = budget.observation()
+        # The original dialogue error and its exact provider cause remain in
+        # the cause chain. Only this explicitly selected helper adds metadata.
+        raise SemanticDecisionDialogueError(error.args[0], receipt) from error
+    if tokenizer_source is None and budget is None:
         return result
     receipt = result.receipt
-    receipt["prompt_tokenizer_source"] = tokenizer_source
+    if tokenizer_source is not None:
+        receipt["prompt_tokenizer_source"] = tokenizer_source
+    if budget is not None:
+        receipt["observed_native_usage_stop"] = budget.observation()
     return SemanticDecisionResult(result.text, json.dumps(receipt, allow_nan=False))

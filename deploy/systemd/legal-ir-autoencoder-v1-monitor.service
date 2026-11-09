@@ -1,0 +1,7 @@
+[Unit]
+Description=Monitor and recover four parallel LegalIR supervisor lanes
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/rescue/board_service_fleet_monitor.py --config /home/barberb/lift_coding/external/ipfs_accelerate/config/legal_ir_autoencoder_fleet_monitor.json --apply
+TimeoutStartSec=90

@@ -133,6 +133,8 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
             "metadata_census_only") if key in kwargs}
         renderer_options["provider"] = selected["provider"]
         validate_legacy_semantic_route(policyoptions=prompt_options, rendereroptions=renderer_options)
+        from .full_supervisor_benchmark import _decision_options
+        _decision_options(kwargs, arm=kwargs.get("arm"), provider=selected["provider"])
         doctor_dispatch_arguments(arm=kwargs.get("arm"),
             doctor_dispatch_policy=kwargs.get("doctor_dispatch_policy", "auto"))
         from .terminal_source_view_policy import validate_source_context_combination
