@@ -13,7 +13,9 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.runtime import owner_worktree_parent as parents
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation
-from test.api.test_owner_writable_worktree import snapshot, tracked_descriptors
+from test.api.test_owner_writable_worktree import (
+    snapshot, tracked_descriptors, retire_authored_symlink,
+)
 
 
 @pytest.fixture
@@ -103,22 +105,30 @@ def test_existing_protected_parent_is_reused_without_chmod_or_mkdir(parent_case,
 
 @pytest.mark.parametrize("kind", ["writable", "setgid_prefix", "symlink_target", "symlink_ancestor", "file_target"])
 def test_unsafe_existing_paths_refuse_without_creation_or_outside_effects(parent_case, monkeypatch, kind):
-    case = parent_case
-    if kind == "writable":
-        case.prefix.chmod(0o775)
-    elif kind == "setgid_prefix":
-        case.prefix.chmod(0o2750)
-    elif kind == "symlink_target":
-        case.directory = case.prefix / "target-link"
-        case.directory.symlink_to(case.outside, target_is_directory=True)
-    elif kind == "symlink_ancestor":
-        alias = case.base / "prefix-link"
-        alias.symlink_to(case.prefix, target_is_directory=True)
-        case.directory = alias / "new"
-    else:
-        case.directory = case.prefix / "not-a-directory"
-        case.directory.write_bytes(b"ordinary owner file")
-    no_creation(case, monkeypatch)
+    try:
+        case = parent_case
+        if kind == "writable":
+            case.prefix.chmod(0o775)
+        elif kind == "setgid_prefix":
+            case.prefix.chmod(0o2750)
+        elif kind == "symlink_target":
+            case.directory = case.prefix / "target-link"
+            case.directory.symlink_to(case.outside, target_is_directory=True)
+        elif kind == "symlink_ancestor":
+            alias = case.base / "prefix-link"
+            alias.symlink_to(case.prefix, target_is_directory=True)
+            case.directory = alias / "new"
+        else:
+            case.directory = case.prefix / "not-a-directory"
+            case.directory.write_bytes(b"ordinary owner file")
+        no_creation(case, monkeypatch)
+    finally:
+        if kind == "symlink_target":
+            retire_authored_symlink(parent_case.prefix / "target-link", parent_case.outside,
+                receipt=parent_case.base / "authored-target-link-retirement.json")
+        elif kind == "symlink_ancestor":
+            retire_authored_symlink(parent_case.base / "prefix-link", parent_case.prefix,
+                receipt=parent_case.base / "authored-prefix-link-retirement.json")
 
 
 @pytest.mark.parametrize("field", ["st_uid", "st_gid"])
@@ -293,22 +303,27 @@ def test_protected_factory_rejects_incompatible_profile_before_parent_or_git_mut
 @pytest.mark.parametrize("kind", ["empty_directory", "broken_symlink"])
 def test_protected_factory_requires_an_absent_candidate_before_parent_preparation(
         factory_owner, monkeypatch, kind):
-    fixture = factory_owner
-    fixture.root.mkdir(mode=0o700)
-    candidate = fixture.root / "candidate"
-    if kind == "empty_directory":
-        candidate.mkdir(mode=0o700)
-    else:
-        candidate.symlink_to(fixture.root / "missing-target")
-    before = snapshot(fixture.root)
-    monkeypatch.setattr(fixture.owner, "_run_git", lambda *_args, **_kwargs:
-        pytest.fail("existing candidate reached Git creation"))
-    monkeypatch.setattr(parents, "prepare_owner_worktree_parent", lambda **_kwargs:
-        pytest.fail("existing candidate reached parent preparation"))
-    with pytest.raises(ValueError):
-        fixture.owner._create_seeded_worktree(candidate, "implementation/protected-parent",
-            allow_pool=False, seed_context=False, protected_initial_parent=True)
-    assert snapshot(fixture.root) == before
+    try:
+        fixture = factory_owner
+        fixture.root.mkdir(mode=0o700)
+        candidate = fixture.root / "candidate"
+        if kind == "empty_directory":
+            candidate.mkdir(mode=0o700)
+        else:
+            candidate.symlink_to(fixture.root / "missing-target")
+        before = snapshot(fixture.root)
+        monkeypatch.setattr(fixture.owner, "_run_git", lambda *_args, **_kwargs:
+            pytest.fail("existing candidate reached Git creation"))
+        monkeypatch.setattr(parents, "prepare_owner_worktree_parent", lambda **_kwargs:
+            pytest.fail("existing candidate reached parent preparation"))
+        with pytest.raises(ValueError):
+            fixture.owner._create_seeded_worktree(candidate, "implementation/protected-parent",
+                allow_pool=False, seed_context=False, protected_initial_parent=True)
+        assert snapshot(fixture.root) == before
+    finally:
+        if kind == "broken_symlink":
+            retire_authored_symlink(factory_owner.root / "candidate", factory_owner.root / "missing-target",
+                receipt=factory_owner.root.parent / "authored-broken-candidate-retirement.json")
 
 
 @pytest.mark.parametrize("location", ["root_itself", "outside_root"])
@@ -328,20 +343,24 @@ def test_protected_factory_requires_a_proper_candidate_descendant(
 
 def test_protected_factory_retains_and_refuses_a_configured_symlink_alias(
         factory_owner, parent_case, monkeypatch):
-    fixture = factory_owner
-    fixture.root.mkdir(mode=0o700)
-    alias = parent_case.base / "aliased-factory-root"
-    alias.symlink_to(fixture.root, target_is_directory=True)
-    owner = fixture.construct(alias)
-    assert owner.worktree_root == fixture.root
-    monkeypatch.setattr(owner, "_run_git", lambda *_args, **_kwargs:
-        pytest.fail("configured root alias reached Git creation"))
-    monkeypatch.setattr(parents, "prepare_owner_worktree_parent", lambda **_kwargs:
-        pytest.fail("configured root alias reached parent preparation"))
-    with pytest.raises(ValueError):
-        owner._create_seeded_worktree(fixture.root / "candidate", "implementation/protected-parent",
-            allow_pool=False, seed_context=False, protected_initial_parent=True)
-    assert list(fixture.root.iterdir()) == []
+    try:
+        fixture = factory_owner
+        fixture.root.mkdir(mode=0o700)
+        alias = parent_case.base / "aliased-factory-root"
+        alias.symlink_to(fixture.root, target_is_directory=True)
+        owner = fixture.construct(alias)
+        assert owner.worktree_root == fixture.root
+        monkeypatch.setattr(owner, "_run_git", lambda *_args, **_kwargs:
+            pytest.fail("configured root alias reached Git creation"))
+        monkeypatch.setattr(parents, "prepare_owner_worktree_parent", lambda **_kwargs:
+            pytest.fail("configured root alias reached parent preparation"))
+        with pytest.raises(ValueError):
+            owner._create_seeded_worktree(fixture.root / "candidate", "implementation/protected-parent",
+                allow_pool=False, seed_context=False, protected_initial_parent=True)
+        assert list(fixture.root.iterdir()) == []
+    finally:
+        retire_authored_symlink(parent_case.base / "aliased-factory-root", factory_owner.root,
+            receipt=parent_case.base / "authored-factory-alias-retirement.json")
 
 
 def test_partial_creation_keeps_verified_private_prefix_without_rollback(parent_case, monkeypatch):

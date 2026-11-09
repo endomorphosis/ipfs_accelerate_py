@@ -103,6 +103,40 @@ def tracked_descriptors(monkeypatch):
         assert closed.value.errno == errno.EBADF
 
 
+def retire_authored_symlink(path, target, *, receipt):
+    """Retire one named fixture alias after assertions; retain typed observations."""
+    path, target, receipt = Path(path), Path(target), Path(receipt)
+    def describe(selected):
+        try:
+            info = os.lstat(selected)
+        except FileNotFoundError:
+            return None
+        return {name: getattr(info, name) for name in (
+            "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+            "st_size", "st_mtime_ns", "st_ctime_ns")}
+    observation = dict(schema="authored-test-symlink-retirement@1", path=str(path),
+        target=str(target), removed=False, target_contents_read=False)
+    try:
+        before = describe(path)
+        observation["alias_before"] = before
+        assert before is not None and stat.S_ISLNK(before["st_mode"])
+        assert before["st_uid"] == os.geteuid() and before["st_nlink"] == 1
+        observation["observed_target"] = os.readlink(path)
+        assert observation["observed_target"] == str(target)
+        target_before = describe(target)
+        observation["target_before"] = target_before
+        assert describe(path) == before
+        path.unlink()
+        observation["removed"] = True
+        observation["target_after"] = describe(target)
+        assert describe(path) is None and observation["target_after"] == target_before
+    except BaseException as error:
+        observation["retirement_error_type"] = type(error).__name__
+        raise
+    finally:
+        receipt.write_text(json.dumps(observation, sort_keys=True, indent=2) + "\n")
+
+
 def refuses_without_chmod(case, monkeypatch, **changes):
     before, outside = snapshot(case.workspace), snapshot(case.outside)
     chmod_calls = []

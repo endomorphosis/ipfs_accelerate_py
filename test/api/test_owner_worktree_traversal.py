@@ -17,7 +17,9 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.runtime import owner_worktree_traversal as traversal
 from ipfs_accelerate_py.agent_supervisor.runtime import owner_worktree_parent as parents
 from ipfs_accelerate_py.agent_supervisor.runtime import source_formalization_context as boundary_guard
-from test.api.test_owner_writable_worktree import snapshot, tracked_descriptors
+from test.api.test_owner_writable_worktree import (
+    snapshot, tracked_descriptors, retire_authored_symlink,
+)
 
 
 @pytest.fixture
@@ -155,27 +157,32 @@ def test_worker_shared_group_must_be_the_exact_owner_integer(traversal_case, mon
     "anchor_private_overlap", "selected_alias", "boundary_in_workspace"])
 def test_selected_scope_must_be_exact_chain_and_disjoint_from_private_authority(
         traversal_case, monkeypatch, scope):
-    case = traversal_case
-    if scope == "workspace":
-        case.policy["worktree_traversal_directories"] = [str(case.workspace)]
-    elif scope == "private":
-        case.policy["worktree_traversal_directories"] = [str(case.private)]
-    elif scope == "outside_anchor":
-        case.policy["worktree_traversal_directories"] = [str(case.anchor.parent)]
-    elif scope == "duplicate":
-        case.policy["worktree_traversal_directories"].append(str(case.root))
-    elif scope == "anchor_private_overlap":
-        case.policy["owner_private_paths"] = [str(case.anchor)]
-    elif scope == "selected_alias":
-        alias = case.anchor / "lane-alias"
-        alias.symlink_to(case.lane, target_is_directory=True)
-        case.policy["worktree_traversal_directories"] = [str(case.root), str(alias)]
-    else:
-        replacement = case.workspace / "boundary.json"
-        replacement.write_bytes(case.boundary.read_bytes())
-        replacement.chmod(0o444)
-        case.boundary = replacement
-    refuses_without_change(case, monkeypatch)
+    try:
+        case = traversal_case
+        if scope == "workspace":
+            case.policy["worktree_traversal_directories"] = [str(case.workspace)]
+        elif scope == "private":
+            case.policy["worktree_traversal_directories"] = [str(case.private)]
+        elif scope == "outside_anchor":
+            case.policy["worktree_traversal_directories"] = [str(case.anchor.parent)]
+        elif scope == "duplicate":
+            case.policy["worktree_traversal_directories"].append(str(case.root))
+        elif scope == "anchor_private_overlap":
+            case.policy["owner_private_paths"] = [str(case.anchor)]
+        elif scope == "selected_alias":
+            alias = case.anchor / "lane-alias"
+            alias.symlink_to(case.lane, target_is_directory=True)
+            case.policy["worktree_traversal_directories"] = [str(case.root), str(alias)]
+        else:
+            replacement = case.workspace / "boundary.json"
+            replacement.write_bytes(case.boundary.read_bytes())
+            replacement.chmod(0o444)
+            case.boundary = replacement
+        refuses_without_change(case, monkeypatch)
+    finally:
+        if scope == "selected_alias":
+            retire_authored_symlink(traversal_case.anchor / "lane-alias", traversal_case.lane,
+                receipt=traversal_case.anchor.parent / "authored-lane-alias-retirement.json")
 
 
 @pytest.mark.parametrize("mode", [0o750, 0o3770])
