@@ -3,6 +3,8 @@ import asyncio
 import copy
 import hashlib
 import json
+import shutil
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -21,15 +23,43 @@ from benchmarks.agent_supervisor.container_coding.test_terminal_deployment impor
 GTE_REVISION = '17e1f347d17fe144873b1201da91788898c639cd'
 
 
-@pytest.fixture
-def packaged(tmp_path):
-    inputs = _supervisor_inputs(tmp_path)
-    archive = tmp_path / 'bundle'
-    snapshot = tmp_path / GTE_REVISION
+@pytest.fixture(scope='module')
+def packaged_seed(tmp_path_factory):
+    # Keep one immutable authored source tree; each case gets ordinary private files.
+    root = Path(tempfile.mkdtemp(prefix='worker-capability-seed-',
+                                 dir=tmp_path_factory.getbasetemp()))
+    inputs = _supervisor_inputs(root)
+    archive = root / 'bundle'
+    snapshot = root / GTE_REVISION
     snapshot.mkdir()
     # Packaging selection fixture; actual GTE inference has a separate probe.
     (snapshot / 'config.json').write_text('{"fixture":true}')
     manifest = build_runtime_archive(output=archive, model_snapshot=snapshot, **inputs)
+    def inventory():
+        result = {}
+        for path in root.rglob('*'):
+            assert not path.is_symlink()
+            if path.is_file():
+                assert path.stat().st_nlink == 1
+                result[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return result
+    baseline = inventory()
+    yield archive, manifest
+    assert inventory() == baseline
+
+
+@pytest.fixture
+def packaged(tmp_path, packaged_seed):
+    seed_archive, seed_manifest = packaged_seed
+    archive = tmp_path / 'bundle'
+    archive.mkdir()
+    for source in seed_archive.iterdir():
+        assert source.is_file() and not source.is_symlink()
+        target = archive / source.name
+        shutil.copyfile(source, target)
+        assert target.stat().st_nlink == 1
+        assert target.read_bytes() == source.read_bytes()
+    manifest = copy.deepcopy(seed_manifest)
     dataset = tmp_path / 'dataset'
     task = dataset / benchmark.TASK
     task.mkdir(parents=True)
