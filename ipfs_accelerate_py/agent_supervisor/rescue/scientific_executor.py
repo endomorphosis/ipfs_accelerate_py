@@ -92,6 +92,200 @@ class SourceAdmissionDeferred(ExecutorHold):
     """An immutable negative; this carries no health or execution credit."""
 
 
+class ResourceCapacityDeferred(ExecutorHold):
+    """A closed native-ancestry admission negative, never a new grant."""
+
+
+def resource_capacity_terminal(terminal, request_ref, request, cycle_root, *, captured_owner):
+    """Accept only current original storage admission before its first record.
+
+    Root and phase native grants existed in this family. Their source-bound
+    original owner must have released and observed them absent; the CLI's
+    zero-native pregrant classifier is deliberately not reused here.
+    """
+    h=health_owner();root=Path(cycle_root)
+    terminal_fields={
+        'absolute_resource_operation_deadline_closed',
+        'child_launch_attempted',
+        'child_reaped',
+        'child_returncode',
+        'cleanup_errors',
+        'completed',
+        'control_effects',
+        'database_preimage_before_grants',
+        'elapsed_seconds',
+        'error',
+        'error_type',
+        'external_file_growth_enforcement',
+        'original_native_compute_closed',
+        'owner_birth',
+        'owner_boot_id',
+        'owner_pid',
+        'partial_or_failed_control_must_be_reconciled',
+        'received_signals',
+        'request_sha256',
+        'reservation',
+        'resource_capacity_observation',
+        'resource_deadline_profile',
+        'resource_profile',
+        'schema',
+        'source_READ_closed',
+        'storage_admission_capacity_refusal',
+        'storage_status',
+        'task_completion_authority_granted_by_resource_owner',
+    }
+    need(type(terminal)is dict and set(terminal)==terminal_fields
+         and terminal.get('schema')=='legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256')==request_ref['sha256'] and terminal.get('completed')is False
+         and terminal.get('error_type')=='DaemonResourceError'
+         and terminal.get('error')=='storage reservation capacity exceeded'
+         and terminal.get('control_effects')=='not_started' and terminal.get('storage_status')=='not_entered'
+         and terminal.get('child_launch_attempted')is False and terminal.get('child_reaped')is False
+         and 'child_returncode'in terminal and terminal['child_returncode']is None
+         and terminal.get('source_READ_closed')is True
+         and terminal.get('original_native_compute_closed')is True
+         and terminal.get('absolute_resource_operation_deadline_closed')is True
+         and terminal.get('task_completion_authority_granted_by_resource_owner')is False
+         and terminal.get('resource_profile')=='original_orchestration_parented_disk_sampled_birth_bound_descendants'
+         and terminal.get('external_file_growth_enforcement')=='polled_size_caps_and_original_conservative_precharge_not_sandbox'
+         and terminal.get('partial_or_failed_control_must_be_reconciled')is True
+         and terminal.get('cleanup_errors')==[] and terminal.get('received_signals')==[],
+         'resource_capacity_terminal_not_exact_closed_negative')
+    deadline=terminal['resource_deadline_profile']
+    need(type(deadline)is dict and set(deadline)=={'work_seconds','stopped_cleanup_reserve_seconds',
+         'native_lifetime_seconds','absolute_clock_shared_by_all_resource_operations'}
+         and all(type(deadline[key])is int and deadline[key]==value for key,value in
+             dict(work_seconds=240,stopped_cleanup_reserve_seconds=60,native_lifetime_seconds=300).items())
+         and deadline['absolute_clock_shared_by_all_resource_operations']is True,
+         'resource_capacity_original_deadline_profile_changed')
+    need(not any(key in terminal for key in ('execution_request','process_spawn_receipts',
+         'sampled_process_custody_final','sampled_process_custody','external_precharge',
+         'external_before','external_after','external_output_parent_identities','parent_capacity_handoff',
+         'database_preimage_observed','database_postimage','allowed_subprocess_events',
+         'prechild_failure_receipt','prechild_storage_close_method')),
+         'resource_capacity_terminal_has_later_storage_or_process_effects')
+    need(request.get('schema')=='legal-ir-original-native-control-request/v1'
+         and request.get('purpose')=='native_control_metadata'
+         and request.get('request_id')=='scientific-executor:'+root.name
+         and request_ref['path']==str(root/'request.json')
+         and all(type(request.get(k))is int and request[k]==v for k,v in
+             dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300).items())
+         and request.get('resource_ledger')==str(ORIGINAL_RESOURCE_LEDGER),
+         'resource_capacity_original_native_envelope_changed')
+    state=terminal.get('reservation')
+    need(type(state)is dict and set(state)=={'schema','reservation_id','scheduler_lane','workload',
+         'status','ledger_path','roots','storage_limit_bytes','record','resource_lease','cleanup_error',
+         'enforcement','profile','last_local_usage','authority','external_file_growth_monitored'}
+         and state['schema']=='daemon-resource-reservations-v1'
+         and state['profile']=='parented-phase-sampled/v1'
+         and state['scheduler_lane']=='orchestration' and state['workload']=='canonical_parented_phase'
+         and state['authority']=='one_actual_child_of_existing_phase_no_additional_host_root'
+         and state['enforcement']=='cooperative_admission_and_polled_usage_not_kernel_quota'
+         and state['external_file_growth_monitored']is False and state['last_local_usage']is None
+         and state.get('status')=='not_entered'
+         and state.get('record')is None and state.get('resource_lease')is None
+         and state.get('cleanup_error')is None and state.get('ledger_path')==request['resource_ledger']
+         and type(state['storage_limit_bytes'])is int and state['storage_limit_bytes']==GLOBAL_RETAINED_BYTES
+         and type(terminal.get('elapsed_seconds'))in(int,float)
+         and 0<=terminal['elapsed_seconds']<request['timeout_seconds'],
+         'resource_capacity_record_absence_or_closed_deadline_unproved')
+    preimage=terminal.get('database_preimage_before_grants');expected=request.get('database_preimage')
+    need(type(preimage)is dict and set(preimage)=={'path','bytes','sha256'}
+         and type(expected)is dict and type(preimage['bytes'])is int and type(expected.get('bytes'))is int
+         and preimage==expected,'resource_capacity_database_preimage_differs')
+    observation=terminal.get('resource_capacity_observation')
+    numbers=('observed_apparent_bytes','outstanding_full_reservations_bytes',
+        'additional_requested_bytes','charged_bytes','limit_bytes','minimum_filesystem_free_bytes',
+        'storage_capacity_deficit_bytes','filesystem_free_deficit_bytes')
+    need(type(observation)is dict and set(observation)==set(numbers)|{
+         'schema','scope','storage_capacity_exceeded','filesystem_free_insufficient'}
+         and observation['schema']=='daemon-resource-capacity-observation/v1'
+         and observation['scope']=='named_roots_only_apparent_bytes'
+         and all(h._integer(observation[key],0)for key in numbers),
+         'resource_capacity_observation_shape_or_numeric_types')
+    observed,outstanding,additional=(observation[key]for key in numbers[:3])
+    charged,limit,free=(observation[key]for key in numbers[3:6])
+    need(additional==request['storage_bytes'] and limit==GLOBAL_RETAINED_BYTES
+         and charged==observed+outstanding+additional
+         and observation['storage_capacity_exceeded']is(charged>limit)
+         and observation['filesystem_free_insufficient']is(free<outstanding+additional)
+         and (observation['storage_capacity_exceeded']or observation['filesystem_free_insufficient'])
+         and observation['storage_capacity_deficit_bytes']==max(0,charged-limit)
+         and observation['filesystem_free_deficit_bytes']==max(0,outstanding+additional-free),
+         'resource_capacity_observation_arithmetic_or_deficit')
+    witness=terminal.get('storage_admission_capacity_refusal')
+    need(type(witness)is dict and set(witness)=={'schema','stage','request_sha256','owner_pid',
+         'owner_birth','owner_boot_id','orchestration_lease_ids','root','phase','native_ancestry_closed',
+         'storage_record_created','storage_native_lease_created','child_launch_attempted',
+         'external_charge_created','task_completion_authority'}
+         and witness['schema']=='original-orchestration-storage-admission-refusal/v1'
+         and witness['stage']=='parented_storage_open_before_record'
+         and witness['request_sha256']==request_ref['sha256']
+         and type(witness['owner_pid'])is int
+         and witness['native_ancestry_closed']is True
+         and all(witness[key]is False for key in ('storage_record_created','storage_native_lease_created',
+             'child_launch_attempted','external_charge_created','task_completion_authority')),
+         'resource_capacity_native_family_witness_missing_or_unknown')
+    row_keys={'lease_id','parent_lease_id','owner_pid','lane','cpu_slots','memory_mb',
+        'child_process_slots','released'}
+    for item in (witness['root'],witness['phase']):
+        need(type(item)is dict and set(item)==row_keys
+             and type(item['lease_id'])is str and len(item['lease_id'])==32
+             and all(character in '0123456789abcdef'for character in item['lease_id'])
+             and type(item['owner_pid'])is int and item['owner_pid']==terminal.get('owner_pid')
+             and item['lane']=='orchestration' and item['released']is True
+             and all(type(item[key])is int and item[key]==value for key,value in
+                 dict(cpu_slots=1,memory_mb=1536,child_process_slots=8).items()),
+             'resource_capacity_original_orchestration_grant_shape')
+    first,second=witness['root'],witness['phase']
+    need(first['parent_lease_id']is None and second['parent_lease_id']==first['lease_id']
+         and first['lease_id']!=second['lease_id']
+         and type(witness['orchestration_lease_ids'])is list
+         and witness['orchestration_lease_ids']==[first['lease_id'],second['lease_id']],
+         'resource_capacity_original_root_phase_join')
+    boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(h._integer(terminal.get('owner_pid'),2)
+         and type(terminal.get('owner_birth'))is str
+         and witness['owner_pid']==terminal['owner_pid']
+         and witness['owner_birth']==terminal['owner_birth']
+         and witness['owner_boot_id']==terminal.get('owner_boot_id')==boot
+         and captured_owner.get('pid')==terminal['owner_pid']
+         and captured_owner.get('boot_id')==boot and h._integer(captured_owner.get('birth_ticks'),1)
+         and terminal['owner_birth']==str(captured_owner['birth_ticks'])
+         and h._definitely_dead_identity(captured_owner,dict(boot_id=boot)),
+         'resource_capacity_original_owner_not_joined_or_still_live')
+    attempt=h._path(request['attempt_directory'])
+    need(root in attempt.parents and attempt.is_dir()and not attempt.is_symlink()
+         and attempt.lstat().st_uid==os.geteuid()and stat.S_IMODE(attempt.lstat().st_mode)==0o700
+         and not any(attempt.iterdir())
+         and not any(os.path.lexists(root/name)for name in
+             ('terminal.json','cycle-proof.json','closed.json','native-diagnostic.json')),
+         'resource_capacity_attempt_has_positive_or_unknown_effects')
+    return terminal
+
+
+def resource_capacity_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode):
+    h=health_owner()
+    need(kind=='genuine_scoped_idle'and type(returncode)is int and returncode!=0
+         and type(process)is subprocess.Popen and type(process.returncode)is int
+         and process.returncode==returncode and process.poll()==returncode
+         and process.pid==cycle_fields['owner_observation']['pid'],
+         'resource_capacity_deferral_requires_original_reaped_idle_owner')
+    terminal=original_terminal(h._raw(root/'owner.stdout'),request_ref)
+    resource_capacity_terminal(terminal,request_ref,request,root,captured_owner=cycle_fields['owner_observation'])
+    need(cycle_fields['owner_observation']['argv']==[profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
+         '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
+         and request['source_sha256'].get(profile['owner_source']['path'])==profile['owner_source']['sha256']
+         and request['source_sha256'].get(profile['driver_source']['path'])==profile['driver_source']['sha256'],
+         'resource_capacity_original_owner_source_argv')
+    negative=put(root/'capacity-terminal-negative.json',terminal)
+    return put(root/'capacity-deferred.json',dict(schema='agent-supervisor/scientific-resource-capacity-deferred@1',
+        request_ref=request_ref,terminal_ref=negative,original_wait_returncode=returncode,
+        sequence=cycle_fields['sequence'],captured_owner=cycle_fields['owner_observation'],
+        process=cycle_fields['process'],recorded_at=time.time(),health_sequence_advanced=False,
+        health_or_task_completion_authority=False,automatic_retry_of_original_request=False))
+
+
 def source_admission_PID_absent(pid):
     """Only an actual missing proc entry means absent; unreadable is UNKNOWN."""
     try: (Path('/proc')/str(pid)).lstat()
@@ -2423,10 +2617,18 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
                     request=h._document(request_ref)
                     witness=source_admission_deferral(profile,request_ref,request,root,kind,process,h.cycle_start_fields(handle),original_returncode)
                 except Exception:
-                    # An unproved optional deferral preserves the original hold.
+                    # ExecutorHold and any other unproved optional deferral preserve the original hold.
                     pass
                 else:
                     raise SourceAdmissionDeferred(witness['path'])
+                try:
+                    witness=resource_capacity_deferral(profile,request_ref,request,root,kind,process,
+                        h.cycle_start_fields(handle),original_returncode)
+                except Exception:
+                    # An optional capacity diagnostic cannot replace unknown custody.
+                    pass
+                else:
+                    raise ResourceCapacityDeferred(witness['path'])
             need(original_returncode == 0, 'original_owner_failed')
         terminal_ref = put(root / 'terminal.json', original_terminal(h._raw(stdout_path), request_ref))
         native = (observe_native(config) if catalogue_parser is None else
@@ -2457,7 +2659,7 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
             raise
         put(root / 'closed.json', {'cycle_proof_ref': proof_ref, 'receipt_ref': receipt_ref})
         return receipt_ref
-    except (SourceAdmissionDeferred,CatalogueRaceDeferred):
+    except (SourceAdmissionDeferred,CatalogueRaceDeferred,ResourceCapacityDeferred):
         raise
     except BaseException as exc:
         # A signal is handed to the original owner, which owns cancellation and
@@ -2841,13 +3043,15 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, catalogue
                     return HOLD_EXIT
                 # A closed negative spends its physical position. The next
                 # original observation uses a fresh request; health stays put.
-            except SourceAdmissionDeferred as deferred:
+            except (SourceAdmissionDeferred,ResourceCapacityDeferred) as deferred:
                 consecutive_admission_failures += 1
                 failed_cycle_number = cycle_number
                 cycle_number += 1
                 if consecutive_admission_failures >= MAX_CONSECUTIVE_SOURCE_ADMISSION_DEFERRALS:
-                    persistent_hold(root, Path(str(deferred)).parent, 'source_admission_consecutive_defer_bound')
-                    _recovery_failure(root, failed_cycle_number, sequence, 'source_admission_consecutive_defer_bound')
+                    reason=('resource_capacity_consecutive_defer_bound'
+                        if isinstance(deferred,ResourceCapacityDeferred)else 'source_admission_consecutive_defer_bound')
+                    persistent_hold(root, Path(str(deferred)).parent, reason)
+                    _recovery_failure(root, failed_cycle_number, sequence, reason)
                     return HOLD_EXIT
                 # Negative physical attempt consumed; no health sequence/publication.
             except Exception as exc:
