@@ -75,6 +75,14 @@ def test_shipped_worker_refuses_incompatible_census_before_any_candidate_or_rout
     assert isinstance(code, str) and events == []
 
 
+
+def test_working_set_census_rejects_ordinary_owner_attempt_marker():
+    args = _arguments() + [FLAG, "--owner-worker-attempt-id", "a" * 32]
+    code, events = _worker_parser_and_route(args)
+    assert code == "worker attempt identity requires ordinary router coding"
+    assert events == []
+
+
 @pytest.mark.parametrize("turns", [8, 128])
 def test_installed_grok_worker_admits_only_default_turns_for_census(tmp_path, turns):
     # The installed worker's actual parser and forwarding execute. The existing
