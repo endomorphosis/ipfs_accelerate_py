@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+from test.common.native_quack_fixtures import archive_native_catalogs  # noqa: F401
+
 from test.api.test_semantic_router_translation import native  # noqa: F401
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import build_text_context_references
 from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as codec
@@ -175,3 +177,50 @@ def test_changed_or_historical_encodings_refused_without_private_error_text(nati
 def test_exact_typed_input_required(value):
     with pytest.raises(census.SemanticPackCensusError, match="current typed"):
         census.census_semantic_pack(encoded=value)
+
+
+@pytest.mark.parametrize("states,expected", [
+    ((True, True, True), True), ((False, True, True), False),
+    ((True, False, True), False), ((True, True, False), False),
+    ((True, None, True), False), ((True, 1, True), False),
+])
+def test_native_catalog_retirement_requires_all_original_pytest_phases(states, expected):
+    from types import SimpleNamespace
+    from test.common.native_quack_fixtures import _all_native_case_phases_passed
+    reports = {phase: SimpleNamespace(passed=value) for phase, value in
+               zip(("setup", "call", "teardown"), states) if value is not None}
+    assert _all_native_case_phases_passed(reports) is expected
+
+
+def test_native_catalog_retirement_preserves_raw_bytes_when_archive_verification_fails(tmp_path, monkeypatch):
+    from test.common import native_quack_fixtures as retention
+    repository = tmp_path / "repository"
+    source = repository / ".runtime/semantic/world.duckdb"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"authored catalog bytes\x00\xff")
+    original = source.read_bytes()
+    def refuse(*args):
+        raise ValueError("authored archive verification refusal")
+    monkeypatch.setattr(retention, "_verify_native_catalog_archive", refuse)
+    with pytest.raises(ValueError, match="authored archive verification refusal"):
+        retention._archive_native_catalogs(tmp_path=tmp_path, repository=repository, nodeid="authored-negative")
+    assert source.read_bytes() == original
+    assert not (tmp_path / "native-catalog-retirement.json").exists()
+
+
+def test_native_catalog_retirement_keeps_lossless_archive_and_typed_receipt(tmp_path):
+    import hashlib
+    import tarfile
+    from test.common import native_quack_fixtures as retention
+    repository = tmp_path / "repository"
+    source = repository / ".runtime/semantic/world.duckdb"
+    source.parent.mkdir(parents=True)
+    original = b"authored catalog bytes\x00\xff"
+    source.write_bytes(original)
+    record = retention._archive_native_catalogs(tmp_path=tmp_path, repository=repository, nodeid="authored-positive")
+    assert record["retired"] is True and record["validation_authority"] is False
+    assert not source.exists() and source.parent.is_dir()
+    with tarfile.open(tmp_path / record["archive"], "r:gz") as archive:
+        assert archive.extractfile(source.relative_to(tmp_path).as_posix()).read() == original
+    assert record["files"][0]["sha256"] == hashlib.sha256(original).hexdigest()
+    assert json.loads((tmp_path / "native-catalog-retirement.json").read_text()) == record

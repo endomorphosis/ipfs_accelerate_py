@@ -9,6 +9,8 @@ import subprocess
 
 import pytest
 
+from test.common.native_quack_fixtures import archive_native_catalogs  # noqa: F401
+
 from test.api.test_semantic_router_translation import native  # noqa: F401
 from test.api.test_semantic_pack_census import _authored_extension
 from ipfs_accelerate_py.agent_supervisor.runtime import semantic_router_translation as semantic

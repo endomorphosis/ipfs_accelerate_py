@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+from test.common.native_quack_fixtures import archive_native_catalogs  # noqa: F401
+
 from test.api.test_semantic_router_translation import native  # noqa: F401
 from test.api.test_semantic_prompt_census import byte_count, check_partitions
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import build_text_context_references
