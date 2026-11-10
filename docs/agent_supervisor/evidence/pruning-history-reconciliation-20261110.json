@@ -1,0 +1,77 @@
+{
+  "schema": "pruning-history-reconciliation@1",
+  "prepared_at": "2026-11-10T04:12:08.247432+00:00",
+  "base_main": "9f3de2db5ac095ce7d736bcdac218aef58185e81",
+  "selected_world_head": "57239766811693f8e23b195a2b6d90a15bed20b1",
+  "historical_pruning_head": "c4015c6117dadefd64116708a4ead4ad3b512928",
+  "resolved_product_merge_commit": "3e6b8c3a0077d3c676a89fb2ea4307cf2db6fc5a",
+  "tested_candidate_commit": "bc5d7c01d1ef71d6d273bd87f747411afed65a59",
+  "resolved_tree": "95a28cc6b74e9f4a99e20497e848e3bf88bf698d",
+  "historical_unique_commits_retained": 31,
+  "changed_live_python_files_vs_world": 122,
+  "changed_owning_test_files_vs_world": 67,
+  "static_python_compilation_passed": true,
+  "unresolved_conflict_markers": 0,
+  "live_source_whitespace_check_passed": true,
+  "immutable_historical_failed_evidence_preserved": true,
+  "historical_evidence_whitespace_warnings_retained": true,
+  "schema_identities": {
+    "scoped_task_profile": "terminal-public-task-profile@4",
+    "public_acceptance_profile": "terminal-public-task-profile@5",
+    "combined_metadata_controls": "terminal-benchmark-declared-controls@8",
+    "doctor_coding_controls": "terminal-benchmark-declared-controls@11",
+    "historical_receipts_upgraded": false
+  },
+  "new_cross_feature_route_cases_prepared": 8,
+  "new_direct_policy_cases_qualified": 6,
+  "qualified_scopes": [
+    {
+      "scope": "complete_current_decision_policy",
+      "owning_test_files": [
+        "test/api/test_current_decision_policy.py"
+      ],
+      "request_sha256": "33312b44cdb6941e808d49eb62c336ce6f5eadc7ae3807ae7ad637d4b17ab2a3",
+      "candidate_product_commit": "bc5d7c01d1ef71d6d273bd87f747411afed65a59",
+      "passed": 64,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_pins": 70,
+      "compiled_parent_sources": 12,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 8629377,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "qualified": true
+    }
+  ],
+  "failed_first_policy_attempt": {
+    "request_sha256": "033996c8858ebbdabac1af4d39a19ba714eeed87b879a8414b7c8d4fb6e6ab3e",
+    "passed": 0,
+    "errors": 64,
+    "qualified": false,
+    "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
+    "retained_storage_bytes": 16777216
+  },
+  "remaining_changed_owning_test_files": 66,
+  "parent_scoped_results_inherited_as_qualification": false,
+  "whole_branch_qualified": false,
+  "live_provider_or_deployment_qualified": false,
+  "model_or_token_savings_claimed": false,
+  "main_merged": false,
+  "scope_note": "Both published histories are retained. Only the listed complete owning file is runtime qualified for its exact captured source context. The other changed owning suites, live candidate/pruning deployment, and this merged branch remain unqualified. Static compilation and raw historical receipts do not qualify those scopes.",
+  "tested_tree": "6417e5b585e27a5381ab5ba5d6bb487170614f93"
+}
