@@ -22,6 +22,8 @@ SOURCE_EDIT_SCHEMA = "terminal-benchmark-declared-controls@4"
 CAPSULE_BUDGET_SCHEMA = "terminal-benchmark-declared-controls@5"
 SEMANTIC_WORKING_SET_SCHEMA = "terminal-benchmark-declared-controls@6"
 GROK_CODING_SCHEMA = "terminal-benchmark-declared-controls@7"
+METADATA_TOKENIZER_SCHEMA = "terminal-benchmark-declared-controls@6"
+COMBINED_METADATA_SCHEMA = "terminal-benchmark-declared-controls@8"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -100,7 +102,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'grok_coding_max_turns', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy', 'prompt_tokenizer_artifact', 'prompt_tokenizer_sha256', 'max_input_tokens', 'semantic_slot_policy_revision', 'semantic_context_projection', 'semantic_native_input', 'semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens', 'doctor_dispatch_policy'}:
+        if set(kwargs) - {'semantic_metadata_tokenizer', 'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'grok_coding_max_turns', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy', 'prompt_tokenizer_artifact', 'prompt_tokenizer_sha256', 'max_input_tokens', 'semantic_slot_policy_revision', 'semantic_context_projection', 'semantic_native_input', 'semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens', 'doctor_dispatch_policy'}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         # Validate additive legacy/typed routes against their native closed
         # contracts; the full serialized configuration commits their values.
@@ -306,6 +308,29 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
     if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
         controls["schema"] = GROK_CODING_SCHEMA
         controls.setdefault("experimental_controls_sha256", {})["grok_coding_max_turns"] = _digest(grok_turns)
+    kwargs = agent.get("kwargs", {})
+    if "semantic_metadata_tokenizer" in kwargs:
+        if kwargs["semantic_metadata_tokenizer"] is None:
+            raise ValueError("explicit metadata tokenizer selection required")
+        from .benchmark_provider_profile import resolve_provider_profile
+        from .terminal_metadata_tokenizer_bundle import read_metadata_tokenizer_bundle
+
+        route = resolve_provider_profile(kwargs.get("provider_profile"))
+        snapshot = read_metadata_tokenizer_bundle(kwargs["semantic_metadata_tokenizer"],
+            arm=kwargs.get("arm"), provider=route["provider"], model=route["model"],
+            semantic_metadata_view=kwargs.get("semantic_metadata_view", "legacy"),
+            semantic_transport_schema=kwargs.get("semantic_transport_schema", "supervisor-semantic-router-input@1"))
+        # The two historical branches independently used @6. Preserve each
+        # frozen single-feature identity; combined features use a new version.
+        controls["schema"] = (COMBINED_METADATA_SCHEMA if
+            any(key in controls.get("experimental_controls_sha256", {})
+                for key in ("semantic_working_set", "grok_coding_max_turns"))
+            else METADATA_TOKENIZER_SCHEMA)
+        # Bundle paths belong to the exact config digest. This experimental
+        # control binds the full descriptor/asset/manifest pins and policy
+        # identity without treating a different staging directory as content.
+        controls.setdefault("experimental_controls_sha256", {})["semantic_metadata_tokenizer"] = (
+            _digest(snapshot.observation()))
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -316,7 +341,26 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == GROK_CODING_SCHEMA:
+    if value.get("schema") == COMBINED_METADATA_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or "semantic_metadata_tokenizer" not in experiment
+                or not ({"semantic_working_set", "grok_coding_max_turns"} & set(experiment))
+                or set(experiment) - {"semantic_metadata_tokenizer", "semantic_working_set",
+                    "grok_coding_max_turns", "capsule_budget", "source_edit_mode",
+                    "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif (value.get("schema") == METADATA_TOKENIZER_SCHEMA
+            and type(value.get("experimental_controls_sha256")) is dict
+            and "semantic_metadata_tokenizer" in value["experimental_controls_sha256"]):
+        keys.add("experimental_controls_sha256")
+        experiment = value["experimental_controls_sha256"]
+        if (set(experiment) - {"semantic_metadata_tokenizer", "capsule_budget", "source_edit_mode",
+                "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == GROK_CODING_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or "grok_coding_max_turns" not in experiment

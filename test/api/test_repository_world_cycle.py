@@ -87,6 +87,7 @@ def test_native_world_packet_edit_observe_and_successor_dispatch(route, tmp_path
                 found, failed = client.call("repository_context_query", generation=1, query="square", limit=1)
                 assert not failed, found
                 candidate = found["candidates"][0]
+                assert candidate["path"] == "module.py" and candidate["name"] == "module.square"
                 read, failed = client.call("repository_read", generation=1, path="module.py",
                     symbol_id=candidate["symbol_id"])
                 assert not failed, read
