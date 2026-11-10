@@ -3,6 +3,10 @@ import asyncio
 import copy
 import hashlib
 import json
+import os
+import shutil
+import stat
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -17,19 +21,130 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 )
 from benchmarks.agent_supervisor.container_coding.terminal_deployment import build_runtime_archive
 from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_inputs
+from test.common.native_quack_fixtures import (
+    _all_native_case_phases_passed, _catalog_identity, _sync_native_fixture_directory,
+)
 
 GTE_REVISION = '17e1f347d17fe144873b1201da91788898c639cd'
 
 
-@pytest.fixture
-def packaged(tmp_path):
-    inputs = _supervisor_inputs(tmp_path)
-    archive = tmp_path / 'bundle'
-    snapshot = tmp_path / GTE_REVISION
+WORKER_BUNDLE_RETENTION = "IPFS_TEST_WORKER_BUNDLE_RETENTION"
+
+
+def _build_fixture_archive(root):
+    inputs = _supervisor_inputs(root)
+    archive = root / 'bundle'
+    snapshot = root / GTE_REVISION
     snapshot.mkdir()
     # Packaging selection fixture; actual GTE inference has a separate probe.
     (snapshot / 'config.json').write_text('{"fixture":true}')
     manifest = build_runtime_archive(output=archive, model_snapshot=snapshot, **inputs)
+    return archive, manifest
+
+
+@pytest.fixture(scope='module')
+def packaged_seed(tmp_path_factory):
+    profile = os.environ.get(WORKER_BUNDLE_RETENTION, "")
+    if not profile:
+        yield None
+        return
+    if profile != "deduplicate-after-pass@1":
+        raise ValueError("unknown worker bundle fixture retention profile")
+    root = Path(tempfile.mkdtemp(prefix='worker-capability-seed-',
+                                 dir=tmp_path_factory.getbasetemp()))
+    archive, manifest = _build_fixture_archive(root)
+    payload = archive / 'runtime.tar.gz'
+    seed_identity = _catalog_identity(payload)
+    seed_digest = hashlib.sha256(payload.read_bytes()).hexdigest()
+    with payload.open('rb') as stream:
+        os.fsync(stream.fileno())
+    _sync_native_fixture_directory(archive)
+    _sync_native_fixture_directory(root)
+    _sync_native_fixture_directory(root.parent)
+    yield archive, manifest, seed_identity, seed_digest
+    assert _catalog_identity(payload) == seed_identity
+    assert hashlib.sha256(payload.read_bytes()).hexdigest() == seed_digest
+
+
+def _retire_duplicate_worker_payload(tmp_path, archive, seed, nodeid):
+    seed_archive, _, seed_identity, seed_digest = seed
+    payload = archive / 'runtime.tar.gz'
+    seed_payload = seed_archive / payload.name
+    identity = _catalog_identity(payload)
+    if identity['st_size'] != seed_identity['st_size']:
+        return
+    if hashlib.sha256(payload.read_bytes()).hexdigest() != seed_digest:
+        return
+    if (_catalog_identity(seed_payload) != seed_identity
+            or hashlib.sha256(seed_payload.read_bytes()).hexdigest() != seed_digest):
+        raise ValueError("worker bundle seed changed before duplicate retirement")
+    receipt = tmp_path / 'worker-bundle-retention.json'
+    record = {
+        'schema': 'worker-bundle-fixture-retention@1',
+        'case': nodeid,
+        'original': payload.relative_to(tmp_path.parent).as_posix(),
+        'seed': seed_payload.relative_to(tmp_path.parent).as_posix(),
+        'sha256': seed_digest,
+        'bytes': identity['st_size'],
+        'mode': stat.S_IMODE(identity['st_mode']),
+        'uid': identity['st_uid'],
+        'gid': payload.lstat().st_gid,
+        'mtime_ns': identity['st_mtime_ns'],
+        'passed_phases': ['setup', 'call', 'teardown'],
+        'restoration': 'Copy the verified seed into a distinct regular file and restore its recorded metadata.',
+    }
+    with receipt.open('x') as stream:
+        json.dump(record, stream, sort_keys=True)
+        stream.write('\n')
+        stream.flush()
+        os.fsync(stream.fileno())
+    _sync_native_fixture_directory(tmp_path)
+    if (_catalog_identity(payload) != identity
+            or hashlib.sha256(payload.read_bytes()).hexdigest() != seed_digest):
+        raise ValueError("worker bundle changed before duplicate retirement")
+    payload.unlink()
+    _sync_native_fixture_directory(archive)
+
+
+class _WorkerBundleRetention:
+    def __init__(self, request, tmp_path, archive, seed):
+        self.request = request
+        self.tmp_path = tmp_path
+        self.archive = archive
+        self.seed = seed
+        self.reports = {}
+
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_makereport(self, item, call):
+        outcome = yield
+        if item is not self.request.node:
+            return
+        report = outcome.get_result()
+        self.reports[report.when] = report
+        if report.when == 'teardown':
+            try:
+                if _all_native_case_phases_passed(self.reports):
+                    _retire_duplicate_worker_payload(self.tmp_path, self.archive, self.seed, item.nodeid)
+            finally:
+                self.request.config.pluginmanager.unregister(self)
+
+
+@pytest.fixture
+def packaged(tmp_path, packaged_seed, request):
+    if packaged_seed is None:
+        archive, manifest = _build_fixture_archive(tmp_path)
+    else:
+        seed_archive, seed_manifest, _, _ = packaged_seed
+        archive = tmp_path / 'bundle'
+        archive.mkdir()
+        for source in seed_archive.iterdir():
+            _catalog_identity(source)
+            target = archive / source.name
+            shutil.copyfile(source, target)
+            _catalog_identity(target)
+            assert target.read_bytes() == source.read_bytes()
+        manifest = copy.deepcopy(seed_manifest)
+        request.config.pluginmanager.register(_WorkerBundleRetention(request, tmp_path, archive, packaged_seed))
     dataset = tmp_path / 'dataset'
     task = dataset / benchmark.TASK
     task.mkdir(parents=True)
@@ -38,7 +153,6 @@ def packaged(tmp_path):
     (task / 'environment').mkdir()
     (task / 'tests').mkdir()
     return archive, manifest, dataset
-
 
 def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     from benchmarks.agent_supervisor.container_coding.container_worker_deployment import WORKER_ENTRY
