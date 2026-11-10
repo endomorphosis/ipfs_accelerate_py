@@ -216,42 +216,51 @@ def test_signalled_worker_never_admits_continuation(monkeypatch, capsys):
     assert _observation(capsys)["rounds"][0]["returncode"] == -signal.SIGTERM
 
 
-def _worker_arguments(monkeypatch, extra):
+def _worker_arguments(monkeypatch, extra, *, root):
     start = WORKER_ENTRY.index("parser=argparse.ArgumentParser()")
     end = WORKER_ENTRY.index("from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner")
     code = WORKER_ENTRY[start:end]
     monkeypatch.setattr(sys, "argv", ["worker-entry", "--semantic-repository", "/canonical", *extra])
     namespace = dict(argparse=argparse, pathlib=__import__("pathlib"),
-        sys=sys,
+        sys=sys, root=root,
         selected_provider="codex_cli")
     exec(compile(code, "<installed-candidate-worker-options>", "exec"), namespace)
     return namespace["args"]
 
 
-def test_installed_worker_accepts_exact_new_handoff(monkeypatch):
+def test_installed_worker_accepts_exact_new_handoff(monkeypatch, tmp_path):
     flags = ["--candidate-dispatch-handoff", "/owner/dispatch.json", "--candidate-dispatch-handoff-sha256", "a"*64,
         "--candidate-round-descriptor", "/owner/round.json", "--candidate-round-descriptor-sha256", "b"*64]
-    args = _worker_arguments(monkeypatch, flags)
+    args = _worker_arguments(monkeypatch, flags, root=tmp_path)
     assert args.candidate_dispatch_handoff == Path("/owner/dispatch.json")
     assert args.source_view_profile == "disabled"
+    assert args.grok_pruning_profile == "legacy"
 
 
 @pytest.mark.parametrize("extra", [["--preflight"], ["--purpose", "planning"],
     ["--public-instruction-artifact", "/owner/instruction"],
     ["--doctor-residual-artifact", "/owner/residual"], ["--source-view-profile", "identity@1"],
     ["--coding-reply-mode", "ordinary-completion@1"], ["--semantic-working-set", "capsule-references@1"]])
-def test_installed_worker_refuses_mixed_candidate_context(monkeypatch, extra):
+def test_installed_worker_refuses_mixed_candidate_context(monkeypatch, extra, tmp_path):
     flags = ["--candidate-dispatch-handoff", "/owner/dispatch.json", "--candidate-dispatch-handoff-sha256", "a"*64,
         "--candidate-round-descriptor", "/owner/round.json", "--candidate-round-descriptor-sha256", "b"*64]
     with pytest.raises(SystemExit):
-        _worker_arguments(monkeypatch, [*flags, *extra])
+        _worker_arguments(monkeypatch, [*flags, *extra], root=tmp_path)
 
 
 def test_owner_selection_is_removed_before_original_handoff_and_captured_before_monitor():
     compile(OWNER_ENTRY, "<installed-owner-entry>", "exec")
     compile(WORKER_ENTRY, "<installed-worker-entry>", "exec")
     assert OWNER_ENTRY.index("split_owner_coding_controls(list(sys.argv[1:]))") < OWNER_ENTRY.index("handoff=prepare_container_source_formalization_dispatch")
-    assert "argv=owner_initial_argv" in OWNER_ENTRY
+    # Owner-only controls are removed before the native handoff, and any
+    # subsequent typed-decision rewriting is forwarded to the captured launch.
+    selected = OWNER_ENTRY.index("split_owner_coding_controls(list(sys.argv[1:]))")
+    initial = OWNER_ENTRY.index("worker_arguments=owner_initial_argv")
+    handoff = OWNER_ENTRY.index("handoff=prepare_container_source_formalization_dispatch(argv=worker_arguments")
+    rebound = OWNER_ENTRY.index("handoff={**handoff,'argv':worker_arguments}", handoff)
+    captured = OWNER_ENTRY.index("owner_candidate_launch=capture_original_coding_launch")
+    assert selected < initial < handoff < rebound < captured
+    assert "source_broker=worker_source_broker,argv=handoff['argv']" in OWNER_ENTRY
     assert OWNER_ENTRY.index("owner_candidate_launch=capture_original_coding_launch") < OWNER_ENTRY.index("raise SystemExit(run_candidate_coding_rounds")
 
 
