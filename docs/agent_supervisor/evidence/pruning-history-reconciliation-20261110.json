@@ -5,7 +5,7 @@
   "selected_world_head": "57239766811693f8e23b195a2b6d90a15bed20b1",
   "historical_pruning_head": "c4015c6117dadefd64116708a4ead4ad3b512928",
   "resolved_product_merge_commit": "3e6b8c3a0077d3c676a89fb2ea4307cf2db6fc5a",
-  "tested_candidate_commit": "10efcee7af49b2d08d663c539e0fc48a1c0de13f",
+  "tested_candidate_commit": "fb50b851ff6d4a387138ea0d3cb7d25ef5dcbc7e",
   "resolved_tree": "95a28cc6b74e9f4a99e20497e848e3bf88bf698d",
   "historical_unique_commits_retained": 31,
   "changed_live_python_files_vs_world": 122,
@@ -898,6 +898,56 @@
       "source_observation_sha256": "371a1e21df8bb17ad5beceac77c41bebc5685851d3523a552db7fceb08606fd0",
       "junit_sha256": "13f68d1396a53e5e29d904cd63ad7e4eec8d53fa74752efe3a156d98ebfeb5e5",
       "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T23:15:42.988971+00:00",
+      "scope": "complete_worker_capability_and_archive_retention",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py"
+      ],
+      "request_sha256": "5f35511584ba7f54e3f7027d246c3bc105bc6879918a490bd0a6e7ff7bac8aae",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "tested_evidence_base": "fb50b851ff6d4a387138ea0d3cb7d25ef5dcbc7e",
+      "passed": 146,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 229,
+      "compiled_parent_sources": 72,
+      "original_custody_closed": true,
+      "observed_process_identities": 1,
+      "storage_status": "released",
+      "storage_reserved_bytes": 33554432,
+      "final_attempt_bytes": 14407196,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 144.61316565610468,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Complete worker archive capability and authored Harbor boundary cases. The actual archive builder uses a synthetic model snapshot. Each case uses an independent archive copy during execution.",
+      "validation_owner_sha256": "9abef02b27b5ea591cab23bdd6798fd0eb066533af8a2356eb5db92b2139c6f7",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "89492e0ae32a7c7eb70daf2f3927e1d8c972924a99740d8a5fff01e86e1bed86",
+      "source_observation_sha256": "ef5ea2dc17be16b5adbaf8a1b52065790b7732ecc1abf0b420c850152db28861",
+      "junit_sha256": "1bca509c6a0f87a459f63c0bc7acdac57c8e2049d13d7292c701a0bebbaa3ecd",
+      "worker_bundle_retention_verified": true,
+      "retention_receipts": 146,
+      "retired_duplicate_payload_bytes": 241837904,
+      "net_fixture_file_bytes_saved": 241744228,
+      "retained_seed_sha256": "be863568c75cdab3d836ce8093d2ad6d9cca6e59bbaf45c62071d6bab4cbe311",
+      "current_source_qualification": true
     }
   ],
   "failed_first_policy_attempt": {
@@ -908,15 +958,15 @@
     "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
     "retained_storage_bytes": 16777216
   },
-  "remaining_changed_owning_test_files": 40,
+  "remaining_changed_owning_test_files": 39,
   "parent_scoped_results_inherited_as_qualification": false,
   "whole_branch_qualified": false,
   "live_provider_or_deployment_qualified": false,
   "model_or_token_savings_claimed": false,
   "main_merged": false,
-  "scope_note": "Twenty-seven of 67 complete owning files qualify in fifteen current source contexts totaling 1,236 cases. Forty owning files and eight integration cases remain pending. Candidate-round policy uses authored argument values.",
-  "tested_tree": "db5bb252dad7769ada68a8bd46248e5655144079",
-  "last_scope_update_at": "2026-11-10T22:59:31.854223+00:00",
+  "scope_note": "Twenty-eight of 67 complete owning files qualify in sixteen current source contexts totaling 1,382 cases. Thirty-nine owning files and eight integration cases remain pending. Worker capability uses the actual archive builder, a synthetic model snapshot and authored Harbor boundaries.",
+  "tested_tree": "a1689eb4473907c48d912fa6fe238cce090bf5a6",
+  "last_scope_update_at": "2026-11-10T23:17:02.808673+00:00",
   "unqualified_test_fixture_preparation": {
     "commit": "143db239150c9ed993b04b6a159c1de2a8586af1",
     "path": "test/api/test_grok_pruning.py",
@@ -1239,7 +1289,7 @@
     "source_pin_cap": 256,
     "scope": "Ten real-API observations; no provider invocation and no pytest owning-file qualification from the observation."
   },
-  "qualified_owning_test_files": 27,
+  "qualified_owning_test_files": 28,
   "failed_stream_capture_attempt": {
     "request_sha256": "2fb7094c2c771cd5c0dff5c7462fb7e76592de0e8de49d4464cea86a6b483247",
     "assertions_passed": 425,
@@ -1351,7 +1401,7 @@
     "elapsed_seconds": 113.54771468183026,
     "next_action": "Capture full producer imports and measure actual per-fixture world/meta catalog output before a new complete-file admission."
   },
-  "semantic_pack_next_action": "Qualify remaining 40 owning files and eight integration cases under the existing limits.",
+  "semantic_pack_next_action": "Qualify remaining 39 owning files and eight integration cases under the existing limits.",
   "round_policy_capture_frontier": {
     "time": "2026-11-10T05:52:08.253641+00:00",
     "owning_files": [
@@ -2091,6 +2141,56 @@
       "source_observation_sha256": "371a1e21df8bb17ad5beceac77c41bebc5685851d3523a552db7fceb08606fd0",
       "junit_sha256": "13f68d1396a53e5e29d904cd63ad7e4eec8d53fa74752efe3a156d98ebfeb5e5",
       "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T23:15:42.988971+00:00",
+      "scope": "complete_worker_capability_and_archive_retention",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py"
+      ],
+      "request_sha256": "5f35511584ba7f54e3f7027d246c3bc105bc6879918a490bd0a6e7ff7bac8aae",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "tested_evidence_base": "fb50b851ff6d4a387138ea0d3cb7d25ef5dcbc7e",
+      "passed": 146,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 229,
+      "compiled_parent_sources": 72,
+      "original_custody_closed": true,
+      "observed_process_identities": 1,
+      "storage_status": "released",
+      "storage_reserved_bytes": 33554432,
+      "final_attempt_bytes": 14407196,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 144.61316565610468,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Complete worker archive capability and authored Harbor boundary cases. The actual archive builder uses a synthetic model snapshot. Each case uses an independent archive copy during execution.",
+      "validation_owner_sha256": "9abef02b27b5ea591cab23bdd6798fd0eb066533af8a2356eb5db92b2139c6f7",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "89492e0ae32a7c7eb70daf2f3927e1d8c972924a99740d8a5fff01e86e1bed86",
+      "source_observation_sha256": "ef5ea2dc17be16b5adbaf8a1b52065790b7732ecc1abf0b420c850152db28861",
+      "junit_sha256": "1bca509c6a0f87a459f63c0bc7acdac57c8e2049d13d7292c701a0bebbaa3ecd",
+      "worker_bundle_retention_verified": true,
+      "retention_receipts": 146,
+      "retired_duplicate_payload_bytes": 241837904,
+      "net_fixture_file_bytes_saved": 241744228,
+      "retained_seed_sha256": "be863568c75cdab3d836ce8093d2ad6d9cca6e59bbaf45c62071d6bab4cbe311",
+      "current_source_qualification": true
     }
   ],
   "census_source_edit_guard_correction": {
@@ -2665,5 +2765,45 @@
     "retained_reservation_bytes": 6291456,
     "parent_closeout_sha256": "fc02057f57ff9f0e3e8cb3626af22558e1f528093345b8a24985e124e8d04ba7",
     "terminal_sha256": "a018cac2c547b02bf78d9aaf4a44dbd82224c8a77ae8bef946623e907e99c086"
+  },
+  "validation_owner_v4_transition": {
+    "older_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+    "current_owner_sha256": "9abef02b27b5ea591cab23bdd6798fd0eb066533af8a2356eb5db92b2139c6f7",
+    "request_schema": "owned-validation-request/v4",
+    "identical_pin_checks": 2589,
+    "owner_version_transitions": 15,
+    "original_requests": [
+      "pruning-stream-family-v02",
+      "pruning-semantic-pack-retained-v02",
+      "pruning-census-worker-wiring-v03",
+      "pruning-decision-policy-census-edit-requal-v01",
+      "pruning-controls-comparison-census-edit-requal-v01",
+      "pruning-comparison-history-census-edit-requal-v01",
+      "pruning-candidate-monitor-projection-census-edit-requal-v01",
+      "pruning-grok-prompt-accounting-v05",
+      "pruning-grok-stream-router-v01",
+      "pruning-grok-pruning-router-v01",
+      "pruning-inline-evidence-retained-v01",
+      "pruning-prompt-goal-planner-v07",
+      "pruning-grok-deployment-v01",
+      "pruning-source-worker-deployment-v01",
+      "pruning-candidate-round-policy-v02"
+    ],
+    "whole_module_ast_equal_after_selecting_v4_else_branch": true,
+    "original_run_provenance_preserved": true
+  },
+  "worker_bundle_first_attempt": {
+    "recorded_at": "2026-11-10T23:12:47.441706+00:00",
+    "request_sha256": "822092aa8c2f3317c6f5cc9833b6f8144a04076d5d97585621d4c1e2052fc3e7",
+    "qualified": false,
+    "junit_exists": false,
+    "partial_stdout_progress": "..",
+    "partial_passed_phase_retention_receipts": 2,
+    "source_native_process_closed": true,
+    "storage_status": "retained",
+    "retained_reservation_bytes": 33554432,
+    "error": "validation cancelled: ['ValidationResourceError: validation output directory identity changed']",
+    "root_cause": "pytest was given the exact output root as --basetemp, which it recreates during fixture initialization",
+    "corrective_request": "Use a new cases directory within the unchanged owner-tracked pytest output root."
   }
 }
