@@ -28,6 +28,100 @@ def _observe(root, profile=OFF):
         expected_uid=os.getuid(), expected_gid=os.getgid())
 
 
+def _retire_authored_negative_config_fixture(scope, variant):
+    """Retain typed evidence after the original negative assertion succeeds.
+
+    Only these five fixtures are retired; no traversal cleanup, target removal,
+    failed-assertion cleanup, production stat substitution or host config access.
+    """
+    import stat
+
+    slots = {
+        "hardlink": (scope / "alias", scope / policy.CONFIG_RELATIVE_PATH, "hardlink", "file"),
+        "fifo": (scope / policy.CONFIG_RELATIVE_PATH, None, "fifo", None),
+        "symlink-file": (scope / "root" / policy.CONFIG_RELATIVE_PATH, scope / "target", "symlink", "file"),
+        "symlink-parent": ((scope / "root" / policy.CONFIG_RELATIVE_PATH).parent, scope / "grok", "symlink", "directory"),
+        "symlink-root": (scope / "root", scope / "target", "symlink", "directory"),
+    }
+    assert variant in slots
+    alias, target, kind, target_kind = slots[variant]
+    scope_info = scope.lstat()
+    assert stat.S_ISDIR(scope_info.st_mode) and scope_info.st_uid == os.geteuid()
+    assert stat.S_IMODE(scope_info.st_mode) == 0o700
+
+    def identity(info):
+        return {key: getattr(info, "st_" + key) for key in
+            ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_ns", "ctime_ns")}
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    directory = os.open(scope, directory_flags)
+    try:
+        assert identity(os.fstat(directory)) == identity(scope_info)
+        parts = alias.relative_to(scope).parts
+        for part in parts[:-1]:
+            child = os.open(part, directory_flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        before = os.stat(parts[-1], dir_fd=directory, follow_symlinks=False)
+        assert before.st_uid == os.geteuid()
+        target_before = target.lstat() if target is not None else None
+        target_sha256 = None
+        if target is not None:
+            target.relative_to(scope)
+            assert target_before.st_uid == os.geteuid()
+            assert (stat.S_ISREG(target_before.st_mode) if target_kind == "file"
+                    else stat.S_ISDIR(target_before.st_mode))
+            if target_kind == "file":
+                descriptor = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+                with os.fdopen(descriptor, "rb") as stream:
+                    assert identity(os.fstat(stream.fileno())) == identity(target_before)
+                    target_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+                    assert identity(os.fstat(stream.fileno())) == identity(target_before)
+        literal = None
+        if kind == "symlink":
+            assert stat.S_ISLNK(before.st_mode) and before.st_nlink == 1
+            literal = os.readlink(parts[-1], dir_fd=directory)
+            assert literal == str(target)
+        elif kind == "hardlink":
+            assert stat.S_ISREG(before.st_mode) and before.st_nlink == target_before.st_nlink == 2
+            assert (before.st_dev, before.st_ino) == (target_before.st_dev, target_before.st_ino)
+        else:
+            assert kind == "fifo" and stat.S_ISFIFO(before.st_mode) and before.st_nlink == 1
+        value = dict(schema="authored-negative-config-fixture-retirement@1", variant=variant,
+            alias=alias.relative_to(scope).as_posix(), kind=kind, before=identity(before),
+            target=target.relative_to(scope).as_posix() if target is not None else None,
+            target_kind=target_kind, target_before=identity(target_before) if target_before is not None else None,
+            target_sha256=target_sha256, symlink_literal=literal,
+            original_negative_assertion_completed=True, proof_authority=False,
+            execution_authority=False, completion_authority=False, retired=False)
+        receipt = scope / "authored-negative-config-fixture-retirement.json"
+        with receipt.open("x+", encoding="utf-8") as stream:
+            stream.write(json.dumps(value, sort_keys=True, indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+            assert identity(os.stat(parts[-1], dir_fd=directory, follow_symlinks=False)) == identity(before)
+            if target is not None:
+                assert identity(target.lstat()) == identity(target_before)
+            os.unlink(parts[-1], dir_fd=directory)
+            if target is not None:
+                after = target.lstat()
+                if kind == "hardlink":
+                    assert after.st_nlink == 1
+                    assert {key: val for key, val in identity(after).items() if key not in {"nlink", "ctime_ns"}} == {
+                        key: val for key, val in identity(target_before).items() if key not in {"nlink", "ctime_ns"}}
+                else:
+                    assert identity(after) == identity(target_before)
+                value["target_after"] = identity(after)
+            value["retired"] = True
+            stream.seek(0)
+            stream.truncate()
+            stream.write(json.dumps(value, sort_keys=True, indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        os.close(directory)
+
+
 def test_legacy_is_no_io_and_preserves_omitted_selection(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("legacy performed I/O")
@@ -125,6 +219,8 @@ def test_deployed_file_refuses_unsafe_or_mismatched_inputs(tmp_path, change):
         elif change == "fifo": os.mkfifo(path, 0o444)
     with pytest.raises(ValueError, match="deployed Grok pruning"):
         policy.observe_deployed_grok_pruning(OFF, isolated_root=tmp_path, **kwargs)
+    if change in ("hardlink", "fifo"):
+        _retire_authored_negative_config_fixture(tmp_path, change)
 
 
 @pytest.mark.parametrize("component", ["file", "parent", "root"])
@@ -145,6 +241,7 @@ def test_symlinks_are_rejected_at_every_boundary(tmp_path, component):
         root.symlink_to(target, target_is_directory=True)
     with pytest.raises(ValueError, match="deployed Grok pruning"):
         _observe(root)
+    _retire_authored_negative_config_fixture(tmp_path, "symlink-" + component)
 
 
 def test_replacement_during_read_is_rejected(tmp_path, monkeypatch):
