@@ -104,7 +104,7 @@ sys.modules[custody.__name__]=custody
     script = tmp_path / "worker.py"
     script.write_text(prelude + deployment.WORKER_ENTRY.replace(
         "pathlib.Path('/opt/ipfs-supervisor')", "pathlib.Path(" + repr(str(root)) + ")"))
-    return subprocess.run([sys.executable, "-I", str(script), "--provider", "grok_cli",
+    return subprocess.run([sys.executable, "-I", "-B", str(script), "--provider", "grok_cli",
         "--model", "grok-4.7", "--purpose", purpose, "--grok-pruning-profile", selected],
         cwd=tmp_path, input=b"", capture_output=True, timeout=20)
 
