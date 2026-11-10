@@ -56,6 +56,38 @@
       "vendor_sources_attested": false,
       "child_compilation_attested": false,
       "qualified": true
+    },
+    {
+      "scope": "complete_benchmark_controls",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py"
+      ],
+      "request_sha256": "6e0511f8881ea0e08e92af7fc606739f320f188f1eb5e4c0e11213f760fcb35a",
+      "candidate_product_commit": "bc5d7c01d1ef71d6d273bd87f747411afed65a59",
+      "passed": 61,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_pins": 241,
+      "compiled_parent_sources": 217,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 60039,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "qualified": true
     }
   ],
   "failed_first_policy_attempt": {
@@ -66,12 +98,13 @@
     "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
     "retained_storage_bytes": 16777216
   },
-  "remaining_changed_owning_test_files": 66,
+  "remaining_changed_owning_test_files": 65,
   "parent_scoped_results_inherited_as_qualification": false,
   "whole_branch_qualified": false,
   "live_provider_or_deployment_qualified": false,
   "model_or_token_savings_claimed": false,
   "main_merged": false,
   "scope_note": "Both published histories are retained. Only the listed complete owning file is runtime qualified for its exact captured source context. The other changed owning suites, live candidate/pruning deployment, and this merged branch remain unqualified. Static compilation and raw historical receipts do not qualify those scopes.",
-  "tested_tree": "6417e5b585e27a5381ab5ba5d6bb487170614f93"
+  "tested_tree": "6417e5b585e27a5381ab5ba5d6bb487170614f93",
+  "last_scope_update_at": "2026-11-10T04:33:23.208514+00:00"
 }
