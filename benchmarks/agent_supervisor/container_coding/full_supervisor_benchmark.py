@@ -881,6 +881,10 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_decision_max_total_input_tokens: int | None = None,
                doctor_dispatch_policy: str = "auto",
                model_revision: str = "") -> dict:
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
     _decision_options(locals(), arm=arm,
         provider=resolve_provider_profile(provider_profile)["provider"])
     doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
@@ -925,10 +929,6 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     tokenizer_selection, _ = _metadata_tokenizer_configuration(semantic_metadata_tokenizer,
         arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
         semantic_transport_schema=semantic_transport_schema)
-    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
-        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
-        task_profile=task_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
@@ -1097,6 +1097,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_decision_max_total_input_tokens: int | None = None,
             doctor_dispatch_policy: str = "auto",
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
     _decision_options(locals(), arm=arm,
         provider=resolve_provider_profile(provider_profile)["provider"])
     doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
@@ -1141,10 +1145,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     if semantic_decision_nomination_source is not None:
         read_nomination_source(source=semantic_decision_nomination_source,
                                expected_sha256=semantic_decision_nomination_sha256)
-    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
-        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
-        task_profile=task_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
     validate_numerical_profile(numerical_formalization_profile)

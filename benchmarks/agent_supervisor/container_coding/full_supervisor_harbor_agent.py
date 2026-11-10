@@ -603,6 +603,11 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_decision_max_total_input_tokens: int | None = None,
                  doctor_dispatch_policy: str = "auto",
                  **kwargs):
+        from .benchmark_controls import validate_full_supervisor_candidate_rounds
+        selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+            doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+            source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+            task_profile=task_profile)
         decision = _decision_options({**kwargs, **locals()}, arm=arm,
             provider=resolve_provider_profile(provider_profile)["provider"])
         doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
@@ -647,11 +652,6 @@ class FullSupervisorAgent(BaseAgent):
         'working_set_census_only': working_set_census_only,
         'grok_pruning_profile': grok_pruning_profile,
     })
-        from .benchmark_controls import validate_full_supervisor_candidate_rounds
-        selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
-            doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-            source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
-            task_profile=task_profile)
         super().__init__(*args, **kwargs)
         self.candidate_rounds = self._frozen_candidate_rounds = selected_rounds
         self.doctor_coding_policy = self._frozen_doctor_coding_policy = doctor_coding_policy
@@ -950,9 +950,9 @@ class FullSupervisorAgent(BaseAgent):
         return selected
 
     async def setup(self, environment):
+        candidate_rounds = self._checked_candidate_rounds()
         tokenizer_snapshot = self._checked_metadata_tokenizer()
         working_set_census = self._checked_working_set_census()
-        candidate_rounds = self._checked_candidate_rounds()
         doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import (
             validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
@@ -1078,6 +1078,7 @@ class FullSupervisorAgent(BaseAgent):
 
     async def run(self, instruction: str, environment, context: AgentContext):
         run_started = monotonic()
+        candidate_rounds = self._checked_candidate_rounds()
         _decision_options(vars(self), arm=self.arm,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         doctor_arguments = doctor_dispatch_arguments(arm=self.arm,
@@ -1141,7 +1142,6 @@ class FullSupervisorAgent(BaseAgent):
             semantic_decision_max_total_input_tokens=getattr(self, "semantic_decision_max_total_input_tokens", None))
 
         working_set_census = self._checked_working_set_census()
-        candidate_rounds = self._checked_candidate_rounds()
         doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
