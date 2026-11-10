@@ -75,12 +75,17 @@ def test_shipped_worker_refuses_incompatible_census_before_any_candidate_or_rout
     assert isinstance(code, str) and events == []
 
 
-def test_installed_grok_worker_preserves_eight_turn_control_without_entering_provider(tmp_path):
+@pytest.mark.parametrize("turns", [8, 128])
+def test_installed_grok_worker_admits_only_default_turns_for_census(tmp_path, turns):
     # The installed worker's actual parser and forwarding execute. The existing
     # fixture authors UID/boundary admission and replaces only router execution.
     args = _arguments() + [FLAG, "--provider", "grok_cli", "--model", "grok-4.7",
-        "--grok-coding-max-turns", "8"]
+        "--grok-coding-max-turns", str(turns)]
     result = worker_run(tmp_path, args)
+    if turns != 128:
+        assert result.returncode != 0 and result.stdout == b""
+        assert b"nondefault coding turns require isolated Grok model-router coding" in result.stderr
+        return
     assert result.returncode == 0, result.stderr.decode()
     argv = json.loads(result.stdout)["argv"]
     assert argv.count(FLAG) == 1 and "--semantic-metadata-census-only" not in argv
@@ -111,15 +116,20 @@ def test_extended_schema_requires_census_only_and_is_forwarded_once(enabled, sch
 
 @pytest.mark.parametrize("schema", EXTENDED_SCHEMAS)
 @pytest.mark.parametrize("grok", [False, True])
-def test_installed_worker_forwards_extended_schema(tmp_path, schema, grok):
+@pytest.mark.parametrize("turns", [8, 128])
+def test_installed_worker_forwards_extended_schema(tmp_path, schema, grok, turns):
     flag = "--semantic-working-set-census-schema"
     args = _arguments() + [FLAG, flag, schema]
     if grok:
-        args += ["--provider", "grok_cli", "--model", "grok-4.7", "--grok-coding-max-turns", "8"]
+        args += ["--provider", "grok_cli", "--model", "grok-4.7", "--grok-coding-max-turns", str(turns)]
     result = worker_run(tmp_path, args)
+    if grok and turns != 128:
+        assert result.returncode != 0 and result.stdout == b""
+        assert b"nondefault coding turns require isolated Grok model-router coding" in result.stderr
+        return
     assert result.returncode == 0, result.stderr.decode()
     argv = json.loads(result.stdout)["argv"]
     assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == schema
     assert argv.count(FLAG) == 1
     if grok:
-        assert argv[argv.index("--grok-coding-max-turns") + 1] == "8"
+        assert argv[argv.index("--grok-coding-max-turns") + 1] == str(turns)
