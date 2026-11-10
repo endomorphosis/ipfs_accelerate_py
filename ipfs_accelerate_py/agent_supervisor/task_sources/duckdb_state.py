@@ -363,9 +363,10 @@ def exclusive_file_lock(
     deadline = time.monotonic() + float(timeout_seconds)
     if not thread_lock.acquire(timeout=max(0.0, float(timeout_seconds))):
         raise TimeoutError(f"timed out acquiring DuckDB thread lock: {lock_path}")
-    handle = lock_path.open("a+b")
+    handle = None
     acquired = False
     try:
+        handle = lock_path.open("a+b")
         while True:
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -379,10 +380,15 @@ def exclusive_file_lock(
                 time.sleep(0.01)
         yield
     finally:
-        if acquired:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
-        thread_lock.release()
+        try:
+            if acquired:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            try:
+                if handle is not None:
+                    handle.close()
+            finally:
+                thread_lock.release()
 
 
 def is_sqlite_database(path: Path | str) -> bool:
