@@ -5,7 +5,7 @@
   "selected_world_head": "57239766811693f8e23b195a2b6d90a15bed20b1",
   "historical_pruning_head": "c4015c6117dadefd64116708a4ead4ad3b512928",
   "resolved_product_merge_commit": "3e6b8c3a0077d3c676a89fb2ea4307cf2db6fc5a",
-  "tested_candidate_commit": "f9d855d81e02bee2684b8fdef866fb6604e91335",
+  "tested_candidate_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
   "resolved_tree": "95a28cc6b74e9f4a99e20497e848e3bf88bf698d",
   "historical_unique_commits_retained": 31,
   "changed_live_python_files_vs_world": 122,
@@ -62,7 +62,9 @@
         "": 64
       },
       "parent_closeout_sha256": "309846e7d6b10e42b0d39e5457f21d12bcd313a801152248efcfa28d72c83327",
-      "source_observation_sha256": "c27c2937e1b0cd14e6fdca2442c3bb1aebef8bd94f7d3f3b489b8ecead735532"
+      "source_observation_sha256": "c27c2937e1b0cd14e6fdca2442c3bb1aebef8bd94f7d3f3b489b8ecead735532",
+      "current_source_qualification": false,
+      "current_source_requalification_required_after_commit": "90713c31663b7fdc68e22c97b737b276edec7718"
     },
     {
       "time": "2026-11-10T05:28:00.434163+00:00",
@@ -102,7 +104,9 @@
         "": 107
       },
       "parent_closeout_sha256": "a008ab4b34a80b15082437075925353c536a8f677ecde6457a2464338fc0ab4b",
-      "source_observation_sha256": "512ddef317ae039cf12a30c7fd67b301fefa0c58ca52536b3ffa0378268b769a"
+      "source_observation_sha256": "512ddef317ae039cf12a30c7fd67b301fefa0c58ca52536b3ffa0378268b769a",
+      "current_source_qualification": false,
+      "current_source_requalification_required_after_commit": "90713c31663b7fdc68e22c97b737b276edec7718"
     },
     {
       "time": "2026-11-10T05:41:40.074023+00:00",
@@ -149,7 +153,8 @@
       "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
       "parent_closeout_sha256": "f7c8f59401b17ca282098c0f22e6dc641ecb81876f60995502246f97a6ff747c",
       "source_observation_sha256": "33080caf3b4de5ea738b1c53a0b34e7d35f26d7f442f893ffce088df305c38f8",
-      "junit_sha256": "c4e34253be534c586615496b3054232b7674783ea7400c1ead66e8f406934108"
+      "junit_sha256": "c4e34253be534c586615496b3054232b7674783ea7400c1ead66e8f406934108",
+      "current_source_qualification": true
     },
     {
       "time": "2026-11-10T05:44:17.343646+00:00",
@@ -191,7 +196,9 @@
       "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
       "parent_closeout_sha256": "b6324327fd0da799354600b392bb46ab91873f2a6ab3d903c4fc6a14bc2a950c",
       "source_observation_sha256": "35cc7fb37e242a3557e9c744bcedec5b57f4c656ea194623ad8ce5c86f6cb49e",
-      "junit_sha256": "a0857f824b2bf9c77d561cba7df57cb800dc306ed9d5b22ee7003a8c86523e1a"
+      "junit_sha256": "a0857f824b2bf9c77d561cba7df57cb800dc306ed9d5b22ee7003a8c86523e1a",
+      "current_source_qualification": false,
+      "current_source_requalification_required_after_commit": "90713c31663b7fdc68e22c97b737b276edec7718"
     },
     {
       "time": "2026-11-10T06:07:06.996900+00:00",
@@ -234,7 +241,9 @@
       "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
       "parent_closeout_sha256": "a5afa62b80a2b19fdd737048adcd7296fbd38b6617f7770be8ab667f318a154f",
       "source_observation_sha256": "f6d189574495297b9cdfea506552e643ef9ae38ec16cbdb1a33f8e7f4c70181d",
-      "junit_sha256": "af6549f1dcb48252608c5e93c7fd4b67c53ea4c4714506161da9f23eedeb61b6"
+      "junit_sha256": "af6549f1dcb48252608c5e93c7fd4b67c53ea4c4714506161da9f23eedeb61b6",
+      "current_source_qualification": false,
+      "current_source_requalification_required_after_commit": "90713c31663b7fdc68e22c97b737b276edec7718"
     },
     {
       "time": "2026-11-10T19:30:33.976632+00:00",
@@ -289,7 +298,52 @@
       "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
       "parent_closeout_sha256": "dc5c509cb6001ef2614c6b9125f32817163b08671112c110850ca1b2d12241ca",
       "source_observation_sha256": "3e375f0e518973c510b501b57f34437da92141416744fc8287ed259af9fa025c",
-      "junit_sha256": "e2e0b6069c676e628571f5d8e34f3befb02bdf38302680838f168b0ce8e3a4c5"
+      "junit_sha256": "e2e0b6069c676e628571f5d8e34f3befb02bdf38302680838f168b0ce8e3a4c5",
+      "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T20:13:22.727680+00:00",
+      "scope": "complete_semantic_working_set_census_worker_wiring_file_with_existing_authored_boundary_and_router_fixtures",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_census_worker_wiring.py"
+      ],
+      "request_sha256": "8b6e6cb491871f3a1373c8bcc201e55d576b507d2d0eeb33a9ed7ce3e00b19d8",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "passed": 36,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 135,
+      "compiled_parent_sources": 111,
+      "original_custody_closed": true,
+      "observed_process_identities": 2,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 434803,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 181.20686492789537,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Existing parser-suffix AST fixture and authored installed-worker boundary/router modules retained; full owning file executed without case filtering.",
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "620750ab5bcae9ebde2040d816111dae8c954c8f171544e38ab82f598e6e030b",
+      "source_observation_sha256": "77d39eb543dede82dfba28211fb088a9ce63d18893317c7030a259bba76533fc",
+      "junit_sha256": "80f5388f2c899bce0503ea10fd722e0ad9d33d8ddd755fc605295b03d0fccca8",
+      "current_source_qualification": true
     }
   ],
   "failed_first_policy_attempt": {
@@ -300,15 +354,15 @@
     "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
     "retained_storage_bytes": 16777216
   },
-  "remaining_changed_owning_test_files": 49,
+  "remaining_changed_owning_test_files": 56,
   "parent_scoped_results_inherited_as_qualification": false,
   "whole_branch_qualified": false,
   "live_provider_or_deployment_qualified": false,
   "model_or_token_savings_claimed": false,
   "main_merged": false,
-  "scope_note": "Eighteen of67 complete changed owning files qualify in six exact requests, totaling966 physical cases. Forty-nine owning files and eight integration cases remain pending. Full original semantic case population is preserved, with eight added archival regressions; opt-in post-pass catalog archival preserves every file byte. No whole-branch, live-deployment, model-quality or savings claim.",
-  "tested_tree": "352b88432cb5439b7aff71df7061536a8f6e6d64",
-  "last_scope_update_at": "2026-11-10T19:33:37.023673+00:00",
+  "scope_note": "Eleven of 67 current owning files qualify across three exact source contexts totaling 541 cases. Earlier four scopes with 461 cases remain historically qualified at their frozen source and require fresh qualification after the worker source-edit census guard correction. Fifty-six current owning files and eight integration cases remain pending; no whole-branch, live Docker, provider, or model quality claim.",
+  "tested_tree": "9c7d96601794d892c8ab9be360e1bd5845d262e1",
+  "last_scope_update_at": "2026-11-10T20:13:22.899197+00:00",
   "unqualified_test_fixture_preparation": {
     "commit": "143db239150c9ed993b04b6a159c1de2a8586af1",
     "path": "test/api/test_grok_pruning.py",
@@ -631,7 +685,7 @@
     "source_pin_cap": 256,
     "scope": "Ten real-API observations; no provider invocation and no pytest owning-file qualification from the observation."
   },
-  "qualified_owning_test_files": 18,
+  "qualified_owning_test_files": 11,
   "failed_stream_capture_attempt": {
     "request_sha256": "2fb7094c2c771cd5c0dff5c7462fb7e76592de0e8de49d4464cea86a6b483247",
     "assertions_passed": 425,
@@ -743,7 +797,7 @@
     "elapsed_seconds": 113.54771468183026,
     "next_action": "Capture full producer imports and measure actual per-fixture world/meta catalog output before a new complete-file admission."
   },
-  "semantic_pack_next_action": "Remaining49 changed owning files and eight integration cases still need their own qualification.",
+  "semantic_pack_next_action": "Requalify four affected frozen cohorts, then qualify remaining owning files and integration cases.",
   "round_policy_capture_frontier": {
     "time": "2026-11-10T05:52:08.253641+00:00",
     "owning_files": [
@@ -780,5 +834,275 @@
     "new_request_reservation_bytes": 134217728,
     "global_storage_limit_bytes": 220000000000,
     "existing_failed_reservations_preserved": true
+  },
+  "current_source_qualified_scopes": [
+    {
+      "time": "2026-11-10T05:41:40.074023+00:00",
+      "scope": "complete_grok_stream_tool_and_rejection_files",
+      "owning_test_files": [
+        "test/api/test_grok_stream_capture.py",
+        "test/api/test_grok_stream_coverage.py",
+        "test/api/test_grok_stream_usage.py",
+        "test/api/test_grok_tool_event_capture.py",
+        "test/api/test_grok_tool_event_coverage.py",
+        "test/api/test_grok_tool_events.py",
+        "test/api/test_grok_terminal_rejection.py"
+      ],
+      "request_sha256": "7aed483507e2a0ac93b402f8bfa1a8465845587aa1167b6a21f40782afddc070",
+      "candidate_product_commit": "f88c540cf28b821f2c686ac41fac32ec28d88642",
+      "passed": 425,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 44,
+      "compiled_parent_sources": 25,
+      "original_custody_closed": true,
+      "observed_process_identities": 8,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 639844,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 186.3127568550408,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "f7c8f59401b17ca282098c0f22e6dc641ecb81876f60995502246f97a6ff747c",
+      "source_observation_sha256": "33080caf3b4de5ea738b1c53a0b34e7d35f26d7f442f893ffce088df305c38f8",
+      "junit_sha256": "c4e34253be534c586615496b3054232b7674783ea7400c1ead66e8f406934108",
+      "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T19:30:33.976632+00:00",
+      "scope": "complete_semantic_component_census_pack_census_and_projection",
+      "owning_test_files": [
+        "test/api/test_semantic_component_census_v2.py",
+        "test/api/test_semantic_pack_census.py",
+        "test/api/test_semantic_pack_projection.py"
+      ],
+      "request_sha256": "e8e3fb0c623ccc00aeaf4913697a61dfb6ad52498adba8b2c211613bd4381913",
+      "candidate_product_commit": "f9d855d81e02bee2684b8fdef866fb6604e91335",
+      "passed": 80,
+      "original_cases": 72,
+      "new_regression_cases": 8,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 243,
+      "compiled_parent_sources": 213,
+      "original_custody_closed": true,
+      "observed_process_identities": 3,
+      "storage_status": "released",
+      "storage_reserved_bytes": 134217728,
+      "final_attempt_bytes": 10033556,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "global_storage_limit_bytes": 220000000000,
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 231.69128771685064,
+      "retention_profile": "archive-after-pass@1",
+      "genuine_passed_teardown_receipts": 60,
+      "authored_archiver_regression_receipts": 1,
+      "archive_member_files_verified": 672,
+      "archived_original_file_bytes": 851664006,
+      "verified_archive_bytes": 2857611,
+      "all_archive_member_bytes_verified": true,
+      "all_retired_raw_copies_absent": true,
+      "qualification_scope_includes_no_model_or_legal_judgment_claim": true,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "dc5c509cb6001ef2614c6b9125f32817163b08671112c110850ca1b2d12241ca",
+      "source_observation_sha256": "3e375f0e518973c510b501b57f34437da92141416744fc8287ed259af9fa025c",
+      "junit_sha256": "e2e0b6069c676e628571f5d8e34f3befb02bdf38302680838f168b0ce8e3a4c5",
+      "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T20:13:22.727680+00:00",
+      "scope": "complete_semantic_working_set_census_worker_wiring_file_with_existing_authored_boundary_and_router_fixtures",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_census_worker_wiring.py"
+      ],
+      "request_sha256": "8b6e6cb491871f3a1373c8bcc201e55d576b507d2d0eeb33a9ed7ce3e00b19d8",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "passed": 36,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 135,
+      "compiled_parent_sources": 111,
+      "original_custody_closed": true,
+      "observed_process_identities": 2,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 434803,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 181.20686492789537,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Existing parser-suffix AST fixture and authored installed-worker boundary/router modules retained; full owning file executed without case filtering.",
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "620750ab5bcae9ebde2040d816111dae8c954c8f171544e38ab82f598e6e030b",
+      "source_observation_sha256": "77d39eb543dede82dfba28211fb088a9ce63d18893317c7030a259bba76533fc",
+      "junit_sha256": "80f5388f2c899bce0503ea10fd722e0ad9d33d8ddd755fc605295b03d0fccca8",
+      "current_source_qualification": true
+    }
+  ],
+  "census_source_edit_guard_correction": {
+    "commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+    "reproduced_full_file_failures": [
+      {
+        "request_sha256": "72070c0039f0eb4bb23d0eeccc5eabbe329a6221c95448cb649853692c53d6be",
+        "passed": 4,
+        "failed": 27,
+        "qualified": false,
+        "failure_kinds": {
+          "NameError: name 'root' is not defined": 24,
+          "AssertionError: nondefault coding turns require isolated Grok model-router coding": 3
+        },
+        "audit_violations": 0,
+        "source_drift": 0,
+        "source_checkout_bytecode": 0,
+        "original_source_native_process_closed": true,
+        "storage_status": "retained",
+        "retained_storage_bytes": 16777216
+      },
+      {
+        "request_sha256": "832c7131818cb2e53627dd401fa57ef9677b7caa7ae69a668aeef08b2e7a59fd",
+        "passed": 32,
+        "failed": 4,
+        "qualified": false,
+        "failure_kinds": {
+          "assert (False)": 1,
+          "AssertionError: assert 0 == 1": 1,
+          "ValueError: '--grok-coding-max-turns' is not in list": 2
+        },
+        "audit_violations": 0,
+        "source_drift": 0,
+        "source_checkout_bytecode": 0,
+        "original_source_native_process_closed": true,
+        "storage_status": "retained",
+        "retained_storage_bytes": 16777216
+      }
+    ],
+    "source_edit_now_refused_before_router_import_on_working_set_census": true,
+    "router_existing_rejection_preserved": true,
+    "original_31_cases_preserved_as_positive_or_explicit_current_guard_rejection": true,
+    "additional_default_turn_cases": 5,
+    "source_capture_and_physical_profiles_unchanged": true,
+    "prior_failed_reservations_retained": true,
+    "affected_prior_requests": [
+      "pruning-decision-policy-v03",
+      "pruning-controls-comparison-fixed-v01",
+      "pruning-comparison-history-v02",
+      "pruning-candidate-monitor-projection-v03"
+    ],
+    "fresh_requalification_prepared_not_executed": [
+      {
+        "name": "pruning-decision-policy-census-edit-requal-v01",
+        "prior_frozen_request": "pruning-decision-policy-v03",
+        "controls": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/pruning-decision-policy-census-edit-requal-v01",
+        "request_sha256": "8d839c5aac3b5ab831b3c454ef74e7fc5201e257194bb4fc862cd14890487f2d",
+        "source_pins": 70,
+        "source_capture_bytes": 647536,
+        "forecast_total_bytes": 4907376,
+        "storage_bytes": 16777216,
+        "candidate": "90713c31663b7fdc68e22c97b737b276edec7718",
+        "selected_checks": [
+          "/tmp/lift-sync-pruning-history-main-20261110/test/api/test_current_decision_policy.py"
+        ],
+        "full_original_files_and_cases_preserved": true,
+        "executed": false
+      },
+      {
+        "name": "pruning-controls-comparison-census-edit-requal-v01",
+        "prior_frozen_request": "pruning-controls-comparison-fixed-v01",
+        "controls": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/pruning-controls-comparison-census-edit-requal-v01",
+        "request_sha256": "316d4b7f90285ca2b055c54be2023e10a89fdc0e882982d296937877b96277e7",
+        "source_pins": 242,
+        "source_capture_bytes": 1871928,
+        "forecast_total_bytes": 6131768,
+        "storage_bytes": 16777216,
+        "candidate": "90713c31663b7fdc68e22c97b737b276edec7718",
+        "selected_checks": [
+          "/tmp/lift-sync-pruning-history-main-20261110/benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+          "/tmp/lift-sync-pruning-history-main-20261110/benchmarks/agent_supervisor/container_coding/test_grok_pruning_comparison.py"
+        ],
+        "full_original_files_and_cases_preserved": true,
+        "executed": false
+      },
+      {
+        "name": "pruning-comparison-history-census-edit-requal-v01",
+        "prior_frozen_request": "pruning-comparison-history-v02",
+        "controls": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/pruning-comparison-history-census-edit-requal-v01",
+        "request_sha256": "6c71e1b353815e16e7338614844381f93bcf9e4028bfa339c4a0c4fb60b74c4b",
+        "source_pins": 246,
+        "source_capture_bytes": 1888723,
+        "forecast_total_bytes": 6148563,
+        "storage_bytes": 16777216,
+        "candidate": "90713c31663b7fdc68e22c97b737b276edec7718",
+        "selected_checks": [
+          "/tmp/lift-sync-pruning-history-main-20261110/benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+          "/tmp/lift-sync-pruning-history-main-20261110/test/api/test_grok_tool_event_history_compatibility.py"
+        ],
+        "full_original_files_and_cases_preserved": true,
+        "executed": false
+      },
+      {
+        "name": "pruning-candidate-monitor-projection-census-edit-requal-v01",
+        "prior_frozen_request": "pruning-candidate-monitor-projection-v03",
+        "controls": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/pruning-candidate-monitor-projection-census-edit-requal-v01",
+        "request_sha256": "0a02fb53ec075c7e77ec2ebbf327076e6cd34b3748fefd504d1d3146adfac655",
+        "source_pins": 166,
+        "source_capture_bytes": 1228104,
+        "forecast_total_bytes": 5487944,
+        "storage_bytes": 16777216,
+        "candidate": "90713c31663b7fdc68e22c97b737b276edec7718",
+        "selected_checks": [
+          "/tmp/lift-sync-pruning-history-main-20261110/test/api/test_candidate_round_monitor.py",
+          "/tmp/lift-sync-pruning-history-main-20261110/test/api/test_candidate_reply_contract.py",
+          "/tmp/lift-sync-pruning-history-main-20261110/test/api/test_candidate_prompt_projection.py"
+        ],
+        "full_original_files_and_cases_preserved": true,
+        "executed": false
+      }
+    ]
   }
 }
