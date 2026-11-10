@@ -89,7 +89,9 @@ def test_installed_grok_worker_admits_only_default_turns_for_census(tmp_path, tu
     assert result.returncode == 0, result.stderr.decode()
     argv = json.loads(result.stdout)["argv"]
     assert argv.count(FLAG) == 1 and "--semantic-metadata-census-only" not in argv
-    for flag in ("--provider", "--model", "--grok-coding-max-turns", "--semantic-working-set",
+    # Default controls are omitted from the forwarded argv by the real worker.
+    assert "--grok-coding-max-turns" not in argv
+    for flag in ("--provider", "--model", "--semantic-working-set",
             "--source-view-descriptor", "--source-view-descriptor-sha256"):
         assert argv.count(flag) == 1
         assert argv[argv.index(flag) + 1] == args[args.index(flag) + 1]
@@ -132,4 +134,4 @@ def test_installed_worker_forwards_extended_schema(tmp_path, schema, grok, turns
     assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == schema
     assert argv.count(FLAG) == 1
     if grok:
-        assert argv[argv.index("--grok-coding-max-turns") + 1] == str(turns)
+        assert turns == 128 and "--grok-coding-max-turns" not in argv
