@@ -1148,6 +1148,16 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         candidate_round_descriptor_sha256: str | None = None,
         world_task_residual_alternatives=None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
+    candidate_args = (candidate_dispatch_handoff, candidate_dispatch_handoff_sha256,
+                      candidate_round_descriptor, candidate_round_descriptor_sha256)
+    candidate_selected = any(value is not None for value in candidate_args)
+    if candidate_selected and candidate_round_input is not None:
+        raise ValueError("candidate dispatch protocols are mutually exclusive")
+    if not candidate_selected and candidate_round_input is None:
+        _refuse_candidate_preparation(prompt)
+    if candidate_round_input is not None and (world_task_packet is not None
+            or world_packet_audit_directory is not None):
+        raise ValueError("candidate input requires an independently selected isolated Codex coding route")
     if world_packet_audit_directory is not None and (
             world_packet_artifact_dir is not None or world_task_presentation is not None
             or world_task_residual_alternatives is not None):
@@ -1176,11 +1186,6 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if world_packet_artifact_dir is not None:
             raise ValueError("world attempt journal requires separate historical artifact processing")
         RepositoryWorldAttemptJournal.require_open(world_task_attempt_journal)
-    candidate_args = (candidate_dispatch_handoff, candidate_dispatch_handoff_sha256,
-                      candidate_round_descriptor, candidate_round_descriptor_sha256)
-    candidate_selected = any(value is not None for value in candidate_args)
-    if candidate_selected and candidate_round_input is not None:
-        raise ValueError("candidate dispatch protocols are mutually exclusive")
     if owner_provider_deadline_ns is not None:
         if type(owner_provider_deadline_ns) is not int or not 0 < owner_provider_deadline_ns < (1 << 63):
             raise ValueError("bounded exact owner provider deadline restriction required")
@@ -1197,7 +1202,6 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if (purpose != "coding" or provider != "codex_cli" or census_only is not False or working_set_census_only
                 or container_boundary is None or not container_boundary_sha256
                 or owner_worker_attempt_id is None or semantic_repository is not None
-                or world_task_packet is not None or world_packet_audit_directory is not None
                 or semantic_transport_schema != "supervisor-semantic-router-input@1"
                 or semantic_metadata_token_counter is not None or semantic_metadata_tokenizer_artifact is not None
                 or coding_reply_mode != "legacy"
@@ -1243,7 +1247,6 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                         public_instruction_artifact, public_instruction_sha256, public_instruction_task_cid))):
             raise ValueError("candidate dispatch requires its separate complete isolated coding route")
     elif candidate_round_input is None:
-        _refuse_candidate_preparation(prompt)
         if any(key in os.environ for key in (CANDIDATE_DESCRIPTOR_ENV, CANDIDATE_DESCRIPTOR_DIGEST_ENV)):
             raise ValueError("candidate descriptor environment requires explicit owner selection")
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
@@ -2775,7 +2778,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 timeout = min(timeout, candidate_dispatch["timeout_seconds"])
                 receipt["timeout_seconds"] = timeout
                 receipt["candidate_round_dispatch"].update(candidate_dispatch,
-                    dispatch_consumed=True, provider_attempted=True)
+                    dispatch_consumed=True, provider_attempted=False)
                 failure_phase = "provider_invocation"
             if owner_provider_deadline_ns is not None:
                 remaining = (owner_provider_deadline_ns - time.monotonic_ns()) / 1_000_000_000
@@ -2789,6 +2792,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 receipt["query_reference_dispatched"] = query_reference_selected
                 receipt["query_reference_provider_attempted"] = True
             receipt["router_calls"] = 1
+            if candidate_round_input is not None:
+                receipt["candidate_round_dispatch"]["provider_attempted"] = True
             if world_task_packet is not None:
                 receipt["world_task_packet"]["provider_attempted"] = True
             output = generate_text(
