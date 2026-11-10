@@ -88,6 +88,38 @@
       "vendor_sources_attested": false,
       "child_compilation_attested": false,
       "qualified": true
+    },
+    {
+      "scope": "complete_grok_pruning_comparison",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_grok_pruning_comparison.py"
+      ],
+      "request_sha256": "e6907c06f8c443415473fa339c5ad774e3dd2db69ed4ec97539f58952890677e",
+      "candidate_product_commit": "bc5d7c01d1ef71d6d273bd87f747411afed65a59",
+      "passed": 46,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_pins": 241,
+      "compiled_parent_sources": 217,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 58857,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "qualified": true
     }
   ],
   "failed_first_policy_attempt": {
@@ -98,13 +130,31 @@
     "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
     "retained_storage_bytes": 16777216
   },
-  "remaining_changed_owning_test_files": 65,
+  "remaining_changed_owning_test_files": 64,
   "parent_scoped_results_inherited_as_qualification": false,
   "whole_branch_qualified": false,
   "live_provider_or_deployment_qualified": false,
   "model_or_token_savings_claimed": false,
   "main_merged": false,
-  "scope_note": "Both published histories are retained. Only the listed complete owning file is runtime qualified for its exact captured source context. The other changed owning suites, live candidate/pruning deployment, and this merged branch remain unqualified. Static compilation and raw historical receipts do not qualify those scopes.",
+  "scope_note": "Both published histories are retained. Only the three listed complete owning files qualify for their exact frozen contexts; the extra fixture-preparation commit changes only an unqualified test file. All shared source pins still match those qualified requests. Other owning suites, live candidate/pruning deployment and the full branch remain unqualified.",
   "tested_tree": "6417e5b585e27a5381ab5ba5d6bb487170614f93",
-  "last_scope_update_at": "2026-11-10T04:33:23.208514+00:00"
+  "last_scope_update_at": "2026-11-10T04:55:54.509467+00:00",
+  "unqualified_test_fixture_preparation": {
+    "commit": "143db239150c9ed993b04b6a159c1de2a8586af1",
+    "path": "test/api/test_grok_pruning.py",
+    "original_assertions_and_parameter_cases_retained": true,
+    "finite_fixture_variants": 5,
+    "retirement_only_after_original_negative_assertions": true,
+    "production_owners_changed": false,
+    "qualified": false
+  },
+  "failed_unit_attempt": {
+    "request_sha256": "83b63d166a84336d0cb5783ad3878c01386e008b9a9160161a6ab0d6ff005be5",
+    "qualified": false,
+    "reason": "The v4 watchdog observed the authored FIFO while live, despite later typed retirement. Full suite was cancelled; no case counts or source-audit pass are inferred.",
+    "original_custody_closed": true,
+    "retained_storage_bytes": 16777216,
+    "completed_retirement_receipts": 4,
+    "bounded_v2_profile_supports_hardlinks": false
+  }
 }
