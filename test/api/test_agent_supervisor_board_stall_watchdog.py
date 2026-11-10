@@ -99,11 +99,50 @@ def test_selectable_idle_does_not_restart_or_add_a_ready_task() -> None:
         "- Status: completed",
     ), _PREFIX)
     verdict = classify_board_stall(parsed, _alive(idle_for_s=600))
-    assert verdict.reason == "idle_incomplete"
+    assert verdict.reason == "idle_with_open_work"
     assert verdict.repair_kind == "attention"
     decision = decide_spawn({}, verdict, "sig", child_alive=False)
     assert decision["spawn"] is True
     assert decision["repair_kind"] == "record_only"
+
+
+def test_later_idle_frontier_recovers_after_an_earlier_repair() -> None:
+    first = parse_task_board(_board(
+        "## LCM-082 Non-admission check",
+        "- Status: todo",
+        "- Depends on: none",
+        "## LCM-083 Later check",
+        "- Status: todo",
+        "- Depends on: LCM-082",
+    ), "## LCM-")
+    later = parse_task_board(_board(
+        "## LCM-082 Non-admission check",
+        "- Status: completed",
+        "- Depends on: none",
+        "## LCM-083 Later check",
+        "- Status: todo",
+        "- Depends on: LCM-082",
+    ), "## LCM-")
+    first_verdict = classify_board_stall(first, _alive(idle_for_s=600))
+    later_verdict = classify_board_stall(later, _alive(idle_for_s=600))
+    assert first_verdict.reason == later_verdict.reason == "idle_with_open_work"
+    assert first_verdict.task_ids == ("LCM-082",)
+    assert later_verdict.task_ids == ("LCM-083",)
+    first_signature = stall_signature(first, first_verdict)
+    later_signature = stall_signature(later, later_verdict)
+    assert first_signature != later_signature
+    for state in (
+        {"last_success_signature": first_signature},
+        {"attempt_signature": first_signature, "attempts": 3},
+    ):
+        held = decide_spawn(state, first_verdict, first_signature, child_alive=False)
+        assert held["spawn"] is False
+        recovered = decide_spawn(state, later_verdict, later_signature, child_alive=False)
+        assert recovered["spawn"] is True
+        assert recovered["attempts"] == 1
+        assert recovered["task_ids"] == ["LCM-083"]
+        assert recovered["work_complete"] is False
+        assert recovered["completion_authority"] is False
 
 
 def test_missing_status_inserts_blocked_and_keeps_dependencies() -> None:
