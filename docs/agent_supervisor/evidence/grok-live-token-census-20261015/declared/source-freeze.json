@@ -1,0 +1,40 @@
+{
+  "archive_reused": true,
+  "observed_at": "2026-10-15T01:17:25.221973+00:00",
+  "only_treatment_change": "planning_mode=declared-contract@1",
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 3095,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/qualification.json",
+    "sha256": "215a850e479a5f255f2550c404c4d1c627348f67e60f1c74d008d40a273e1753"
+  },
+  "reader_qualification": {
+    "bytes": 8358,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/planning-reader-qualification01.json",
+    "sha256": "cd0cf503d6032feb1d37f40ebfe1dcaf434cae5bd4648096ee8d253c66edce31"
+  },
+  "recipe": {
+    "bytes": 148754,
+    "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/recipe.json",
+    "sha256": "dade6510154c874a959309a2679f617f78aee75b281ce3632e0e256b1decd297"
+  },
+  "reporting": {
+    "bytes": 7481,
+    "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/reporting-freeze.json",
+    "sha256": "76526cfa577ad1f35b2885644b44572541882380a2ce71449bb9aa0dd112b715"
+  },
+  "root_authorized_source_freeze": true,
+  "runner": {
+    "bytes": 11873,
+    "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/run.py",
+    "sha256": "b4e97dbb20b6de15166c4a439c98cde78d7979deb675105667c02e6bd67337d8"
+  },
+  "schema": "declared-planning-source-freeze@1",
+  "source_commit": "4acfdce7aa7059d40e2bdcfa9a0470bce195c40c",
+  "source_freeze_reused": {
+    "bytes": 1674,
+    "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/source-freeze.json",
+    "sha256": "c4b41e043a7c03d6eaf9775b33fd40a2efbcc8fd7d1b577d752b186f39c6db1c"
+  },
+  "worktree_clean": true
+}

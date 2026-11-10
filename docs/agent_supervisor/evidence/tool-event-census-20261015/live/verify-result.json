@@ -1,0 +1,21 @@
+{
+  "all_archive_members_verified": true,
+  "archive": {
+    "bytes": 1411532012,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/runtime-01/runtime.tar.gz",
+    "sha256": "2c3b6518b493eb788629a09ec4ec0084ce82e248993b9c968eb1c725c7f0b2ff"
+  },
+  "archive_members": 27555,
+  "docker_calls": 0,
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "manifest": {
+    "bytes": 6227498,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/runtime-01/manifest.json",
+    "sha256": "7bee002932c0868d883014b50d5b06954a1e64db982203f886d866d085a0446a"
+  },
+  "provider_calls": 0,
+  "seconds": 12.142624078085646,
+  "step": "verify",
+  "uncompressed_bytes": 4072842874
+}

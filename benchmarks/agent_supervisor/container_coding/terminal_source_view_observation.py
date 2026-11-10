@@ -35,6 +35,21 @@ def _base(status="unavailable", reason="evidence_unavailable"):
         total_token_savings_measured=False, raw_queries_exported=False, raw_sources_exported=False)
 
 
+def _candidate_exclusions(result, rows):
+    """Never describe baseline-only accounting as all candidate retrieval."""
+    from .terminal_candidate_round_observation import MARKERS, SCHEMA as candidate_schema
+    excluded = sum(bool(MARKERS.intersection(row)) for row in rows)
+    if excluded:
+        result.update(session_scope="baseline_source_sessions_only",
+            candidate_sessions_excluded=excluded, candidate_session_observation_schema=candidate_schema,
+            all_coding_sessions_observed=False)
+        coverage = result.get("request_operation_coverage")
+        if coverage is not None:
+            coverage.update(all_sessions_observed=False, excluded_candidate_sessions=excluded,
+                session_scope="baseline_source_sessions_only")
+    return result
+
+
 def provider_free_coding_application_observed(report):
     """Join requested controls to an observed Doctor materialization, not a route label.
 
@@ -57,13 +72,58 @@ def provider_free_coding_application_observed(report):
                 "model_coding_dispatched", "token_savings_established", "completion_authority"))):
         return False
     metadata = report.get("semantic_metadata_view", {})
-    if type(metadata) is not dict or type(application["requested"]) is not dict or application["requested"] != {
+    if type(metadata) is not dict or type(application["requested"]) is not dict:
+        return False
+    attempt_selection = {}
+    if "candidate_rounds" in report or "doctor_coding_policy" in report:
+        from .terminal_doctor_coding_policy import (
+            validate_doctor_coding_selection, doctor_coding_selection, doctor_coding_runtime_declared_matches,
+        )
+        try:
+            rounds, policy = report.get("candidate_rounds", 1), report.get("doctor_coding_policy")
+            validate_doctor_coding_selection(rounds, policy, arm=report["arm"],
+                source_view_profile=report.get("source_view_profile", "disabled"),
+                source_edit_mode=report.get("source_edit_mode", "disabled"),
+                task_profile=report.get("task_profile"))
+            attempt_selection = doctor_coding_selection(rounds, policy)
+            if rounds == 2 and not doctor_coding_runtime_declared_matches(report, rounds, policy):
+                return False
+        except (TypeError, ValueError):
+            return False
+    optional_selection = {}
+    try:
+        if "semantic_working_set" in report:
+            from .terminal_semantic_working_set_policy import (
+                validate_semantic_working_set, semantic_working_set_selection, semantic_working_set_observation,
+            )
+            working_set = validate_semantic_working_set(report["semantic_working_set"], arm=report["arm"],
+                source_view_profile=report.get("source_view_profile", "disabled"),
+                transport_schema=report.get("semantic_transport_schema", "supervisor-semantic-router-input@1"),
+                metadata_view=metadata.get("requested_mode", "legacy"))
+            if any(type(report.get(key)) is not type(value) or report.get(key) != value
+                    for key, value in semantic_working_set_observation(working_set).items()):
+                return False
+            optional_selection.update(semantic_working_set_selection(working_set))
+        if "grok_coding_max_turns" in report:
+            from .benchmark_provider_profile import resolve_provider_profile
+            from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
+                validate_grok_coding_max_turns, grok_coding_selection,
+            )
+            provider = report.get("provider_profile")
+            if type(provider) is not dict or provider != resolve_provider_profile(provider.get("id")):
+                return False
+            turns = validate_grok_coding_max_turns(report["grok_coding_max_turns"], provider=provider["provider"])
+            optional_selection.update(grok_coding_selection(turns))
+        expected_requested = {
             "semantic_transport_schema": report.get("semantic_transport_schema", "supervisor-semantic-router-input@1"),
             "semantic_metadata_view": metadata.get("requested_mode", "legacy"),
             "coding_reply_mode": report.get("coding_reply_mode", "legacy"),
             "source_view_profile": report.get("source_view_profile", "disabled"),
             "source_edit_mode": report.get("source_edit_mode", "disabled"),
-            "source_view_policy": report.get("source_view_policy")}:
+            "source_view_policy": report.get("source_view_policy"), **attempt_selection, **optional_selection}
+        if protocol.canonical_json(application["requested"]) != protocol.canonical_json(expected_requested):
+            return False
+    except (TypeError, ValueError):
         return False
     rows = report.get("provider_invocations")
     doctor = report.get("doctor_dispatch")
@@ -302,8 +362,8 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
             if provider_free_coding_application_observed(report):
                 return _base("not_applicable", "provider_free_doctor_materialization_observed")
             if profile != "disabled":
-                return _base(reason="selected_session_receipt_unavailable")
-            return _base("not_selected", "no_source_view_router_observation")
+                return _candidate_exclusions(_base(reason="selected_session_receipt_unavailable"), rows)
+            return _candidate_exclusions(_base("not_selected", "no_source_view_router_observation"), rows)
         _need(profile != "disabled")
         _need(len(selected) <= MAX_SESSIONS and type(scope) is dict
             and type(scope.get("task_alias")) is str and bool(scope["task_alias"])
@@ -378,6 +438,6 @@ def collect(*, parent: Path, scope: dict | None, report: dict) -> dict:
                 source_edit_counts={key: sum(item["source_edit_counts"][key] for item in sessions) for key in fields},
                 owner_writes_performed=False, task_validation_observed=False)
         _need(len(protocol.canonical_json(result)) <= MAX_AUDIT_BYTES)
-        return result
+        return _candidate_exclusions(result, rows)
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, RecursionError):
         return _base()

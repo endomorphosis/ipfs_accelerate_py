@@ -1,0 +1,88 @@
+{
+  "billing_totals_verified": false,
+  "causal_token_savings_established": false,
+  "fixed_controls": {
+    "arm": "full",
+    "candidate_rounds": 2,
+    "coding_deadline_seconds": 1800,
+    "doctor_coding_policy": "doctor-coding-two-attempts@1",
+    "model": "grok-4.7",
+    "numerical_formalization_profile": null,
+    "provider": "grok_cli",
+    "resource_profile": "source384-5cpu-20gib-formalization@1",
+    "source_edit_mode": "disabled",
+    "source_view_profile": "identity@1"
+  },
+  "limitations": [
+    "One trial per treatment, both official rewards zero.",
+    "Coding usage missing for the eight-turn trial; its observed subtotal is planning-only.",
+    "Native token completeness is unknown for both trials.",
+    "Input replay is unknown because the pre-fix collector dropped Doctor v2 router settings.",
+    "Two child processes started in the eight-turn trial, but only one coding invocation was receipted.",
+    "The bounded child-error collector reported ambiguous; its original row population and the second child exact exception are unavailable after container cleanup.",
+    "No hidden verifier feedback was supplied to either run."
+  ],
+  "native_codex_comparison": false,
+  "native_turn_limit_values": [
+    128,
+    8
+  ],
+  "runtime_archive_sha256": "2d7bce19663b874610a9e59cee6d5c8b71393145637df2e9918138c3612307fe",
+  "runtime_commit": "3a7ec1c97be93dab918f005c93a9bbdb42409512",
+  "schema": "doctor-live-pair-summary@1",
+  "task": "largest-eigenval",
+  "trials": {
+    "turns128": {
+      "attempt_accounting_status": "matched_round_receipts",
+      "benchmark_execute_seconds": 1149.120550744934,
+      "coding_receipts": 1,
+      "coding_token_total": 1742114,
+      "complete_token_total": null,
+      "input_audit_status": "unknown",
+      "native_supervisor_seconds": 984.9742090069922,
+      "observed_subtotal_scope": "planning_and_coding",
+      "observed_subtotals": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 1561088,
+        "input_tokens": 143842,
+        "output_tokens": 59478,
+        "reasoning_output_tokens": 38897,
+        "total_tokens": 1764408
+      },
+      "official_reward": 0.0,
+      "owner_rounds_started": 1,
+      "readout": {
+        "bytes": 27166,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-final.json",
+        "sha256": "8add7b0fbba5fb79369cb96e5a540c76627fcb6a662fbe4bda111e1564d09105"
+      },
+      "task_completed_reported": true
+    },
+    "turns8": {
+      "attempt_accounting_status": "incomplete",
+      "benchmark_execute_seconds": 576.2563318860484,
+      "coding_receipts": 1,
+      "coding_token_total": null,
+      "complete_token_total": null,
+      "input_audit_status": "unknown",
+      "native_supervisor_seconds": 413.55316729005426,
+      "observed_subtotal_scope": "planning_only",
+      "observed_subtotals": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 1536,
+        "input_tokens": 13403,
+        "output_tokens": 8408,
+        "reasoning_output_tokens": 6563,
+        "total_tokens": 23347
+      },
+      "official_reward": 0.0,
+      "owner_rounds_started": 2,
+      "readout": {
+        "bytes": 27623,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/readout-final.json",
+        "sha256": "1a4ed947ac67cd0d2b3e6fcec16632670ab9beb8553ec377677eb8d4257a43f1"
+      },
+      "task_completed_reported": false
+    }
+  }
+}

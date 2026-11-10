@@ -1,0 +1,89 @@
+{
+  "blocking_findings": [],
+  "copy_bindings_checked": 84,
+  "copy_errors": [],
+  "current_test_sha256": "4c2355b49155e29e15f7a54909ab0251c21318f42954e68f2fc506481c288151",
+  "draft_launcher_status": "draft_pending_root_commit_and_qualification",
+  "excluded_full_run_native_cases": 3,
+  "findings": [
+    "Qualification counts disjoint selected passing XML cases and preserves the superseded native failure and exact one-file test-only hash replacement.",
+    "Deadline and mode probes now run before body drift deliberately invalidates the candidate generation; all three native tests passed under unchanged production/dependency pins.",
+    "README and plan distinguish actual child return codes, public empirical checks, proof authority, official verifier reward and incomplete native token accounting.",
+    "Draft launcher refuses an unfrozen or dirty source tree; validates source/archive/reporting/preparation/readiness bindings; selects exact public profile, two attempts, Grok8 and no automatic retry/fallback.",
+    "No new live benchmark score, token saving or fully isolated native validation qualification is claimed."
+  ],
+  "launch_source_hashes_checked": 626,
+  "launcher_executed": false,
+  "manifest_files_checked": 87,
+  "only_replaced_source_path": "test/api/test_public_validation_continuation.py",
+  "original_test_sha256": "b7dc915c294c3dfb90dcb6b0284cac3f6611f0ae0526aa73e80eff6ae5875809",
+  "pending_manifest_refresh": [
+    "README.md"
+  ],
+  "pending_manifest_refresh_reason": "README final qualification count was edited after packaging; root explicitly scheduled manifest refresh before commit.",
+  "qualified_full_run_legacy_cases": 259,
+  "qualified_native_replay_cases": 3,
+  "qualified_reader_cases": 28,
+  "qualified_repository_cases": 788,
+  "reporting_files_checked": 26,
+  "retained_full_run_counts": {
+    "failed": 1,
+    "passed": 261
+  },
+  "review_provider_calls": 0,
+  "review_test_runs": 0,
+  "reviewed_at": "2026-10-15T00:42:00.006555+00:00",
+  "reviewed_files": [
+    {
+      "bytes": 14321,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/docs/agent_supervisor/evidence/doctor-public-validation-20261014/qualification.json",
+      "sha256": "498f2d6c3ac67d5ada207698991049aa502fb057a8bba8945a4b0a6c666e3312"
+    },
+    {
+      "bytes": 24350,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/docs/agent_supervisor/evidence/doctor-public-validation-20261014/copy-provenance.json",
+      "sha256": "b13de00d8532582a788f7d44b67c89e12cfdfd346309796cea94496671bb3400"
+    },
+    {
+      "bytes": 6788,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/docs/agent_supervisor/evidence/doctor-public-validation-20261014/README.md",
+      "sha256": "fccd69d304bf7bf9f6af0194b134fd4e82a535aff74fece3a812cef5a0679c35"
+    },
+    {
+      "bytes": 81571,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "sha256": "91371c45a4e4b20f048d3339b98a8fb81099050dbde012520e383ac5f567ed06"
+    },
+    {
+      "bytes": 7237,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/package_evidence.py",
+      "sha256": "f2735bff6ff734b25f8fbeba4ae176ca2e49ded316b98d24b1157dc356d92c2d"
+    },
+    {
+      "bytes": 11135,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/run.py",
+      "sha256": "bb7ab660da0901f383cb7fdc0448e4e5c565e6507c905cd196f547db3a884638"
+    },
+    {
+      "bytes": 148905,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/recipe.json",
+      "sha256": "090947f5dfe2d24cb2ffbe41be2fd7df2eb8953135ac0f2a3c75e2c7d25e0220"
+    },
+    {
+      "bytes": 6309,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/reporting-freeze.json",
+      "sha256": "f7f04ccfb07b5b6305365599da6cc6e92ace9b52cc0ba6021cbbb34744400c77"
+    },
+    {
+      "bytes": 16836,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/test/api/test_public_validation_continuation.py",
+      "sha256": "4c2355b49155e29e15f7a54909ab0251c21318f42954e68f2fc506481c288151"
+    }
+  ],
+  "reviewer": "doctor_budget_design",
+  "schema": "doctor-public-validation-package-review@1",
+  "scope": "Read-only evidence, documentation and draft-launcher review; native continuation test owner is not the independent production reviewer.",
+  "source_errors": [],
+  "source_hashes_checked": 47,
+  "total_distinct_cases": 816
+}

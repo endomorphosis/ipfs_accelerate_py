@@ -1,0 +1,196 @@
+{
+  "records": [
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_runner_contract.py",
+      "output_sha256": "c1fca837796dfec38c2e05e7f40a4a79998159ff494f1d059b1440c9b8323ad3",
+      "selected_constants": [
+        "RUNNER_FAILURE_FILES",
+        "RUNNER_FAILURE_PHASES",
+        "RUNNER_FAILURE_TYPES"
+      ],
+      "selected_functions": [
+        "validate_runner_error_envelope",
+        "validate_runner_failure_diagnostic"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "source_sha256": "a3803c6b6d4ad0c381684f1f0a27473313d1ce25c4ed5936653a8a79a939488f"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_custody_contract.py",
+      "output_sha256": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736",
+      "selected_constants": "all top-level literal assignments",
+      "selected_functions": [
+        "validate_native_provider_custody_observation"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py",
+      "source_sha256": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_bridge_contract.py",
+      "output_sha256": "ec13f500fab51e13dacc81bea07eabeca7d134807a7826e74d0186db26b59237",
+      "selected_constants": [
+        "LEGACY_SCHEMA",
+        "MAX_CHILD_DIAGNOSTICS",
+        "MULTIPLE_CHILD_SCHEMA",
+        "SCHEMA",
+        "_CALLBACK_SCHEMAS",
+        "_EFFECTS",
+        "_EXIT_BOOLS",
+        "_FRAME_NAMES",
+        "_MULTIPLE_CHILD_FLAGS",
+        "_REASONS",
+        "_STATES",
+        "_TYPES"
+      ],
+      "selected_functions": [
+        "_diagnostic_key",
+        "_returncode",
+        "_validate_multiple_child_report",
+        "missing_child_report",
+        "validate_bridge_failure_diagnostic",
+        "validate_child_report"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+      "source_sha256": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_grok_usage_contract.py",
+      "output_sha256": "7e908afa1956dcaa83eb4844d649a01b6c24aa3c11b7f02b2dd38364a7ea2e91",
+      "selected_constants": "all top-level literal assignments",
+      "selected_functions": [
+        "_count",
+        "validate_grok_usage_events"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/cli_runtime/grok_stream_usage.py",
+      "source_sha256": "e0a30b1c7acfb45c47c8510093b21ffa650380646247c23963026e0a06831c06"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_grok_progress_contract.py",
+      "output_sha256": "3ba416938805c63c2d430fd6f816e2781918eb443f9809b5275246d1dfeaa762",
+      "selected_constants": "all top-level literal assignments",
+      "selected_functions": [
+        "_number",
+        "_validate_terminal_rejection",
+        "grok_stream_progress_summary",
+        "validate_grok_stream_progress"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "source_sha256": "606c63c97c402c2bfca065c82d5619957840cc8634e7320f159540664288493c"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_json_contract.py",
+      "output_sha256": "15b97c3abd1030efc96dafcb2edd2c44351d25f987a77ab1085f57ff012500ce",
+      "selected_constants": [],
+      "selected_functions": [
+        "canonical_json"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py",
+      "source_sha256": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_source_digest_contract.py",
+      "output_sha256": "42e4aaccd33868b7b75aaf36626e3f1c11228484a4b12400dea25e59f97620f3",
+      "selected_constants": [],
+      "selected_functions": [
+        "_digest"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
+      "source_sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_residual_budget_contract.py",
+      "output_sha256": "e50660459094c196bce9b111858ef2419ae2c755fc2d7521dbcd9e5ae302826f",
+      "selected_constants": [
+        "LIMIT_FIELDS"
+      ],
+      "selected_functions": [
+        "_limits",
+        "validate_residual_budget"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_budget.py",
+      "source_sha256": "47e623fb25673225ac0179c84582d1f8cb156c3a9e870c65e0ca820e10e84a53"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_doctor_policy_contract.py",
+      "output_sha256": "b1da173085700a43c283613faf4054016751efb171c1a3e82bc486d38143014b",
+      "selected_constants": [
+        "DOCTOR_CODING_POLICY",
+        "PUBLIC_VALIDATION_POLICY"
+      ],
+      "selected_functions": [],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py",
+      "source_sha256": "3ec078f8621972a455d92732530f959029fcb1a74dd812a3665cf67081c17f4c"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_public_check_contract.py",
+      "output_sha256": "2c62a6986e228ca76750feea9341894369a86ffc1e51f59536f3b6af4e2e2351",
+      "selected_constants": [
+        "INSTRUCTION",
+        "PROFILE",
+        "PUBLIC_ACCEPTANCE_RESULT_SCHEMA",
+        "PUBLIC_CHECKS",
+        "PUBLIC_TIMING_POLICY",
+        "PUBLIC_VALIDATION_KEYS",
+        "PUBLIC_VALIDATION_PROFILE",
+        "SMOKE"
+      ],
+      "selected_functions": [
+        "public_validation_result"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+      "source_sha256": "8cbfba2173b3bc1a60d158b9c6953788ef0e4d4bac7e48273647987d3a6bf53c"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_public_validation_contract.py",
+      "output_sha256": "12be75bb7dbe039132ef4d97049bceeb11e5ac1d0cacff232f555f9120195118",
+      "selected_constants": [
+        "FLAGS",
+        "OBSERVATION_SCHEMA"
+      ],
+      "selected_functions": [
+        "_copy",
+        "_digest",
+        "_need",
+        "_validate_states",
+        "validate_public_validation_observation"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_public_validation.py",
+      "source_sha256": "e8c5d72bded0b62c8463d4edd0101fa981c308df76347e5bd6e2139ce2e592f0"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_owner_rounds_contract.py",
+      "output_sha256": "7f6fb26d8d29f50723eba549223e3537deb4c25a39cbf1ec11186859e12c9e1c",
+      "selected_constants": [
+        "OBSERVATION_FIELDS",
+        "ROW_FIELDS"
+      ],
+      "selected_functions": [
+        "_digest",
+        "_need",
+        "_observation",
+        "lifecycle_name"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py",
+      "source_sha256": "41d0f21cc5c173045cebaa9d046e850d339e5df77dd61afb12a150f45ec10661"
+    },
+    {
+      "output": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_doctor_dispatch_contract.py",
+      "output_sha256": "bda1de9250d39d276e76c72fad2f9d7e3171f1d4c83dfbc7ebc7d421a37e3e03",
+      "selected_constants": [
+        "PUBLIC_SCHEMA",
+        "SCHEMA",
+        "_DIGEST_FIELDS",
+        "_OBSERVATION_FLAGS"
+      ],
+      "selected_functions": [
+        "_need",
+        "_sha",
+        "validate_doctor_dispatch_observation"
+      ],
+      "source": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_doctor_dispatch.py",
+      "source_sha256": "5cfdb23552baadcbd052edb03f6ad5e3d6eb014960a76d1507175f9ab6c70c4f"
+    }
+  ],
+  "runtime_imports": false,
+  "schema": "pure-diagnostic-reader-contracts@1"
+}

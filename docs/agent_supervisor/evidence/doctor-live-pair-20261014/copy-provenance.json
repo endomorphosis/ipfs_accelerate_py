@@ -1,0 +1,265 @@
+{
+  "files": [
+    {
+      "bytes": 144189,
+      "path": "turns128/recipe.json",
+      "sha256": "e36904c60ede13acb075255e311c9c25b0449e4380ccdc703632d6a0dd4b39aa",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/recipe.json"
+    },
+    {
+      "bytes": 1675,
+      "path": "turns128/environment.json",
+      "sha256": "abb90daa1ad0b9c3fd79723c45a17931e5af935f79b1d76a1493fd0f4ab6789d",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/environment.json"
+    },
+    {
+      "bytes": 7468,
+      "path": "turns128/run.py",
+      "sha256": "7314d5322516e47ee3b5751ff8f2f4d33305cc46e81748d6534dd1c88dd3d769",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/run.py"
+    },
+    {
+      "bytes": 736,
+      "path": "turns128/verify-result.json",
+      "sha256": "d6199a14b1f11006470e259f15cc50d760600893c9f0d3a5d2f91b719b22b6d7",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/verify-result.json"
+    },
+    {
+      "bytes": 1511,
+      "path": "turns128/prepare-start.json",
+      "sha256": "6ae50ec50e810c7e9a4831be75dcd84d95ce498bf17fb0c2b882f64ba88a6d45",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/prepare-start.json"
+    },
+    {
+      "bytes": 539,
+      "path": "turns128/prepare-result.json",
+      "sha256": "9e7bfd842fb86f8f67edea81c416f76325cd2c749c1b53cc66c94903761bb08a",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/prepare-result.json"
+    },
+    {
+      "bytes": 727,
+      "path": "turns128/execute-start.json",
+      "sha256": "275cbcd44cf341ecd4388ab4eb4c839ce035813dfa2b0e51134cde1dd57904ce",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/execute-start.json"
+    },
+    {
+      "bytes": 536,
+      "path": "turns128/execute-result.json",
+      "sha256": "defc20c6d90d47731a251c84198bc6001e352e3796a44999022ab2990d341300",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/execute-result.json"
+    },
+    {
+      "bytes": 727,
+      "path": "turns128/collect-start.json",
+      "sha256": "6eb6810c695f7a89823e8349f72ef28ece93d5be401ccf743aec9b630b776c19",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/collect-start.json"
+    },
+    {
+      "bytes": 537,
+      "path": "turns128/collect-result.json",
+      "sha256": "a44ed1918044a9838450d81440e9431969a9f94bd283dfc29971bc50852b9b92",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/collect-result.json"
+    },
+    {
+      "bytes": 2291,
+      "path": "turns128/launch-lock.json",
+      "sha256": "dc1c2184057b7553f51cadfc0b291d32062960eb87998fbd747e099cd57931a0",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/launch-lock.json"
+    },
+    {
+      "bytes": 1235,
+      "path": "turns128/reporting-freeze.json",
+      "sha256": "68a78e261359b905262a29325a040e44adbecb3eff41ad031fcd710f55942a4e",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/reporting-freeze.json"
+    },
+    {
+      "bytes": 17644,
+      "path": "turns128/read_pilot.py",
+      "sha256": "09b7b5ec3e55bb3a073cc0c92dca9df7d21d35c3b3f53cff614b64fcf1332ff1",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/read_pilot.py"
+    },
+    {
+      "bytes": 8979,
+      "path": "turns128/test_read_pilot.py",
+      "sha256": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/test_read_pilot.py"
+    },
+    {
+      "bytes": 27166,
+      "path": "turns128/readout-final.json",
+      "sha256": "8add7b0fbba5fb79369cb96e5a540c76627fcb6a662fbe4bda111e1564d09105",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-final.json"
+    },
+    {
+      "bytes": 1082,
+      "path": "turns128/readout-qualification-02.json",
+      "sha256": "3d64dc8684bb38612e78118cfd89984be655dd0a5ba91b977f3fe73c37e84398",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-qualification-02.json"
+    },
+    {
+      "bytes": 1652,
+      "path": "turns128/readout-tests-02.log",
+      "sha256": "2d3094d0511bcb1a85fdebc3218f98b062dc72a60ccc06573dba56e4bffd7666",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-tests-02.log"
+    },
+    {
+      "bytes": 14815,
+      "path": "turns128/readout-preflight-02.json",
+      "sha256": "233f68a92e71829b2743ee98b5c3bac2f6852d395e6fc6e6c8cf6e06795440f3",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-preflight-02.json"
+    },
+    {
+      "bytes": 2007,
+      "path": "turns128/provider-readiness/grok-metadata-precheck.json",
+      "sha256": "c1eada98436f3a3903f30e25feb400c4c3a3cc734e368286361220df338f2202",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/provider-readiness/grok-metadata-precheck.json"
+    },
+    {
+      "bytes": 2419,
+      "path": "turns128/prior-token-growth-investigation.json",
+      "sha256": "ff72319b41385301b3116c4bf1cb2cb7e04e4e706b04d62265f3442a5193dbf3",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/prior-token-growth-investigation.json"
+    },
+    {
+      "bytes": 146782,
+      "path": "turns8/recipe.json",
+      "sha256": "2a0be4a8398720be8657e06f18a256711e4d23cd91d6e304e0fcd8c0c4d29a7c",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/recipe.json"
+    },
+    {
+      "bytes": 1671,
+      "path": "turns8/environment.json",
+      "sha256": "48e249b0ad4a9cc2416e3524603bbcd4787aecb9bc4ce6067ffbb6af5684c4f4",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/environment.json"
+    },
+    {
+      "bytes": 8874,
+      "path": "turns8/run.py",
+      "sha256": "1ead2d3e1cb2d1db73f06ba89a02b0decd7af73e1c942527d7f5630e2c44efbc",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/run.py"
+    },
+    {
+      "bytes": 1067,
+      "path": "turns8/verify-result.json",
+      "sha256": "9c6fb74741f7402ca0c97701fe8b7aea3288dce5569322a7a408ea88f1d2b0c2",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/verify-result.json"
+    },
+    {
+      "bytes": 1556,
+      "path": "turns8/prepare-start.json",
+      "sha256": "3ca54b3563748357ccfbe3e0e3ceb93b9fd29631723700974bab498db95e7765",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/prepare-start.json"
+    },
+    {
+      "bytes": 535,
+      "path": "turns8/prepare-result.json",
+      "sha256": "b7c4a43999f1d2ec762a69007101db10bb706d8a80082c55a8af5a0d3781fa0c",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/prepare-result.json"
+    },
+    {
+      "bytes": 732,
+      "path": "turns8/execute-start.json",
+      "sha256": "523c195e405961875c0ba16b37637e54aa9fdd5d43790175c40da4471fd22c1e",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/execute-start.json"
+    },
+    {
+      "bytes": 532,
+      "path": "turns8/execute-result.json",
+      "sha256": "d2228bed94e290acf691116efada28666f06a8dc6fd660422bf06ba926f491ae",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/execute-result.json"
+    },
+    {
+      "bytes": 732,
+      "path": "turns8/collect-start.json",
+      "sha256": "8749acf8e9f7c545ff16bc947509abcbaac399aa4fdef7b2fbeaec991b01d81d",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/collect-start.json"
+    },
+    {
+      "bytes": 533,
+      "path": "turns8/collect-result.json",
+      "sha256": "c506f9062b72691e9c92e9bebf73fb0383746afafeffe33fd6b84a268bf41ab7",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/collect-result.json"
+    },
+    {
+      "bytes": 2882,
+      "path": "turns8/launch-lock.json",
+      "sha256": "3f3343a3bd7cdbb1f8d68f885d95b39a6cfe8b7c388c5b08790e5142bf954cac",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/launch-lock.json"
+    },
+    {
+      "bytes": 1215,
+      "path": "turns8/reporting-freeze.json",
+      "sha256": "9357f3a7f461aab5cc22b2bb85098b715432b9079d6de8aac76e7a0e0f009073",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/reporting-freeze.json"
+    },
+    {
+      "bytes": 17651,
+      "path": "turns8/read_pilot.py",
+      "sha256": "b6a390fa0c92d624ee77afa98aeb34e50e43a1021ce1abf5cc342ad7a9d76a1e",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/read_pilot.py"
+    },
+    {
+      "bytes": 8979,
+      "path": "turns8/test_read_pilot.py",
+      "sha256": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/test_read_pilot.py"
+    },
+    {
+      "bytes": 27623,
+      "path": "turns8/readout-final.json",
+      "sha256": "1a4ed947ac67cd0d2b3e6fcec16632670ab9beb8553ec377677eb8d4257a43f1",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/readout-final.json"
+    },
+    {
+      "bytes": 5831,
+      "path": "turns8/matched-preparation.json",
+      "sha256": "80a31e99c590386149fed39e5bcae89f8b9ca54424296310f17fa65c58205b49",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/matched-preparation.json"
+    },
+    {
+      "bytes": 3333,
+      "path": "turns8/prepared-lock-02.json",
+      "sha256": "aa9ea2a18b43f059768c749134853d35e431a3c6ab2396bac6db58e410a5f740",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/prepared-lock-02.json"
+    },
+    {
+      "bytes": 1094,
+      "path": "turns8/serial-predecessor-clearance.json",
+      "sha256": "07f6bd292ceb6b21ee01474d2f53a37cc4062cd2bc59bb62e415253b6b489c96",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/serial-predecessor-clearance.json"
+    },
+    {
+      "bytes": 1158,
+      "path": "turns8/adaptation-02.json",
+      "sha256": "6e934feb380faaaa60b343c18f0be32c414307d6ca2eaaa12de41145a305dbe1",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/adaptation-02.json"
+    },
+    {
+      "bytes": 860,
+      "path": "turns8/readout-qualification.json",
+      "sha256": "e33884feb2ce77518b034248e3253d0990ff12475e6c797141ac399430bd3eb3",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/readout-qualification.json"
+    },
+    {
+      "bytes": 1652,
+      "path": "turns8/readout-tests.log",
+      "sha256": "2d3094d0511bcb1a85fdebc3218f98b062dc72a60ccc06573dba56e4bffd7666",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/readout-tests.log"
+    },
+    {
+      "bytes": 2214,
+      "path": "turns8/readout-preflight.json",
+      "sha256": "36b35c3bec71c67e85f4205329d6f98af49c053bce55fe1412c40f9cbc0e5ddd",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/readout-preflight.json"
+    },
+    {
+      "bytes": 433,
+      "path": "turns8/cleanup-observation.json",
+      "sha256": "7274a1bf672920526264b8b27d03ea33f39b9ed590766958564d5873cfa74978",
+      "source": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/cleanup-observation.json"
+    }
+  ],
+  "owner_private_state_copied": false,
+  "raw_provider_transcripts_copied": false,
+  "schema": "doctor-live-pair-copy-provenance@1"
+}

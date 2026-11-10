@@ -1,0 +1,27 @@
+{
+  "checks": [
+    "closed_metadata_only",
+    "no_token_savings_or_independent_replay_claim",
+    "dispatch_original_native_and_selected_model_hash_joins",
+    "upstream_reader_closure_pinned",
+    "previous_metrics_and_unknowns_exactly_replayed",
+    "clean_commit_qualification_and_prior_cleanup_gates",
+    "runtime_archive_new_codec_and_audit_included"
+  ],
+  "docker_actions": 0,
+  "files": {
+    "freeze.py": "faa66693a5761d9116c7bea3d844e97d8a2256234a862b1dd3e0fcf809175f54",
+    "lock_prepared.py": "ab847b7981011a7055e7d837b0cdca386700c277b010d4d447396fe5911c48d9",
+    "reader/qualify_reader.py": "c76fd4fdb58cde5a14111bd6ea3e67f1567a2f1e8fca7bcece77ce9e35d6dd4c",
+    "reader/read_projection.py": "fe56e0216fde283291f9eb8bde87b7adedcdb68193d1447175f1bfb51d507826",
+    "reader/test_read_projection.py": "13021a3f4fdb19a1a10891beee235abe2eda99ccaf29435e90c4b15a78814c7a",
+    "reader/upstream-freeze.json": "91f85a0c01c49c6f80f99dd1db59208bf094a7ae612216d2c04b068b56e19ef7",
+    "run.py": "318824b6ba4f496b3d7cb1c9fa1f413dbe62e82338d948b63f768555e769dab5"
+  },
+  "production_edits": false,
+  "provider_calls": 0,
+  "raw_live_content_inspected": false,
+  "reviewer": "candidate_projection_audit",
+  "schema": "candidate-projection-independent-prelaunch-review@1",
+  "status": "no_material_blocker_identified"
+}

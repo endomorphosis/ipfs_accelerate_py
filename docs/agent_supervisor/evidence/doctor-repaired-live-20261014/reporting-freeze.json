@@ -1,0 +1,77 @@
+{
+  "files": [
+    {
+      "bytes": 7356,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/diagnostic_bridge_contract.py",
+      "sha256": "ec13f500fab51e13dacc81bea07eabeca7d134807a7826e74d0186db26b59237"
+    },
+    {
+      "bytes": 3278,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/diagnostic_custody_contract.py",
+      "sha256": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736"
+    },
+    {
+      "bytes": 6821,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/diagnostic_grok_progress_contract.py",
+      "sha256": "5231b6dde3ca479ca03d17f0cb74f99420ed17c6b27cbb18ece576d70326ca04"
+    },
+    {
+      "bytes": 5303,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/diagnostic_grok_usage_contract.py",
+      "sha256": "7e908afa1956dcaa83eb4844d649a01b6c24aa3c11b7f02b2dd38364a7ea2e91"
+    },
+    {
+      "bytes": 4337,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/diagnostic_runner_contract.py",
+      "sha256": "c1fca837796dfec38c2e05e7f40a4a79998159ff494f1d059b1440c9b8323ad3"
+    },
+    {
+      "bytes": 3525,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/extract_reader_contracts.py",
+      "sha256": "19a5342ac9cd549a42e1f4cc8c8bc89b2195a9ca8967203f5d21de5ffd988e96"
+    },
+    {
+      "bytes": 18283,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/read_pilot.py",
+      "sha256": "6c892c1c85a44fb0ae9bff4eb0a552893f5267a882bd0313421b35ddb6a00d03"
+    },
+    {
+      "bytes": 3831,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/reader-contract-provenance.json",
+      "sha256": "75aaaf87aa009b5f4cf9d066e8732706fd08e902af3972505a9ece4bb5348208"
+    },
+    {
+      "bytes": 2969,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/safe_diagnostics.py",
+      "sha256": "11b015c53623218e8559802a89b59292adfdae0a9dbf3a2f461922d80ca24e7a"
+    },
+    {
+      "bytes": 9478,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/test_read_pilot.py",
+      "sha256": "295bbd6201c006d971d23f8142f5f4ce0fd64f1edf1846480fcb6133e6e97446"
+    },
+    {
+      "bytes": 4680,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/test_safe_diagnostics.py",
+      "sha256": "ce955e5bdf00fc77b30d2b168b7e59f8978cb6140e243d9dbb236d1e21a899da"
+    },
+    {
+      "bytes": 2622,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/readout-tests.log",
+      "sha256": "c783837dd5647b87a3091eee9c1f76e278e3eeda4f45311b64abe9039ece6650"
+    },
+    {
+      "bytes": 23861,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/readout-preflight.json",
+      "sha256": "68cb9ba34b1b19ba3248c6f4494aca1de4d4e0cf14513f63dac5adfea738e947"
+    },
+    {
+      "bytes": 2822,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/readout-qualification.json",
+      "sha256": "791c82bc1866f0abc9d56241b7d671dcfb543f600aba409773f3de6de93225ae"
+    }
+  ],
+  "frozen_before_launch": true,
+  "schema": "doctor-dispatch-reporting-freeze@1",
+  "tests_passed": 17
+}

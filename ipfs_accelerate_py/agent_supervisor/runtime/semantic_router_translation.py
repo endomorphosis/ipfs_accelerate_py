@@ -24,6 +24,8 @@ from ..semantic_state.wire import cid_for_payload
 TABLE_SCHEMA = "supervisor-semantic-translation-table@1"
 TRANSPORT_SCHEMA = "supervisor-semantic-router-input@1"
 COMPACT_TRANSPORT_SCHEMA = "supervisor-semantic-router-input@2"
+COMPONENT_CENSUS_SCHEMA = "supervisor-semantic-prompt-component-census@1"
+DETAILED_COMPONENT_CENSUS_SCHEMA = "supervisor-semantic-prompt-component-census@2"
 REPLY_SCHEMA = "supervisor-semantic-router-reply@1"
 REF_KEY = "$semantic_ref"
 MAX_BYTES = 2_000_000
@@ -522,7 +524,8 @@ def replay_semantic_router_prompt_for_audit(*, prompt: str, repository: Path,
     return _encode(prompt=prompt, repository=repository, current=False, transport_schema=transport_schema)
 
 
-def census_semantic_router_prompt(*, encoded: EncodedSemanticPrompt) -> dict:
+def census_semantic_router_prompt(*, encoded: EncodedSemanticPrompt,
+                                 census_schema: str = COMPONENT_CENSUS_SCHEMA) -> dict:
     """Measure a reversible in-memory input without exporting its contents.
 
     Member partitions include JSON keys/colons; their punctuation counts cover
@@ -530,7 +533,14 @@ def census_semantic_router_prompt(*, encoded: EncodedSemanticPrompt) -> dict:
     Nested partitions describe the same bytes again and must not be added to
     their parents. This observation never verifies current source custody and
     never supplies model input, a token estimate, or omission authority.
+    The opt-in @2 census separates additional known producer fields and
+    evidence kinds. It never exports dynamic field names or nested contents;
+    the default @1 contract and its aggregation remain unchanged.
     """
+    if type(census_schema) is not str or census_schema not in {
+            COMPONENT_CENSUS_SCHEMA, DETAILED_COMPONENT_CENSUS_SCHEMA}:
+        raise SemanticTranslationError("unsupported semantic component census schema")
+    detailed = census_schema == DETAILED_COMPONENT_CENSUS_SCHEMA
     if type(encoded) is not EncodedSemanticPrompt:
         raise SemanticTranslationError("typed encoded semantic prompt required for census")
     if _restore(encoded.provider_prompt, encoded.table) != encoded.native_prompt:
@@ -566,12 +576,14 @@ def census_semantic_router_prompt(*, encoded: EncodedSemanticPrompt) -> dict:
     def evidence(rows):
         if type(rows) is not list or len(rows) > MAX_ITEMS:
             raise SemanticTranslationError("bounded evidence array required for census")
-        groups = {label: dict(count=0, row_bytes=0, summary_utf8_bytes=0,
-            summary_json_string_bytes=0, summary_json_string_overhead_bytes=0,
-            row_envelope_bytes=0) for label in
-            ("semantic_context", "source_formalization_context", "other_evidence")}
         labels = {"semantic-context": "semantic_context",
                   "source-formalization-context": "source_formalization_context"}
+        if detailed:
+            labels.update({"intent-world-context": "intent_world_context",
+                           "code-retrieval-context": "code_retrieval_context"})
+        groups = {label: dict(count=0, row_bytes=0, summary_utf8_bytes=0,
+            summary_json_string_bytes=0, summary_json_string_overhead_bytes=0,
+            row_envelope_bytes=0) for label in (*labels.values(), "other_evidence")}
         for item in rows:
             # Unknown labels and non-object rows remain a single closed group.
             kind = item.get("kind") if type(item) is dict else None
@@ -597,9 +609,13 @@ def census_semantic_router_prompt(*, encoded: EncodedSemanticPrompt) -> dict:
     provider_labels = {key: key for key in ("native_context", "translated_semantic",
         "translation_table", "instructions", "native_suffix")}
     semantic_labels = {key: key for key in ("capsules", "admissions", "raw_sources", "manifest")}
+    if detailed:
+        semantic_labels.update({key: key for key in (
+            "reconstruction", "refresh_lineage", "preparation_bounds", "pack",
+            "worker_projection", "required_raw_paths", "program_paths", "task_data_projection")})
     native_labels = {key: key for key in ("evidence", "goal", "scope", "acceptance", "authority")}
     remaining = provider["native_context"]
-    output = dict(schema="supervisor-semantic-prompt-component-census@1",
+    output = dict(schema=census_schema,
         measurement_scope="canonical-serialized-prompt-utf8-bytes@1",
         partition_rule="member_bytes_plus_outer_punctuation_equals_object_bytes",
         nested_partitions_overlap=True, token_estimate=False, provider_tokens=None,

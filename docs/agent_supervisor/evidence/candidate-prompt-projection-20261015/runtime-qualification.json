@@ -1,0 +1,144 @@
+{
+  "authored_native_metrics": {
+    "actual_router_children": 2,
+    "candidate_complete_bytes": 42785,
+    "complete_run_token_savings_claimed": false,
+    "forged_receipt_variants_refused": 5,
+    "live_provider_calls": 0,
+    "native_complete_bytes": 46230,
+    "original_requirements_exactly_restored": true,
+    "provider_token_usage_verified": false,
+    "public_check_execution_authored": true,
+    "raw_content_exported": false,
+    "representation_bytes_removed": 3445,
+    "retained_input_audit_verified": true,
+    "retained_input_audit_verified_after_cleanup_and_source_edit": true,
+    "schema": "authored-native-candidate-projection-qualification@1",
+    "selected_complete_bytes": 42785,
+    "selected_mode": "native-context-object@1"
+  },
+  "broader_prior_snapshot_qualification": [
+    {
+      "label": "codec-final01",
+      "passed": 103,
+      "pins": {
+        "bytes": 1603,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final01-source-pins.json",
+        "sha256": "1155d9a2f22649a00f9515b22664a00b2262e8f00b5827e49ee3e5244e0989f4"
+      },
+      "result": {
+        "bytes": 1958,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final01-result.json",
+        "sha256": "6b16caa0e7c6d2da91f1cf6a90754f7af93ee8568309bc46a6484646087293c6"
+      },
+      "subsequently_changed_files": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/candidate_prompt_projection.py",
+        "test/api/test_candidate_prompt_projection.py"
+      ]
+    },
+    {
+      "label": "router-final01",
+      "passed": 174,
+      "pins": {
+        "bytes": 1838,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final01-source-pins.json",
+        "sha256": "50c5ee097f9e4a6b56b8286e607c94611c98a01249e0ebe73e64ca45d733694d"
+      },
+      "result": {
+        "bytes": 2147,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final01-result.json",
+        "sha256": "111014e3b7bf28e0739075e8df5968e49a673a836842b14a4bf0d28117d43bdb"
+      },
+      "subsequently_changed_files": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/candidate_prompt_projection.py",
+        "test/api/test_candidate_prompt_projection.py"
+      ]
+    },
+    {
+      "label": "native-final01",
+      "passed": 17,
+      "pins": {
+        "bytes": 1726,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final01-source-pins.json",
+        "sha256": "35381bcd2904540b2cd7c4aca2282da399a1d571e8367352ab619c6f48bb89d2"
+      },
+      "result": {
+        "bytes": 2129,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final01-result.json",
+        "sha256": "53db47b02b019beec8aa11874db743c6d84fcc9de4f69b28ebdc7b03bdcae29d"
+      },
+      "subsequently_changed_files": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/candidate_prompt_projection.py",
+        "test/api/test_candidate_prompt_projection.py"
+      ]
+    }
+  ],
+  "complete_run_token_savings_claimed": false,
+  "errors": 0,
+  "failures": 0,
+  "final_revision_change": "Provider guidance preserves optional evidence status; added required/optional regression. Final checks requalify codec, both provider dispatch paths, bounds, archive and ordinary-route guards, plus full indexed public+Doctor continuation and retained-input audit.",
+  "passed": true,
+  "passed_cases": 117,
+  "provider_calls": 0,
+  "provider_token_usage_verified": false,
+  "raw_content_exported": false,
+  "runs": [
+    {
+      "label": "codec-final02",
+      "passed": 104,
+      "pins": {
+        "bytes": 1603,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final02-source-pins.json",
+        "sha256": "e6fb2a9554cc85802e6fd3d330c88f2662187cdb1e05a392015e2c252f211abe"
+      },
+      "result": {
+        "bytes": 1958,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final02-result.json",
+        "sha256": "9532b785b07e0cd485f070fb578f529579efc1517671fdd2e61faaace2f53db2"
+      }
+    },
+    {
+      "label": "router-final02",
+      "passed": 12,
+      "pins": {
+        "bytes": 1603,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final02-source-pins.json",
+        "sha256": "e6fb2a9554cc85802e6fd3d330c88f2662187cdb1e05a392015e2c252f211abe"
+      },
+      "result": {
+        "bytes": 2414,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final02-result.json",
+        "sha256": "7360073910318901645c2b93de1e89f741e6bd75aaf6079e1c646c90dd00445a"
+      }
+    },
+    {
+      "label": "native-final02",
+      "passed": 1,
+      "pins": {
+        "bytes": 1603,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final02-source-pins.json",
+        "sha256": "e6fb2a9554cc85802e6fd3d330c88f2662187cdb1e05a392015e2c252f211abe"
+      },
+      "result": {
+        "bytes": 1964,
+        "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final02-result.json",
+        "sha256": "dfc9e7ab7b10c48d9454d5606739ef78ad58e427d75fc8d0bded476a831701bd"
+      }
+    }
+  ],
+  "schema": "candidate-projection-runtime-qualification@1",
+  "skipped": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py": "3cfc5f805cfe77dd9718dfb63aeb2dfa9ad668eaa124728a52a43c934eed6a9b",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "8521db2b4fb3de7e50b633e0b7645e706fb9879ad35605970430fb8ad413c74f",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_coding_policy.py": "b99a41de4c5ce86b842fb0918fb3a3b54f808cbcb86255ad40812905332c7a4d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_doctor_coding_policy.py": "26375f937419a06e2a6607ea921189e55cda66f5ab38ab5a9de88276e74a9c27",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_prompt_projection.py": "ee12b529e454cb7bc435360ffaaf70bcee9e579d24d40674141d5ce11747abf9",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "50452ccbfaa229ea51704a7c750f0bacfd778aa10200db5a42167df83bc73280",
+    "test/api/test_candidate_dispatch_native_pipeline.py": "593f82eb9ba67a42a8fa93a74be4d7934ea8f91162e81a2aed1efcd806076930",
+    "test/api/test_candidate_prompt_projection.py": "73c95ca68b77196349b88d567ab543da033f247bbe4cfac73ac01b79ac2e728a",
+    "test/api/test_candidate_prompt_projection_native.py": "6e2a55f3acdbd17a50c1815372822bf2f2347daffe6c1f438ba9c8eece76d877",
+    "test/api/test_candidate_router_dispatch.py": "a6a5c83c9f14eba7c2b6047bdc3cba25da32060c95da62fad647516b6718fcf0",
+    "test/api/test_doctor_candidate_dispatch.py": "d380ab10ae9afba4eb5e1fa92478829af38694eb4060680523536658a3f8067b"
+  }
+}

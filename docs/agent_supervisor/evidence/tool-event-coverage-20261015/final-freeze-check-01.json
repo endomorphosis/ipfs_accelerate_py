@@ -1,0 +1,16 @@
+{
+  "diagnostic_sha256": "3377ef9dfeb66c2f2ce7009dbca8ae5216c9694e7d4ddfc123af17282db58d2c",
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "frozen_asset_bindings_rechecked": 21,
+  "frozen_script_bindings_rechecked": 11,
+  "official_verifier_executed": false,
+  "raw_provider_content_read": false,
+  "runtime_commit": "7c68549bc4e57ff0d1736fefbf2db94b081da013",
+  "schema": "tool-event-coverage-final-freeze-check@1",
+  "source_files_rechecked": 16,
+  "source_freeze_sha256": "ebc308f813840cdaac49cc52c2048c09785ebbe8a653443e03d3214f1ab9f990",
+  "source_frozen_unchanged": true
+}

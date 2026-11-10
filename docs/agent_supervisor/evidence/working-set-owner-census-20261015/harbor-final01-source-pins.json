@@ -1,0 +1,20 @@
+{
+  "base_commit": "ffc7ddad8168e513121cc9986e9de579948f11f0",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "bc973ff26e9b28876a97556f4b928e54dfdeee0cbd257ef21d0e69750a799d47",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "6864ba47d71142f3033a74f7b4d5555de5fbd302e65e413c6a007bfd0cd8cee3",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "2d68b94a895578c7fedcaf53aca48ef30b27b0e4f2c183a9ccd5699905e62a3a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "65914e4759af0a5211745d9ef02bca84344a7a83f789b7f7c32b78532b563aa1",
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": "a3fde9af38c1301fc50e2c623931fff8b73d56ae3e5d8ca18e46fa8ed046f6de",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "2c07693b02dfe6bc0a8bb8f2d18cde44510147ff67d457c00a7fa4386c9b7c1f",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census.py": "bcd1e08214ed2268b3cc3172aa2d4330a7eb81eb1d43c01efe1cfbb49793f94d",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "d7818e876963b8d3edf564a662027387f17722f4bb053d3c5ff9964781ef65ee",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py": "1672f73d2c1b0ddf1264941475bb9247eb5b60a13232a175f4fd248c7f4c48a3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_owner.py": "21684c35f163fd1d8a13bdabdb61f5e1d1b973f691b45bfcb571931b659dd5e4",
+    "benchmarks/agent_supervisor/container_coding/test_working_set_census_harbor.py": "5547152ad7df90128cc10de785fca80ba29ca06daf6bb1ff9b5a084c6bf527ed",
+    "test/api/test_terminal_working_set_census_replay.py": "aba0223fbb171c8ea973967e3a8b7210fde942266264c014bfe5168e8a58bca3"
+  }
+}

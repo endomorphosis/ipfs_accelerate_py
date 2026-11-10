@@ -1,0 +1,16 @@
+{
+  "adapter_rejects_streaming_with_response_format": true,
+  "candidate_reply_contract_present": true,
+  "live_cause_supported_by_closed_receipt_and_source": true,
+  "original_runner_sha256": "a3803c6b6d4ad0c381684f1f0a27473313d1ce25c4ed5936653a8a79a939488f",
+  "provider": "grok_cli",
+  "provider_calls_for_diagnosis": 0,
+  "purpose": "coding",
+  "raw_provider_text_read": false,
+  "schema": "candidate-grok-option-conflict-diagnosis@1",
+  "seconds": 2.6591235029045492,
+  "source_producer_unconditionally_selected_streaming": true,
+  "static_error": "Grok streaming progress requires a structured CLI without response_format",
+  "structured_output_requested": true,
+  "trial": "largest-eigenval__gnfcWvo"
+}

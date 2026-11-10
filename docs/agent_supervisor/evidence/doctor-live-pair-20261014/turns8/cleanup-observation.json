@@ -1,0 +1,17 @@
+{
+  "schema": "doctor-live-pilot-cleanup@1",
+  "argv": [
+    "docker",
+    "ps",
+    "-a",
+    "--filter",
+    "name=^/largest-eigenval__cwpr2dk__env-main-1$",
+    "--format",
+    "{{.ID}}"
+  ],
+  "remaining_container_ids": [],
+  "container_cleanup_observed": true,
+  "observed_after_collect": true,
+  "at": "2026-10-14T19:46:16.634305+00:00",
+  "collect_sha256": "c506f9062b72691e9c92e9bebf73fb0383746afafeffe33fd6b84a268bf41ab7"
+}

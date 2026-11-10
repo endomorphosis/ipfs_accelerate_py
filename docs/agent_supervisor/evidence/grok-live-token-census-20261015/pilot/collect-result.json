@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 0.19379932095762342,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/collect.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 221906,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/collect.stdout",
+    "sha256": "89d70be9750df2dfd34db3bad5a04f3cec3759f0479b807dd4a763075f38b5dc"
+  },
+  "step": "collect"
+}

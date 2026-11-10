@@ -1,0 +1,146 @@
+{
+  "existing_narrow_experiment": {
+    "additional_test_needed": "actual Doctor/public-profile two-child dispatch with one-capsule selection, full source drift and original requirements checks intact",
+    "baseline": "legacy",
+    "control": "capsule_budget",
+    "effect_scope": "semantic capsules and admissions selected before original prompt capture; byte bound can select fewer",
+    "maximum_selected_advisory_capsules": [
+      8,
+      1
+    ],
+    "native_tests_existing": [
+      "test_terminal_capsule_budget_policy.py",
+      "test_terminal_capsule_budget_outer.py",
+      "test_terminal_capsule_budget_context.py",
+      "test_terminal_capsule_budget_census.py"
+    ],
+    "outside_effect_scope": [
+      "required formalization evidence",
+      "required world and retrieval evidence",
+      "raw_sources",
+      "complete candidate-envelope replay"
+    ],
+    "retain": [
+      "full indexed source population",
+      "raw public instruction and signed profile",
+      "source manifests",
+      "original admission and deadline",
+      "Doctor two-attempt policy",
+      "Grok8 cap",
+      "public acceptance checks"
+    ],
+    "savings_claimed": false,
+    "treatment": "one-capsule@1"
+  },
+  "limits": [
+    "Byte observations are retained schema/arithmetic/receipt joins, not independent prompt replay.",
+    "Native source reads outside the source broker remain possible and partially observed.",
+    "Counts do not establish provider tokens, billing, semantic equivalence or end-to-end savings.",
+    "No runtime source, frozen reader or existing live artifact was modified."
+  ],
+  "measured_t": {
+    "broker_accounting_does_not_measure_all_native_source_reads": true,
+    "broker_delivered_source_bytes": 0,
+    "candidate_census": "absent",
+    "complete_candidate_model_bytes_from_qualified_baseline_reader": 91841,
+    "complete_initial_model_bytes": 67380,
+    "formalization_evidence_row_bytes": 6950,
+    "native_evidence_bytes": 58932,
+    "native_evidence_json_string_overhead_bytes": 3715,
+    "native_evidence_outer_punctuation_bytes": 11,
+    "native_evidence_row_envelope_bytes": 8030,
+    "native_evidence_summary_utf8_bytes": 47176,
+    "native_initial_bytes": 67378,
+    "nested_partitions_overlap": true,
+    "other_evidence_row_bytes": 15146,
+    "remaining_native_context_object_bytes": 30547,
+    "selected_capsule_count": null,
+    "semantic_evidence_row_bytes": 36825,
+    "six_semantic_evidence_rows_are_not_a_capsule_count": true,
+    "stream_read_file_tool_calls": 3,
+    "stream_unknown_tool_calls": 7,
+    "token_usage_inferred": false,
+    "translated_admissions_value_bytes": 1155,
+    "translated_capsules_value_bytes": 6395,
+    "translated_other_fields_value_bytes": 10028,
+    "translated_raw_sources_value_bytes": 9977,
+    "translated_semantic_object_bytes": 28751,
+    "translated_transport_bytes": 60826
+  },
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 1822,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualification.json",
+    "sha256": "2362310a745bdde79028c46ae4e1db487f4745ac0359ca3c4fcea79326047b32"
+  },
+  "schema": "candidate-indexed-context-efficiency-followup@1",
+  "scope": "public source inspection and closed retained byte observations only",
+  "source_commit": "9d6ef76c8e2bb6916b68cad3563c6ec530b32736",
+  "source_files": [
+    {
+      "bytes": 22361,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py",
+      "sha256": "c3fe290c1c16323979ae79387106927f1f750c2d6ee20dd278cf9b47688c6f54"
+    },
+    {
+      "bytes": 21064,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py",
+      "sha256": "ad667a86a338a5c54262d793ef1340fdfb8ab82e91094878649b4e3c9349fbbe"
+    },
+    {
+      "bytes": 24666,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py",
+      "sha256": "cd0e6c7179f5ae004793b5c0917a7d1e8d861930f1d05946ddd3cfc26a4e1d09"
+    },
+    {
+      "bytes": 48928,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "e487cc4a2126397568324c016b43e1d9025db9ff95b256842781e7e566a5860e"
+    },
+    {
+      "bytes": 7314,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/benchmarks/agent_supervisor/container_coding/terminal_capsule_selection_policy.py",
+      "sha256": "99c15d47099d8de2d054ba4a6ad0ae3b70ed3ddcb8f2bcda8bb129906ab64eb2"
+    },
+    {
+      "bytes": 6341,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_census.py",
+      "sha256": "ddc6fd5a0e309e05bbbf606f8e7788a927d69aaf4eea6940f233786cb81ce8ec"
+    },
+    {
+      "bytes": 7712,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_context.py",
+      "sha256": "475649e18b4f359be9d70c04d0748ce4f8bc63303bf672d3c8bdd2e66bcd466a"
+    }
+  ],
+  "source_or_prompt_bodies_exported": false,
+  "t_census_readout": {
+    "bytes": 8387,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/declared-T-readout.json",
+    "sha256": "fe5227c6b5853a32a4d7a77ba8eebd6d860b7086c74d4e9f0f1282d85b4dccf0"
+  },
+  "versioned_projection_seam": {
+    "checks_to_keep": [
+      "original native envelope and original requirement hashes",
+      "protected retention and task identity",
+      "current candidate source generation",
+      "Doctor residual obligations and unchanged proposal budget",
+      "full source freshness immediately before provider",
+      "owner attempt budget and original deadline",
+      "historical replay against retained bytes"
+    ],
+    "current_behavior": "owner_candidate_round_prompt._render embeds the entire original native envelope as a JSON string, including explicitly historical baseline evidence",
+    "existing_precedent": "compact Doctor context digest in model input with full typed metadata in protected handoff",
+    "joins_to_version": [
+      "candidate prompt schema",
+      "owner admission projection digest",
+      "protected handoff original/projection digest join",
+      "worker validation",
+      "historical input audit"
+    ],
+    "not_implemented": true,
+    "owner_capture_to_preserve": "OriginalRequirements retains exact native bytes and exact public natural-language requirement block independently of provider projection",
+    "proposed_scope": "new typed admitted provider projection; preserve public requirement block and all native goal/scope/acceptance/authority/unknown fields; reference only explicitly classified baseline advisory evidence",
+    "reference_authority": "historical evidence references alone grant neither retrieval, proof reuse, execution nor completion"
+  }
+}

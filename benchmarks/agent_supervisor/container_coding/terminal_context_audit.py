@@ -41,6 +41,8 @@ RECEIPT_FIELDS = (
     "workspace_advisory_bytes",
 )
 TRANSLATION_FIELDS = ('router_prompt_sha256', 'router_prompt_bytes', 'semantic_translation', 'doctor_residual_context', 'public_instruction', 'coding_reply_contract', 'semantic_metadata_view', 'semantic_metadata_native_coding_reply_contract', 'source_formalization_context', 'source_view_retrieval', 'representation_displacement', 'terminal_semantic_scope_dispatch_rechecked', 'semantic_prompt_components', 'tool_output_policy', 'source_view_advisory_policy', 'repository_source_policy', 'source_input_policy', 'source_input_view', 'source_input_dispatched', 'query_reference_policy', 'query_reference_view', 'query_reference_selected', 'query_reference_dispatched', 'query_reference_provider_attempted', 'semantic_working_set', 'semantic_working_set_preflight')
+TRANSLATION_FIELDS += ('doctor_budget_capability', 'candidate_round_dispatch', 'candidate_reply_contract', 'candidate_retrieval_guidance', 'candidate_round_preflight', 'candidate_prompt_projection')
+
 
 DECISION_REPORT_FIELDS = (
     "semantic_decision_dialogues", "semantic_decision_dialogue_expected",
@@ -543,6 +545,11 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     for field in ("prompt_bytes", "native_prompt_bytes", "model_prompt_bytes", "workspace_advisory_bytes"):
         if type(result[field]) is not int or not 0 < result[field] <= 262_144:
             raise ValueError("invalid input byte count")
+    if any(key.startswith("candidate_") for key in result):
+        if "doctor_budget_capability" in result:
+            raise ValueError("candidate Doctor budget capability is not admitted")
+        from .terminal_candidate_input_audit import validate_receipt
+        return validate_receipt(result)
     translated = result.get("semantic_translation") is not None
     if "semantic_prompt_components" in result:
         if not translated:
@@ -601,12 +608,30 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
     residual = result.get("doctor_residual_context")
     if residual is not None:
         if ((not translated and source_input is None and query_reference is None) or not isinstance(residual, dict)
-                or residual.get("schema") != "doctor-residual-router-context@1"
+                or residual.get("schema") not in {"doctor-residual-router-context@1", "doctor-residual-router-context@2"}
                 or residual.get("candidate_only") is not True):
             raise ValueError("invalid Doctor residual receipt")
         for key in ("artifact_sha256", "advisory_sha256"):
             _digest(residual[key])
         _identity(residual["task_cid"])
+        if residual["schema"] == "doctor-residual-router-context@2":
+            from ipfs_accelerate_py.agent_supervisor.runtime.doctor_residual_budget import validate_budget_observation
+            from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import doctor_budget_capability
+            budget = validate_budget_observation(residual.get("budget_observation"))
+            if not _same_json(residual.get("residual_budget"), budget["limits"]):
+                raise ValueError("Doctor residual budget receipt projections differ")
+            expected = doctor_budget_capability(provider=item.get("provider"),
+                requested_output_tokens=item.get("requested_output_tokens"), budget_observation=budget)
+            if (not _same_json(result.get("doctor_budget_capability"), expected)
+                    or item.get("provider_output_token_cap_enforced") is not False):
+                raise ValueError("Doctor coding route does not enforce native token caps")
+            result.update({key: item[key] for key in
+                ("provider", "requested_output_tokens", "provider_output_token_cap_enforced")})
+        elif any(key in residual for key in ("residual_budget", "budget_observation")):
+            raise ValueError("historical Doctor receipts cannot acquire budget declarations")
+    if "doctor_budget_capability" in result and (
+            residual is None or residual.get("schema") != "doctor-residual-router-context@2"):
+        raise ValueError("Doctor budget capability requires the versioned residual receipt")
     if instruction is not None:
         if (not isinstance(instruction, dict)
                 or instruction.get("schema") not in {"supervisor-public-instruction-inclusion@1", "supervisor-public-instruction-inclusion@2", "supervisor-public-instruction-inclusion@5"}
@@ -786,7 +811,7 @@ def _receipt(item: dict, workspace_root: Path) -> dict:
 def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
                       formalization: dict | None = None, token_counter=None,
                       tokenizer_source=None,
-                      world_packet_artifact_root: Path | None = None, workspace_root: Path | None = None):
+                      world_packet_artifact_root: Path | None = None, workspace_root: Path | None = None, candidate_parent: Path | None = None):
     """Reconstruct historical provider bytes without granting freshness."""
     if "world_task_packet" in receipt and "world_packet_artifacts" not in receipt:
         raise ValueError("world task packet requires qualified Terminal Bench replay")
@@ -807,6 +832,9 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
             "workspace_advisory_bytes": len(replayed.workspace_advisory.encode()) == receipt["workspace_advisory_bytes"]}
         return replayed.model_prompt, replayed.workspace_advisory, checks
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
+    if "candidate_round_dispatch" in receipt:
+        from .terminal_candidate_input_audit import replay
+        return replay(rendered=rendered, receipt=receipt, parent=candidate_parent)
     translated = receipt.get("semantic_translation") is not None
     router_prompt, checks = rendered, {}
     recorded = receipt.get("source_formalization_context")
@@ -911,6 +939,15 @@ def _model_projection(*, rendered: str, receipt: dict, repository: Path | None,
         router_prompt += advisory
         for field in ("context_cid", "native_capsule_id", "advisory_sha256", "advisory_bytes"):
             checks["doctor_residual_" + field] = observed[field] == residual[field]
+        checks["doctor_residual_schema"] = observed["schema"] == residual["schema"]
+        if residual["schema"] == "doctor-residual-router-context@2":
+            from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import doctor_budget_capability
+            for field in ("residual_budget", "budget_observation"):
+                checks["doctor_residual_" + field] = _same_json(observed.get(field), residual[field])
+            expected = doctor_budget_capability(provider=receipt["provider"],
+                requested_output_tokens=receipt["requested_output_tokens"],
+                budget_observation=observed["budget_observation"])
+            checks["doctor_budget_capability"] = _same_json(expected, receipt["doctor_budget_capability"])
     instruction = receipt.get("public_instruction")
     block = observed_instruction = None
     if instruction is not None:
@@ -1596,7 +1633,8 @@ def _audit_legacy_terminal_context(*, state: Path, receipts: list[dict], workspa
         decision_report: dict | None = None,
         world_packet_artifact_root: Path | None = None,
         semantic_metadata_tokenizer_artifact: Path | None = None,
-        semantic_metadata_tokenizer_sha256: str | None = None) -> dict:
+        semantic_metadata_tokenizer_sha256: str | None = None,
+        candidate_parent: Path | None = None) -> dict:
     """Read historical evidence and compare exact native and model input bytes."""
     from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import render_model_prompt
 
@@ -1701,7 +1739,8 @@ def _audit_legacy_terminal_context(*, state: Path, receipts: list[dict], workspa
                         counter, tokenizer_source = _metadata_counter_for_audit(receipt, tokenizer_selection)
                         model, advisory, checks = _model_projection(rendered=rendered, receipt=receipt,
                             repository=Path(prepared["repository"]) if prepared.get("repository") else None,
-                            formalization=formalization, token_counter=counter, tokenizer_source=tokenizer_source)
+                            formalization=formalization, token_counter=counter, tokenizer_source=tokenizer_source,
+                            candidate_parent=candidate_parent)
                         match = {"capsule_id": observed["capsule_id"],
                             "invocation_id": receipt["invocation_id"],
                             "workspace_sha256": _sha(receipt["workspace"].encode()),
@@ -1786,7 +1825,8 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
         decision_report: dict | None = None,
         world_packet_artifact_root: Path | None = None,
         semantic_metadata_tokenizer_artifact: Path | None = None,
-        semantic_metadata_tokenizer_sha256: str | None = None) -> dict:
+        semantic_metadata_tokenizer_sha256: str | None = None,
+        candidate_parent: Path | None = None) -> dict:
     """Audit each explicit input route while retaining exact receipt population."""
     if len(receipts) > MAX_RECEIPTS:
         raise ValueError("receipt inventory exceeds audit bound")
@@ -1797,7 +1837,8 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
         return _audit_legacy_terminal_context(state=state, receipts=receipts, workspace_root=workspace_root,
             decision_report=decision_report, world_packet_artifact_root=world_packet_artifact_root,
             semantic_metadata_tokenizer_artifact=semantic_metadata_tokenizer_artifact,
-            semantic_metadata_tokenizer_sha256=semantic_metadata_tokenizer_sha256)
+            semantic_metadata_tokenizer_sha256=semantic_metadata_tokenizer_sha256,
+            candidate_parent=candidate_parent)
     from .terminal_world_packet_audit import audit_world_terminal_context
 
     identities = [row.get("invocation_id") for row in receipts if isinstance(row, dict)]
@@ -1817,7 +1858,8 @@ def audit_terminal_context(*, state: Path, receipts: list[dict], workspace_root:
     legacy_result = _audit_legacy_terminal_context(state=state, receipts=legacy, workspace_root=workspace_root,
         decision_report=decision_report, world_packet_artifact_root=world_packet_artifact_root,
         semantic_metadata_tokenizer_artifact=semantic_metadata_tokenizer_artifact,
-        semantic_metadata_tokenizer_sha256=semantic_metadata_tokenizer_sha256)
+        semantic_metadata_tokenizer_sha256=semantic_metadata_tokenizer_sha256,
+            candidate_parent=candidate_parent)
     result = _base()
     for key in ("capsules", "invocations", "matches", "read_errors"):
         result[key] = legacy_result[key] + world_result[key]
@@ -1860,7 +1902,8 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
 
         world_packet_artifact_root: Path | None = None,
         semantic_metadata_tokenizer_artifact: Path | None = None,
-        semantic_metadata_tokenizer_sha256: str | None = None) -> dict:
+        semantic_metadata_tokenizer_sha256: str | None = None,
+        candidate_parent: Path | None = None) -> dict:
     """Run in a bounded child, with the caller's remaining cleanup allowance.
 
     The default is a ceiling rather than a reserved allocation. Owners with an
@@ -1919,6 +1962,13 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
                 fields += ("provider", "model")
             if "representation_displacement" in row:
                 fields += ("provider", "model")
+            residual = row.get("doctor_residual_context")
+            if (type(residual) is dict
+                    and residual.get("schema") == "doctor-residual-router-context@2"):
+                # Bind Doctor capability to the original router settings. Do
+                # not recover missing values from the nested capability claim.
+                fields += ("provider", "requested_output_tokens",
+                           "provider_output_token_cap_enforced")
             rows.append({key: row[key] for key in fields if key in row})
         envelope = rows if selected is None else {"receipts": rows, "decision_report": selected}
         try:
@@ -1938,6 +1988,7 @@ def collect_terminal_context_audit(*, state: Path, receipts: list[dict],
         returncode, output = _bounded_audit_child(
             [sys.executable, "-B", "-P", str(Path(__file__).resolve()), "--state", str(state),
              "--workspace-root", str(workspace_root),
+             *(["--candidate-parent", str(candidate_parent)] if candidate_parent is not None else []),
              *(["--world-packet-artifact-root", str(world_packet_artifact_root)]
                 if world_packet_artifact_root is not None else []),
              *(["--semantic-metadata-tokenizer-artifact", str(tokenizer_selection[0]),
@@ -2036,6 +2087,7 @@ def main():
     parser.add_argument("--world-packet-artifact-root", type=Path)
     parser.add_argument("--semantic-metadata-tokenizer-artifact", type=Path)
     parser.add_argument("--semantic-metadata-tokenizer-sha256")
+    parser.add_argument("--candidate-parent", type=Path)
     args = parser.parse_args()
     try:
         _pin_owner_runtime()
@@ -2056,7 +2108,8 @@ def main():
             decision_report=decision_report,
             world_packet_artifact_root=args.world_packet_artifact_root,
             semantic_metadata_tokenizer_artifact=args.semantic_metadata_tokenizer_artifact,
-            semantic_metadata_tokenizer_sha256=args.semantic_metadata_tokenizer_sha256)
+            semantic_metadata_tokenizer_sha256=args.semantic_metadata_tokenizer_sha256,
+            candidate_parent=args.candidate_parent)
     except Exception as error:
         result = _base(reason="audit_unavailable")
         result["error_type"] = type(error).__name__

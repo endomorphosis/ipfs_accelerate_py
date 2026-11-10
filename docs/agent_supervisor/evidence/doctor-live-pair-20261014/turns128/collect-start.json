@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "collect",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01",
+    "--task",
+    "largest-eigenval"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-dispatch-20261014",
+  "free_bytes": 299448868864,
+  "recipe_sha256": "e36904c60ede13acb075255e311c9c25b0449e4380ccdc703632d6a0dd4b39aa",
+  "runner_sha256": "7314d5322516e47ee3b5751ff8f2f4d33305cc46e81748d6534dd1c88dd3d769",
+  "started_at": "2026-10-14T19:35:45.159530+00:00",
+  "step": "collect"
+}

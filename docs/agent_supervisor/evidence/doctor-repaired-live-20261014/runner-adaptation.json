@@ -1,0 +1,14 @@
+{
+  "bundle_completed": true,
+  "bundle_runner": {
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/run-bundle.py",
+    "sha256": "15f17dc7413b01515fe6e240cfaed16d776d553d784dc797368a5b5e188ab1c4"
+  },
+  "execution_started": false,
+  "final_runner": {
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/run.py",
+    "sha256": "c3772f2981374b08fe574f7991c56b003556efd845e527fd1386c25109c86603"
+  },
+  "reason": "Explicitly verify all three repaired production modules against fresh archive members.",
+  "schema": "repaired-doctor-runner-adaptation@1"
+}

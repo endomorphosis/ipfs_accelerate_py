@@ -78,10 +78,11 @@ def test_incompatible_selection_refuses_before_preparation_io(tmp_path, options)
 
 
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "stale", "wrong_size"])
-def test_archive_binds_expansion_and_projection_sources(mutation):
+@pytest.mark.parametrize("source_name", ["worker_semantic_evidence.py", "semantic_pack_projection.py"])
+def test_archive_binds_expansion_and_projection_sources(mutation, source_name):
     manifest = inventory()
     policy.require_semantic_working_set_archive(manifest, MODE)
-    row = next(row for row in manifest["files"] if row["path"].endswith("worker_semantic_evidence.py"))
+    row = next(row for row in manifest["files"] if row["path"].endswith("/" + source_name))
     if mutation == "missing": manifest["files"].remove(row)
     elif mutation == "duplicate": manifest["files"].append(dict(row))
     elif mutation == "stale": row["sha256"] = "0" * 64

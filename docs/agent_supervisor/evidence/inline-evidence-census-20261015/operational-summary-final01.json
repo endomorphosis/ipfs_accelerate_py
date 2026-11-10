@@ -1,0 +1,421 @@
+{
+  "artifact_launcher_exporter_passed_cases": 33,
+  "artifact_sha256": {
+    "bundle_result": "20f9382443677ead1251b927696a82a1f064410e6e33cfe06a805af756ebf337",
+    "closed_export": "0f941d348256182ee9b803c39f60bde0de211ee5c0049a3a6aabf836e9a99412",
+    "execute_result": "1a146c58dba4c2211be8852111a1dec933aba33301bedbce55a40cd1e3aeb541",
+    "final_freeze_check": "0649c24a609466f35c47daca9f758763236293545f8beff8e6c5fa29a1b2bc01",
+    "runtime_archive": "0625211198207741d77572cb2992f5c0b59c7d40334c785dfdb868cac22c8968",
+    "source_freeze": "de2a513c9bbcfa3bc97e78d02c512bd890f60c2444be465200c093ba8a00ea1d",
+    "verification_result": "adadb0bdd4d3cdba728383918d9fc874563012f35b86f71893d2b508727f117b"
+  },
+  "cleanup": {
+    "allocated_worktree_removed": true,
+    "container_stop_returned": true,
+    "exact_container_absence_observations": [
+      true,
+      true
+    ],
+    "post_yield_admission_task_revalidated": true,
+    "source_session_stopped": true,
+    "worker_cleanup_returncode": 0
+  },
+  "final_freeze": {
+    "all_frozen_inputs_unchanged": true,
+    "checked_utc": "2026-10-15T05:20:50.028679+00:00",
+    "free_bytes": 142766907392,
+    "minimum_free_bytes": 34359738368,
+    "provider_calls": 0,
+    "public_input_and_asset_bindings_checked": 21,
+    "recipe_binding_checked": true,
+    "roots": {
+      "datasets": {
+        "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+        "unchanged": true
+      },
+      "kit": {
+        "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+        "unchanged": true
+      },
+      "source": {
+        "commit": "78c1494bfbda17ce7c389518d4eca11c9da4ba00",
+        "unchanged": true
+      }
+    },
+    "schema": "terminal-inline-evidence-final-freeze-check@1",
+    "script_and_manifest_bindings_checked": 11,
+    "source_freeze_sha256": "de2a513c9bbcfa3bc97e78d02c512bd890f60c2444be465200c093ba8a00ea1d",
+    "source_qualification_file_count": 15
+  },
+  "generation": {
+    "coding_provider_calls": 0,
+    "complete_run_token_savings_claimed": false,
+    "official_reward": null,
+    "official_verifier_executed": false,
+    "planning_provider_calls": 0,
+    "provider_generation_calls": 0,
+    "provider_tokens": null,
+    "task_completed": false
+  },
+  "measurement": {
+    "capsule_candidate_complete_bytes": 67120,
+    "capsule_complete_reduction_bytes": 81,
+    "capsule_complete_reduction_percent": 0.12053392062618117,
+    "capsule_selected_complete_bytes": 67120,
+    "compared_independently_against_original": true,
+    "composed_with_capsule_references": false,
+    "dispatch_enabled": false,
+    "inline_added_representation_overhead_bytes": 624,
+    "inline_artifacts": 3,
+    "inline_candidate_complete_bytes": 66452,
+    "inline_complete_reduction_bytes": 749,
+    "inline_complete_reduction_percent": 1.114566747518638,
+    "inline_evidence_bodies_preserved": true,
+    "inline_evidence_rows": 4,
+    "inline_exact_transport_inverse_verified": true,
+    "inline_fallback_reason": null,
+    "inline_gross_removed_string_overhead_bytes": 1373,
+    "inline_selected_complete_bytes": 66452,
+    "inline_selected_mode": "inline-evidence-objects@1",
+    "inline_unknown_fields_preserved": true,
+    "original_complete_bytes": 67201,
+    "unit": "utf8_bytes"
+  },
+  "owner_context": {
+    "doctor_residual_included": true,
+    "full_capsule_count": 8,
+    "graph_goal_count": 2,
+    "graph_task_count": 1,
+    "indexed_symbols": 4,
+    "native_fact_rows_replayed": 4,
+    "retained_owner_planning_receipt_join_verified": true,
+    "source384_currentness_verified": true,
+    "source384_inference_performed_by_census": false,
+    "source384_neural_inference_replayed": false,
+    "source384_present": true,
+    "source_count": 5,
+    "worker_capsule_count": 2
+  },
+  "pack": {
+    "contract_object": {
+      "members": {
+        "assumptions": {
+          "count": 1,
+          "member_bytes": 282,
+          "value_bytes": 268
+        },
+        "counterexample_cids": {
+          "count": 1,
+          "member_bytes": 24,
+          "value_bytes": 2
+        },
+        "delta_cid": {
+          "count": 1,
+          "member_bytes": 73,
+          "value_bytes": 61
+        },
+        "dependency_capsule_cids": {
+          "count": 1,
+          "member_bytes": 155,
+          "value_bytes": 129
+        },
+        "escalation_recommendation": {
+          "count": 1,
+          "member_bytes": 34,
+          "value_bytes": 6
+        },
+        "estimator_version": {
+          "count": 1,
+          "member_bytes": 56,
+          "value_bytes": 36
+        },
+        "exclusions": {
+          "count": 1,
+          "member_bytes": 15,
+          "value_bytes": 2
+        },
+        "interface_cids": {
+          "count": 1,
+          "member_bytes": 19,
+          "value_bytes": 2
+        },
+        "objective": {
+          "count": 1,
+          "member_bytes": 731,
+          "value_bytes": 719
+        },
+        "obligation_cids": {
+          "count": 1,
+          "member_bytes": 20,
+          "value_bytes": 2
+        },
+        "other_fields": {
+          "count": 0,
+          "member_bytes": 0,
+          "value_bytes": 0
+        },
+        "risk": {
+          "count": 1,
+          "member_bytes": 12,
+          "value_bytes": 5
+        },
+        "route": {
+          "count": 1,
+          "member_bytes": 27,
+          "value_bytes": 19
+        },
+        "surrounding_source_cid": {
+          "count": 1,
+          "member_bytes": 86,
+          "value_bytes": 61
+        },
+        "target_source_cid": {
+          "count": 1,
+          "member_bytes": 81,
+          "value_bytes": 61
+        },
+        "test_source_cid": {
+          "count": 1,
+          "member_bytes": 79,
+          "value_bytes": 61
+        },
+        "token_totals": {
+          "count": 1,
+          "member_bytes": 207,
+          "value_bytes": 192
+        }
+      },
+      "object_bytes": 1918,
+      "outer_punctuation_bytes": 17
+    },
+    "nested_partitions_overlap": true,
+    "pack_object": {
+      "members": {
+        "budget_exceeded": {
+          "count": 1,
+          "member_bytes": 23,
+          "value_bytes": 5
+        },
+        "coverage_satisfied": {
+          "count": 1,
+          "member_bytes": 25,
+          "value_bytes": 4
+        },
+        "decisions": {
+          "count": 1,
+          "member_bytes": 508,
+          "value_bytes": 496
+        },
+        "interface": {
+          "count": 1,
+          "member_bytes": 27,
+          "value_bytes": 15
+        },
+        "other_fields": {
+          "count": 0,
+          "member_bytes": 0,
+          "value_bytes": 0
+        },
+        "pack": {
+          "count": 1,
+          "member_bytes": 1925,
+          "value_bytes": 1918
+        },
+        "pack_cid": {
+          "count": 1,
+          "member_bytes": 72,
+          "value_bytes": 61
+        },
+        "production_slice_cid": {
+          "count": 1,
+          "member_bytes": 27,
+          "value_bytes": 4
+        },
+        "references": {
+          "count": 1,
+          "member_bytes": 3311,
+          "value_bytes": 3298
+        },
+        "schema": {
+          "count": 1,
+          "member_bytes": 48,
+          "value_bytes": 39
+        },
+        "token_estimate": {
+          "count": 1,
+          "member_bytes": 289,
+          "value_bytes": 272
+        }
+      },
+      "object_bytes": 6266,
+      "outer_punctuation_bytes": 11
+    },
+    "reference_array_bytes": 3298,
+    "reference_groups": {
+      "counterexample": {
+        "count": 0,
+        "row_bytes": 0
+      },
+      "dependency_capsule": {
+        "count": 2,
+        "row_bytes": 1292
+      },
+      "interface_schema": {
+        "count": 0,
+        "row_bytes": 0
+      },
+      "obligation": {
+        "count": 0,
+        "row_bytes": 0
+      },
+      "other_references": {
+        "count": 0,
+        "row_bytes": 0
+      },
+      "raw_dependency_source": {
+        "count": 0,
+        "row_bytes": 0
+      },
+      "raw_source_region": {
+        "count": 0,
+        "row_bytes": 0
+      },
+      "repository_delta": {
+        "count": 1,
+        "row_bytes": 483
+      },
+      "surrounding_source": {
+        "count": 1,
+        "row_bytes": 509
+      },
+      "target_source": {
+        "count": 1,
+        "row_bytes": 483
+      },
+      "test_source": {
+        "count": 1,
+        "row_bytes": 524
+      }
+    },
+    "reference_row_members": {
+      "byte_count": {
+        "count": 6,
+        "member_bytes": 84,
+        "value_bytes": 6
+      },
+      "contract_version": {
+        "count": 6,
+        "member_bytes": 120,
+        "value_bytes": 6
+      },
+      "kind": {
+        "count": 6,
+        "member_bytes": 148,
+        "value_bytes": 106
+      },
+      "metadata": {
+        "count": 6,
+        "member_bytes": 983,
+        "value_bytes": 917
+      },
+      "other_fields": {
+        "count": 0,
+        "member_bytes": 0,
+        "value_bytes": 0
+      },
+      "path": {
+        "count": 6,
+        "member_bytes": 54,
+        "value_bytes": 12
+      },
+      "reference_id": {
+        "count": 6,
+        "member_bytes": 374,
+        "value_bytes": 284
+      },
+      "referenced_content_id": {
+        "count": 6,
+        "member_bytes": 354,
+        "value_bytes": 210
+      },
+      "repository_id": {
+        "count": 6,
+        "member_bytes": 108,
+        "value_bytes": 12
+      },
+      "schema": {
+        "count": 6,
+        "member_bytes": 396,
+        "value_bytes": 342
+      },
+      "summary": {
+        "count": 6,
+        "member_bytes": 314,
+        "value_bytes": 254
+      },
+      "tier": {
+        "count": 6,
+        "member_bytes": 105,
+        "value_bytes": 63
+      },
+      "token_count": {
+        "count": 6,
+        "member_bytes": 95,
+        "value_bytes": 11
+      },
+      "tree_id": {
+        "count": 6,
+        "member_bytes": 72,
+        "value_bytes": 12
+      }
+    },
+    "reference_rows": 6,
+    "removable_bytes_estimated": false,
+    "repetition_overlaps_partitions": true,
+    "typed_identifier_repetition": {
+      "all_occurrences_in_repeated_groups_included": true,
+      "distinct_native_identities": 5,
+      "literal_embedded_identifiers_counted": false,
+      "occurrences_beyond_first": 10,
+      "removable_bytes_estimated": false,
+      "repeated_groups_translated_value_bytes": 763,
+      "repeated_identity_groups": 5,
+      "scope": "known-native-pack-identifier-slots@1",
+      "singleton_translated_value_bytes": 0,
+      "slots": 15,
+      "translated_value_bytes": 763
+    }
+  },
+  "qualified": true,
+  "runtime_commit": "78c1494bfbda17ce7c389518d4eca11c9da4ba00",
+  "runtime_qualification_passed_cases": 178,
+  "schema": "terminal-inline-evidence-operational-summary@1",
+  "seconds": {
+    "bundle": 51.14915773202665,
+    "context_seconds": 3.81254151603207,
+    "execute": 227.59313280903734,
+    "initial_context_seconds": 14.889247345039621,
+    "owned_lifecycle": 226.28396705701016,
+    "planning_seconds": 4.48659015679732,
+    "prepare_seconds": 0.5000333150383085,
+    "verify": 12.078544546850026,
+    "working_set_census_seconds": 30.691526900976896
+  },
+  "source384": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "inference_sha256": "fc8f4967f969bcde61e23bd3fcfe9483bc2750730ec27e0a5832954bf06c06e1",
+    "seconds": 9.880859911907464
+  },
+  "source_edit_freeze_released_after_final_checks": true,
+  "source_session": {
+    "closed_observation_replayed": true,
+    "complete_input_replayed": true,
+    "provider_input_bytes": 0,
+    "source_evidence_bytes": 2327,
+    "source_response_bytes": 4096,
+    "source_session_accounting_complete": true,
+    "source_session_requests": 1,
+    "source_session_stopped": true
+  }
+}

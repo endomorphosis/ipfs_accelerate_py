@@ -1,6 +1,11 @@
 """One-shot original Harbor task trials for the full and no-index supervisor arms."""
 from __future__ import annotations
 
+from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+    DEFAULT_GROK_PRUNING_PROFILE, GROK_PRUNING_PROFILES, grok_pruning_selection,
+    require_grok_pruning_archive, grok_pruning_runtime_matches,
+)
+
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
     DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
     require_grok_coding_archive, grok_coding_runtime_matches,
@@ -77,6 +82,12 @@ from .terminal_planning_policy import (
 from .terminal_semantic_working_set_policy import (
     DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
+    validate_working_set_census, working_set_census_selection, working_set_census_observation,
+    frozen_working_set_census, working_set_census_runtime_matches,
+)
+from .terminal_doctor_coding_policy import (
+    DOCTOR_CODING_POLICIES, doctor_coding_selection, doctor_coding_observation, require_doctor_coding_archive,
+    doctor_coding_runtime_declared_matches,
 )
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
@@ -272,7 +283,12 @@ def _require_current_timeout_runtime(
 
 
 _DECISION_FIELDS = ('semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens')
-_DECISION_ROUTE_DEFAULTS = {'planning_mode': 'model', 'semantic_transport_schema': 'supervisor-semantic-router-input@1', 'coding_reply_mode': 'legacy', 'tool_output_policy': 'legacy', 'source_view_advisory_policy': 'legacy', 'repository_source_policy': 'legacy', 'source_input_policy': 'legacy', 'query_reference_policy': 'legacy', 'semantic_metadata_view': 'legacy', 'semantic_working_set': 'legacy', 'source_view_profile': 'disabled', 'source_edit_mode': 'disabled', 'semantic_context_profile': 'legacy-bounded@1', 'capsule_selection': 'lexical-query-symbol-name@1', 'capsule_budget': 'legacy', 'numerical_formalization_profile': None, 'metadata_census_only': False, 'resource_profile': None, 'task_profile': None, 'intent_requirement_contract': None, 'source384_config': None, 'numerical_selection_config': None, 'source_view_policy': None, 'grok_coding_max_turns': 128}
+_DECISION_ROUTE_DEFAULTS = {'planning_mode': 'model', 'semantic_transport_schema': 'supervisor-semantic-router-input@1', 'coding_reply_mode': 'legacy', 'tool_output_policy': 'legacy', 'source_view_advisory_policy': 'legacy', 'repository_source_policy': 'legacy', 'source_input_policy': 'legacy', 'query_reference_policy': 'legacy', 'semantic_metadata_view': 'legacy', 'semantic_working_set': 'legacy', 'source_view_profile': 'disabled', 'source_edit_mode': 'disabled', 'semantic_context_profile': 'legacy-bounded@1', 'capsule_selection': 'lexical-query-symbol-name@1', 'capsule_budget': 'legacy', 'numerical_formalization_profile': None, 'metadata_census_only': False, 'resource_profile': None, 'task_profile': None, 'intent_requirement_contract': None, 'source384_config': None, 'numerical_selection_config': None, 'source_view_policy': None, 'grok_coding_max_turns': 128,
+        'candidate_rounds': 1,
+        'doctor_coding_policy': None,
+        'working_set_census_only': False,
+        'grok_pruning_profile': 'legacy',
+    }
 
 def _decision_options(options, *, arm, provider):
     """Validate one additive decision group while ordinary shapes stay intact."""
@@ -497,6 +513,10 @@ def _prompt_option_observation(prepared: dict, agent_kwargs: dict | None) -> dic
             'capsule_selection',
             'capsule_budget',
             'metadata_census_only',
+            'candidate_rounds',
+            'doctor_coding_policy',
+            'working_set_census_only',
+            'grok_pruning_profile',
         ) if key in agent_kwargs}
         renderer_options["provider"] = resolve_provider_profile(agent_kwargs.get("provider_profile"))["provider"]
         validate_legacy_semantic_route(policyoptions=configured, rendereroptions=renderer_options)
@@ -832,6 +852,10 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                semantic_metadata_tokenizer: dict | None = None,
+               working_set_census_only: bool = False,
+            grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
+               candidate_rounds: int = 1,
+               doctor_coding_policy: str | None = None,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -892,10 +916,19 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         "capsule_selection": capsule_selection,
         "capsule_budget": capsule_budget,
         "provider": resolve_provider_profile(provider_profile)["provider"],
+
+        'candidate_rounds': candidate_rounds,
+        'doctor_coding_policy': doctor_coding_policy,
+        'working_set_census_only': working_set_census_only,
+        'grok_pruning_profile': grok_pruning_profile,
     })
     tokenizer_selection, _ = _metadata_tokenizer_configuration(semantic_metadata_tokenizer,
         arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
         semantic_transport_schema=semantic_transport_schema)
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
@@ -910,6 +943,10 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
+    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
+        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
+        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -919,6 +956,10 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=selected_provider["provider"])
+    benchmark_controls.validate_full_supervisor_grok_pruning(grok_pruning_profile,
+        provider=selected_provider["provider"], working_set_census_only=working_set_census_only,
+        candidate_rounds=candidate_rounds, doctor_coding_policy=doctor_coding_policy,
+        source_edit_mode=source_edit_mode, planning_mode=planning_mode)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
@@ -954,13 +995,18 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **semantic_working_set_selection(semantic_working_set),
+                   **working_set_census_selection(working_set_census_only),
                    **grok_coding_selection(grok_coding_max_turns),
+                   **grok_pruning_selection(grok_pruning_profile),
+                   **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
                    **capsule_selection_options(capsule_selection),
                    **capsule_budget_options(capsule_budget),
                    **source_view_selection(source_view_profile, source_view_policy),
                    **source_edit_selection(source_edit_mode),
                    **semantic_context_selection(semantic_context_profile)},
     }]
+    if working_set_census_only:
+        config["verifier"] = {**config["verifier"], "disable": True}
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
     if intent_requirement_contract is not None:
@@ -1023,6 +1069,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
             semantic_metadata_tokenizer_artifact: Path | None = None,
             semantic_metadata_tokenizer_sha256: str | None = None,
+            working_set_census_only: bool = False,
+            grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
+            candidate_rounds: int = 1,
+            doctor_coding_policy: str | None = None,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -1082,10 +1132,19 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         "capsule_selection": capsule_selection,
         "capsule_budget": capsule_budget,
         "provider": resolve_provider_profile(provider_profile)["provider"],
+
+        'candidate_rounds': candidate_rounds,
+        'doctor_coding_policy': doctor_coding_policy,
+        'working_set_census_only': working_set_census_only,
+        'grok_pruning_profile': grok_pruning_profile,
     })
     if semantic_decision_nomination_source is not None:
         read_nomination_source(source=semantic_decision_nomination_source,
                                expected_sha256=semantic_decision_nomination_sha256)
+    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
     validate_numerical_profile(numerical_formalization_profile)
@@ -1095,6 +1154,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
+    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
+        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
+        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -1104,6 +1167,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=selected_provider["provider"])
+    benchmark_controls.validate_full_supervisor_grok_pruning(grok_pruning_profile,
+        provider=selected_provider["provider"], working_set_census_only=working_set_census_only,
+        candidate_rounds=candidate_rounds, doctor_coding_policy=doctor_coding_policy,
+        source_edit_mode=source_edit_mode, planning_mode=planning_mode)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
@@ -1188,6 +1255,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     if tokenizer_selection is not None:
         from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
         require_metadata_tokenizer_archive(manifest, tokenizer_selection)
+    require_grok_pruning_archive(manifest, grok_pruning_profile)
+    require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_capsule_budget_archive(manifest, capsule_budget)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
@@ -1256,6 +1325,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         **semantic_working_set_selection(semantic_working_set),
         **grok_coding_selection(grok_coding_max_turns),
         **({"semantic_metadata_tokenizer": tokenizer_selection} if tokenizer_selection is not None else {}),
+        **working_set_census_selection(working_set_census_only),
+        **grok_pruning_selection(grok_pruning_profile),
+        **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
         capsule_selection=capsule_selection,
         capsule_budget=capsule_budget,
         source_view_profile=source_view_profile,
@@ -1328,6 +1400,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **({"semantic_metadata_tokenizer": tokenizer_selection,
                   "semantic_metadata_tokenizer_bundle": tokenizer_snapshot.observation()}
                  if tokenizer_selection is not None else {}),
+              **working_set_census_observation(working_set_census_only),
+              **grok_pruning_selection(grok_pruning_profile),
+              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
@@ -1506,6 +1581,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     config = json.loads((output / "config.json").read_text())
     tokenizer_selection, tokenizer_snapshot, tokenizer_unchanged, tokenizer_present = (
         _metadata_tokenizer_prepared_state(prepared, config))
+    candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    working_set_census = frozen_working_set_census(prepared, config)
+    doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
@@ -1611,6 +1689,8 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_grok_turns = validate_grok_coding_max_turns(
         config["agents"][0].get("kwargs", {}).get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
         provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get("provider_profile"))["provider"])
+    grok_pruning = benchmark_controls.grok_pruning_from_controls(prepared)
+    configured_grok_pruning = benchmark_controls.grok_pruning_from_controls(config["agents"][0].get("kwargs", {}))
     working_set = validate_semantic_working_set(
         prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
         source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
@@ -1699,6 +1779,15 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
             grok_turns_policy_matches = False if False in policies else True if all(value is True for value in policies) else None
             grok_turns_not_applicable = all(grok_coding_not_applicable_provider_free(
                 trial["supervisor"], grok_turns) for trial in trials)
+    pruning_declared_matches = None
+    pruning_policy_matches = None
+    if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE and trials:
+        if all(type(trial["supervisor"]) is dict for trial in trials):
+            pruning_declared_matches = all(
+                type(trial["supervisor"].get("grok_pruning_profile")) is str
+                and trial["supervisor"]["grok_pruning_profile"] == grok_pruning for trial in trials)
+            policies = [grok_pruning_runtime_matches(trial["supervisor"], grok_pruning) for trial in trials]
+            pruning_policy_matches = False if False in policies else True if all(value is True for value in policies) else None
     working_set_runtime_matches = None
     if working_set != DEFAULT_SEMANTIC_WORKING_SET and trials:
         expected_working_set = semantic_working_set_observation(working_set)
@@ -1708,6 +1797,9 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                 all(type(report.get(key)) is type(value) and report.get(key) == value
                     for key, value in expected_working_set.items())
                 for report in reported_working_sets)
+    doctor_runtime_matches = (None if candidate_rounds == 1 else bool(trials) and all(
+        doctor_coding_runtime_declared_matches(trial.get("supervisor"), candidate_rounds,
+            doctor_coding_policy) for trial in trials))
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
               **prompt_observation, **doctor_observation,
@@ -1731,7 +1823,19 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                  if "tool_output_policy" in prepared or "tool_output_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **semantic_metadata_observation(metadata_view),
               **semantic_working_set_observation(working_set),
+              **working_set_census_observation(working_set_census),
+              **({"working_set_census_runtime_matches": bool(trials) and all(
+                    working_set_census_runtime_matches(trial.get("supervisor")) for trial in trials)}
+                 if working_set_census else {}),
               **grok_coding_selection(grok_turns),
+              **grok_pruning_selection(grok_pruning),
+              **({"grok_pruning_config_unchanged": configured_grok_pruning == grok_pruning}
+                 if "grok_pruning_profile" in prepared or "grok_pruning_profile" in config["agents"][0].get("kwargs", {}) else {}),
+              **({"grok_pruning_runtime_declared_matches": pruning_declared_matches,
+                  "grok_pruning_runtime_policy_matches": pruning_policy_matches}
+                 if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE else {}),
+              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
+              **({"doctor_coding_runtime_declared_matches": doctor_runtime_matches} if candidate_rounds == 2 else {}),
               **({"grok_coding_config_unchanged": configured_grok_turns == grok_turns}
                  if "grok_coding_max_turns" in prepared or "grok_coding_max_turns" in config["agents"][0].get("kwargs", {}) else {}),
               **({"grok_coding_runtime_declared_matches": grok_turns_runtime_matches,
@@ -1781,7 +1885,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "comparison_controls": benchmark_controls.observe_controls(
                   prepared, config, current_task_hashes=_task_hashes(task)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
-              "complete_single_trial_receipt": unchanged and len(trials) == 1
+              "complete_single_trial_receipt": not working_set_census and unchanged and len(trials) == 1
                   and (not decision or trials[0]["semantic_decision_dispatch"]["verified"] is True)
                   and prompt_observation["prompt_comparison_options_valid"] is True
                   and prompt_observation["prompt_comparison_config_unchanged"] is not False
@@ -1792,6 +1896,10 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
                   and configured_grok_turns == grok_turns
+                  and configured_grok_pruning == grok_pruning
+                  and (grok_pruning == DEFAULT_GROK_PRUNING_PROFILE or
+                       pruning_declared_matches is True and pruning_policy_matches is True)
+                  and (candidate_rounds == 1 or doctor_runtime_matches is True)
                   and (grok_turns == DEFAULT_GROK_CODING_MAX_TURNS or
                        grok_turns_runtime_matches is True and
                        (grok_turns_policy_matches is True or grok_turns_not_applicable is True))
@@ -1838,6 +1946,15 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
             semantic_decision_verification_scope="frozen_requested_bindings_and_retained_native_usage_only",
             semantic_decision_runtime_verified=bool(trials) and all(
                 trial["semantic_decision_dispatch"]["verified"] is True for trial in trials))
+    if working_set_census:
+        result["working_set_census_receipt_complete"] = (
+            unchanged and len(trials) == 1 and trials[0]["exact_trial_task_matches"] is True
+            and (job / "result.json").is_file() and trials[0]["reward"] is None
+            and trials[0]["exception_type"] is None
+            and trials[0]["durations_seconds"].get("verifier") is None
+            and result["working_set_census_runtime_matches"] is True
+            and result["comparison_controls"].get("configuration_unchanged") is True
+            and all(value is True for key, value in result.items() if key.endswith("config_unchanged")))
     _json(output / "receipt.json", result)
     return result
 
@@ -1847,6 +1964,9 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
     _metadata_tokenizer_prepared_state(prepared, config, strict=True)
+    candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
+    working_set_census = frozen_working_set_census(prepared, config)
+    doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
@@ -1992,6 +2112,8 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     configured_grok_turns = validate_grok_coding_max_turns(
         config["agents"][0].get("kwargs", {}).get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
         provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get("provider_profile"))["provider"])
+    grok_pruning = benchmark_controls.grok_pruning_from_controls(prepared)
+    configured_grok_pruning = benchmark_controls.grok_pruning_from_controls(config["agents"][0].get("kwargs", {}))
     working_set = validate_semantic_working_set(
         prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
         source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
@@ -2007,6 +2129,8 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
         arm=prepared["arm"], source_view_profile=configured_source_view)
     if grok_turns != configured_grok_turns:
         raise ValueError("prepared Grok coding turn bound changed")
+    if grok_pruning != configured_grok_pruning:
+        raise ValueError("prepared Grok pruning profile changed")
     if working_set != configured_working_set:
         raise ValueError("prepared semantic working set changed")
     if source_edit != configured_source_edit:
@@ -2061,6 +2185,8 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     if prepared.get("semantic_metadata_tokenizer") is not None:
         from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
         require_metadata_tokenizer_archive(current_manifest, prepared["semantic_metadata_tokenizer"])
+    require_grok_pruning_archive(current_manifest, grok_pruning)
+    require_doctor_coding_archive(current_manifest, candidate_rounds, doctor_coding_policy)
     require_capsule_selection_archive(current_manifest, capsule_selection)
     require_capsule_budget_archive(current_manifest, capsule_budget)
     require_source_view_archive(current_manifest, source_view,
@@ -2212,6 +2338,8 @@ def main():
         help="Explicit local owner descriptor staged during prepare; no asset discovery")
     parser.add_argument("--semantic-metadata-tokenizer-sha256",
         help="Independent SHA-256 of the selected owner descriptor")
+    parser.add_argument("--working-set-census-only", action="store_true",
+        help="Measure declared-plan capsule references without coding or official verification; frozen by prepare")
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
@@ -2270,6 +2398,12 @@ def main():
         help="Complete user-prompt budget; automatic estimates cannot guarantee provider limits")
     parser.add_argument("--doctor-dispatch-policy", default="auto", choices=("auto", "model-only"),
         help="Full-arm ablation: ordinary model coding without Doctor candidate selection")
+    parser.add_argument("--grok-pruning-profile", choices=GROK_PRUNING_PROFILES,
+        default=DEFAULT_GROK_PRUNING_PROFILE, help="Explicit isolated Grok coding pruning profile; frozen by prepare")
+    parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
+        help="Owner coding attempts; two requires the explicit Doctor coding policy and indexed source views")
+    parser.add_argument("--doctor-coding-policy", choices=DOCTOR_CODING_POLICIES,
+        help="Explicit two-attempt Doctor coding policy; tokens and cost remain observations")
     args = parser.parse_args()
     selected_prompt = _prompt_options(args.arm,
         prompt_tokenizer_artifact=args.prompt_tokenizer_artifact,
@@ -2289,6 +2423,12 @@ def main():
     if args.operation != "prepare" and (selected_prompt != _prompt_options(args.arm)
             or args.doctor_dispatch_policy != "auto"):
         parser.error("prompt and decision options are frozen by preparation; collect/execute cannot select them")
+    if args.operation != "prepare" and args.grok_pruning_profile != DEFAULT_GROK_PRUNING_PROFILE:
+        parser.error("Grok pruning profile is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.doctor_coding_policy is not None:
+        parser.error("Doctor coding policy is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.candidate_rounds != 1:
+        parser.error("candidate rounds are frozen by preparation; collect/execute cannot select them")
     if args.operation != "prepare" and args.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
         parser.error("Grok coding turn bound is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.planning_mode != DEFAULT_PLANNING_MODE:
@@ -2318,6 +2458,8 @@ def main():
     if args.operation != "prepare" and (args.semantic_metadata_tokenizer_artifact is not None
             or args.semantic_metadata_tokenizer_sha256 is not None):
         parser.error("metadata tokenizer is frozen by preparation; collect/execute cannot select it")
+    if args.operation != "prepare" and args.working_set_census_only:
+        parser.error("working set census is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_budget != DEFAULT_CAPSULE_BUDGET:
@@ -2354,6 +2496,10 @@ def main():
                          semantic_context_profile=args.semantic_context_profile,
                          **semantic_working_set_selection(args.semantic_working_set),
                          **grok_coding_selection(args.grok_coding_max_turns),
+                         **working_set_census_selection(args.working_set_census_only),
+                         **grok_pruning_selection(args.grok_pruning_profile),
+                         candidate_rounds=args.candidate_rounds,
+                         doctor_coding_policy=args.doctor_coding_policy,
                          capsule_selection=args.capsule_selection,
                          capsule_budget=args.capsule_budget,
                          source_view_profile=args.source_view_profile,

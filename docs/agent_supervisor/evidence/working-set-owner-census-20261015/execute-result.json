@@ -1,0 +1,17 @@
+{
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "observation": {
+    "bytes": 23223,
+    "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/actual-public-census-01.json",
+    "sha256": "d7aeb6b2fea209882aafa6cb4ae303b8b483952cff367e5d94ef1847c3efc69e"
+  },
+  "outer_failure": null,
+  "qualified": true,
+  "seconds": 492.63708653114736,
+  "step": "execute"
+}

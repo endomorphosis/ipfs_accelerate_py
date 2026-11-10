@@ -1,0 +1,27 @@
+........FFF............................................................. [ 48%]
+........................................................................ [ 97%]
+...                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_native_owner_gate_refuses_dropped_or_substituted_public_checks[<lambda>0] _
+benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py:210: in test_native_owner_gate_refuses_dropped_or_substituted_public_checks
+    with pytest.raises(local.LocalPlanningError, match="all signed public acceptance checks"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'all signed public acceptance checks'
+E     Actual message: 'invalid signed public acceptance profile binding: local domain declarations changed or claim external assurance'
+_ test_native_owner_gate_refuses_dropped_or_substituted_public_checks[<lambda>1] _
+benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py:210: in test_native_owner_gate_refuses_dropped_or_substituted_public_checks
+    with pytest.raises(local.LocalPlanningError, match="all signed public acceptance checks"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'all signed public acceptance checks'
+E     Actual message: 'invalid signed public acceptance profile binding: local domain declarations changed or claim external assurance'
+_ test_native_owner_gate_refuses_dropped_or_substituted_public_checks[<lambda>2] _
+benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py:210: in test_native_owner_gate_refuses_dropped_or_substituted_public_checks
+    with pytest.raises(local.LocalPlanningError, match="all signed public acceptance checks"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'all signed public acceptance checks'
+E     Actual message: 'invalid signed public acceptance profile binding: local domain declarations changed or claim external assurance'
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py::test_native_owner_gate_refuses_dropped_or_substituted_public_checks[<lambda>0]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py::test_native_owner_gate_refuses_dropped_or_substituted_public_checks[<lambda>1]
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py::test_native_owner_gate_refuses_dropped_or_substituted_public_checks[<lambda>2]
+3 failed, 144 passed in 12.85s

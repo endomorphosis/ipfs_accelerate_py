@@ -1,0 +1,25 @@
+{
+  "changes": [
+    "Execute additionally requires predecessor execute and collect completion, frozen receipt bindings, and explicit root-recorded container cleanup clearance.",
+    "Clearance is retained in the one-shot launch lock and replayed at collection.",
+    "Reader validation remains unit-only; no completed predecessor-result validation or pair-result comparison has been claimed."
+  ],
+  "execution_started": false,
+  "prior_runner": {
+    "bytes": 7770,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/run-before-serial-guard.py",
+    "sha256": "40b49ac4871e620de6893b8de82d70d41b21162f0bf444b660fbd7d5580674aa"
+  },
+  "provider_calls": 0,
+  "runner": {
+    "bytes": 8874,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/run.py",
+    "sha256": "1ead2d3e1cb2d1db73f06ba89a02b0decd7af73e1c942527d7f5630e2c44efbc"
+  },
+  "schema": "doctor-turns8-artifact-adaptation@2",
+  "supersedes": {
+    "bytes": 2835,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/adaptation.json",
+    "sha256": "8c13272173d6d383927f192ce6b00ea3fc24f542fc8664584d02397cdfbd125f"
+  }
+}

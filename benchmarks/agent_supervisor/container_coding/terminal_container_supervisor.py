@@ -6,6 +6,11 @@ verifier runs afterwards and remains outside this process's indexed context.
 """
 from __future__ import annotations
 
+from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+    DEFAULT_GROK_PRUNING_PROFILE, GROK_PRUNING_PROFILES,
+    grok_pruning_selection, grok_pruning_runtime_matches,
+)
+
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
     DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
     grok_coding_runtime_matches,
@@ -398,6 +403,67 @@ def _run_live_metadata_census(*, state: Path, report: dict, provider_selection: 
     report["coding_dispatch_possible"] = False
 
 
+def _run_working_set_census(*, state: Path, report: dict, provider_selection: dict,
+        timeout_seconds: int, source_view_profile: str, source_view_policy,
+        coding_reply_mode: str, grok_coding_max_turns: int, require_source384: bool) -> None:
+    """Measure one current declared-plan input through the ordinary owner launcher."""
+    from .terminal_working_set_census import prepare_terminal_working_set_census
+    from .terminal_live_metadata_census import _identity
+    from .terminal_source_view_policy import source_view_policy_argv
+    from .terminal_working_set_census_observation import replay_working_set_census
+    from ipfs_accelerate_py.agent_supervisor.runtime.semantic_working_set_census import PACK_SCHEMA
+    from .terminal_numerical_retrieval_observation import _parse
+
+    if report["provider_invocations"] != []:
+        raise ValueError("declared-plan census requires no provider invocation")
+    deployment = _live_census_boundary(ROOT)
+    audit_parent = ROOT / "worker-observations"
+    before = set(audit_parent.glob("source-view-*-audit.json"))
+    with prepare_terminal_working_set_census(state=state, worktree_root=WORKTREES,
+            worker_writable=True, worker_group_gid=os.getegid(), require_source384=require_source384,
+            coding_reply_mode=coding_reply_mode) as prepared:
+        metadata = prepared["metadata"]
+        if metadata["planning_metadata_sha256"] != _identity(report["planning"]):
+            raise ValueError("declared planning report differs from current owner admission")
+        options = prepared["runner_kwargs"]
+        command = [str(ROUTER), "--provider", provider_selection["provider"],
+            "--model", provider_selection["model"], "--reasoning-effort", provider_selection["reasoning_effort"],
+            "--purpose", "coding", "--timeout", str(timeout_seconds), "--max-output-tokens", "4096",
+            "--semantic-working-set-census-only", "--semantic-working-set", "capsule-references@1",
+            "--semantic-working-set-census-schema", PACK_SCHEMA,
+            "--semantic-repository", str(options["semantic_repository"]),
+            "--source-view-profile", source_view_profile, "--coding-reply-mode", coding_reply_mode]
+        command += source_view_policy_argv(source_view_policy, profile=source_view_profile)
+        if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
+            command += ["--grok-coding-max-turns", str(grok_coding_max_turns)]
+        for prefix in ("doctor_residual", "public_instruction"):
+            if prefix + "_artifact" in options:
+                for suffix in ("artifact", "sha256", "task_cid"):
+                    command += ["--" + (prefix + "_" + suffix).replace("_", "-"),
+                        str(options[prefix + "_" + suffix])]
+        with prepared["prompt_artifact"].open("rb") as prompt:
+            call = subprocess.run(command, cwd=prepared["workspace"], stdin=prompt,
+                capture_output=True, timeout=timeout_seconds)
+        private = prepared["private_artifact_dir"]
+        (private / "router.stdout").write_bytes(call.stdout)
+        (private / "router.stderr").write_bytes(call.stderr)
+        if call.returncode:
+            raise RuntimeError("isolated working-set census worker refused before observation")
+        if len(call.stdout) > 32769:
+            raise ValueError("bounded working-set census observation required")
+        observed = _parse(call.stdout.strip())
+        source_observation = replay_working_set_census(prepared=prepared, observed=observed,
+            deployment=deployment, provider_selection=provider_selection, source_view_profile=source_view_profile,
+            source_view_policy=source_view_policy,
+            census_schema=PACK_SCHEMA,
+            source_audit_paths=sorted(set(audit_parent.glob("source-view-*-audit.json")) - before))
+        metadata["retained_owner_planning_receipt_join_verified"] = True
+    # Publish success only after current owner/source rechecks and allocation cleanup.
+    report.update(working_set_census_context=metadata, working_set_census=observed,
+        working_set_census_source_observation=source_observation,
+        working_set_census_succeeded=True, coding_dispatch_possible=False)
+
+
 def _native_diagnostics(state: Path) -> dict:
     """Retain bounded startup evidence, without prompts or owner credentials."""
     result = {"schema": "native-supervisor-diagnostics@1"}
@@ -596,6 +662,8 @@ def _final_context_audit(report: dict, *, state: Path, deadline: float,
                     raise
         report["context_input_audit"] = collect_terminal_context_audit(
             state=state, receipts=report.get("provider_invocations", []), workspace_root=WORKTREES,
+            **({"candidate_parent": ROOT / "worker-observations"} if any(
+                "candidate_round_dispatch" in row for row in report.get("provider_invocations", [])) else {}),
             timeout_seconds=max(0, min(MAX_AUDIT_SECONDS, deadline - time.monotonic() - 1.0)),
             **({"decision_report": decision_report} if decision_report else {}),
             **({"semantic_metadata_tokenizer_artifact": semantic_metadata_tokenizer_artifact,
@@ -819,6 +887,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
         semantic_metadata_tokenizer_artifact: Path | None = None,
         semantic_metadata_tokenizer_sha256: str | None = None,
+        grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
+        candidate_rounds: int = 1,
+        doctor_coding_policy: str | None = None,
         source_view_profile: str = "disabled",
         source_edit_mode: str = "disabled",
         source_view_policy: dict | None = None,
@@ -826,6 +897,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         semantic_context_profile: str = "legacy-bounded@1",
         capsule_budget: str = "legacy",
         metadata_census_only: bool = False,
+        working_set_census_only: bool = False,
         coding_reply_mode: str = "legacy",
         tool_output_policy: str = "legacy",
         source_view_advisory_policy: str = "legacy",
@@ -886,6 +958,16 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         raise ValueError("semantic decision policy requires exclusive full indexed arm")
     if semantic_arguments and arm != "full":
         raise ValueError("semantic context options require the full indexed arm")
+    from .benchmark_controls import validate_full_supervisor_candidate_rounds
+    validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=task_profile)
+    from .terminal_doctor_coding_policy import (
+        PUBLIC_VALIDATION_POLICY, doctor_coding_selection, doctor_coding_observation,
+    )
+    if candidate_rounds == 2 and metadata_census_only:
+        raise ValueError("Doctor coding continuation requires actual coding, not metadata census")
     from .benchmark_provider_profile import resolve_provider_profile
     from .terminal_decision_policy import decision_selection, validate_decision_route
     decision = decision_selection(
@@ -910,7 +992,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         numerical_formalization_profile=numerical_formalization_profile,
         numerical_selection_config=numerical_selection_config, source384_config=source384_config,
         resource_profile=resource_profile, task_profile=task_profile,
-        intent_requirement_contract=intent_requirement_contract)
+        intent_requirement_contract=intent_requirement_contract,
+        candidate_rounds=candidate_rounds, doctor_coding_policy=doctor_coding_policy, working_set_census_only=working_set_census_only, grok_pruning_profile=grok_pruning_profile)
     validate_legacy_semantic_route(policyoptions={
         'semantic_slot_policy_revision': semantic_slot_policy_revision,
         'semantic_context_projection': semantic_context_projection,
@@ -938,6 +1021,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         'capsule_budget': capsule_budget,
         'metadata_census_only': metadata_census_only,
         "provider": resolve_provider_profile(provider_profile)["provider"],
+
+        'candidate_rounds': candidate_rounds,
+        'doctor_coding_policy': doctor_coding_policy,
+        'working_set_census_only': working_set_census_only,
+        'grok_pruning_profile': grok_pruning_profile,
     })
     from .terminal_planning_policy import validate_planning_mode, planning_selection
     validate_planning_mode(planning_mode)
@@ -962,6 +1050,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     )
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
+    from .terminal_semantic_working_set_policy import validate_working_set_census, working_set_census_observation
+    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
+        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
+        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
+        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds,
+        metadata_census_only=metadata_census_only)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -1009,6 +1103,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     if metadata_census_only and tool_output_policy != "legacy":
         raise ValueError("tool output policy requires an executed coding route")
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider_selection["provider"])
+    from .benchmark_controls import validate_full_supervisor_grok_pruning
+    validate_full_supervisor_grok_pruning(grok_pruning_profile, provider=provider_selection["provider"],
+        metadata_census_only=metadata_census_only, working_set_census_only=working_set_census_only,
+        candidate_rounds=candidate_rounds, doctor_coding_policy=doctor_coding_policy,
+        source_edit_mode=source_edit_mode, planning_mode=planning_mode)
     if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS and metadata_census_only:
         raise ValueError("nondefault coding turns require generation, not metadata census")
     if type(metadata_census_only) is not bool:
@@ -1075,6 +1174,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
                 formula_decoder_descriptor, header_protocol_descriptor)):
             raise ValueError("generic legacy decoder assets require an explicit frozen checkpoint")
+    validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+        task_profile=generic_profile)
     if os.geteuid() != 1000 or not state.is_relative_to(ROOT / "state"):
         raise ValueError("container task must run as the deployed private supervisor owner")
     # Canonical files remain read-only to the model identity. The trusted
@@ -1099,6 +1202,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               **semantic_context_selection(semantic_context_profile),
               **semantic_working_set_observation(semantic_working_set),
               **grok_coding_selection(grok_coding_max_turns),
+              **grok_pruning_selection(grok_pruning_profile),
+              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **coding_reply_selection(coding_reply_mode),
               **tool_output_selection(tool_output_policy),
               **source_view_advisory_selection(source_view_advisory_policy),
@@ -1117,6 +1222,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "doctor_dispatch_observation": {"policy": doctor_dispatch_policy, "selection_performed": False,
                   "skip_reason": "explicit_model_only_ablation" if doctor_dispatch_policy == "model-only" else None},
               "phases": {}, "remaining_processes": None}
+    if doctor_coding_policy == PUBLIC_VALIDATION_POLICY:
+        report["task_profile"] = generic_profile
     if phase_budget is not None:
         report["reserved_phase_budgets_seconds"] = dict(phase_budget.limits)
         report["native_lifetime_seconds"] = budget["native_lifetime_seconds"]
@@ -1128,6 +1235,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     if metadata_census_only:
         report.update(metadata_census_only=True, metadata_census_succeeded=False,
                       coding_dispatch_possible=False, official_verifier_executed=False)
+    if working_set_census_only:
+        report.update(**working_set_census_observation(True), working_set_census_succeeded=False,
+            coding_dispatch_possible=False, official_verifier_executed=False)
     if semantic_metadata_view != "legacy":
         report["semantic_metadata_view"] = {"requested_mode": semantic_metadata_view,
             "planning_retained": True, "benchmark_advantage_claimed": False,
@@ -1334,6 +1444,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             finally:
                 report["phases"]["metadata_census_seconds"] = time.monotonic() - before
             return report
+        if working_set_census_only:
+            phase = "working_set_census"
+            before = time.monotonic()
+            try:
+                _run_working_set_census(state=state, report=report, provider_selection=provider_selection,
+                    timeout_seconds=min(120, remaining(10)), source_view_profile=source_view_profile,
+                    source_view_policy=source_view_policy, coding_reply_mode=coding_reply_mode,
+                    grok_coding_max_turns=grok_coding_max_turns, require_source384=source384_config is not None)
+            finally:
+                report["phases"]["working_set_census_seconds"] = time.monotonic() - before
+            return report
         doctor = None
         if arm == "full" and doctor_dispatch_policy == "auto":
             phase = "doctor"
@@ -1413,6 +1534,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             coding_reply_mode=coding_reply_mode,
             **semantic_working_set_selection(semantic_working_set),
             **grok_coding_selection(grok_coding_max_turns),
+            **grok_pruning_selection(grok_pruning_profile),
+            **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
             **({"source_view_profile": source_view_profile} if source_view_profile != "disabled" else {}),
             **({"source_edit_mode": source_edit_mode} if source_edit_mode != "disabled" else {}),
             **({"source_view_policy": source_view_policy} if source_view_policy is not None else {}),
@@ -1439,6 +1562,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     "source_edit_mode": source_edit_mode,
                     **semantic_working_set_selection(semantic_working_set),
                     **grok_coding_selection(grok_coding_max_turns),
+                    **grok_pruning_selection(grok_pruning_profile),
+                    **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
                     "source_view_policy": source_view_policy,
                     **({"semantic_metadata_tokenizer": tokenizer_selection} if tokenizer_selection is not None else {}),
                     **({"prompt_comparison_options": {
@@ -1604,7 +1729,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         )
     except (Exception, _BenchmarkPhaseExpired) as error:
         error_type = "TimeoutError" if type(error) is _BenchmarkPhaseExpired else type(error).__name__
-        report["error"] = ({"type": error_type} if metadata_census_only else
+        report["error"] = ({"type": error_type} if metadata_census_only or working_set_census_only else
                            {"type": error_type, "message": str(error)[:2048]})
         report["error_phase"] = phase
         try:
@@ -1634,11 +1759,22 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             report["task_completed"] = False
             if metadata_census_only:
                 report["metadata_census_succeeded"] = False
+            if working_set_census_only:
+                report["working_set_census_succeeded"] = False
         usage_observations = []
         for path in state.rglob("*.log"):
             if path.stat().st_size > 8_000_000:
                 continue
             for line in path.read_text(errors="replace").splitlines():
+                if line.startswith("[owner-candidate-rounds] "):
+                    try:
+                        marker = json.loads(line[len("[owner-candidate-rounds] "):])
+                        if _owner_candidate_round_marker_valid(marker):
+                            if marker not in report.setdefault("owner_candidate_rounds", []):
+                                report["owner_candidate_rounds"].append(marker)
+                    except ValueError:
+                        pass
+                    continue
                 try:
                     item = json.loads(line)
                 except ValueError:
@@ -1670,6 +1806,14 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             # Failed attempts and cleanup remain durable if optional stop
             # metadata is invalid. The launcher rederives before dispatch.
             report["provider_stop_unavailable"] = True
+        if working_set_census_only:
+            # This path has no coding attempts. Its independently replayed
+            # source-session accounting is retained by the census itself.
+            if report["provider_invocations"] or report.get("unreceipted_provider_attempt"):
+                report["working_set_census_succeeded"] = False
+        else:
+            from .terminal_candidate_attempt_accounting import apply as account_candidate_attempts
+            account_candidate_attempts(report, parent=ROOT / "worker-observations")
         if metadata_census_only:
             try:
                 from .terminal_live_census_provenance import audit_planning_usage
@@ -1680,6 +1824,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                                                  "complete_total_tokens": None}
         if grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
             report["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_coding_max_turns)
+        if grok_pruning_profile != DEFAULT_GROK_PRUNING_PROFILE:
+            report["grok_pruning_runtime_declared_matches"] = (
+                type(report.get("grok_pruning_profile")) is str
+                and report["grok_pruning_profile"] == grok_pruning_profile)
+            report["grok_pruning_runtime_policy_matches"] = grok_pruning_runtime_matches(report, grok_pruning_profile)
         _final_context_and_usage(report, state=state, deadline=deadline,
             **({"semantic_metadata_tokenizer_artifact": semantic_metadata_tokenizer_artifact,
                 "semantic_metadata_tokenizer_sha256": semantic_metadata_tokenizer_sha256}
@@ -1788,9 +1937,35 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                         parent=ROOT / "worker-observations", scope=output_observation_scope, report=report)
                 except Exception:
                     report["repository_source_owner_observation"] = repository_owner_unavailable("collector_failed")
+        try:
+            from .terminal_candidate_round_observation import collect as collect_candidate_rounds
+            report["candidate_round_retrieval_observation"] = collect_candidate_rounds(
+                parent=ROOT / "worker-observations", scope=output_observation_scope, report=report)
+        except Exception:
+            report["candidate_round_retrieval_observation"] = {
+                "schema": "terminal-candidate-round-observation@1", "status": "unavailable",
+                "reason": "observer_unavailable", "counts": None, "observation_only": True,
+                "proof_authority": False, "execution_authority": False, "completion_authority": False}
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report
+
+
+def _owner_candidate_round_marker_valid(marker):
+    """Retain public-validation diagnostics without granting lifecycle authority."""
+    if type(marker) is not dict:
+        return False
+    if marker.get("schema") == "owner-candidate-rounds-observation@1":
+        return True  # Preserve the historical nomination path.
+    if marker.get("schema") != "owner-candidate-rounds-observation@2":
+        return False
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_lifecycle import _observation
+    try:
+        _observation({key: value for key, value in marker.items()
+            if key not in {"owner_lifecycle_retention", "owner_lifecycle_retention_unavailable"}}, normalized=False)
+    except (KeyError, TypeError, ValueError):
+        return False
+    return True
 
 
 def main():
@@ -1814,7 +1989,13 @@ def main():
     from .terminal_semantic_working_set_policy import SEMANTIC_WORKING_SETS, DEFAULT_SEMANTIC_WORKING_SET
     parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS, default=DEFAULT_SEMANTIC_WORKING_SET)
     parser.add_argument("--grok-coding-max-turns", type=int, default=DEFAULT_GROK_CODING_MAX_TURNS)
+    parser.add_argument("--grok-pruning-profile", choices=GROK_PRUNING_PROFILES,
+        default=DEFAULT_GROK_PRUNING_PROFILE)
+    parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
+        help="Two coding attempts share one original deadline and require --doctor-coding-policy")
     from .terminal_source_edit_policy import SOURCE_EDIT_MODES
+    from .terminal_doctor_coding_policy import DOCTOR_CODING_POLICIES
+    parser.add_argument("--doctor-coding-policy", choices=DOCTOR_CODING_POLICIES)
     parser.add_argument("--source-edit-mode", default="disabled", choices=SOURCE_EDIT_MODES)
     from ipfs_accelerate_py.agent_supervisor.runtime.source_view_policy import SourceViewPolicy
     parser.add_argument("--source-view-policy-json", dest="source_view_policy",
@@ -1829,6 +2010,7 @@ def main():
     parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
         help="Explicit maximum capsules selected for the full indexed arm")
     parser.add_argument("--metadata-census-only", action="store_true")
+    parser.add_argument("--working-set-census-only", action="store_true")
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, CODING_REPLY_MODES
     from .terminal_tool_output_policy import DEFAULT_TOOL_OUTPUT_POLICY, TOOL_OUTPUT_POLICIES
     parser.add_argument("--tool-output-policy", choices=TOOL_OUTPUT_POLICIES, default=DEFAULT_TOOL_OUTPUT_POLICY)
@@ -1893,7 +2075,8 @@ def main():
                         help="full-arm ablation: skip Doctor selection and use ordinary signed model coding")
     result = run(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("task_completed", "arm", "seconds", "provider_invocations")}))
-    return 0 if (result.get("metadata_census_succeeded") if result.get("metadata_census_only")
+    return 0 if (result.get("working_set_census_succeeded") if result.get("working_set_census_only")
+                 else result.get("metadata_census_succeeded") if result.get("metadata_census_only")
                  else result["task_completed"]) else 1
 
 

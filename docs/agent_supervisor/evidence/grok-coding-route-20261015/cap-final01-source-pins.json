@@ -1,0 +1,14 @@
+{
+  "base_commit": "4acfdce7aa7059d40e2bdcfa9a0470bce195c40c",
+  "files": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9abe4d304d2ae3f5a9b0f843ff4dc289408bba5c2d1918ee7b94c962c22094ef",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "3012753ab16919bdc88cf2cb0d04eddb42cb042acb21faa0225d0fadc0df295e",
+    "ipfs_accelerate_py/llm_router.py": "e9ba968993d1b836f5926667a34c64aee8f964ace4dcbfa0edce53f8cc112a9b",
+    "test/api/test_candidate_router_dispatch.py": "fab0112d6bc0e732b140ea7244585ce486ddd3b74ec1849008a72ebbda1671ea",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474",
+    "test/api/test_grok_stream_capture.py": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+    "test/api/test_grok_stream_router.py": "dba9401bcdab44702b6e1f883e1f0d5c60d2539acd80545e153d5f4960e37c6b",
+    "test/api/test_grok_structured_output.py": "567a46e70cb73c6ade55c4c77bfd232b8719490d7f517b066ab28d623c73bf94",
+    "test/api/test_grok_terminal_rejection.py": "fe3c41286af1e44b4516a11ca612501ee6e96e6ef85f5d5304d103ec0b3b3426"
+  }
+}

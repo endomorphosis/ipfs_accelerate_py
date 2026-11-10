@@ -1,0 +1,21 @@
+{
+  "all_archive_members_verified": true,
+  "archive": {
+    "bytes": 1411553808,
+    "path": "/home/barberb/lift_coding/artifacts/inline-evidence-census-20261015/live/runtime-01/runtime.tar.gz",
+    "sha256": "0625211198207741d77572cb2992f5c0b59c7d40334c785dfdb868cac22c8968"
+  },
+  "archive_members": 27553,
+  "docker_calls": 0,
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "manifest": {
+    "bytes": 6226918,
+    "path": "/home/barberb/lift_coding/artifacts/inline-evidence-census-20261015/live/runtime-01/manifest.json",
+    "sha256": "445e1505bc0f14a22b3597bfbbffaa1dcd7141ac0809f2e3e41efc3a1a71b5d9"
+  },
+  "provider_calls": 0,
+  "seconds": 12.078544546850026,
+  "step": "verify",
+  "uncompressed_bytes": 4072797622
+}
