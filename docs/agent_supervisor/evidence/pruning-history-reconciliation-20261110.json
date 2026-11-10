@@ -5,7 +5,7 @@
   "selected_world_head": "57239766811693f8e23b195a2b6d90a15bed20b1",
   "historical_pruning_head": "c4015c6117dadefd64116708a4ead4ad3b512928",
   "resolved_product_merge_commit": "3e6b8c3a0077d3c676a89fb2ea4307cf2db6fc5a",
-  "tested_candidate_commit": "50617782ee3f088823bed93c2f653a8089543c99",
+  "tested_candidate_commit": "4c660885dd6622873385334b337a103ca9becd65",
   "resolved_tree": "95a28cc6b74e9f4a99e20497e848e3bf88bf698d",
   "historical_unique_commits_retained": 31,
   "changed_live_python_files_vs_world": 122,
@@ -618,6 +618,51 @@
       "source_observation_sha256": "54b70b0813db0f34c53571cb896f0624b463a31dd370521c1019e2e3ee947490",
       "junit_sha256": "99b3c5e1ee25ded733803702b76e1d696ca6d32bd1bd934a36347082bbb6ffd8",
       "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T20:56:17.111441+00:00",
+      "scope": "complete_grok_pruning_router_file_with_authored_preflight_and_transport",
+      "owning_test_files": [
+        "test/api/test_grok_pruning_router.py"
+      ],
+      "request_sha256": "a2908bcccad65c8d7edeade284b984e0b30a2b8fbfa4861fbc6bbf6b15f1c1f4",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "tested_evidence_base": "4c660885dd6622873385334b337a103ca9becd65",
+      "passed": 23,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 241,
+      "compiled_parent_sources": 212,
+      "original_custody_closed": true,
+      "observed_process_identities": 1,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 225484,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 223.4564598761499,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Actual shared CLI provider and runner use original authored configuration/preflight/boundary/provider transport seams. Complete selection refusal, preflight evidence, timeout accounting and success/failure receipt cases retained. No live provider, config-consumption effectiveness, tokenizer quality or token savings claim.",
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "acf5e531326908ee42673e38c445d263bd719fe4eebcec305ac3d87925cacbd2",
+      "source_observation_sha256": "a6f11cbf916f7c7ca8f9da319d05cb6ac4a2e5b16644da0756c77971bcb47c94",
+      "junit_sha256": "d12eb92f04077d195db96763b310788517532732b5f7b4e6c157867f8e315377",
+      "current_source_qualification": true
     }
   ],
   "failed_first_policy_attempt": {
@@ -628,15 +673,15 @@
     "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
     "retained_storage_bytes": 16777216
   },
-  "remaining_changed_owning_test_files": 46,
+  "remaining_changed_owning_test_files": 45,
   "parent_scoped_results_inherited_as_qualification": false,
   "whole_branch_qualified": false,
   "live_provider_or_deployment_qualified": false,
   "model_or_token_savings_claimed": false,
   "main_merged": false,
-  "scope_note": "Twenty-one of 67 complete changed owning files qualify in nine exact current source contexts totaling 1068 cases. Forty-six owning files and eight integration cases remain pending. Historical and failed attempts remain separate. No whole-branch, live provider, Docker isolation, or model quality claim.",
-  "tested_tree": "c0b776d8fc7ad00811dde63d44918941b9d22a68",
-  "last_scope_update_at": "2026-11-10T20:48:26.535924+00:00",
+  "scope_note": "Twenty-two of 67 complete changed owning files qualify in ten exact current source contexts totaling 1091 cases. Forty-five owning files and eight integration cases remain pending. Historical and failed attempts remain separate. No whole-branch, live provider, Docker isolation, or model quality claim.",
+  "tested_tree": "2e30d67d3dbc4b183ff473793500650b6e2783cf",
+  "last_scope_update_at": "2026-11-10T20:57:24.381154+00:00",
   "unqualified_test_fixture_preparation": {
     "commit": "143db239150c9ed993b04b6a159c1de2a8586af1",
     "path": "test/api/test_grok_pruning.py",
@@ -959,7 +1004,7 @@
     "source_pin_cap": 256,
     "scope": "Ten real-API observations; no provider invocation and no pytest owning-file qualification from the observation."
   },
-  "qualified_owning_test_files": 21,
+  "qualified_owning_test_files": 22,
   "failed_stream_capture_attempt": {
     "request_sha256": "2fb7094c2c771cd5c0dff5c7462fb7e76592de0e8de49d4464cea86a6b483247",
     "assertions_passed": 425,
@@ -1071,7 +1116,7 @@
     "elapsed_seconds": 113.54771468183026,
     "next_action": "Capture full producer imports and measure actual per-fixture world/meta catalog output before a new complete-file admission."
   },
-  "semantic_pack_next_action": "Qualify remaining 46 owning files and eight integration cases under unchanged limits.",
+  "semantic_pack_next_action": "Qualify remaining 45 owning files and eight integration cases under unchanged limits.",
   "round_policy_capture_frontier": {
     "time": "2026-11-10T05:52:08.253641+00:00",
     "owning_files": [
@@ -1531,6 +1576,51 @@
       "source_observation_sha256": "54b70b0813db0f34c53571cb896f0624b463a31dd370521c1019e2e3ee947490",
       "junit_sha256": "99b3c5e1ee25ded733803702b76e1d696ca6d32bd1bd934a36347082bbb6ffd8",
       "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T20:56:17.111441+00:00",
+      "scope": "complete_grok_pruning_router_file_with_authored_preflight_and_transport",
+      "owning_test_files": [
+        "test/api/test_grok_pruning_router.py"
+      ],
+      "request_sha256": "a2908bcccad65c8d7edeade284b984e0b30a2b8fbfa4861fbc6bbf6b15f1c1f4",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "tested_evidence_base": "4c660885dd6622873385334b337a103ca9becd65",
+      "passed": 23,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 241,
+      "compiled_parent_sources": 212,
+      "original_custody_closed": true,
+      "observed_process_identities": 1,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 225484,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 223.4564598761499,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Actual shared CLI provider and runner use original authored configuration/preflight/boundary/provider transport seams. Complete selection refusal, preflight evidence, timeout accounting and success/failure receipt cases retained. No live provider, config-consumption effectiveness, tokenizer quality or token savings claim.",
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "acf5e531326908ee42673e38c445d263bd719fe4eebcec305ac3d87925cacbd2",
+      "source_observation_sha256": "a6f11cbf916f7c7ca8f9da319d05cb6ac4a2e5b16644da0756c77971bcb47c94",
+      "junit_sha256": "d12eb92f04077d195db96763b310788517532732b5f7b4e6c157867f8e315377",
+      "current_source_qualification": true
     }
   ],
   "census_source_edit_guard_correction": {
@@ -1911,5 +2001,6 @@
     }
   ],
   "grok_prompt_accounting_scope": "Complete projection, nested metadata privacy, native usage receipts and actual runner success/failure with original authored transport; no live billing measurement.",
-  "stream_router_scope": "Complete original shared-router file using real authored CLI children. Original timeout and process-cleanup behavior, final-envelope usage, private-content exclusions, callback isolation, legacy JSON, frame limits and both tool-census revisions execute without case filtering."
+  "stream_router_scope": "Complete original shared-router file using real authored CLI children. Original timeout and process-cleanup behavior, final-envelope usage, private-content exclusions, callback isolation, legacy JSON, frame limits and both tool-census revisions execute without case filtering.",
+  "grok_pruning_router_scope": "Complete original pruning-router file with authored preflight, installed boundary and provider seams. Existing selection refusals, retained timeout evidence and success/failure receipts execute; config effectiveness and savings remain unknown. External tokenizer cache overrides are absent and the owned default cache is initially empty."
 }
