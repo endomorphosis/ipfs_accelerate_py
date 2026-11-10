@@ -5,7 +5,7 @@
   "selected_world_head": "57239766811693f8e23b195a2b6d90a15bed20b1",
   "historical_pruning_head": "c4015c6117dadefd64116708a4ead4ad3b512928",
   "resolved_product_merge_commit": "3e6b8c3a0077d3c676a89fb2ea4307cf2db6fc5a",
-  "tested_candidate_commit": "bc5d7c01d1ef71d6d273bd87f747411afed65a59",
+  "tested_candidate_commit": "ebd64974af3e1e9004d6328a4817cd434cb299c4",
   "resolved_tree": "95a28cc6b74e9f4a99e20497e848e3bf88bf698d",
   "historical_unique_commits_retained": 31,
   "changed_live_python_files_vs_world": 122,
@@ -25,6 +25,122 @@
   "new_cross_feature_route_cases_prepared": 8,
   "new_direct_policy_cases_qualified": 6,
   "qualified_scopes": [
+    {
+      "time": "2026-11-10T05:32:31.343665+00:00",
+      "request_sha256": "8d30e206be51d9f9c0ab90ebaa92bdef5ce19a532257343f41ddced2922f334a",
+      "candidate_product_commit": "ebd64974af3e1e9004d6328a4817cd434cb299c4",
+      "source_pins": 70,
+      "compiled_parent_sources": 12,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 8629520,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 257.8430372122675,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "scope": "complete_current_decision_policy",
+      "owning_test_files": [
+        "test/api/test_current_decision_policy.py"
+      ],
+      "passed": 64,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "qualified": true,
+      "case_counts_by_class": {
+        "": 64
+      },
+      "parent_closeout_sha256": "309846e7d6b10e42b0d39e5457f21d12bcd313a801152248efcfa28d72c83327",
+      "source_observation_sha256": "c27c2937e1b0cd14e6fdca2442c3bb1aebef8bd94f7d3f3b489b8ecead735532"
+    },
+    {
+      "time": "2026-11-10T05:28:00.434163+00:00",
+      "request_sha256": "018bb896750e44eba81a53b669607228e93be1cc5b9c8c704229833561465640",
+      "candidate_product_commit": "ebd64974af3e1e9004d6328a4817cd434cb299c4",
+      "source_pins": 242,
+      "compiled_parent_sources": 218,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 76031,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 170.022436756175,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "scope": "complete_controls_and_grok_comparison",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_grok_pruning_comparison.py"
+      ],
+      "passed": 107,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "qualified": true,
+      "case_counts_by_class": {
+        "": 107
+      },
+      "parent_closeout_sha256": "a008ab4b34a80b15082437075925353c536a8f677ecde6457a2464338fc0ab4b",
+      "source_observation_sha256": "512ddef317ae039cf12a30c7fd67b301fefa0c58ca52536b3ffa0378268b769a"
+    }
+  ],
+  "failed_first_policy_attempt": {
+    "request_sha256": "033996c8858ebbdabac1af4d39a19ba714eeed87b879a8414b7c8d4fb6e6ab3e",
+    "passed": 0,
+    "errors": 64,
+    "qualified": false,
+    "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
+    "retained_storage_bytes": 16777216
+  },
+  "remaining_changed_owning_test_files": 64,
+  "parent_scoped_results_inherited_as_qualification": false,
+  "whole_branch_qualified": false,
+  "live_provider_or_deployment_qualified": false,
+  "model_or_token_savings_claimed": false,
+  "main_merged": false,
+  "scope_note": "Three complete owning files qualify on the admission-order correction: policy64 plus controls61 and comparison46 in one combined107-case request. Historical scopes remain frozen to their original source context. Other64 changed owning files and eight integration cases remain pending; no whole-branch or provider/model claim.",
+  "tested_tree": "ea803c221103bf0a536766fcc38fa4f58262e465",
+  "last_scope_update_at": "2026-11-10T05:32:31.514188+00:00",
+  "unqualified_test_fixture_preparation": {
+    "commit": "143db239150c9ed993b04b6a159c1de2a8586af1",
+    "path": "test/api/test_grok_pruning.py",
+    "original_assertions_and_parameter_cases_retained": true,
+    "finite_fixture_variants": 5,
+    "retirement_only_after_original_negative_assertions": true,
+    "production_owners_changed": false,
+    "qualified": false
+  },
+  "failed_unit_attempt": {
+    "request_sha256": "83b63d166a84336d0cb5783ad3878c01386e008b9a9160161a6ab0d6ff005be5",
+    "qualified": false,
+    "reason": "The v4 watchdog observed the authored FIFO while live, despite later typed retirement. Full suite was cancelled; no case counts or source-audit pass are inferred.",
+    "original_custody_closed": true,
+    "retained_storage_bytes": 16777216,
+    "completed_retirement_receipts": 4,
+    "bounded_v2_profile_supports_hardlinks": false
+  },
+  "historical_qualified_scopes": [
     {
       "scope": "complete_current_decision_policy",
       "owning_test_files": [
@@ -122,39 +238,210 @@
       "qualified": true
     }
   ],
-  "failed_first_policy_attempt": {
-    "request_sha256": "033996c8858ebbdabac1af4d39a19ba714eeed87b879a8414b7c8d4fb6e6ab3e",
-    "passed": 0,
-    "errors": 64,
-    "qualified": false,
-    "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
-    "retained_storage_bytes": 16777216
-  },
-  "remaining_changed_owning_test_files": 64,
-  "parent_scoped_results_inherited_as_qualification": false,
-  "whole_branch_qualified": false,
-  "live_provider_or_deployment_qualified": false,
-  "model_or_token_savings_claimed": false,
-  "main_merged": false,
-  "scope_note": "Both published histories are retained. Only the three listed complete owning files qualify for their exact frozen contexts; the extra fixture-preparation commit changes only an unqualified test file. All shared source pins still match those qualified requests. Other owning suites, live candidate/pruning deployment and the full branch remain unqualified.",
-  "tested_tree": "6417e5b585e27a5381ab5ba5d6bb487170614f93",
-  "last_scope_update_at": "2026-11-10T04:55:54.509467+00:00",
-  "unqualified_test_fixture_preparation": {
-    "commit": "143db239150c9ed993b04b6a159c1de2a8586af1",
-    "path": "test/api/test_grok_pruning.py",
-    "original_assertions_and_parameter_cases_retained": true,
-    "finite_fixture_variants": 5,
-    "retirement_only_after_original_negative_assertions": true,
-    "production_owners_changed": false,
-    "qualified": false
-  },
-  "failed_unit_attempt": {
-    "request_sha256": "83b63d166a84336d0cb5783ad3878c01386e008b9a9160161a6ab0d6ff005be5",
-    "qualified": false,
-    "reason": "The v4 watchdog observed the authored FIFO while live, despite later typed retirement. Full suite was cancelled; no case counts or source-audit pass are inferred.",
-    "original_custody_closed": true,
-    "retained_storage_bytes": 16777216,
-    "completed_retirement_receipts": 4,
-    "bounded_v2_profile_supports_hardlinks": false
+  "admission_order_correction": {
+    "commit": "ebd64974af3e1e9004d6328a4817cd434cb299c4",
+    "changed_functions": [
+      "config_for",
+      "prepare",
+      "FullSupervisorAgent.__init__",
+      "FullSupervisorAgent.setup",
+      "FullSupervisorAgent.run"
+    ],
+    "all_original_statements_retained": true,
+    "run_clock_preserved": true,
+    "baseline": {
+      "request_sha256": "c1c4c4ebdbf565b7bc28de9a75f13fccfce815cb66c224f279733f7e60c24832",
+      "original_source_custody_closed": true,
+      "source_audit_violations": [],
+      "source_drift": [],
+      "observation_count": 10,
+      "provider_discovery_reached_count": 8,
+      "observations": [
+        {
+          "api": "config_for",
+          "arm": "full",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        },
+        {
+          "api": "prepare",
+          "arm": "full",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        },
+        {
+          "api": "constructor",
+          "arm": "full",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        },
+        {
+          "api": "setup",
+          "arm": "full",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires explicit Doctor constraints and coding-attempt policy"
+        },
+        {
+          "api": "run",
+          "arm": "full",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        },
+        {
+          "api": "config_for",
+          "arm": "no-index",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        },
+        {
+          "api": "prepare",
+          "arm": "no-index",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        },
+        {
+          "api": "constructor",
+          "arm": "no-index",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        },
+        {
+          "api": "setup",
+          "arm": "no-index",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported"
+        },
+        {
+          "api": "run",
+          "arm": "no-index",
+          "provider_discovery_reached": true,
+          "error_type": "ProviderDiscoveryReached",
+          "error_message": "provider-discovery-sentinel"
+        }
+      ],
+      "defect_reproduced": true,
+      "pytest_file_qualification": false,
+      "model_calls": 0,
+      "storage_status": "released",
+      "elapsed_seconds": 222.76153952023014
+    },
+    "corrected": {
+      "time": "2026-11-10T05:25:03.527650+00:00",
+      "request_sha256": "3126c6b9e026d9ea69e2a9c921c165c4c09d3c3447f31c050e6799104ea44bac",
+      "candidate_product_commit": "ebd64974af3e1e9004d6328a4817cd434cb299c4",
+      "source_pins": 84,
+      "compiled_parent_sources": 54,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 18169,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 182.46159627474844,
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "observations": [
+        {
+          "api": "config_for",
+          "arm": "full",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires explicit Doctor constraints and coding-attempt policy"
+        },
+        {
+          "api": "prepare",
+          "arm": "full",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires explicit Doctor constraints and coding-attempt policy"
+        },
+        {
+          "api": "constructor",
+          "arm": "full",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires explicit Doctor constraints and coding-attempt policy"
+        },
+        {
+          "api": "setup",
+          "arm": "full",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires explicit Doctor constraints and coding-attempt policy"
+        },
+        {
+          "api": "run",
+          "arm": "full",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires explicit Doctor constraints and coding-attempt policy"
+        },
+        {
+          "api": "config_for",
+          "arm": "no-index",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported"
+        },
+        {
+          "api": "prepare",
+          "arm": "no-index",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported"
+        },
+        {
+          "api": "constructor",
+          "arm": "no-index",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported"
+        },
+        {
+          "api": "setup",
+          "arm": "no-index",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported"
+        },
+        {
+          "api": "run",
+          "arm": "no-index",
+          "provider_discovery_reached": false,
+          "error_type": "ValueError",
+          "error_message": "candidate rounds=2 requires an admitted semantic source broker; no-index is unsupported"
+        }
+      ],
+      "observation_count": 10,
+      "provider_discovery_reached_count": 0,
+      "defect_reproduced": false,
+      "pytest_file_qualification": false,
+      "model_calls": 0,
+      "admission_order_fixed_for_observed_calls": true,
+      "parent_closeout_sha256": "d68fa156fd22ec56499581dd6f26020671da22621fc37e71400fb8d74431e152",
+      "source_observation_sha256": "cb34f184cd1e64d5db76216b87c591d9589dfbb583cc2d63125b553d599ae2de"
+    },
+    "full_candidate_round_guard_file_qualified": false,
+    "full_guard_static_capture_source_files": 343,
+    "source_pin_cap": 256,
+    "scope": "Ten real-API observations; no provider invocation and no pytest owning-file qualification from the observation."
   }
 }
