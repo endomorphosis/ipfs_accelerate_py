@@ -1,0 +1,16 @@
+F...                                                                     [100%]
+=================================== FAILURES ===================================
+__ test_single_task_three_checks_use_model_parser_and_native_admission[None] ___
+benchmarks/agent_supervisor/container_coding/test_terminal_public_model_planning.py:82: in test_single_task_three_checks_use_model_parser_and_native_admission
+    assert [criterion.to_dict() for criterion in node.acceptance] == expected
+E   AssertionError: assert [{'schema': '...parses', ...}] == [{'criterion_...erformance']}]
+E     
+E     At index 0 diff: {'schema': 'ipfs_accelerate_py/agent-supervisor/prompt-acceptance-record@1', 'contract_version': 1, 'criterion_key': 'public-dominant-eigenpair', 'criterion': 'Public-domain matrices produce finite nonzero dominant eigenpairs satisfying numpy.allclose with its public default tolerances', 'evidence_cids': ['baguqeera2nyen72wwh6s4mlatevduo2psuxpwynh7wahxak3i3uh5lyp64ja'], 'validation_keys': ['public-eigenpair-behavior']} != {'criterion_key': 'declared-output-structure', 'criterion': 'Declared eigen.py is bounded, regular Python source and parses', 'eviden...
+E     
+E     ...Full output truncated (2 lines hidden), use '-vv' to show
+------------------------------ Captured log call -------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-350/test_single_task_three_checks_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-350/test_single_task_three_checks_0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_model_planning.py::test_single_task_three_checks_use_model_parser_and_native_admission[None]
+1 failed, 3 passed in 3.91s

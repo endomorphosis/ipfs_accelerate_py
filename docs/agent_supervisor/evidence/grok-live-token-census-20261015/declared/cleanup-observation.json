@@ -1,0 +1,9 @@
+{
+  "schema": "retained-container-cleanup-observation@1",
+  "observed_at": "2026-10-15T01:30:59.706100+00:00",
+  "container_name": "largest-eigenval__ljh3txd__env-main-1",
+  "container_cleanup_observed": true,
+  "remaining_container_ids": [],
+  "provider_calls": 0,
+  "service_changes": []
+}

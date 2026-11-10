@@ -1,0 +1,257 @@
+{
+  "complete_run_token_savings_claimed": false,
+  "files": [
+    {
+      "bytes": 1017,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/development-history.json",
+      "retained": "development-history.json",
+      "sha256": "a29256764d0244748efa1572176428fc76591fe8851c71559ba77ff27a8a1625"
+    },
+    {
+      "bytes": 1955,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-dev01-result.json",
+      "retained": "codec-dev01-result.json",
+      "sha256": "f74c09a89b2abc906feedef4bf599cde9dfbead1f085e54a01df882d4c91cf2b"
+    },
+    {
+      "bytes": 1963,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-dev01-result.json",
+      "retained": "native-dev01-result.json",
+      "sha256": "9fe64c636b167aec6d77bd6cc593954e3f532902b3754e9fccc2fd0e1a1d88e8"
+    },
+    {
+      "bytes": 2145,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-dev01-result.json",
+      "retained": "router-dev01-result.json",
+      "sha256": "629c8d417ddf9ff387f1fe4f4282bb56fd894893b74e208dc2e1b522f8b77f43"
+    },
+    {
+      "bytes": 6972,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/runtime-qualification.json",
+      "retained": "runtime-qualification.json",
+      "sha256": "2e65a2ed6fb0e33269c8072478aa8e1f3bde759d4c4ebd2ca173124f744712d1"
+    },
+    {
+      "bytes": 1311,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-projection-metric-final02.json",
+      "retained": "native-projection-metric-final02.json",
+      "sha256": "df6b71ba0fb22fd1341cb7276fc63ebde5e2a60979bb1ce2a195f32295a7f601"
+    },
+    {
+      "bytes": 23318,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/first-input-next-step.json",
+      "retained": "first-input-next-step.json",
+      "sha256": "e34ce8962e8b3ac103a90546e26891bc0c427ef76f812a251deb22cd6d06d194"
+    },
+    {
+      "bytes": 2793,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live-metric-audit.json",
+      "retained": "live-metric-audit.json",
+      "sha256": "9232b71f30138fd75476b327776f5539746eb2087e97220d23aaf1ac51906abf"
+    },
+    {
+      "bytes": 2103,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/summarize_closed.py",
+      "retained": "summarize_closed.py",
+      "sha256": "1da5dba16e346b88e4da9028cdee5f1c0e7023b2741d68eec9dac1853740c8f6"
+    },
+    {
+      "bytes": 2803,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/build_qualification.py",
+      "retained": "build_qualification.py",
+      "sha256": "887eaf92d939f6ad2d0b88be30ce94283b0bfa3d33e7cf763b4be3698d9e8a6e"
+    },
+    {
+      "bytes": 4289,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/run-tests.py",
+      "retained": "run-tests.py",
+      "sha256": "909d3a146e51cd9a26a7f210318b3989cfacfe5f5edb1103761b755f8f87ab8c"
+    },
+    {
+      "bytes": 35341,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live-outcome.json",
+      "retained": "live-outcome.json",
+      "sha256": "e9d2568fda202fb8510461c04fbd546205810e6f7376dd0616db5cd132474949"
+    },
+    {
+      "bytes": 85127,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/readout-final.json",
+      "retained": "live/readout-final.json",
+      "sha256": "749f40b5f352872d3f90c755959163ba6aa38041634a13579fa8d16a4fd347d0"
+    },
+    {
+      "bytes": 568,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/cleanup.json",
+      "retained": "live/cleanup.json",
+      "sha256": "116600d5863bcf96cc3851c757f7a67538cb3a0a042d7972c204511327b7e8e0"
+    },
+    {
+      "bytes": 560,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/execute-result.json",
+      "retained": "live/execute-result.json",
+      "sha256": "19e890bba2694a8e23ccfccd536ff725c7c722bdb1af6d97654d29873c5b1d3c"
+    },
+    {
+      "bytes": 562,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/collect-result.json",
+      "retained": "live/collect-result.json",
+      "sha256": "865e17b7b6b02fe2f159e11f08479f3af6034d4c6d84bcd1254cb1d5edc22ecb"
+    },
+    {
+      "bytes": 151814,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/recipe.json",
+      "retained": "live/recipe.json",
+      "sha256": "7905f68e5b2793afb72002bdcf21495cf58458e7391e2e1f930fec4be20b30fe"
+    },
+    {
+      "bytes": 2147,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/source-freeze.json",
+      "retained": "live/source-freeze.json",
+      "sha256": "d533d52772a5cd6875a6e94cf57682025929d7f2a739ca1f5470e2a8cca466aa"
+    },
+    {
+      "bytes": 6972,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/qualification.json",
+      "retained": "live/qualification.json",
+      "sha256": "2e65a2ed6fb0e33269c8072478aa8e1f3bde759d4c4ebd2ca173124f744712d1"
+    },
+    {
+      "bytes": 17735,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reporting-freeze-v2.json",
+      "retained": "live/reporting-freeze-v2.json",
+      "sha256": "906f8ef9e0583b05610e9b109fce08c40a0f38b94ac632cb964fa5ec3158dd77"
+    },
+    {
+      "bytes": 1322,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/independent-prelaunch-review.json",
+      "retained": "live/independent-prelaunch-review.json",
+      "sha256": "45c13aa1ba921f41777b0de1360ca45a0bf94f5024568403fa5bb72c6128082a"
+    },
+    {
+      "bytes": 17407,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reader/qualification-dev01.json",
+      "retained": "live/reader/qualification-dev01.json",
+      "sha256": "54551b4187799430ea1f37ccdb579795aecdf6c1152992a108125759758b5f7e"
+    },
+    {
+      "bytes": 8845,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reader/read_projection.py",
+      "retained": "live/reader/read_projection.py",
+      "sha256": "fe56e0216fde283291f9eb8bde87b7adedcdb68193d1447175f1bfb51d507826"
+    },
+    {
+      "bytes": 2716,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reader/qualify_reader.py",
+      "retained": "live/reader/qualify_reader.py",
+      "sha256": "c76fd4fdb58cde5a14111bd6ea3e67f1567a2f1e8fca7bcece77ce9e35d6dd4c"
+    },
+    {
+      "bytes": 6428,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reader/test_read_projection.py",
+      "retained": "live/reader/test_read_projection.py",
+      "sha256": "13021a3f4fdb19a1a10891beee235abe2eda99ccaf29435e90c4b15a78814c7a"
+    },
+    {
+      "bytes": 15718,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reader/upstream-freeze.json",
+      "retained": "live/reader/upstream-freeze.json",
+      "sha256": "91f85a0c01c49c6f80f99dd1db59208bf094a7ae612216d2c04b068b56e19ef7"
+    },
+    {
+      "bytes": 13259,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/run.py",
+      "retained": "live/run.py",
+      "sha256": "318824b6ba4f496b3d7cb1c9fa1f413dbe62e82338d948b63f768555e769dab5"
+    },
+    {
+      "bytes": 4460,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/freeze.py",
+      "retained": "live/freeze.py",
+      "sha256": "faa66693a5761d9116c7bea3d844e97d8a2256234a862b1dd3e0fcf809175f54"
+    },
+    {
+      "bytes": 1017,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/lock_prepared.py",
+      "retained": "live/lock_prepared.py",
+      "sha256": "ab847b7981011a7055e7d837b0cdca386700c277b010d4d447396fe5911c48d9"
+    },
+    {
+      "bytes": 1958,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final01-result.json",
+      "retained": "codec-final01-result.json",
+      "sha256": "6b16caa0e7c6d2da91f1cf6a90754f7af93ee8568309bc46a6484646087293c6"
+    },
+    {
+      "bytes": 1603,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final01-source-pins.json",
+      "retained": "codec-final01-source-pins.json",
+      "sha256": "1155d9a2f22649a00f9515b22664a00b2262e8f00b5827e49ee3e5244e0989f4"
+    },
+    {
+      "bytes": 2147,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final01-result.json",
+      "retained": "router-final01-result.json",
+      "sha256": "111014e3b7bf28e0739075e8df5968e49a673a836842b14a4bf0d28117d43bdb"
+    },
+    {
+      "bytes": 1838,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final01-source-pins.json",
+      "retained": "router-final01-source-pins.json",
+      "sha256": "50c5ee097f9e4a6b56b8286e607c94611c98a01249e0ebe73e64ca45d733694d"
+    },
+    {
+      "bytes": 2129,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final01-result.json",
+      "retained": "native-final01-result.json",
+      "sha256": "53db47b02b019beec8aa11874db743c6d84fcc9de4f69b28ebdc7b03bdcae29d"
+    },
+    {
+      "bytes": 1726,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final01-source-pins.json",
+      "retained": "native-final01-source-pins.json",
+      "sha256": "35381bcd2904540b2cd7c4aca2282da399a1d571e8367352ab619c6f48bb89d2"
+    },
+    {
+      "bytes": 1958,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final02-result.json",
+      "retained": "codec-final02-result.json",
+      "sha256": "9532b785b07e0cd485f070fb578f529579efc1517671fdd2e61faaace2f53db2"
+    },
+    {
+      "bytes": 1603,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/codec-final02-source-pins.json",
+      "retained": "codec-final02-source-pins.json",
+      "sha256": "e6fb2a9554cc85802e6fd3d330c88f2662187cdb1e05a392015e2c252f211abe"
+    },
+    {
+      "bytes": 2414,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final02-result.json",
+      "retained": "router-final02-result.json",
+      "sha256": "7360073910318901645c2b93de1e89f741e6bd75aaf6079e1c646c90dd00445a"
+    },
+    {
+      "bytes": 1603,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/router-final02-source-pins.json",
+      "retained": "router-final02-source-pins.json",
+      "sha256": "e6fb2a9554cc85802e6fd3d330c88f2662187cdb1e05a392015e2c252f211abe"
+    },
+    {
+      "bytes": 1964,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final02-result.json",
+      "retained": "native-final02-result.json",
+      "sha256": "dfc9e7ab7b10c48d9454d5606739ef78ad58e427d75fc8d0bded476a831701bd"
+    },
+    {
+      "bytes": 1603,
+      "origin": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/native-final02-source-pins.json",
+      "retained": "native-final02-source-pins.json",
+      "sha256": "e6fb2a9554cc85802e6fd3d330c88f2662187cdb1e05a392015e2c252f211abe"
+    }
+  ],
+  "independent_live_owner_replay_performed": false,
+  "prior_artifacts_modified": false,
+  "provider_calls_by_export": 0,
+  "raw_provider_prompts_or_source_exported": false,
+  "runtime_commit": "cef1bb3764aa2ea9ed453a2feec5c240cca2dc54",
+  "schema": "candidate-prompt-projection-closed-evidence@1"
+}

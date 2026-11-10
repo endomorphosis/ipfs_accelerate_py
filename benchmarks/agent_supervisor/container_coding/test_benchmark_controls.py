@@ -236,3 +236,73 @@ def test_ranked_capsule_controls_reject_invalid_or_unindexed_selection(mode, arm
     config["agents"][0]["kwargs"]["capsule_selection"] = mode
     with pytest.raises(ValueError, match="capsule"):
         declaration(config)
+
+
+@pytest.mark.parametrize("version,fields", [
+    (6, ("semantic_working_set",)),
+    (6, ("semantic_metadata_tokenizer",)),
+    (6, ("semantic_metadata_tokenizer", "capsule_budget", "planning_mode")),
+    (7, ("grok_coding_max_turns",)),
+    (7, ("grok_coding_max_turns", "semantic_working_set")),
+    (8, ("semantic_metadata_tokenizer", "semantic_working_set")),
+    (8, ("semantic_metadata_tokenizer", "grok_coding_max_turns")),
+    (8, ("semantic_metadata_tokenizer", "semantic_working_set", "grok_coding_max_turns")),
+])
+def test_independent_historical_control_versions_and_combined_generation_remain_readable(version, fields):
+    """Both branches published @6; retain each closed historical shape."""
+    import hashlib
+
+    record = declaration(config_for(Path("/dataset"), Path("/out")))
+    record["schema"] = f"terminal-benchmark-declared-controls@{version}"
+    record["experimental_controls_sha256"] = {field: "a" * 64 for field in fields}
+    record["sha256"] = hashlib.sha256(json.dumps(
+        {key: value for key, value in record.items() if key != "sha256"},
+        sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    assert validate_controls(record) is True
+
+
+@pytest.mark.parametrize("version,fields", [
+    (6, ()),
+    (6, ("semantic_metadata_tokenizer", "semantic_working_set")),
+    (6, ("semantic_metadata_tokenizer", "grok_coding_max_turns")),
+    (6, ("grok_coding_max_turns",)),
+    (7, ("semantic_metadata_tokenizer", "grok_coding_max_turns")),
+    (8, ("semantic_metadata_tokenizer",)),
+    (8, ("semantic_working_set",)),
+    (8, ("grok_coding_max_turns",)),
+    (8, ("semantic_metadata_tokenizer", "capsule_budget")),
+    (8, ("semantic_metadata_tokenizer", "semantic_working_set", "unchecked")),
+])
+def test_rehashed_control_versions_cannot_launder_mixed_or_unchecked_experiments(version, fields):
+    """A recomputed digest must not promote the wrong version's field set."""
+    import hashlib
+
+    record = declaration(config_for(Path("/dataset"), Path("/out")))
+    record["schema"] = f"terminal-benchmark-declared-controls@{version}"
+    record["experimental_controls_sha256"] = {field: "a" * 64 for field in fields}
+    record["sha256"] = hashlib.sha256(json.dumps(
+        {key: value for key, value in record.items() if key != "sha256"},
+        sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    assert validate_controls(record) is False
+
+
+def test_doctor_controls_keep_distinct_identity_from_combined_metadata():
+    from benchmarks.agent_supervisor.container_coding import benchmark_controls as owner
+
+    assert owner.COMBINED_METADATA_SCHEMA == "terminal-benchmark-declared-controls@8"
+    assert owner.DOCTOR_CODING_SCHEMA == "terminal-benchmark-declared-controls@11"
+
+
+@pytest.mark.parametrize("version,experiment,accepted", [
+    (11, {"candidate_rounds": "2", "doctor_coding_policy": "authored-policy-fingerprint"}, True),
+    (8, {"candidate_rounds": "2", "doctor_coding_policy": "authored-policy-fingerprint"}, False),
+    (11, {"semantic_metadata_tokenizer": "authored-tokenizer-fingerprint", "semantic_working_set": "capsule-references@1"}, False),
+])
+def test_rehashed_doctor_and_metadata_records_cannot_cross_version_contracts(version, experiment, accepted):
+    from benchmarks.agent_supervisor.container_coding import benchmark_controls as owner
+
+    record = declaration(config_for(Path("/dataset"), Path("/out")))
+    record["schema"] = f"terminal-benchmark-declared-controls@{version}"
+    record["experimental_controls_sha256"] = {key: owner._digest(value) for key, value in experiment.items()}
+    record["sha256"] = owner._digest({key: value for key, value in record.items() if key != "sha256"})
+    assert validate_controls(record) is accepted

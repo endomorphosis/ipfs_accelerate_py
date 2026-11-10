@@ -1,0 +1,53 @@
+{
+  "causal_savings_claimed": false,
+  "differing_configuration_controls": null,
+  "independent_host_replay_performed": false,
+  "limitations": [
+    "Native in-container audit outcomes are retained reports, not independently replayed owner artifacts.",
+    "Observed subtotals include known counters; missing categories and native completeness remain unknown.",
+    "Reasoning output is reported separately and is not added again to native totals.",
+    "Input and retrieval bytes are not provider tokens or evidence of causal run savings."
+  ],
+  "owner_private_audits_exported": false,
+  "pilot": {
+    "artifact_bindings": [
+      {
+        "bytes": 3388,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/config.json",
+        "sha256": "11ea41ff518e05a52a34fab5fd1c010e3a5dd23541fc6ec2e643c809ec678a29"
+      }
+    ],
+    "controls": {
+      "candidate_rounds": 2,
+      "capsule_budget": "legacy",
+      "coding_reply_mode": "legacy",
+      "doctor_coding_policy": "doctor-coding-two-attempts@1",
+      "grok_coding_max_turns": 8,
+      "numerical_formalization_profile": null,
+      "provider_profile": "grok-4.7-cli-1.0.46@1",
+      "resource_profile": "source384-5cpu-20gib-formalization@1",
+      "semantic_metadata_view": "legacy",
+      "semantic_transport_schema": "supervisor-semantic-router-input@1",
+      "semantic_working_set": "legacy",
+      "source_edit_mode": "disabled",
+      "source_view_profile": "identity@1"
+    },
+    "directory": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01",
+    "status": "no_retained_trial",
+    "trials": []
+  },
+  "prior": null,
+  "provider_calls_by_reader": 0,
+  "raw_prompts_or_provider_text_exported": false,
+  "reader_sha256": "6c892c1c85a44fb0ae9bff4eb0a552893f5267a882bd0313421b35ddb6a00d03",
+  "recipe_bindings": [
+    {
+      "bytes": 147615,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/recipe.json",
+      "sha256": "f0b29c924bb03d3b1f78804297897627f943ea59c57f29041903f26905429165"
+    }
+  ],
+  "runtime_comparison": "fresh_follow_up_after_code_changes_not_matched_runtime",
+  "schema": "doctor-dispatch-pilot-readout@1",
+  "total_token_savings_established": false
+}

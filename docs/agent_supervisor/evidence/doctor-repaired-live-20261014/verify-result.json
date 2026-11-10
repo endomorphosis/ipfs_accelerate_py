@@ -1,0 +1,62 @@
+{
+  "all_archive_members_match": true,
+  "archive": {
+    "bytes": 1411467546,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/runtime-01/runtime.tar.gz",
+    "sha256": "fcc74dd9af41e6b5c81c39e7aaa6bc97c24141b588157e5323b5dcd87ff02a74"
+  },
+  "current_doctor_policy_sources_match": true,
+  "exit_code": 0,
+  "file_count": 27546,
+  "manifest": {
+    "bytes": 6225257,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/runtime-01/manifest.json",
+    "sha256": "b209bd5c15ec362b869e98ef49e78431f9e8ddfd17a4ed1f22d1a167eb8de1a1"
+  },
+  "provider_calls": 0,
+  "repaired_production_files_match": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "archive_member": {
+        "bytes": 70472,
+        "mode": 420,
+        "path": "source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+        "sha256": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24"
+      },
+      "host": {
+        "bytes": 70472,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+        "sha256": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": {
+      "archive_member": {
+        "bytes": 17791,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+        "sha256": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa"
+      },
+      "host": {
+        "bytes": 17791,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+        "sha256": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa"
+      }
+    },
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": {
+      "archive_member": {
+        "bytes": 24974,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+        "sha256": "cb1d7722b1983dc9bd316b4ef39ee203ae63b2424617a186ccbb10b167006ca9"
+      },
+      "host": {
+        "bytes": 24974,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+        "sha256": "cb1d7722b1983dc9bd316b4ef39ee203ae63b2424617a186ccbb10b167006ca9"
+      }
+    }
+  },
+  "seconds": 11.773658920894377,
+  "source_pins_unchanged": true,
+  "step": "verify",
+  "uncompressed_bytes": 4072605819
+}

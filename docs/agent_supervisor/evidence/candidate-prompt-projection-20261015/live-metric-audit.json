@@ -1,0 +1,92 @@
+{
+  "billing_total_verified": false,
+  "both_public_rounds_inconclusive": true,
+  "causal_token_savings_established": false,
+  "diagnosis": "The first invocation consumed 43,141 more observed tokens despite unchanged initial input byte length and turn limit; its larger generated output and subsequent input/cache counts outweigh the second invocation reduction. The closed observations do not establish which native tool histories caused that difference or a causal effect of projection.",
+  "first_input_byte_length_unchanged": true,
+  "first_input_identity_verified": false,
+  "first_stream_observations": {
+    "pilot": {
+      "duration_seconds": 327.3760531891603,
+      "event_counts": {
+        "auto_compact": 0,
+        "available_commands": 12,
+        "end": 1,
+        "error": 0,
+        "max_turns_reached": 1,
+        "plan": 0,
+        "text": 28,
+        "thought": 622,
+        "tool_call": 10,
+        "tool_call_update": 43,
+        "unknown": 0,
+        "usage": 8
+      },
+      "stdout_bytes": 500029,
+      "tool_name_counts": {
+        "grep": 0,
+        "list_dir": 0,
+        "read_file": 2,
+        "run_terminal_cmd": 0,
+        "search_replace": 0,
+        "todo_write": 0,
+        "unknown": 8
+      }
+    },
+    "prior": {
+      "duration_seconds": 122.22632871801034,
+      "event_counts": {
+        "auto_compact": 0,
+        "available_commands": 12,
+        "end": 1,
+        "error": 0,
+        "max_turns_reached": 1,
+        "plan": 0,
+        "text": 55,
+        "thought": 347,
+        "tool_call": 10,
+        "tool_call_update": 36,
+        "unknown": 0,
+        "usage": 8
+      },
+      "stdout_bytes": 172362,
+      "tool_name_counts": {
+        "grep": 0,
+        "list_dir": 1,
+        "read_file": 2,
+        "run_terminal_cmd": 0,
+        "search_replace": 0,
+        "todo_write": 0,
+        "unknown": 7
+      }
+    }
+  },
+  "first_streams_untainted": true,
+  "first_turns_unchanged": true,
+  "full_usage_completeness_established": false,
+  "invocation_joins_verified": true,
+  "observed_arithmetic_valid": true,
+  "official_reward": 0.0,
+  "per_attempt": [
+    {
+      "attempt": 1,
+      "current_observed_tokens": 312698,
+      "delta": 43141,
+      "previous_observed_tokens": 269557
+    },
+    {
+      "attempt": 2,
+      "current_observed_tokens": 38573,
+      "delta": -2554,
+      "previous_observed_tokens": 41127
+    }
+  ],
+  "raw_content_exported": false,
+  "representation_bytes_removed": 7851,
+  "representation_reduction_percent": 8.548376559743907,
+  "same_workspace_generation_across_new_rounds": true,
+  "schema": "candidate-projection-live-metric-audit@1",
+  "source_readout_sha256": "749f40b5f352872d3f90c755959163ba6aa38041634a13579fa8d16a4fd347d0",
+  "task_completed_reported": false,
+  "total_observed_delta": 40587
+}

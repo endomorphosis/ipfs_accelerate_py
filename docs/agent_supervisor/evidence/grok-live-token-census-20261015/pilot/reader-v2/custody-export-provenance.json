@@ -1,0 +1,29 @@
+{
+  "ast_export_identical": true,
+  "copy": {
+    "bytes": 3278,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_custody_contract.py",
+    "sha256": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736"
+  },
+  "original": {
+    "bytes": 3278,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_custody_contract.py",
+    "sha256": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736"
+  },
+  "provider_calls": 0,
+  "runtime_modules_imported": false,
+  "schema": "pure-custody-contract-export@1",
+  "selected_constants": [
+    "SCHEMA",
+    "STAGE_REASONS",
+    "_SUCCESS"
+  ],
+  "selected_functions": [
+    "validate_native_provider_custody_observation"
+  ],
+  "source": {
+    "bytes": 4348,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-planner-acceptance-20261015/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py",
+    "sha256": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa"
+  }
+}

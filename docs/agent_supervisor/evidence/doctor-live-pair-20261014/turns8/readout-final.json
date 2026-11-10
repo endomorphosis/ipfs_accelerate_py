@@ -1,0 +1,706 @@
+{
+  "causal_savings_claimed": false,
+  "differing_configuration_controls": {
+    "grok_coding_max_turns": {
+      "pilot": 8,
+      "prior": null
+    }
+  },
+  "independent_host_replay_performed": false,
+  "limitations": [
+    "Native in-container audit outcomes are retained reports, not independently replayed owner artifacts.",
+    "Observed subtotals include known counters; missing categories and native completeness remain unknown.",
+    "Reasoning output is reported separately and is not added again to native totals.",
+    "Input and retrieval bytes are not provider tokens or evidence of causal run savings."
+  ],
+  "owner_private_audits_exported": false,
+  "pilot": {
+    "artifact_bindings": [
+      {
+        "bytes": 3384,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/config.json",
+        "sha256": "9e1647a71cfcc2f39809247673479f1b3421eb1661e51db131ff5304efab2be5"
+      },
+      {
+        "bytes": 11761,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__cWPR2Dk/result.json",
+        "sha256": "aa96f6b85d00019352bc5d85fd197e42dbbce1a41a7b3a793d0274c4b01dbefe"
+      },
+      {
+        "bytes": 132740,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__cWPR2Dk/agent/supervisor-result.json",
+        "sha256": "c8f3a6e3fc5db6e9be8b45cf9dde5ca163bcfda0a01e61f52e7adc16b29b37b7"
+      }
+    ],
+    "controls": {
+      "candidate_rounds": 2,
+      "capsule_budget": "legacy",
+      "coding_reply_mode": "legacy",
+      "doctor_coding_policy": "doctor-coding-two-attempts@1",
+      "grok_coding_max_turns": 8,
+      "numerical_formalization_profile": null,
+      "provider_profile": "grok-4.7-cli-1.0.46@1",
+      "resource_profile": "source384-5cpu-20gib-formalization@1",
+      "semantic_metadata_view": "legacy",
+      "semantic_transport_schema": "supervisor-semantic-router-input@1",
+      "semantic_working_set": "legacy",
+      "source_edit_mode": "disabled",
+      "source_view_profile": "identity@1"
+    },
+    "directory": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01",
+    "status": "observed",
+    "trials": [
+      {
+        "all_phase_usage": {
+          "all_native_contracts_complete": false,
+          "billing_total_verified": false,
+          "complete_native_totals": {
+            "cache_write_input_tokens": null,
+            "cached_input_tokens": null,
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_output_tokens": null,
+            "total_tokens": null
+          },
+          "missing_categories": {
+            "cache_write_input_tokens": 1,
+            "cached_input_tokens": 1,
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "reasoning_output_tokens": 1,
+            "total_tokens": 1
+          },
+          "observed_subtotals": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 1536,
+            "input_tokens": 13403,
+            "output_tokens": 8408,
+            "reasoning_output_tokens": 6563,
+            "total_tokens": 23347
+          },
+          "outer_router_calls": 2,
+          "reasoning_is_separate_not_added_to_total": true,
+          "receipts": 2,
+          "retained_aggregate_completeness_agrees": false,
+          "unreceipted_attempt_reported": true
+        },
+        "baseline_source_audit": {
+          "candidate_context_counts": {
+            "delivered_bytes": 0,
+            "delivered_pages": 0,
+            "prepared_bytes": 0,
+            "prepared_pages": 0
+          },
+          "counts": {
+            "accepted_requests": 1,
+            "delivered_pages": 1,
+            "delivered_response_bytes": 2397,
+            "delivered_responses": 1,
+            "delivered_source_bytes": 0,
+            "prepared_pages": 1,
+            "prepared_source_bytes": 0,
+            "request_hash_count": 1,
+            "response_bytes": 2397,
+            "response_hash_count": 1,
+            "sessions": 1,
+            "unique_request_hash_count": 1,
+            "unique_response_hash_count": 1
+          },
+          "prior_receipt_matches_reported": [
+            false
+          ],
+          "provider_tokens": null,
+          "reason": "matched_owner_session_accounting",
+          "schema": "terminal-source-view-observation@1",
+          "status": "observed",
+          "total_token_savings_measured": false
+        },
+        "candidate_source_audit": {
+          "prior_receipt_matches_reported": [],
+          "provider_tokens": null,
+          "reason": "selected_session_receipt_unavailable",
+          "schema": "terminal-candidate-round-observation@1",
+          "session_scope": "candidate_round_sessions_only",
+          "status": "unavailable",
+          "total_token_savings_measured": false
+        },
+        "continuation": {
+          "candidate_receipts": 0,
+          "continuation_supported_by_retained_report": false,
+          "in_container_accounting_agrees": false,
+          "independent_owner_replay_performed": false,
+          "native_accounting": {
+            "complete_usage_established": false,
+            "doctor_attempts_reserved": [
+              1,
+              2
+            ],
+            "doctor_coding_policy": "doctor-coding-two-attempts@1",
+            "doctor_coding_policy_sha256": "99314e39de7838670240702176445a644649a41a2342029667ec4e23bb3c2176",
+            "owner_lifecycle_sha256": "d97a422b6e537cf3b55a4c6dd1924f095bd0a73522c099a17a61253fcd2af021",
+            "potential_unreceipted_attempt": true,
+            "provider_internal_calls_bounded": false,
+            "reason": "potential_worker_attempt_without_router_receipt",
+            "rounds": [
+              {
+                "possible_unreceipted_attempt": false,
+                "process_started": true,
+                "receipt_observed": true,
+                "round_number": 1
+              },
+              {
+                "possible_unreceipted_attempt": true,
+                "process_started": true,
+                "receipt_observed": false,
+                "round_number": 2
+              }
+            ],
+            "schema": "terminal-candidate-attempt-accounting@1",
+            "status": "incomplete",
+            "total_cost_bounded": false,
+            "total_tokens_bounded": false
+          },
+          "two_coding_router_calls_joined": false
+        },
+        "duplicate_receipts_ignored": 0,
+        "input_audit": {
+          "all_observed_coding_inputs_verified": null,
+          "coding_receipts_seen": 1,
+          "prior_receipt_matches_reported": [],
+          "reason": "no_usable_coding_receipt",
+          "schema": "terminal-final-context-audit@1",
+          "status": "unknown",
+          "usable_coding_receipts": 0
+        },
+        "invocations": [
+          {
+            "candidate_preflight": {},
+            "input_representation": {},
+            "invocation_id": "dacee8f162dd45beace4911f93789a44",
+            "model": "grok-4.7",
+            "model_prompt_bytes": 26168,
+            "native_cli": {
+              "exit_code": 0,
+              "num_turns": 1,
+              "stop_reason": "end_turn"
+            },
+            "native_prompt_bytes": 26168,
+            "native_usage": {
+              "arithmetic_valid": true,
+              "counters": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 1536,
+                "input_tokens": 13403,
+                "output_tokens": 8408,
+                "reasoning_output_tokens": 6563,
+                "total_tokens": 23347
+              },
+              "retained_native_fields": {
+                "billing_total_verified": false,
+                "cache_included_in_input": false,
+                "observed_final_usage_records": 1,
+                "schema": "native-grok-final-usage@1",
+                "task_complete_observed": true,
+                "totals_scope": "native_final_envelope",
+                "usage_available": true,
+                "usage_complete_observed": null,
+                "usage_observation_sha256": "02255eda350096b0b678f07203d25961fb1e305c8db334fa158d821439db8ce9"
+              },
+              "usage_complete_under_native_contract": null
+            },
+            "phase": "planning",
+            "prompt_bytes": 26168,
+            "provider": "grok_cli",
+            "requested_output_tokens": 4096,
+            "router_calls": 1,
+            "router_prompt_bytes": 26168,
+            "status": "provider_returned",
+            "timeout_seconds": 600
+          },
+          {
+            "candidate_preflight": {},
+            "failure_phase": "provider_invocation",
+            "input_representation": {},
+            "invocation_id": "b82af9e801134eaabe4abea223a2d35a",
+            "model": "grok-4.7",
+            "model_prompt_bytes": 66555,
+            "native_cli": {
+              "exit_code": 1
+            },
+            "native_prompt_bytes": 67717,
+            "native_usage": {
+              "arithmetic_valid": null,
+              "counters": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "reasoning_output_tokens": null,
+                "total_tokens": null
+              },
+              "retained_native_fields": {},
+              "usage_complete_under_native_contract": null
+            },
+            "phase": "coding",
+            "prompt_bytes": 67717,
+            "provider": "grok_cli",
+            "requested_output_tokens": 4096,
+            "router_calls": 1,
+            "router_prompt_bytes": 65665,
+            "status": "failed",
+            "timeout_seconds": 1800
+          }
+        ],
+        "official_reward": 0.0,
+        "phase_seconds": {
+          "context_seconds": 3.765765229938552,
+          "doctor_seconds": 1.959599441033788,
+          "initial_context_seconds": 14.78472229395993,
+          "planning_seconds": 90.33923030900769,
+          "prepare_seconds": 0.7543317569652572
+        },
+        "retained_aggregate_usage": {
+          "all_invocations_receipted": false,
+          "billing_total_verified": false,
+          "cache_included_in_input": null,
+          "cache_write_input_tokens": null,
+          "cached_input_tokens": null,
+          "harbor_usage_exportable": false,
+          "input_tokens": null,
+          "native_scoped_usage_complete_observed": null,
+          "observed_complete_sessions": false,
+          "output_tokens": null,
+          "token_count_scope": null,
+          "total_tokens": null,
+          "usage_complete_observed": null
+        },
+        "seconds": 413.55316729005426,
+        "status": "retained_report_read",
+        "task_completed_reported": false,
+        "trial": "largest-eigenval__cWPR2Dk",
+        "usage_by_phase": {
+          "coding": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 1,
+              "cached_input_tokens": 1,
+              "input_tokens": 1,
+              "output_tokens": 1,
+              "reasoning_output_tokens": 1,
+              "total_tokens": 1
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "outer_router_calls": 1,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 1,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": true
+          },
+          "planning": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "reasoning_output_tokens": 0,
+              "total_tokens": 0
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 1536,
+              "input_tokens": 13403,
+              "output_tokens": 8408,
+              "reasoning_output_tokens": 6563,
+              "total_tokens": 23347
+            },
+            "outer_router_calls": 1,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 1,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": true
+          }
+        },
+        "verifier_result_retained": true
+      }
+    ]
+  },
+  "prior": {
+    "artifact_bindings": [
+      {
+        "bytes": 3343,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/config.json",
+        "sha256": "a43344773e9747694cc6086ee0d8d3cc4a8b1d0deb529278e63785a9381a4387"
+      },
+      {
+        "bytes": 11572,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__w9iDFMD/result.json",
+        "sha256": "e3ce7d4c5b971d179603e6c9e8df04882a5c4512525e0377181502d04d1a3b73"
+      },
+      {
+        "bytes": 162704,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__w9iDFMD/agent/supervisor-result.json",
+        "sha256": "9ea147ba39b3d238f01d73ebdbf02e526a77af927eaa124960e7fb33536c9db6"
+      }
+    ],
+    "controls": {
+      "candidate_rounds": 2,
+      "capsule_budget": "legacy",
+      "coding_reply_mode": "legacy",
+      "doctor_coding_policy": "doctor-coding-two-attempts@1",
+      "grok_coding_max_turns": null,
+      "numerical_formalization_profile": null,
+      "provider_profile": "grok-4.7-cli-1.0.46@1",
+      "resource_profile": "source384-5cpu-20gib-formalization@1",
+      "semantic_metadata_view": "legacy",
+      "semantic_transport_schema": "supervisor-semantic-router-input@1",
+      "semantic_working_set": "legacy",
+      "source_edit_mode": "disabled",
+      "source_view_profile": "identity@1"
+    },
+    "directory": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01",
+    "status": "observed",
+    "trials": [
+      {
+        "all_phase_usage": {
+          "all_native_contracts_complete": false,
+          "billing_total_verified": false,
+          "complete_native_totals": {
+            "cache_write_input_tokens": null,
+            "cached_input_tokens": null,
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_output_tokens": null,
+            "total_tokens": null
+          },
+          "missing_categories": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 0
+          },
+          "observed_subtotals": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 1561088,
+            "input_tokens": 143842,
+            "output_tokens": 59478,
+            "reasoning_output_tokens": 38897,
+            "total_tokens": 1764408
+          },
+          "outer_router_calls": 2,
+          "reasoning_is_separate_not_added_to_total": true,
+          "receipts": 2,
+          "retained_aggregate_completeness_agrees": false,
+          "unreceipted_attempt_reported": false
+        },
+        "baseline_source_audit": {
+          "candidate_context_counts": {
+            "delivered_bytes": 0,
+            "delivered_pages": 0,
+            "prepared_bytes": 0,
+            "prepared_pages": 0
+          },
+          "counts": {
+            "accepted_requests": 1,
+            "delivered_pages": 1,
+            "delivered_response_bytes": 2397,
+            "delivered_responses": 1,
+            "delivered_source_bytes": 0,
+            "prepared_pages": 1,
+            "prepared_source_bytes": 0,
+            "request_hash_count": 1,
+            "response_bytes": 2397,
+            "response_hash_count": 1,
+            "sessions": 1,
+            "unique_request_hash_count": 1,
+            "unique_response_hash_count": 1
+          },
+          "prior_receipt_matches_reported": [
+            false
+          ],
+          "provider_tokens": null,
+          "reason": "matched_owner_session_accounting",
+          "schema": "terminal-source-view-observation@1",
+          "status": "observed",
+          "total_token_savings_measured": false
+        },
+        "candidate_source_audit": {
+          "prior_receipt_matches_reported": [],
+          "provider_tokens": null,
+          "reason": "no_candidate_round_router_observation",
+          "schema": "terminal-candidate-round-observation@1",
+          "session_scope": "candidate_round_sessions_only",
+          "status": "not_selected",
+          "total_token_savings_measured": false
+        },
+        "continuation": {
+          "candidate_receipts": 0,
+          "continuation_supported_by_retained_report": false,
+          "in_container_accounting_agrees": false,
+          "independent_owner_replay_performed": false,
+          "native_accounting": {
+            "complete_usage_established": false,
+            "doctor_attempts_reserved": [
+              1
+            ],
+            "doctor_coding_policy": "doctor-coding-two-attempts@1",
+            "doctor_coding_policy_sha256": "e48c269e24ddbddf048220af2532fbb70ebd8cceeefd8cfe6b3f22cf49610e89",
+            "owner_lifecycle_sha256": "f289ecde9b2d9b3fbbb1f232a074939e8f67748de74625bc114c41621e2b9e38",
+            "potential_unreceipted_attempt": false,
+            "provider_internal_calls_bounded": false,
+            "reason": "each_started_child_has_distinct_router_receipt",
+            "rounds": [
+              {
+                "possible_unreceipted_attempt": false,
+                "process_started": true,
+                "receipt_observed": true,
+                "round_number": 1
+              }
+            ],
+            "schema": "terminal-candidate-attempt-accounting@1",
+            "status": "matched_round_receipts",
+            "total_cost_bounded": false,
+            "total_tokens_bounded": false
+          },
+          "two_coding_router_calls_joined": false
+        },
+        "duplicate_receipts_ignored": 0,
+        "input_audit": {
+          "all_observed_coding_inputs_verified": null,
+          "coding_receipts_seen": 1,
+          "prior_receipt_matches_reported": [],
+          "reason": "no_usable_coding_receipt",
+          "schema": "terminal-final-context-audit@1",
+          "status": "unknown",
+          "usable_coding_receipts": 0
+        },
+        "invocations": [
+          {
+            "candidate_preflight": {},
+            "input_representation": {},
+            "invocation_id": "b49c7c26dbf747e4adee26b963494811",
+            "model": "grok-4.7",
+            "model_prompt_bytes": 26168,
+            "native_cli": {
+              "exit_code": 0,
+              "num_turns": 1,
+              "stop_reason": "end_turn"
+            },
+            "native_prompt_bytes": 26168,
+            "native_usage": {
+              "arithmetic_valid": true,
+              "counters": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 1536,
+                "input_tokens": 13403,
+                "output_tokens": 7355,
+                "reasoning_output_tokens": 5643,
+                "total_tokens": 22294
+              },
+              "retained_native_fields": {
+                "billing_total_verified": false,
+                "cache_included_in_input": false,
+                "observed_final_usage_records": 1,
+                "schema": "native-grok-final-usage@1",
+                "task_complete_observed": true,
+                "totals_scope": "native_final_envelope",
+                "usage_available": true,
+                "usage_complete_observed": null,
+                "usage_observation_sha256": "07a538aa80d503144782d9c839ed16386777c2e26f5cb5ef790db9745d79ed52"
+              },
+              "usage_complete_under_native_contract": null
+            },
+            "phase": "planning",
+            "prompt_bytes": 26168,
+            "provider": "grok_cli",
+            "requested_output_tokens": 4096,
+            "router_calls": 1,
+            "router_prompt_bytes": 26168,
+            "status": "provider_returned",
+            "timeout_seconds": 600
+          },
+          {
+            "candidate_preflight": {},
+            "input_representation": {},
+            "invocation_id": "1e9bcfce4950418788b1572ebf2b9b93",
+            "model": "grok-4.7",
+            "model_prompt_bytes": 66474,
+            "native_cli": {
+              "exit_code": 0,
+              "num_turns": 27,
+              "stop_reason": "end_turn"
+            },
+            "native_prompt_bytes": 67636,
+            "native_usage": {
+              "arithmetic_valid": true,
+              "counters": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 1559552,
+                "input_tokens": 130439,
+                "output_tokens": 52123,
+                "reasoning_output_tokens": 33254,
+                "total_tokens": 1742114
+              },
+              "retained_native_fields": {
+                "billing_total_verified": false,
+                "cache_included_in_input": false,
+                "observed_final_usage_records": 1,
+                "schema": "native-grok-final-usage@1",
+                "task_complete_observed": true,
+                "totals_scope": "native_final_envelope",
+                "usage_available": true,
+                "usage_complete_observed": null,
+                "usage_observation_sha256": "a04b944d336f56137747e4b41fc55274221d7368af489bada3487d1b27ef50c5"
+              },
+              "usage_complete_under_native_contract": null
+            },
+            "phase": "coding",
+            "prompt_bytes": 67636,
+            "provider": "grok_cli",
+            "requested_output_tokens": 4096,
+            "router_calls": 1,
+            "router_prompt_bytes": 65584,
+            "status": "provider_returned",
+            "timeout_seconds": 1800
+          }
+        ],
+        "official_reward": 0.0,
+        "phase_seconds": {
+          "context_seconds": 3.382757871062495,
+          "doctor_seconds": 1.5460113779408857,
+          "initial_context_seconds": 14.17684020998422,
+          "planning_seconds": 88.99010715994518,
+          "post_publication_refresh_seconds": 17.00502405606676,
+          "prepare_seconds": 0.7148014630656689
+        },
+        "retained_aggregate_usage": {
+          "all_invocations_receipted": true,
+          "billing_total_verified": false,
+          "cache_included_in_input": false,
+          "cache_write_input_tokens": 0,
+          "cached_input_tokens": 1561088,
+          "harbor_usage_exportable": false,
+          "input_tokens": 143842,
+          "native_scoped_usage_complete_observed": null,
+          "observed_complete_sessions": true,
+          "output_tokens": 59478,
+          "token_count_scope": "native_final_envelope",
+          "total_tokens": 1764408,
+          "usage_complete_observed": null
+        },
+        "seconds": 984.9742090069922,
+        "status": "retained_report_read",
+        "task_completed_reported": true,
+        "trial": "largest-eigenval__w9iDFMD",
+        "usage_by_phase": {
+          "coding": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "reasoning_output_tokens": 0,
+              "total_tokens": 0
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 1559552,
+              "input_tokens": 130439,
+              "output_tokens": 52123,
+              "reasoning_output_tokens": 33254,
+              "total_tokens": 1742114
+            },
+            "outer_router_calls": 1,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 1,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": false
+          },
+          "planning": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "reasoning_output_tokens": 0,
+              "total_tokens": 0
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 1536,
+              "input_tokens": 13403,
+              "output_tokens": 7355,
+              "reasoning_output_tokens": 5643,
+              "total_tokens": 22294
+            },
+            "outer_router_calls": 1,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 1,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": false
+          }
+        },
+        "verifier_result_retained": true
+      }
+    ]
+  },
+  "provider_calls_by_reader": 0,
+  "raw_prompts_or_provider_text_exported": false,
+  "reader_sha256": "b6a390fa0c92d624ee77afa98aeb34e50e43a1021ce1abf5cc342ad7a9d76a1e",
+  "recipe_bindings": [
+    {
+      "bytes": 146782,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/recipe.json",
+      "sha256": "2a0be4a8398720be8657e06f18a256711e4d23cd91d6e304e0fcd8c0c4d29a7c"
+    }
+  ],
+  "schema": "doctor-dispatch-pilot-readout@1",
+  "total_token_savings_established": false
+}

@@ -1,0 +1,210 @@
+{
+  "docker_calls": 0,
+  "files": [
+    {
+      "bytes": 17532,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/run.py",
+      "sha256": "5297158682025e2ffa1ef56b90b23853f1c161c4caf99902e7e690a144b8be17"
+    },
+    {
+      "bytes": 3184,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/prepare_draft.py",
+      "sha256": "ea3dba783fe4ec376152b6f8ecb715dad810cd01dfede506f31d3140bf637f31"
+    },
+    {
+      "bytes": 4328,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/recipe-draft.json",
+      "sha256": "5fdd1ed67c9c5260e690f530a1dd6e653f50958f950ee178b78c9603789e7fa4"
+    },
+    {
+      "bytes": 1693,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/environment.json",
+      "sha256": "31994cbd317b7ef6f108f14aed01799319775607ace193c61ad51b9f425ef7c0"
+    },
+    {
+      "bytes": 375,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/largest-eigenval-public-profile.json",
+      "sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3"
+    },
+    {
+      "bytes": 4765,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/closed_export.py",
+      "sha256": "2cd4ac9e0a7d3fed5d9f4aaeb33321da1890d42970994d9ef8eefc0dfbc5aa41"
+    },
+    {
+      "bytes": 4857,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/local-asset-readiness-draft01.json",
+      "sha256": "b9d9de822c04b4ec9ca3c5d1c8f925add7005f907240398741df9a9aaea1ab8c"
+    },
+    {
+      "bytes": 4016,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/test_run.py",
+      "sha256": "2d59122a8fc3fa802850734c1039e42ac2e40351703e60a507b926af205824c6"
+    },
+    {
+      "bytes": 6527,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/test_closed_export.py",
+      "sha256": "ee24a02237cafb9cbd85c2a9d53069f234fdd46bfbbdd2278b6a16744551451c"
+    },
+    {
+      "bytes": 2090,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/scaffold-origin.json",
+      "sha256": "f0f94109a32af90b304ef2ceb2d806eaa8decee288efc4740e3c36252b5e2bcc"
+    },
+    {
+      "bytes": 4033,
+      "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/qualification-final01.json",
+      "sha256": "f3999f0b3228d05fcccb590fa6650d57883406c59ed476ad5b5fe41743a1a3ef"
+    }
+  ],
+  "inputs": [
+    {
+      "bytes": 1739,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+      "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+    },
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "bytes": 493355,
+      "path": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    },
+    {
+      "bytes": 142867512,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+      "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e"
+    },
+    {
+      "bytes": 155005253,
+      "path": "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    },
+    {
+      "bytes": 190,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json",
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+    },
+    {
+      "bytes": 583,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json",
+      "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+    },
+    {
+      "bytes": 66746168,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    {
+      "bytes": 385,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json",
+      "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+    },
+    {
+      "bytes": 57,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json",
+      "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+    },
+    {
+      "bytes": 125,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json",
+      "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+    },
+    {
+      "bytes": 711661,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json",
+      "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+    },
+    {
+      "bytes": 394,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json",
+      "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+    },
+    {
+      "bytes": 231508,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt",
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    },
+    {
+      "bytes": 32143862,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    {
+      "bytes": 19861758,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    {
+      "bytes": 29708110,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    },
+    {
+      "bytes": 1032,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/task.toml",
+      "sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830"
+    },
+    {
+      "bytes": 307,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/Dockerfile",
+      "sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94"
+    }
+  ],
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 4033,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/qualification-final01.json",
+    "sha256": "f3999f0b3228d05fcccb590fa6650d57883406c59ed476ad5b5fe41743a1a3ef"
+  },
+  "recipe": {
+    "bytes": 4847,
+    "path": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/recipe.json",
+    "sha256": "660d6f3a27d6d5dcf43362099f612643ac417c097a204761dc8961d32777ffc0"
+  },
+  "roots": {
+    "datasets": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014"
+    },
+    "kit": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+    },
+    "source": {
+      "commit": "24de5a01c43aede768426cca794e36f68c5d3fe4",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-tool-event-census-20261015"
+    }
+  },
+  "schema": "tool-event-public-diagnostic-source-freeze@1",
+  "source_frozen_before_execution": true,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "11f01e729a7230a5a3df61301e5066868d6ef4a0a299e564218ac2e8b9e27ae9",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "18a023344317c76345a0b0ed8510d2a3846b5a7772b6ea7b14e8d2d722638758",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "3aaef733917340645c511d8d967bbd70554535275e393dab2cd15c0ce8c8608b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "5690bf5ff65b56de469bfc2fd3a4c249eb4c68a4d1837df6389954a2d6cc709a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "59cd95d263197520c26765d94d39454c87138970a1315c187f38b3b194ef8aa0",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "51316911a5cf9b17b9aa67ef95d03ce5833b0dfa986d0b7a4e1168dac6daf25d",
+    "ipfs_accelerate_py/cli_runtime/grok_tool_events.py": "da6fbbef8ac95ef5b9785b5fccfd962af983c010ac8aa45780f24182d3490dbc",
+    "ipfs_accelerate_py/llm_router.py": "1b6667ab6149ef547c52f1ad85c41fbd8eea9ddc544a563dc97101cf586e35bd",
+    "test/api/test_grok_stream_capture.py": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+    "test/api/test_grok_stream_router.py": "ceff20db5c5ade73bf384949ab3a17b1e09071447557eaa732ffd8ce7c234036",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_tool_event_capture.py": "c180e7910667f830d50fe776205b2a0e583fc6e8de2f180c78a871b6a68c59f5",
+    "test/api/test_grok_tool_events.py": "67a56e3bbbae5d3a1d26ac51cc6578ad53143f5a2b44d55186850dda1e3b0064",
+    "test/api/test_router_implementation_runner.py": "27f118ee04d6ad956d35d68a6c7a21ff956e627a9c23b0432c8225b2daccf0a1"
+  }
+}

@@ -76,6 +76,23 @@ def test_worker_legacy_route_does_not_add_a_handoff(tmp_path):
     assert not any("formalization-handoff" in arg for arg in json.loads(result.stdout)["argv"])
 
 
+def test_worker_preserves_explicit_grok_bound_with_candidate_handoff(tmp_path):
+    args = ["--provider", "grok_cli", "--model", "grok-4.7", "--semantic-repository", "/app",
+        "--grok-coding-max-turns", "8",
+        "--candidate-dispatch-handoff", "/opt/ipfs-supervisor/worker-observations/candidate.json",
+        "--candidate-dispatch-handoff-sha256", "a"*64,
+        "--candidate-round-descriptor", "/opt/ipfs-supervisor/worker-observations/descriptor.json",
+        "--candidate-round-descriptor-sha256", "b"*64]
+    result = _run(tmp_path, args)
+    assert result.returncode == 0, result.stderr.decode()
+    forwarded = json.loads(result.stdout)["argv"]
+    for flag in ("--grok-coding-max-turns", "--candidate-dispatch-handoff",
+                 "--candidate-dispatch-handoff-sha256", "--candidate-round-descriptor",
+                 "--candidate-round-descriptor-sha256"):
+        assert forwarded.count(flag) == 1
+        assert forwarded[forwarded.index(flag)+1] == args[args.index(flag)+1]
+
+
 def _numerical_args():
     return ["--semantic-repository", "/app", "--source-formalization-handoff", "/sealed.json",
         "--source-formalization-handoff-sha256", "a" * 64,

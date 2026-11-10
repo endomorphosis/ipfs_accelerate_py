@@ -4506,3 +4506,23 @@ def test_retired_reconciliation_operator_hold_precedes_any_process_probe(tmp_pat
         runner=lambda *a, **kw: pytest.fail("process probe crossed operator hold"),
         retired_job_sha256=binding)
     assert result[0]["reason"] == "operator_hold" and path.read_bytes() == before
+
+
+@pytest.mark.parametrize("unit", [None, "", "foreign", "foreign.timer", "--all.service",
+    "../foreign.service", "a/b.service", "a*.service", "a%u.service", "a service.service", "a\n.service", 3])
+def test_configured_unit_invalid_names_refuse_before_reclaim_launch_or_worker_commands(tmp_path, monkeypatch, unit):
+    cfg = config(tmp_path)
+    cfg["repair_worker"]["job_unit"] = unit
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": "queued", "attempts": 1, "next_attempt_at": 9000})
+    before = path.read_bytes()
+    monkeypatch.setattr(repair, "load_config", lambda *a: cfg)
+    monkeypatch.setattr(repair, "command", lambda *a, **kw: pytest.fail("invalid unit cannot invoke commands"))
+    monkeypatch.setattr(repair.subprocess, "Popen", lambda *a, **kw: pytest.fail("invalid unit cannot launch a process"))
+    for operation in [lambda: repair.should_reclaim_repair_unit(cfg),
+        lambda: repair.run_job(cfg, cfg["boards"][0], path),
+        lambda: repair.main(["run", "--config", str(tmp_path / "config.json"), "--once"])]:
+        with pytest.raises(ValueError, match="job_unit must be a literal service unit"):
+            operation()
+        assert path.read_bytes() == before
+    assert not (tmp_path / "repair-worker.lock").exists()

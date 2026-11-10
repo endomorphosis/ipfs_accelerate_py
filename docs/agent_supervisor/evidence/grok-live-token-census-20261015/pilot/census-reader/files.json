@@ -1,0 +1,41 @@
+{
+  "files": [
+    {
+      "bytes": 8387,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/declared-T-readout.json",
+      "sha256": "fe5227c6b5853a32a4d7a77ba8eebd6d860b7086c74d4e9f0f1282d85b4dccf0"
+    },
+    {
+      "bytes": 1822,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualification.json",
+      "sha256": "2362310a745bdde79028c46ae4e1db487f4745ac0359ca3c4fcea79326047b32"
+    },
+    {
+      "bytes": 1936,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualify_census.py",
+      "sha256": "10eb1c8676ee396eb1354e8360ceaf0745a810f6c62853c7ab9f75d06af6bc22"
+    },
+    {
+      "bytes": 9391,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/read_census.py",
+      "sha256": "7d37151a114661474fcb8edd6056bfe9c0c43b57016c1d206f73131948d2b1d0"
+    },
+    {
+      "bytes": 7159,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/static-analysis.json",
+      "sha256": "d07f66f6fa5cea3ccfc347f33c371b5a6240ed08ee13173277faa6bb48fb5558"
+    },
+    {
+      "bytes": 10467,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/test_read_census.py",
+      "sha256": "8f6c085000991d0c6d94cad280fc8d1a9c5e929beafcd79d194435ec26c470c6"
+    },
+    {
+      "bytes": 1927,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/tests-final.log",
+      "sha256": "b5c61abedd825c148a4ea4f8eb8a25f61e681063a4b20d20cc63cac42be23970"
+    }
+  ],
+  "provider_calls": 0,
+  "schema": "closed-census-reader-files@1"
+}

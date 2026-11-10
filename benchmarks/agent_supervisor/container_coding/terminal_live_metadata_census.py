@@ -112,7 +112,9 @@ def _pending_task(*, state, admission, verified):
     return task, contract
 
 
-def _owner_snapshot(*, state, require_source384):
+def _owner_snapshot(*, state, require_source384, planning_mode="model"):
+    if planning_mode not in {"model", "declared-contract@1"}:
+        raise ValueError("explicit supported census planning provenance required")
     from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
     from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import DirectoryScanReceipt, PromptWorkflowRequest
     from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import load_task_context_selection
@@ -143,22 +145,29 @@ def _owner_snapshot(*, state, require_source384):
     provider = receipt.get("provider") or {}
     parsed = receipt.get("parse") or {}
     initial_binding = planning.get("initial_indexed_context") or {}
-    if (planning.get("schema") != "terminal-indexed-planner-result@1"
-            or planning.get("qualified") is not True or planning.get("provider_calls") != 1
-            or planning.get("planning_strategy") not in {"direct", "intent_coverage"}
-            or planning.get("task_cids") != [task["task_cid"]]
-            or planning.get("goals") != len(verified["graph"].goals)
-            or planning.get("tasks") != 1 or receipt.get("outcome") != "provider"
-            or receipt.get("fallback", {}).get("used") is not False
-            or receipt.get("plan_root_cid") != verified["graph"].content_id
-            or receipt.get("request_cid") != PromptWorkflowRequest.from_dict(prepared["request"]).request_cid
-            or receipt.get("scan_cid") != DirectoryScanReceipt.from_dict(prepared["scan"]).scan_cid
-            or provider.get("attempted") is not True or provider.get("status") != "succeeded"
-            or provider.get("provider_id") != prepared["provider"] or provider.get("model_id") != prepared["model"]
-            or parsed.get("status") != "succeeded" or parsed.get("plan_root_cid") != verified["graph"].content_id
-            or initial_binding.get("supplied_to_router") is not True
-            or any(planning.get(key) != prepared[key] for key in ("provider", "model", "reasoning_effort"))):
-        raise ValueError("persisted native provider planning provenance differs")
+    if planning_mode == "declared-contract@1":
+        from .terminal_working_set_census import _verify_declared_planning
+        retained["declared-contract-planning-receipt"] = _read_metadata(
+            state / "declared-contract-planning-receipt.json")
+        _verify_declared_planning(prepared=prepared, planning=planning, verified=verified,
+            task=task, retained_receipt=retained["declared-contract-planning-receipt"])
+    else:
+        if (planning.get("schema") != "terminal-indexed-planner-result@1"
+                or planning.get("qualified") is not True or planning.get("provider_calls") != 1
+                or planning.get("planning_strategy") not in {"direct", "intent_coverage"}
+                or planning.get("task_cids") != [task["task_cid"]]
+                or planning.get("goals") != len(verified["graph"].goals)
+                or planning.get("tasks") != 1 or receipt.get("outcome") != "provider"
+                or receipt.get("fallback", {}).get("used") is not False
+                or receipt.get("plan_root_cid") != verified["graph"].content_id
+                or receipt.get("request_cid") != PromptWorkflowRequest.from_dict(prepared["request"]).request_cid
+                or receipt.get("scan_cid") != DirectoryScanReceipt.from_dict(prepared["scan"]).scan_cid
+                or provider.get("attempted") is not True or provider.get("status") != "succeeded"
+                or provider.get("provider_id") != prepared["provider"] or provider.get("model_id") != prepared["model"]
+                or parsed.get("status") != "succeeded" or parsed.get("plan_root_cid") != verified["graph"].content_id
+                or initial_binding.get("supplied_to_router") is not True
+                or any(planning.get(key) != prepared[key] for key in ("provider", "model", "reasoning_effort"))):
+            raise ValueError("persisted native provider planning provenance differs")
     initial = load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
     # Reconstruct the historical planner projection's exact bytes. Its empty
     # world was current before admission; current admitted-world freshness is
@@ -405,12 +414,13 @@ def _worker_readable_directory(path):
 
 
 @contextmanager
-def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context: bool = True,
+def _prepare_terminal_census(*, state: Path, include_doctor_context: bool = True,
                                           require_source384: bool = True, worktree_root: Path | None = None,
                                           worker_writable: bool = False, worker_group_gid: int | None = None,
                                           include_formal_status_census: bool = False,
                                           formal_status_owner: TerminalFormalStatusOwner | None = None,
-                                          semantic_metadata_view: str = "common-bindings@1"):
+                                          semantic_metadata_view: str = "common-bindings@1",
+                                          planning_mode: str = "model"):
     """Yield existing live owner inputs and an owned detached census workspace.
 
     ``require_source384=False`` supports native authored lexical boundary tests;
@@ -429,8 +439,14 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import managed_git_worktree
     from .indexed_doctor_lifecycle import _context
 
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}:
+    if type(planning_mode) is not str or planning_mode not in {"model", "declared-contract@1"}:
+        raise ValueError("explicit supported census planning provenance required")
+    declared = planning_mode == "declared-contract@1"
+    metadata_views = {"legacy"} if declared else {"common-bindings@1", "common-bindings-instruction@1"}
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in metadata_views:
         raise ValueError("explicit supported census metadata view required")
+    if declared and (include_formal_status_census or formal_status_owner is not None):
+        raise ValueError("declared census does not admit a provider formal-status observation")
     if (type(include_doctor_context) is not bool or type(require_source384) is not bool
             or type(include_formal_status_census) is not bool
             or type(worker_writable) is not bool
@@ -442,7 +458,7 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         raise ValueError("explicit typed host owner requires the formal-status census selection")
     state = Path(state).absolute()
     state_identity = _owned_directory(state)
-    observed = _owner_snapshot(state=state, require_source384=require_source384)
+    observed = _owner_snapshot(state=state, require_source384=require_source384, planning_mode=planning_mode)
     prepared, admission, verified, task, indexed = (observed[key] for key in
         ("prepared", "admission", "verified", "task", "indexed"))
     root = Path(prepared["repository"])
@@ -456,7 +472,7 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
     head = prep._git(root, "rev-parse", "HEAD")
     if head.decode().strip() != verified["manifest"]["baseline_commit"]:
         raise ValueError("live census repository HEAD differs from admission")
-    private = state / "live-metadata-census"
+    private = state / ("live-working-set-census" if declared else "live-metadata-census")
     private.mkdir(mode=0o700)
     private_identity = _owned_directory(private)
     allocation_parent = private if worktree_root is None else Path(worktree_root).absolute()
@@ -499,7 +515,7 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                 raise ValueError("native pending prompt did not consume the admitted current context")
         finally:
             daemon.close_event_runtime()
-    current = _owner_snapshot(state=state, require_source384=require_source384)
+    current = _owner_snapshot(state=state, require_source384=require_source384, planning_mode=planning_mode)
     if (current["database_identity"] != observed["database_identity"]
             or current["retained"] != observed["retained"] or current["task"] != task
             or current["contract"] != observed["contract"]):
@@ -576,6 +592,12 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                           formal_status_owner_observation_passes=1,
                           formal_status_native_observation_totals={
                               name: formal_status[name] for name in formal_operation_counts})
+    if declared:
+        report.update(schema="terminal-working-set-census-context@1",
+            graph_provenance="persisted-native-declared-contract-plan",
+            prior_planning_provider_calls=0, initial_context_supplied_to_router=False,
+            declared_contract_planning_receipt_sha256=_identity(
+                observed["retained"]["declared-contract-planning-receipt"]))
     options = {"purpose": "coding", "semantic_repository": root,
         "semantic_transport_schema": "supervisor-semantic-router-input@1",
         "semantic_metadata_view": semantic_metadata_view, "census_only": True,
@@ -585,7 +607,8 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         residual = doctor["residual_context"]
         options.update(doctor_residual_artifact=Path(residual["artifact"]),
             doctor_residual_sha256=residual["sha256"], doctor_residual_task_cid=task["task_cid"])
-    workspace = allocation_parent / ("terminal_live_metadata_census_" + uuid.uuid4().hex)
+    workspace = allocation_parent / (("terminal_working_set_census_" if declared
+                                      else "terminal_live_metadata_census_") + uuid.uuid4().hex)
     allocation = {}
 
     def check_workspace():
@@ -673,7 +696,8 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         report["detached_same_common_dir_checked"] = True
         try:
             yield {"repository": root, "state": state, "workspace": workspace,
-                   "prompt_artifact": prompt_path, "runner_kwargs": options, "metadata": report}
+                   "prompt_artifact": prompt_path, "private_artifact_dir": private,
+                   "runner_kwargs": options, "metadata": report}
         finally:
             # A caller exception never skips current owner/source custody checks.
             if include_formal_status_census:
@@ -701,7 +725,7 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
                     # rerun. Restore its canonical refusal, never caller counts.
                     formal_bound_report.clear()
                     formal_bound_report.update(json.loads(formal_bound_initial_json))
-            final = _owner_snapshot(state=state, require_source384=require_source384)
+            final = _owner_snapshot(state=state, require_source384=require_source384, planning_mode=planning_mode)
             check_workspace()
             if (final["database_identity"] != observed["database_identity"]
                     or final["retained"] != observed["retained"] or final["task"] != task
@@ -724,3 +748,17 @@ def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context
         if workspace.exists() or "worktree " + str(workspace) in registered:
             raise ValueError("guarded census workspace cleanup incomplete")
         report["allocated_worktree_removed"] = True
+
+
+def prepare_terminal_live_metadata_census(*, state: Path, include_doctor_context: bool = True,
+                                          require_source384: bool = True, worktree_root: Path | None = None,
+                                          worker_writable: bool = False, worker_group_gid: int | None = None,
+                                          include_formal_status_census: bool = False,
+                                          formal_status_owner: TerminalFormalStatusOwner | None = None,
+                                          semantic_metadata_view: str = "common-bindings@1"):
+    """Observe only admitted model-planned metadata through the original lane."""
+    return _prepare_terminal_census(state=state, include_doctor_context=include_doctor_context,
+        require_source384=require_source384, worktree_root=worktree_root,
+        worker_writable=worker_writable, worker_group_gid=worker_group_gid,
+        include_formal_status_census=include_formal_status_census,
+        formal_status_owner=formal_status_owner, semantic_metadata_view=semantic_metadata_view)

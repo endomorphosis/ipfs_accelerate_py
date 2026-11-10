@@ -1,0 +1,42 @@
+{
+  "archive": {
+    "bytes": 1411467546,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/runtime-01/runtime.tar.gz",
+    "sha256": "fcc74dd9af41e6b5c81c39e7aaa6bc97c24141b588157e5323b5dcd87ff02a74"
+  },
+  "automatic_retries": 0,
+  "causal_savings_claimed": false,
+  "collect_argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/run.py",
+    "collect"
+  ],
+  "execution_started": false,
+  "launch_argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/run.py",
+    "execute"
+  ],
+  "manifest": {
+    "bytes": 6225257,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/runtime-01/manifest.json",
+    "sha256": "b209bd5c15ec362b869e98ef49e78431f9e8ddfd17a4ed1f22d1a167eb8de1a1"
+  },
+  "matched_runtime_comparison": false,
+  "prepared_lock": {
+    "bytes": 3123,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/prepared-lock.json",
+    "sha256": "1e0b55bd89ec090e03ff139b067bfd13c9f5ca002ac42d1a2dad24e01a05031e"
+  },
+  "provider_calls_during_preparation": 0,
+  "provider_fallback": false,
+  "repaired_production_files_verified": [
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py"
+  ],
+  "schema": "repaired-doctor-launch-ready@1",
+  "source_commit": "3ee0d2901b9b61234ebb3efb150513e505ada6ac"
+}

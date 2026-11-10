@@ -439,5 +439,42 @@ class GrokPromptAccountingTests(unittest.TestCase):
         self.assertEqual(receipt["native_prompt_accounting"]["num_turns"]["value"], 3)
 
 
+
+
+class StructuredGrokMetadataIsolationTests(unittest.TestCase):
+    def _check_malformed_receipts_are_not_stringified(self, selected):
+        from ipfs_accelerate_py.cli_runtime import cli_metadata
+
+        stringified = []
+        class PrivatePayload:
+            def __str__(self):
+                stringified.append(selected)
+                return "AUTHORED_PRIVATE_PAYLOAD_MUST_NOT_BE_EXPORTED"
+        payload = {
+            "model_id": "authored-model",
+            "native_grok_prompt_accounting": {"schema": "invalid", "nested": {}},
+            "native_grok_pruning": {"schema": "invalid", "nested": {}},
+        }
+        private = PrivatePayload()
+        payload[selected]["nested"] = private
+        try:
+            cli_metadata.set_last_cli_observation("grok_cli", payload)
+            observed = cli_metadata.get_last_cli_observation("grok_cli")
+            self.assertEqual(observed["model_id"], "authored-model")
+            self.assertNotIn("native_grok_prompt_accounting", observed)
+            self.assertNotIn("native_grok_pruning", observed)
+            self.assertEqual(stringified, [])
+            self.assertNotIn("AUTHORED_PRIVATE_PAYLOAD_MUST_NOT_BE_EXPORTED", json.dumps(observed))
+            self.assertIs(payload[selected]["nested"], private)
+        finally:
+            cli_metadata.set_last_cli_observation("grok_cli", {})
+
+    def test_invalid_prompt_accounting_does_not_enter_generic_metadata_stringification(self):
+        self._check_malformed_receipts_are_not_stringified("native_grok_prompt_accounting")
+
+    def test_invalid_pruning_does_not_enter_generic_metadata_stringification(self):
+        self._check_malformed_receipts_are_not_stringified("native_grok_pruning")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,52 @@
+{
+  "disabled": true,
+  "docker_calls": 0,
+  "new_archive_required": true,
+  "new_runtime_commit_required": true,
+  "new_runtime_qualification_required": true,
+  "previous_result_or_private_state_reused": false,
+  "provider_calls": 0,
+  "schema": "tool-event-diagnostic-scaffold-origin@1",
+  "source_files": [
+    {
+      "bytes": 16292,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/run.py",
+      "sha256": "39df1934147d60d2099f01fab3ed9c282cdc60532590d2cc4a9545a5f5967d97"
+    },
+    {
+      "bytes": 17733,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/closed_export.py",
+      "sha256": "ecffa74dc105caafd6f49164561c18b752ac5da9316b618e22ad3a1e7abcfe3e"
+    },
+    {
+      "bytes": 3207,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/test_run.py",
+      "sha256": "08d1ebfcae4462fd876ead4c6eecbe5dce11cc77df23f6f52e3b4d8aac4ff55b"
+    },
+    {
+      "bytes": 16408,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/test_closed_export.py",
+      "sha256": "c74913122d667d8ca5d704ef8d9bf11677eda2fc288ecc8a2b4677186c284374"
+    },
+    {
+      "bytes": 4222,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/recipe-draft.json",
+      "sha256": "57e348294541b4553efa7114906dd7ed57fcdafe9ff5d5ccce4f9cf3dec03caf"
+    },
+    {
+      "bytes": 1690,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/environment.json",
+      "sha256": "aab89ecf5882c5477d16a15692e09ee40c4bc26297dfdfb388f1114cfbe7b15c"
+    },
+    {
+      "bytes": 4857,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/local-asset-readiness-draft01.json",
+      "sha256": "b9d9de822c04b4ec9ca3c5d1c8f925add7005f907240398741df9a9aaea1ab8c"
+    },
+    {
+      "bytes": 375,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/largest-eigenval-public-profile.json",
+      "sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3"
+    }
+  ]
+}

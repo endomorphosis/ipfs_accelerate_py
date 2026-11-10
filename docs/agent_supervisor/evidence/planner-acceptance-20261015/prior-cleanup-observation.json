@@ -1,0 +1,9 @@
+{
+  "schema": "terminal-pilot-cleanup-observation@1",
+  "observed_at": "2026-10-15T01:00:07.969583+00:00",
+  "container_name": "largest-eigenval__xkxjtrg__env-main-1",
+  "container_cleanup_observed": true,
+  "remaining_container_ids": [],
+  "provider_calls": 0,
+  "service_changes": []
+}

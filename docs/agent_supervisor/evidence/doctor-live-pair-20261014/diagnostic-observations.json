@@ -1,0 +1,375 @@
+{
+  "observations": {
+    "turns128": {
+      "bridge_child_report": null,
+      "official_test_summary": {
+        "failed": 1,
+        "other": 0,
+        "passed": 2,
+        "pending": 0,
+        "skipped": 0,
+        "start": 1792006508.7145832,
+        "stop": 1792006509.0636907,
+        "tests": 3
+      },
+      "official_tests": [
+        {
+          "name": "test_outputs.py::test_eigen_pair",
+          "status": "passed"
+        },
+        {
+          "name": "test_outputs.py::test_dominance_eigenvalue",
+          "status": "passed"
+        },
+        {
+          "name": "test_outputs.py::test_speedup",
+          "status": "failed"
+        }
+      ],
+      "source": {
+        "bytes": 27166,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-final.json",
+        "sha256": "8add7b0fbba5fb79369cb96e5a540c76627fcb6a662fbe4bda111e1564d09105"
+      },
+      "supervisor_result": {
+        "bytes": 162704,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__w9iDFMD/agent/supervisor-result.json",
+        "sha256": "9ea147ba39b3d238f01d73ebdbf02e526a77af927eaa124960e7fb33536c9db6"
+      },
+      "verifier_result": {
+        "bytes": 3321,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__w9iDFMD/verifier/ctrf.json",
+        "sha256": "8b61b7d97041e3a733dbd2acf2c4732a4f88e4e276df4deae7f32b213089db8a"
+      },
+      "worker_rounds": [
+        {
+          "process_started": true,
+          "retirement_observed": true,
+          "returncode": 0,
+          "round_number": 1,
+          "wait_completed": true
+        }
+      ]
+    },
+    "turns8": {
+      "bridge_child_report": {
+        "diagnostic": null,
+        "observation_only": true,
+        "scope": "bounded_native_log_tail",
+        "status": "ambiguous"
+      },
+      "coding_failure": {
+        "error_type": "LLMRouterError",
+        "failure_phase": "provider_invocation",
+        "native_grok_progress": {
+          "callback_errors": 0,
+          "completion_authority": false,
+          "discarded_text_bytes": 127,
+          "duration_seconds": 92.55189000698738,
+          "event_counts": {
+            "auto_compact": 0,
+            "available_commands": 10,
+            "end": 1,
+            "error": 0,
+            "max_turns_reached": 1,
+            "plan": 0,
+            "text": 55,
+            "thought": 206,
+            "tool_call": 9,
+            "tool_call_update": 37,
+            "unknown": 0,
+            "usage": 8
+          },
+          "event_origin_authenticated": false,
+          "events_after_final": 1,
+          "execution_authority": false,
+          "final_envelope_observed": true,
+          "final_event_seconds": 91.02045989700127,
+          "final_event_type": "max_turns_reached",
+          "final_reason_code": "max_turns",
+          "first_event_seconds": 0.20227235998027027,
+          "first_stderr_seconds": 92.54887760197744,
+          "first_stdout_seconds": 0.20227235998027027,
+          "frames": 327,
+          "last_event_seconds": 91.0221583750099,
+          "last_stderr_seconds": 92.54887760197744,
+          "last_stdout_seconds": 91.0221583750099,
+          "malformed_frames": 0,
+          "non_object_frames": 0,
+          "observation_only": true,
+          "oversized_frames": 0,
+          "process_exit_observed": true,
+          "process_exit_seconds": 92.55167821096256,
+          "proof_authority": false,
+          "raw_provider_data_exported": false,
+          "response_usable": false,
+          "retained_text_bytes": 167,
+          "returncode": 1,
+          "schema": "native-grok-stream-progress@2",
+          "stderr_bytes": 25,
+          "stderr_eof": true,
+          "stdout_bytes": 248006,
+          "stdout_eof": true,
+          "stream_complete": false,
+          "stream_tainted": true,
+          "text_bytes": 294,
+          "text_scope": "last_usage_delimited_text_segment",
+          "text_truncated": false,
+          "timed_out": false,
+          "timeout_phase": "none",
+          "tool_name_counts": {
+            "grep": 0,
+            "list_dir": 0,
+            "read_file": 2,
+            "run_terminal_cmd": 0,
+            "search_replace": 0,
+            "todo_write": 0,
+            "unknown": 7
+          },
+          "tool_status_counts": {
+            "completed": 9,
+            "failed": 0,
+            "in_progress": 19,
+            "pending": 9,
+            "unknown": 9
+          },
+          "transport": "streaming-json",
+          "unknown_events": 0,
+          "usage_observations": {
+            "billing_total_verified": false,
+            "counter_semantics": "unverified",
+            "observed_events": 8,
+            "omitted_events": 0,
+            "ordinals_are_turn_ids": false,
+            "raw_provider_data_exported": false,
+            "retained_events": 8,
+            "row_limit": 128,
+            "rows": [
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 5.294335711980239,
+                "event_ordinal": 1,
+                "frame_ordinal": 29,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 1536,
+                  "input_tokens": 27567,
+                  "output_tokens": 389,
+                  "reasoning_tokens": 174,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 7.242293755989522,
+                "event_ordinal": 2,
+                "frame_ordinal": 36,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 29056,
+                  "input_tokens": 1522,
+                  "output_tokens": 35,
+                  "reasoning_tokens": 8,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 24.223621882963926,
+                "event_ordinal": 3,
+                "frame_ordinal": 136,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 30464,
+                  "input_tokens": 1005,
+                  "output_tokens": 1359,
+                  "reasoning_tokens": 890,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 30.64430372195784,
+                "event_ordinal": 4,
+                "frame_ordinal": 146,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 31360,
+                  "input_tokens": 1943,
+                  "output_tokens": 450,
+                  "reasoning_tokens": 144,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 46.93139103904832,
+                "event_ordinal": 5,
+                "frame_ordinal": 190,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 33280,
+                  "input_tokens": 1347,
+                  "output_tokens": 1221,
+                  "reasoning_tokens": 647,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 58.99503868701868,
+                "event_ordinal": 6,
+                "frame_ordinal": 214,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 34560,
+                  "input_tokens": 2225,
+                  "output_tokens": 864,
+                  "reasoning_tokens": 458,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 80.29341510205995,
+                "event_ordinal": 7,
+                "frame_ordinal": 292,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 36736,
+                  "input_tokens": 1522,
+                  "output_tokens": 1503,
+                  "reasoning_tokens": 994,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              },
+              {
+                "after_final": false,
+                "counter_status": "valid",
+                "elapsed_seconds": 90.66491565003525,
+                "event_ordinal": 8,
+                "frame_ordinal": 319,
+                "invalid_counter_fields": 0,
+                "stop_reason": "unknown",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 38144,
+                  "input_tokens": 2227,
+                  "output_tokens": 889,
+                  "reasoning_tokens": 439,
+                  "total_tokens": null
+                },
+                "usage_container": "mapping"
+              }
+            ],
+            "schema": "native-grok-usage-events@1",
+            "selection": "first_usage_events",
+            "summation_permitted": false
+          }
+        },
+        "native_provider_outcome": {
+          "classification_source": "process",
+          "completion_authority": false,
+          "envelope_observed": false,
+          "error_observed": false,
+          "error_subtype": "unknown",
+          "process_outcome": "failed",
+          "raw_provider_data_exported": false,
+          "reason_code": "process_error",
+          "schema": "native-grok-outcome@1",
+          "stop_reason": "unknown"
+        },
+        "native_rollout_usage": null,
+        "provider_failure": {
+          "phase": "provider_invocation",
+          "reason_code": "unknown"
+        }
+      },
+      "official_test_summary": {
+        "failed": 1,
+        "other": 0,
+        "passed": 2,
+        "pending": 0,
+        "skipped": 0,
+        "start": 1792007142.0041587,
+        "stop": 1792007142.3569303,
+        "tests": 3
+      },
+      "official_tests": [
+        {
+          "name": "test_outputs.py::test_eigen_pair",
+          "status": "passed"
+        },
+        {
+          "name": "test_outputs.py::test_dominance_eigenvalue",
+          "status": "passed"
+        },
+        {
+          "name": "test_outputs.py::test_speedup",
+          "status": "failed"
+        }
+      ],
+      "source": {
+        "bytes": 27623,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/readout-final.json",
+        "sha256": "1a4ed947ac67cd0d2b3e6fcec16632670ab9beb8553ec377677eb8d4257a43f1"
+      },
+      "supervisor_result": {
+        "bytes": 132740,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__cWPR2Dk/agent/supervisor-result.json",
+        "sha256": "c8f3a6e3fc5db6e9be8b45cf9dde5ca163bcfda0a01e61f52e7adc16b29b37b7"
+      },
+      "verifier_result": {
+        "bytes": 3317,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__cWPR2Dk/verifier/ctrf.json",
+        "sha256": "b67cc57a83289e4de5ebc663221bbda3e72a951d7f043105597d1b2032ff220b"
+      },
+      "worker_rounds": [
+        {
+          "process_started": true,
+          "retirement_observed": true,
+          "returncode": 1,
+          "round_number": 1,
+          "wait_completed": true
+        },
+        {
+          "process_started": true,
+          "retirement_observed": true,
+          "returncode": 1,
+          "round_number": 2,
+          "wait_completed": true
+        }
+      ]
+    }
+  },
+  "raw_provider_text_exported": false,
+  "schema": "doctor-live-pair-diagnostics@1"
+}

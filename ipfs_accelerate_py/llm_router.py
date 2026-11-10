@@ -8530,6 +8530,15 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
 
             response_format = kwargs.pop("response_format", None)
             stream_progress = kwargs.pop("grok_stream_progress", False)
+            tool_event_census = kwargs.pop("grok_tool_event_census", False)
+            tool_event_schema = kwargs.pop("grok_tool_event_schema", "native-grok-tool-events@1")
+            grok_pruning_profile = kwargs.pop("grok_pruning_profile", "legacy")
+            from .cli_runtime.grok_pruning import validate_grok_pruning_profile
+            validate_grok_pruning_profile(grok_pruning_profile, provider="grok_cli")
+            if grok_pruning_profile != "legacy" and (not structured_cli or not stream_progress
+                    or response_format is not None or len(base_parts) != 1
+                    or base_parts[0] != "/opt/ipfs-supervisor/provider-bin/grok"):
+                raise ValueError("pruning requires the isolated pinned Grok streaming route")
             progress_callback = kwargs.pop("grok_progress_callback", None)
             explicit_frame_budget = "grok_stream_max_frame_bytes" in kwargs
             frame_budget = kwargs.pop("grok_stream_max_frame_bytes", None)
@@ -8540,6 +8549,12 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 validate_max_frame_bytes(frame_budget)
                 if not stream_progress:
                     raise ValueError("grok_stream_max_frame_bytes requires streaming mode")
+            if type(tool_event_census) is not bool or tool_event_census and not stream_progress:
+                raise ValueError("grok_tool_event_census requires a boolean and streaming progress")
+            if (type(tool_event_schema) is not str
+                    or tool_event_schema not in {"native-grok-tool-events@1", "native-grok-tool-events@2"}
+                    or tool_event_schema != "native-grok-tool-events@1" and not tool_event_census):
+                raise ValueError("supported Grok tool-event schema and enabled census required")
             if progress_callback is not None and (not stream_progress or not callable(progress_callback)):
                 raise ValueError("grok_progress_callback requires streaming mode and a callable")
             if stream_progress and (not structured_cli or response_format is not None):
@@ -8711,6 +8726,19 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             elif chat_session_id:
                 cmd.extend(["--session-id", chat_session_id])
 
+            pruning_observation = None
+            if grok_pruning_profile != "legacy":
+                if resume_session_id or continue_session or chat_session_id:
+                    raise ValueError("explicit pruning requires a fresh coding session")
+                from .cli_runtime.grok_pruning import run_grok_pruning_preflight
+                pruning_env = os.environ.copy()
+                pruning_env.update({key: value for key, value in extra_env.items() if value is not None})
+                pruning_started = time.monotonic()
+                pruning_observation = run_grok_pruning_preflight(grok_pruning_profile,
+                    command=base_parts, env=pruning_env, timeout=min(timeout, 30.0))
+                timeout -= time.monotonic() - pruning_started
+                if timeout <= 0:
+                    raise subprocess.TimeoutExpired(base_parts, timeout)
             prompt_path = ""
             stream_observation = None
             named_lifetime = None
@@ -8728,7 +8756,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     prompt_path = prompt_file.name
                 cmd.extend(["--prompt-file", prompt_path])
 
-                env = os.environ.copy()
+                env = pruning_env if pruning_observation is not None else os.environ.copy()
                 for key, value in extra_env.items():
                     if value is not None:
                         env[key] = value
@@ -8759,9 +8787,13 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                             from .cli_runtime.grok_stream_capture import capture_grok_stream
                             from .cli_runtime.grok_invocation_observation import begin_native_grok_dispatch
                             observation_dispatch_token = begin_native_grok_dispatch()
+                            census_options = {"tool_event_census": True} if tool_event_census else {}
+                            if tool_event_schema != "native-grok-tool-events@1":
+                                census_options["tool_event_schema"] = tool_event_schema
                             proc = capture_grok_stream(cmd, env=env, timeout=timeout,
                                 progress_callback=progress_callback,
-                                **({"max_frame_bytes": frame_budget} if explicit_frame_budget else {}))
+                                **({"max_frame_bytes": frame_budget} if explicit_frame_budget else {}),
+                                **census_options)
                             stream_observation = proc.progress
                             if proc.timed_out:
                                 raise subprocess.TimeoutExpired(cmd, timeout,
@@ -8789,8 +8821,12 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         if stream_observation is not None:
                             # Stream diagnostics describe the transport only. A final
                             # event never overrides process timeout or grants retry.
-                            observed.update(native_grok_observation(proc.final_payload, exit_code=None, timed_out=True))
+                            from .cli_runtime.grok_stream_capture import native_grok_stream_observation
+                            observed.update(native_grok_stream_observation(proc.final_payload,
+                                progress=stream_observation, exit_code=None, timed_out=True))
                             observed["native_grok_progress"] = stream_observation
+                        if pruning_observation is not None:
+                            observed["native_grok_pruning"] = pruning_observation
                         set_last_cli_observation("grok_cli", observed)
                         raise
             finally:
@@ -8842,9 +8878,14 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 observed = {key: value for key, value in observed.items() if not key.startswith("native_grok_")}
                 observed.update(native_grok_observation(payload, exit_code=proc.returncode))
                 if stream_observation is not None:
+                    from .cli_runtime.grok_stream_capture import native_grok_stream_observation
+                    observed.update(native_grok_stream_observation(payload,
+                        progress=stream_observation, exit_code=proc.returncode))
                     observed["native_grok_progress"] = stream_observation
                     if not stream_observation["response_usable"]:
                         observed["native_grok_task_complete"] = False
+                if pruning_observation is not None:
+                    observed["native_grok_pruning"] = pruning_observation
                 set_last_cli_observation("grok_cli", observed)
             except Exception:
                 pass

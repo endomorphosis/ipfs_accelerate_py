@@ -1,0 +1,24 @@
+{
+  "copied_test_sha256_matches_parent": true,
+  "docker_calls": 0,
+  "exit_code": 0,
+  "log": {
+    "bytes": 1652,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/readout-tests.log",
+    "sha256": "2d3094d0511bcb1a85fdebc3218f98b062dc72a60ccc06573dba56e4bffd7666"
+  },
+  "provider_calls": 0,
+  "reader": {
+    "bytes": 17651,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/read_pilot.py",
+    "sha256": "b6a390fa0c92d624ee77afa98aeb34e50e43a1021ce1abf5cc342ad7a9d76a1e"
+  },
+  "schema": "doctor-turns8-reader-qualification@1",
+  "seconds": 0.050763895036652684,
+  "test": {
+    "bytes": 8979,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/test_read_pilot.py",
+    "sha256": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32"
+  },
+  "tests_passed": 11
+}

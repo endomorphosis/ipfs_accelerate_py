@@ -1,0 +1,20 @@
+{
+  "command": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "/home/barberb/lift_coding/artifacts/inline-evidence-census-20261015/live/test_run.py",
+    "/home/barberb/lift_coding/artifacts/inline-evidence-census-20261015/live/test_closed_export.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/inline-evidence-census-20261015/live/launcher-export-final01.xml"
+  ],
+  "complete_import_closure_claimed": false,
+  "docker_calls": 0,
+  "exit_code": 0,
+  "junit_sha256": "bc2b66e707b0e6e1e9329c75d4a5ca0c428202b6937de97361ca06d597198e3d",
+  "provider_calls": 0,
+  "schema": "inline-census-launcher-exporter-qualification@1",
+  "seconds": 1.5257593949791044,
+  "selected_source_count": 14,
+  "source_pins_unchanged": true
+}

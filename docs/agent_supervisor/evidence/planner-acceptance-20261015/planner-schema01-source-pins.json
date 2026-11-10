@@ -1,0 +1,9 @@
+{
+  "base_commit": "42ba5a639e2667c3cd8a77888191482f802c2e23",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_model_planning.py": "4251aac4c23f2663246676f113f1451e44465d081b62fb1135671db89a34d2bd",
+    "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py": "b7164dc4456117658ba733625fda703fff4847e3fd3e9ed9c3894aa92bdf2496",
+    "test/api/test_agent_supervisor_prompt_goal_planner.py": "8d554c4e9e2b379a73fda3334436c6d85081b9e3e4ba5e33998cc299145ad15c",
+    "test/api/test_grok_structured_output.py": "567a46e70cb73c6ade55c4c77bfd232b8719490d7f517b066ab28d623c73bf94"
+  }
+}

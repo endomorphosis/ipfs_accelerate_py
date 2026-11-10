@@ -1,0 +1,25 @@
+{
+  "authored_only": true,
+  "binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "canonical_configuration_read": false,
+  "credentials_read": false,
+  "network_namespace_required": true,
+  "profiles": [
+    {
+      "auth_provided": false,
+      "authored_config_sha256": "a4538ea94e7c72ee309797bf4a7b9983a38424acdd88360f11ed39396b437956",
+      "bound_failure": null,
+      "canonical_home_mounted": false,
+      "exact_six_values_match": false,
+      "json_object": false,
+      "network_namespace_requested": true,
+      "profile": "off",
+      "returncode": 1,
+      "stderr_bytes": 61,
+      "stdout_bytes": 0,
+      "target_pruning_object_count": 0
+    }
+  ],
+  "provider_calls": 0,
+  "schema": "grok-authored-inspect-qualification@1"
+}

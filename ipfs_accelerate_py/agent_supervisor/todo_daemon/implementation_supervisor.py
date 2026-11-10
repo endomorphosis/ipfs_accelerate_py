@@ -25,6 +25,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import ProjectionDeltaCheckpointStore
 from typing import Any, Callable, Mapping, Sequence
 
 from ...agent_implementation_route import (
@@ -286,6 +287,10 @@ CONTROL_PLANE_SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
     "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+    "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
 )
 
 
@@ -7277,6 +7282,7 @@ class PortalImplementationSupervisor:
         self._typed_fail_closed_recovery_count = 0
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
+        self._idle_ready_observation: tuple[str, float] | None = None
         self._checkout_mutation_context = threading.local()
         self._control_plane_update_detected_at = ""
         self._loaded_control_plane_source = dict(
@@ -11619,6 +11625,17 @@ class PortalImplementationSupervisor:
         proof_rollout_status_fields.update(
             self._control_plane_status_projection()
         )
+        proof_rollout_status_fields.update({
+            "implementation_enabled": bool(self.config.implement and not self.config.reconciliation_only),
+            "implementation_mode": (
+                "execute" if self.config.implement and not self.config.reconciliation_only
+                else "monitor_only"
+            ),
+            "implementation_progress_status": (
+                "starting" if self.config.implement and not self.config.reconciliation_only
+                else "implementation_disabled"
+            ),
+        })
         # The managed daemon blocks while an implementation command is active,
         # so its task-state heartbeat may legitimately remain unchanged for the
         # full command timeout. Let the implementation-aware watchdog below
@@ -11727,6 +11744,148 @@ class PortalImplementationSupervisor:
             # without restarting the managed daemon.
             status_extra_fields=dict(proof_rollout_status_fields),
         )
+
+    def _idle_ready_child_watchdog_status(
+        self,
+        state: PortalTaskState,
+        child: Any,
+        *,
+        now_monotonic: float,
+    ) -> dict[str, Any]:
+        """Bound dispatch inactivity independently of log/heartbeat activity.
+
+        A daemon may keep polling and writing logs without ever claiming its
+        ready backlog. Only task/attempt changes renew this progress window.
+        Recycling uses the normal owned-child termination path, which proves
+        the old process group quiescent before another child can be launched.
+        """
+
+        enabled = bool(self.config.implement and not self.config.reconciliation_only)
+        ready = bool(state.selectable_ready_count or state.selectable_ready_task_ids)
+        fields: dict[str, Any] = {
+            "implementation_enabled": enabled,
+            "implementation_mode": "execute" if enabled else "monitor_only",
+            "implementation_progress_status": "idle",
+            "implementation_progress_healthy": True,
+            "implementation_backpressure_reason": "",
+            "idle_ready_seconds": 0.0,
+            "idle_ready_recycle_safe": False,
+            "idle_ready_recycle_blockers": [],
+        }
+        if not enabled:
+            self._idle_ready_observation = None
+            fields.update({
+                "implementation_progress_status": "implementation_disabled",
+                "implementation_progress_healthy": not bool(state.ready_count or ready),
+            })
+            return fields
+        selected_without_attempt = bool(
+            state.active_task_id
+            and not state.implementation_in_progress
+            and state.active_phase in {"", "idle", "selected"}
+        )
+        if state.implementation_in_progress or (
+            state.active_task_id and not selected_without_attempt
+        ):
+            self._idle_ready_observation = None
+            fields["implementation_progress_status"] = "active"
+            return fields
+        if not ready:
+            self._idle_ready_observation = None
+            return fields
+
+        idle_reason = str(state.selection_idle_reason or "")
+        # These are deliberate scheduler/provider fences. Expose them as
+        # backpressure, rather than restarting to bypass a retry/approval gate.
+        intentional_backpressure = (
+            idle_reason in {
+                "provider_capacity_backoff",
+                "all_selectable_ready_tasks_deferred_by_resource_claim",
+                "all_selectable_ready_tasks_reached_max_task_attempts",
+                "all_selectable_ready_tasks_blocked_on_attempt_accounting_evidence",
+                "virgin_transfer_rendezvous_pending",
+            }
+            or idle_reason.startswith((
+                "implementation_retry_deferred:",
+                "resource_claim_deferred:",
+                "disposition_idle:",
+            ))
+        )
+        if intentional_backpressure:
+            self._idle_ready_observation = None
+            fields.update({
+                "implementation_progress_status": "backpressure",
+                "implementation_progress_healthy": False,
+                "implementation_backpressure_reason": idle_reason,
+            })
+            return fields
+
+        if self._active_agent_worker_processes() or self._active_validation_subprocess_exists():
+            self._idle_ready_observation = None
+            fields["implementation_progress_status"] = "worker_active"
+            return fields
+
+        signature = content_identity({
+            "child_pid": int(getattr(child, "pid", 0) or 0),
+            "child_identity": str(getattr(child, "identity_record_id", "") or ""),
+            "child_started_at": str(getattr(child, "started_at", "") or ""),
+            "ready_ids": sorted(state.selectable_ready_task_ids),
+            "ready_count": state.selectable_ready_count,
+            "completed_ids": sorted(state.completed_task_ids),
+            "completed_count": state.completed_count,
+            "attempts": state.implementation_attempts,
+            "last_attempt_started": state.last_implementation_started_at,
+            "last_attempt_finished": state.last_implementation_finished_at,
+            "last_implementation_commit": state.last_implementation_commit,
+            "last_merge_commit": state.last_merge_commit,
+        })
+        observation = getattr(self, "_idle_ready_observation", None)
+        if observation is None or observation[0] != signature:
+            observation = (signature, now_monotonic)
+            self._idle_ready_observation = observation
+        age = max(0.0, now_monotonic - observation[1])
+        threshold = max(
+            30.0,
+            float(self.config.implementation_log_stall_seconds),
+            float(self.config.daemon_interval) + 2.0 * float(self.config.check_interval),
+            self._watchdog_startup_grace_seconds(),
+        )
+        fields.update({
+            "implementation_progress_status": "awaiting_dispatch",
+            "idle_ready_seconds": round(age, 3),
+            "idle_ready_stall_after_seconds": threshold,
+        })
+        if age < threshold:
+            return fields
+
+        blockers: list[str] = []
+        child_pid = int(getattr(child, "pid", 0) or 0)
+        birth = read_process_birth(child_pid) if child_pid > 1 else None
+        expected_birth = getattr(child, "identity_process_birth", None)
+        if birth is None or owner_liveness(birth) is not OwnerLiveness.ALIVE:
+            blockers.append("managed_child_liveness_unproven")
+        elif expected_birth is not None and birth != expected_birth:
+            blockers.append("managed_child_process_birth_changed")
+        if child_pid > 1 and descendant_processes(child_pid):
+            blockers.append("managed_child_has_descendants")
+        if self._current_supervisor_checkout_lease() is not None:
+            blockers.append("supervisor_checkout_transaction_active")
+        for lock_path in {
+            self._repo_merge_lock_path(),
+            checkout_mutation_lock_path(self.config.repo_root),
+        }:
+            if lock_path.is_symlink() or lock_path.exists():
+                blockers.append("checkout_mutation_transaction_present")
+                break
+        fields.update({
+            "implementation_progress_status": "ready_work_stalled",
+            "implementation_progress_healthy": False,
+            "idle_ready_recycle_safe": not blockers,
+            "idle_ready_recycle_blockers": blockers,
+            "attempt_budget_consumed": False,
+            "provider_invocation_consumed": False,
+        })
+        return fields
 
     def _attempt_budget_exhaustion_status(
         self, state: PortalTaskState,
@@ -11887,6 +12046,12 @@ class PortalImplementationSupervisor:
         initial_attempt_budget_blocker = self._attempt_budget_exhaustion_status(state)
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
         database_authority = self._database_authority_enabled()
+        idle_ready: dict[str, Any] = {}
+        if not database_authority:
+            idle_ready = self._idle_ready_child_watchdog_status(
+                state, _child, now_monotonic=now_monotonic
+            )
+            self._set_loop_status_fields(_loop, idle_ready)
         readiness: dict[str, Any] | None = None
         if database_authority:
             readiness = self._authoritative_runnable_work_status()
@@ -11976,6 +12141,14 @@ class PortalImplementationSupervisor:
         # stale local active-task fields must not mask a dead Quack owner.  A
         # healthy authority retains the existing no-mid-task-reload behavior.
         if control_plane_status["control_plane_update_pending"]:
+            # A selected task with no attempt can otherwise defer source
+            # reload forever. Quiesce only after the same bounded progress
+            # window and process/checkout guards used by ordinary recovery.
+            if idle_ready.get("idle_ready_recycle_safe") is True:
+                self._record_event("ready_work_idle_daemon_stall_detected", idle_ready)
+                return SupervisorLoopDecision.recycle(
+                    DATABASE_IDLE_DAEMON_STALL_REASON, detail=idle_ready
+                )
             active = bool(
                 state.active_task_id
                 or state.implementation_in_progress
@@ -12011,7 +12184,11 @@ class PortalImplementationSupervisor:
                 status=CONTROL_PLANE_RELOAD_STATUS,
             )
 
-        if state.active_task_id and not stuck:
+        if (
+            state.active_task_id
+            and not stuck
+            and idle_ready.get("implementation_progress_status") != "ready_work_stalled"
+        ):
             return SupervisorLoopDecision.keep_running()
 
         if database_authority and not stuck and readiness is not None:
@@ -12108,6 +12285,11 @@ class PortalImplementationSupervisor:
                 or bool(state.selectable_ready_task_ids)
             )
         ):
+            if idle_ready.get("idle_ready_recycle_safe") is True:
+                self._record_event("ready_work_idle_daemon_stall_detected", idle_ready)
+                return SupervisorLoopDecision.recycle(
+                    DATABASE_IDLE_DAEMON_STALL_REASON, detail=idle_ready
+                )
             # Give the managed daemon first claim on runnable work.  Without
             # this handoff, the watchdog can win the brief gap after one task
             # finishes, hold the global implementation lease for a long
@@ -12190,6 +12372,7 @@ class PortalImplementationSupervisor:
         update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
             "watchdog",
             daemon_pid=daemon_pid,
+            daemon_process_birth=getattr(_child, "identity_process_birth", None),
         )
         failed = False
         try:
@@ -23099,8 +23282,8 @@ class PortalImplementationSupervisor:
                 command.extend(
                     ["--merge-queue-dir", str(self.config.merge_queue_dir)]
                 )
+            command.append("--implement" if self.config.implement else "--no-implement")
             if self.config.implement:
-                command.append("--implement")
                 command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
                 if self.config.implementation_command:
                     command.extend(["--implementation-command", self.config.implementation_command])
@@ -23113,16 +23296,18 @@ class PortalImplementationSupervisor:
                             str(self.config.llm_merge_resolver_timeout_seconds),
                         ]
                     )
-                if not self.config.use_ephemeral_worktree:
-                    command.append("--no-ephemeral-worktree")
-                if self.config.worktree_root is not None:
-                    command.extend(["--worktree-root", str(self.config.worktree_root)])
-                for relative in self.config.worktree_submodule_paths:
-                    command.extend(["--worktree-submodule-path", relative])
-                if self.config.objective_path is not None:
-                    command.extend(["--objective-path", str(self.config.objective_path)])
-                if self.config.objective_bundle_dir is not None:
-                    command.extend(["--objective-bundle-dir", str(self.config.objective_bundle_dir)])
+            # Poll-only children still reconcile the same worktrees and board
+            # context; disabling provider calls must not change that identity.
+            if not self.config.use_ephemeral_worktree:
+                command.append("--no-ephemeral-worktree")
+            if self.config.worktree_root is not None:
+                command.extend(["--worktree-root", str(self.config.worktree_root)])
+            for relative in self.config.worktree_submodule_paths:
+                command.extend(["--worktree-submodule-path", relative])
+            if self.config.objective_path is not None:
+                command.extend(["--objective-path", str(self.config.objective_path)])
+            if self.config.objective_bundle_dir is not None:
+                command.extend(["--objective-bundle-dir", str(self.config.objective_bundle_dir)])
             if self.config.objective_refill_enabled:
                 command.extend(
                     [
@@ -23491,7 +23676,9 @@ class PortalImplementationSupervisor:
             tokens = shlex.split(command_line)
         except ValueError:
             return False
-        if self.config.implement != ("--implement" in tokens):
+        implementation_flag = "--implement" if self.config.implement else "--no-implement"
+        opposite_flag = "--no-implement" if self.config.implement else "--implement"
+        if tokens.count(implementation_flag) != 1 or opposite_flag in tokens:
             return False
         execution_options = {
             "--state-dir": (str(self.config.state_dir),),

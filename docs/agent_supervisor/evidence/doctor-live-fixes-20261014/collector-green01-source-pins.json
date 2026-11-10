@@ -1,0 +1,9 @@
+{
+  "base_commit": "3a7ec1c97be93dab918f005c93a9bbdb42409512",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py": "cba0d89f4945d9a8b60542b6557fc2ab340b9e4e0604cd1e3cd305fb8112745a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998",
+    "test/api/test_doctor_router_budget_capability.py": "d1234e6bc7762a43393fad92ffffcfdd897abc934b225941c9e0ec3fcb7731d8"
+  }
+}
