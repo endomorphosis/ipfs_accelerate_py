@@ -85,7 +85,7 @@ def _verify_native_catalog_archive(path, rows):
                 raise ValueError("native catalog archive bytes differ")
 
 
-def _archive_native_catalogs(*, tmp_path, repository, nodeid):
+def _archive_native_catalogs(*, tmp_path, repository, nodeid, phase_reports=None):
     """Preserve verified catalog bytes before retiring only their raw copies."""
     if repository != tmp_path / "repository" or repository.resolve(strict=True) != repository:
         raise ValueError("exact authored native repository required")
@@ -141,8 +141,12 @@ def _archive_native_catalogs(*, tmp_path, repository, nodeid):
     record = dict(schema="test-native-catalog-retirement@1", profile=NATIVE_CATALOG_RETENTION_PROFILE,
                   nodeid_sha256=hashlib.sha256(nodeid.encode()).hexdigest(), files=rows,
                   archive=target.name, archive_sha256=hashlib.sha256(target.read_bytes()).hexdigest(),
-                  archived_bytes=target.stat().st_size, retired=False, assertions_completed=True,
-                  pytest_phases={phase: "passed" for phase in ("setup", "call", "teardown")},
+                  archived_bytes=target.stat().st_size, retired=False,
+                  assertions_completed=_all_native_case_phases_passed(phase_reports or {}),
+                  trigger="pytest_teardown" if phase_reports is not None else "authored-archiver-regression",
+                  pytest_phases={phase: "passed" if phase in (phase_reports or {})
+                                 and phase_reports[phase].passed is True else "unreported"
+                                 for phase in ("setup", "call", "teardown")},
                   validation_authority=False)
     def write_record():
         staged = receipt.with_suffix(".json.pending")
@@ -159,6 +163,8 @@ def _archive_native_catalogs(*, tmp_path, repository, nodeid):
                 or hashlib.sha256(path.read_bytes()).hexdigest() != row["sha256"]):
             raise ValueError("native catalog fixture changed before raw-copy retirement")
         path.unlink()
+    for parent in { (tmp_path / row["path"]).parent for row in rows }:
+        _sync_native_fixture_directory(parent)
     record["retired"] = True
     write_record()
     return record
@@ -187,7 +193,8 @@ class _NativeCatalogCaseRetention:
             try:
                 if _all_native_case_phases_passed(self.reports) and self.native_paths is not None:
                     tmp_path, repository = self.native_paths
-                    _archive_native_catalogs(tmp_path=tmp_path, repository=repository, nodeid=item.nodeid)
+                    _archive_native_catalogs(tmp_path=tmp_path, repository=repository, nodeid=item.nodeid,
+                                             phase_reports=self.reports)
             finally:
                 self.request.config.pluginmanager.unregister(self)
 

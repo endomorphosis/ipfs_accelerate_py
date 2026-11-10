@@ -219,6 +219,9 @@ def test_native_catalog_retirement_keeps_lossless_archive_and_typed_receipt(tmp_
     source.write_bytes(original)
     record = retention._archive_native_catalogs(tmp_path=tmp_path, repository=repository, nodeid="authored-positive")
     assert record["retired"] is True and record["validation_authority"] is False
+    assert record["assertions_completed"] is False
+    assert record["trigger"] == "authored-archiver-regression"
+    assert set(record["pytest_phases"].values()) == {"unreported"}
     assert not source.exists() and source.parent.is_dir()
     with tarfile.open(tmp_path / record["archive"], "r:gz") as archive:
         assert archive.extractfile(source.relative_to(tmp_path).as_posix()).read() == original
