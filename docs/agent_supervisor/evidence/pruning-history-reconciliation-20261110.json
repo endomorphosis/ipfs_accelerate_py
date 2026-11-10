@@ -5,7 +5,7 @@
   "selected_world_head": "57239766811693f8e23b195a2b6d90a15bed20b1",
   "historical_pruning_head": "c4015c6117dadefd64116708a4ead4ad3b512928",
   "resolved_product_merge_commit": "3e6b8c3a0077d3c676a89fb2ea4307cf2db6fc5a",
-  "tested_candidate_commit": "255a659b5e061db6ab938b9a893303650083c04f",
+  "tested_candidate_commit": "d4cd31e69e36f0845ec062c09df8279e57975ab7",
   "resolved_tree": "95a28cc6b74e9f4a99e20497e848e3bf88bf698d",
   "historical_unique_commits_retained": 31,
   "changed_live_python_files_vs_world": 122,
@@ -763,6 +763,51 @@
       "source_observation_sha256": "8ea663577f1dc8c8876a09e885b238f2cd55a1de97475c668bcedcd4172bcc17",
       "junit_sha256": "3ec1466bbdbd32e0658f6349be8709b368eef7e3457ed80a1366f76c812191a4",
       "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T22:28:01.686103+00:00",
+      "scope": "complete_grok_profile_installation_and_worker_parser",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_grok_pruning_deployment.py"
+      ],
+      "request_sha256": "32ef85bea3a180d8e4d460a48a3a99e19c878b22bcad864e3d297612b38b4c24",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "tested_evidence_base": "d4cd31e69e36f0845ec062c09df8279e57975ab7",
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 54,
+      "compiled_parent_sources": 33,
+      "original_custody_closed": true,
+      "observed_process_identities": 2,
+      "storage_status": "released",
+      "storage_reserved_bytes": 6291456,
+      "final_attempt_bytes": 357076,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 136.17523823678493,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Three authored installation cases and eight isolated Python worker parser children with authored custody and router boundaries. The fixture uses -B to suppress checkout bytecode. No live container, authentication, provider call or runtime isolation was tested.",
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "1f34b8fe28bdb069fe79d77c000eb4bb114b9c978d41cdaa4757dc0d27034ac8",
+      "source_observation_sha256": "6ae7e89079402e632873ee72db9ace3a97f1d0a1200c7b10872f40c9b01b76d2",
+      "junit_sha256": "65d05b7187790fa42debccf0173710c7f113b9fe03a592a3588831f9f9744cea",
+      "current_source_qualification": true
     }
   ],
   "failed_first_policy_attempt": {
@@ -773,15 +818,15 @@
     "reason": "Checkout root bootstrap was missing from the initial source capture; no test assertion or product code was weakened for the corrected full-file run.",
     "retained_storage_bytes": 16777216
   },
-  "remaining_changed_owning_test_files": 43,
+  "remaining_changed_owning_test_files": 42,
   "parent_scoped_results_inherited_as_qualification": false,
   "whole_branch_qualified": false,
   "live_provider_or_deployment_qualified": false,
   "model_or_token_savings_claimed": false,
   "main_merged": false,
-  "scope_note": "Twenty-four of 67 complete owning files qualify in twelve exact current source contexts totaling 1181 cases. Forty-three owning files and eight integration cases remain pending. All historical and failed attempts remain separate. No whole-branch, legal interpretation, model-quality, live-provider or Docker-isolation claim.",
-  "tested_tree": "dd2506dc10827704228f35b16d1b541a4098f044",
-  "last_scope_update_at": "2026-11-10T22:18:37.407787+00:00",
+  "scope_note": "Twenty-five of 67 complete owning files qualify in thirteen current source contexts totaling 1,192 cases. Forty-two owning files and eight integration cases remain pending. The Grok deployment tests use authored installation, custody and router boundaries.",
+  "tested_tree": "86d9aee03d04a12c72a456a941787f85eff67409",
+  "last_scope_update_at": "2026-11-10T22:28:05.199826+00:00",
   "unqualified_test_fixture_preparation": {
     "commit": "143db239150c9ed993b04b6a159c1de2a8586af1",
     "path": "test/api/test_grok_pruning.py",
@@ -1104,7 +1149,7 @@
     "source_pin_cap": 256,
     "scope": "Ten real-API observations; no provider invocation and no pytest owning-file qualification from the observation."
   },
-  "qualified_owning_test_files": 24,
+  "qualified_owning_test_files": 25,
   "failed_stream_capture_attempt": {
     "request_sha256": "2fb7094c2c771cd5c0dff5c7462fb7e76592de0e8de49d4464cea86a6b483247",
     "assertions_passed": 425,
@@ -1216,7 +1261,7 @@
     "elapsed_seconds": 113.54771468183026,
     "next_action": "Capture full producer imports and measure actual per-fixture world/meta catalog output before a new complete-file admission."
   },
-  "semantic_pack_next_action": "Qualify remaining 43 owning files and eight integration cases under unchanged limits.",
+  "semantic_pack_next_action": "Qualify remaining 42 owning files and eight integration cases under the existing limits.",
   "round_policy_capture_frontier": {
     "time": "2026-11-10T05:52:08.253641+00:00",
     "owning_files": [
@@ -1820,6 +1865,51 @@
       "parent_closeout_sha256": "2e613f629bd8fcbb801e77ccdab7173154d104b35edaf4d4d80f63e68841247c",
       "source_observation_sha256": "8ea663577f1dc8c8876a09e885b238f2cd55a1de97475c668bcedcd4172bcc17",
       "junit_sha256": "3ec1466bbdbd32e0658f6349be8709b368eef7e3457ed80a1366f76c812191a4",
+      "current_source_qualification": true
+    },
+    {
+      "time": "2026-11-10T22:28:01.686103+00:00",
+      "scope": "complete_grok_profile_installation_and_worker_parser",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_grok_pruning_deployment.py"
+      ],
+      "request_sha256": "32ef85bea3a180d8e4d460a48a3a99e19c878b22bcad864e3d297612b38b4c24",
+      "candidate_product_commit": "90713c31663b7fdc68e22c97b737b276edec7718",
+      "tested_evidence_base": "d4cd31e69e36f0845ec062c09df8279e57975ab7",
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "source_pins": 54,
+      "compiled_parent_sources": 33,
+      "original_custody_closed": true,
+      "observed_process_identities": 2,
+      "storage_status": "released",
+      "storage_reserved_bytes": 6291456,
+      "final_attempt_bytes": 357076,
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false,
+      "elapsed_seconds": 136.17523823678493,
+      "qualified": true,
+      "whole_branch_qualified": false,
+      "live_provider_qualified": false,
+      "live_docker_isolation_qualified": false,
+      "existing_fixture_scope": "Three authored installation cases and eight isolated Python worker parser children with authored custody and router boundaries. The fixture uses -B to suppress checkout bytecode. No live container, authentication, provider call or runtime isolation was tested.",
+      "validation_owner_sha256": "81aa6bd043793607e062af2b40a633a4c570266c363360ee0eb6e64fca26ffa1",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "parent_closeout_sha256": "1f34b8fe28bdb069fe79d77c000eb4bb114b9c978d41cdaa4757dc0d27034ac8",
+      "source_observation_sha256": "6ae7e89079402e632873ee72db9ace3a97f1d0a1200c7b10872f40c9b01b76d2",
+      "junit_sha256": "65d05b7187790fa42debccf0173710c7f113b9fe03a592a3588831f9f9744cea",
       "current_source_qualification": true
     }
   ],
