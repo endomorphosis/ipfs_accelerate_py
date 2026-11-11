@@ -213,12 +213,23 @@ import json,signal,subprocess,time
 process=None
 worker_waited=False
 worker_cleanup_succeeded=False
+worker_brokers_closed=False
+owner_worker_attempt=globals().get('owner_worker_attempt')
 def interrupted(signum,frame):
  raise InterruptedError('owner monitor interrupted')
 for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
 code=1
+def owner_provider_remaining():
+ deadline=globals().get('owner_provider_deadline_ns')
+ if deadline is None:return None
+ remaining=(deadline-time.monotonic_ns())/1_000_000_000
+ if remaining<=0:raise TimeoutError('original owner provider deadline exhausted')
+ return remaining
 try:
- process=subprocess.Popen(command)
+ owner_provider_remaining()
+ owner_input=None if globals().get('owner_worker_stdin_sealed') is True else globals().get('owner_prompt_bytes')
+ process=subprocess.Popen(command,stdin=subprocess.PIPE) if owner_input is not None else subprocess.Popen(command)
+ if owner_worker_attempt is not None:owner_worker_attempt.note_spawned(process)
  broker=globals().get("numerical_obligation_broker")
  if broker is not None:broker.note_spawned(process)
  source_broker=globals().get("worker_source_broker")
@@ -227,7 +238,11 @@ try:
  if repository_owner is not None:repository_owner.note_spawned(process)
  guard=globals().get("proof_query_guard")
  if guard is not None:guard.note_spawned(process)
- code=process.wait()
+ owner_remaining=owner_provider_remaining()
+ owner_wait_options={} if owner_remaining is None else {'timeout':owner_remaining}
+ if owner_input is None:code=process.wait(**owner_wait_options)
+ else:process.communicate(input=owner_input,**owner_wait_options);code=process.returncode
+ owner_provider_remaining()
  worker_waited=True
 except BaseException:
  if process is not None:
@@ -244,21 +259,31 @@ finally:
   if cleanup.returncode:code=1
  finally:
   try:
-   guard=globals().get("proof_query_guard")
-   if guard is not None:guard.abort()
-  finally:
+   # Every broker must retire before a child can have a complete census.
    try:
-    broker=globals().get("numerical_obligation_broker")
-    if broker is not None:broker.close()
+    guard=globals().get("proof_query_guard")
+    if guard is not None:guard.abort()
    finally:
     try:
-     source_broker=globals().get("worker_source_broker")
-     if source_broker is not None:source_broker.close()
+     broker=globals().get("numerical_obligation_broker")
+     if broker is not None:broker.close()
     finally:
-     repository_owner=globals().get("repository_source_owner")
-     if repository_owner is not None:
-      from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
-      repository_source_retirement=retire_repository_source_owner(repository_owner)
+     try:
+      source_broker=globals().get("worker_source_broker")
+      if source_broker is not None:source_broker.close()
+     finally:
+      repository_owner=globals().get("repository_source_owner")
+      if repository_owner is not None:
+       from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
+       repository_source_retirement=retire_repository_source_owner(repository_owner)
+   worker_brokers_closed=True
+  finally:
+   # A missing process assignment is not evidence that no child was born.
+   if owner_worker_attempt is not None and process is not None:
+    try:owner_worker_attempt.finish(waited=worker_waited,cleanup_succeeded=worker_cleanup_succeeded,brokers_closed=worker_brokers_closed)
+    except Exception:
+     try:print('{"schema":"owner-worker-attempt-retirement-observation@1","status":"unavailable","reason":"retirement_record_failed","completion_authority":false}',flush=True)
+     except Exception:pass
 # Retired worker observations cannot authorize another child or completion.
 # Refresh only after native wait, isolated cleanup and every broker retirement.
 source_broker=globals().get("worker_source_broker")
@@ -299,7 +324,7 @@ for source_policy_index,source_policy_argument in enumerate(sys.argv[1:],1):
 
 OWNER_ENTRY = (
     r"""#!/opt/ipfs-supervisor/venv/bin/python -I
-import json,os,pathlib,sys,time
+import json,math,os,pathlib,sys,time
 owner_candidate_round_started=time.monotonic()
 root=pathlib.Path('/opt/ipfs-supervisor')
 boundary=json.loads((root/'container-boundary.json').read_text())
@@ -307,22 +332,12 @@ if os.getuid()!=boundary['owner_uid'] or os.geteuid()!=boundary['owner_uid']:rai
 """
     + _REPOSITORY_SOURCE_ISOLATION_GUARD
     + r"""cwd=pathlib.Path.cwd()
-if cwd.resolve()!=cwd or not any(cwd!=pathlib.Path(p) and cwd.is_relative_to(p) for p in boundary['allowed_worktree_roots']):raise SystemExit('allocated candidate required')
-marker=cwd/'.git'
-if not marker.is_file() or marker.is_symlink() or marker.stat().st_uid!=1000:raise SystemExit('owner allocated Git worktree marker required')
-# Allocate group writes only in this exact candidate; canonical and owner state
-# remain outside this traversal. Refuse links rather than chmod their targets.
-for base,dirs,files in os.walk(cwd,followlinks=False):
- p=pathlib.Path(base)
- if p.is_symlink() or p.stat().st_uid not in (1000,1001):raise SystemExit('candidate directory ownership differs')
- if p.stat().st_uid==1000:p.chmod(0o3770 if p==cwd else 0o2770)
- for name in dirs:
-  if (p/name).is_symlink():raise SystemExit('candidate directory symlink refused')
- for name in files:
-  q=p/name
-  if q.is_symlink() or not q.is_file() or q.stat().st_uid not in (1000,1001) or q.stat().st_nlink!=1:raise SystemExit('candidate input is not one allocated regular file')
-  if q.stat().st_uid==1000:q.chmod(0o440 if q==cwd/'.git' else (0o770 if q.stat().st_mode&0o111 else 0o660))
 sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
+from ipfs_accelerate_py.agent_supervisor.runtime.owner_provider_deadline import consume_owner_provider_deadline_handoff
+owner_provider_deadline_ns=consume_owner_provider_deadline_handoff(command=list(sys.argv),workspace=cwd)
+if any(part=='--owner-provider-deadline-ns' or part.startswith('--owner-provider-deadline-ns=') for part in sys.argv[1:]):raise SystemExit('provider deadline restriction is generated by the owner')
+if any(part=='--owner-worker-attempt-id' or part.startswith('--owner-worker-attempt-id=') for part in sys.argv[1:]):raise SystemExit('worker attempt identity is generated by the owner')
+if cwd.resolve()!=cwd or not any(cwd!=pathlib.Path(p) and cwd.is_relative_to(p) for p in boundary['allowed_worktree_roots']):raise SystemExit('allocated candidate required')
 # The fixed lease includes allocation checks, ownership setup and formalization.
 from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import _argument,MAX_SESSION_SECONDS
 owner_candidate_round_deadline=None
@@ -331,13 +346,34 @@ try:
  if 1<=owner_candidate_round_timeout<=MAX_SESSION_SECONDS:owner_candidate_round_deadline=owner_candidate_round_started+owner_candidate_round_timeout
 except (TypeError,ValueError,OverflowError):
  pass
+if globals().get('owner_provider_deadline_ns') is not None:
+ # A requested local cap may shorten the inherited budget, never restart it.
+ if owner_candidate_round_deadline is not None:
+  owner_deadline_numerator,owner_deadline_denominator=owner_candidate_round_deadline.as_integer_ratio()
+  owner_provider_deadline_ns=min(owner_provider_deadline_ns,owner_deadline_numerator*1_000_000_000//owner_deadline_denominator)
+ # Conservatively round the effective budget's float view down for old APIs.
+ owner_candidate_round_deadline=math.nextafter(owner_provider_deadline_ns/1_000_000_000,-math.inf)
+# Initial provisioning completes before source brokers or the first census.
+# The helper preflights the whole owner-only tree before changing any mode,
+# keeps its root private while applying descriptor changes, and publishes last.
+owner_workspace_deadline_ns=owner_provider_deadline_ns
+if owner_workspace_deadline_ns is None and owner_candidate_round_deadline is not None:
+ owner_deadline_numerator,owner_deadline_denominator=owner_candidate_round_deadline.as_integer_ratio()
+ owner_workspace_deadline_ns=owner_deadline_numerator*1_000_000_000//owner_deadline_denominator
+from ipfs_accelerate_py.agent_supervisor.runtime.owner_writable_worktree import provision_owner_writable_worktree
+owner_worktree_traversal=None
+if any(name in boundary for name in ('worktree_traversal_anchor','worktree_traversal_directories','worker_shared_group')):
+ from ipfs_accelerate_py.agent_supervisor.runtime.owner_worktree_traversal import provision_owner_worktree_traversal
+ owner_worktree_traversal=provision_owner_worktree_traversal(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
+owner_workspace_provisioning=provision_owner_writable_worktree(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
 worker_arguments=sys.argv[1:]
 owner_prompt_bytes=None
 if any(part=='--semantic-native-input' or part.startswith('--semantic-native-input=') for part in worker_arguments) and any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-policy-artifact','--semantic-decision-policy-sha256','--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):raise SystemExit('semantic native input excludes semantic decision policy and nomination')
 # Capture original stdin once through the existing bounded sealed handoff.
 from ipfs_accelerate_py.agent_supervisor.runtime.source_formalization_context import prepare_container_source_formalization_dispatch
-handoff=prepare_container_source_formalization_dispatch(argv=worker_arguments,boundary=root/'container-boundary.json',workspace=cwd)
+handoff=prepare_container_source_formalization_dispatch(argv=worker_arguments,boundary=root/'container-boundary.json',workspace=cwd,**({'absolute_deadline':owner_candidate_round_deadline} if owner_provider_deadline_ns is not None else {}))
 os.dup2(handoff['stdin_fd'],0,inheritable=True);os.close(handoff['stdin_fd'])
+owner_worker_stdin_sealed=True
 worker_arguments=handoff['argv']
 if any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):
  sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
@@ -365,6 +401,7 @@ if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag
 numerical_obligation_broker=None
 worker_source_broker=None
 repository_source_owner=None
+owner_worker_attempt=None
 try:
  from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import prepare_numerical_obligation_broker
  numerical_obligation_broker=prepare_numerical_obligation_broker(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,input_fd=0)
@@ -382,6 +419,16 @@ try:
   from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
   repository_source_owner.start()
   command.extend(repository_source_owner.extra_argv)
+ # Ordinary coding has exactly one router invocation per isolated child.
+ # Decision dialogues retain their independent all-call accounting contract;
+ # provider-free, census, planning and preflight routes have no coding call.
+ owner_attempt_excluded=('--preflight','--semantic-metadata-census-only','--doctor-candidate-artifact','--doctor-contract-artifact','--finite-repository-artifact')
+ owner_attempt_selected=_argument(handoff['argv'],'--purpose','coding')=='coding' and not any(part==flag or part.startswith(flag+'=') for part in handoff['argv'] for flag in owner_attempt_excluded) and not any(part.startswith('--semantic-decision-') for part in worker_arguments)
+ if owner_attempt_selected:
+  from ipfs_accelerate_py.agent_supervisor.runtime.owner_worker_attempt import prepare_owner_worker_attempt
+  owner_worker_attempt=prepare_owner_worker_attempt(boundary=root/'container-boundary.json',workspace=cwd,input_fd=0,absolute_deadline=owner_candidate_round_deadline)
+  command.extend(['--owner-worker-attempt-id',owner_worker_attempt.attempt_id])
+  if owner_provider_deadline_ns is not None:command.extend(['--owner-provider-deadline-ns',str(owner_provider_deadline_ns)])
 except BaseException:
  if repository_source_owner is not None:
   for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
@@ -464,6 +511,8 @@ parser.add_argument('--provider',choices=['codex_cli','grok_cli'],default=select
 parser.add_argument('--model',default='gpt-6.1-sol');parser.add_argument('--reasoning-effort',choices=['low','medium','high','xhigh','max'],default='high')
 parser.add_argument('--timeout',type=int,default=90);parser.add_argument('--max-output-tokens',type=int,default=4096)
 parser.add_argument('--budget-profile')
+parser.add_argument('--owner-worker-attempt-id')
+parser.add_argument('--owner-provider-deadline-ns',type=int)
 parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
 parser.add_argument('--semantic-slot-policy-revision',choices=['legacy@1','closed-typed-identifiers@2'],default='legacy@1')
@@ -547,6 +596,7 @@ source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha2
 tokenizer_values=(args.prompt_tokenizer_artifact,args.prompt_tokenizer_sha256)
 decision_values=(args.semantic_decision_policy_artifact,args.semantic_decision_policy_sha256)
 decision_options=any(value is not None for value in decision_values)
+if args.owner_worker_attempt_id is not None and (args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or decision_options or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('worker attempt identity requires ordinary router coding')
 semantic_options=args.semantic_native_input or args.semantic_context_projection or args.semantic_slot_policy_revision!='legacy@1'
 if args.semantic_native_input and (args.semantic_context_projection or args.semantic_slot_policy_revision!='legacy@1'):raise SystemExit('semantic native input requires exclusive legacy semantic context')
 if decision_options and not all(decision_values):raise SystemExit('exact semantic decision policy and digest required')
@@ -651,6 +701,12 @@ else:
   from ipfs_accelerate_py.agent_supervisor.runtime.router_implementation_runner import main
  from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_cli_subreaper import run_with_child_custody
  sys.argv=[sys.argv[0],'--provider',args.provider,'--model',args.model,'--reasoning-effort',args.reasoning_effort,'--purpose',args.purpose,'--timeout',str(args.timeout),'--max-output-tokens',str(args.max_output_tokens),'--container-boundary',str(artifact),'--container-boundary-sha256',digest]
+ if args.owner_worker_attempt_id is not None:
+  if decision_options:raise SystemExit('ordinary worker attempt identity excludes decision dialogues')
+  sys.argv+=['--owner-worker-attempt-id',args.owner_worker_attempt_id]
+ if args.owner_provider_deadline_ns is not None:
+  if decision_options or args.owner_worker_attempt_id is None:raise SystemExit('provider deadline restriction requires ordinary owner coding')
+  sys.argv+=['--owner-provider-deadline-ns',str(args.owner_provider_deadline_ns)]
  if args.budget_profile is not None:sys.argv+=['--budget-profile',args.budget_profile]
  if args.semantic_repository is not None:sys.argv+=['--semantic-repository',str(args.semantic_repository)]
  if args.semantic_slot_policy_revision!='legacy@1':sys.argv+=['--semantic-slot-policy-revision',args.semantic_slot_policy_revision]

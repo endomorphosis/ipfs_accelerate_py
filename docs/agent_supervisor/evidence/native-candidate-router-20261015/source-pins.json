@@ -1,0 +1,132 @@
+{
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": {
+    "role": "changed",
+    "bytes": 10101,
+    "sha256": "141234fc3573a8a810799deffbdb3a674fda4bcb70ec36c6e16b32653b8350f3"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": {
+    "role": "changed",
+    "bytes": 21626,
+    "sha256": "75937493272d4834180776a4525e8d05f9346c8e8bbd3b2ecd8cf20d2223443f"
+  },
+  "docs/agent_supervisor/terminal_token_metadata_plan.md": {
+    "role": "changed",
+    "bytes": 96883,
+    "sha256": "fe3b704adfba3a5b0e6590e5f513be5f256a616bfe855226b7b1f9f4c26ec161"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_worker.py": {
+    "role": "changed",
+    "bytes": 7465,
+    "sha256": "efa2cdfe568aa0ac5d9601f066fbe96f0e3c1f397da61f731476e351d9839da7"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+    "role": "changed",
+    "bytes": 134231,
+    "sha256": "e9db067a5ed72cc6ca5cc644e9b4e0a42d8a846cff0046c784327b8afee1042f"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_broker.py": {
+    "role": "changed",
+    "bytes": 11082,
+    "sha256": "2b858d4d9f87b7f7544fe9813167d4c7b70eb0d81636e1eb4fd7ea362fdde73b"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_client.py": {
+    "role": "changed",
+    "bytes": 23162,
+    "sha256": "7a93deab97073acf5663636ee91d5a5d7ea7fa71f6f65763c4cef51b84150c49"
+  },
+  "test/api/test_candidate_dispatch.py": {
+    "role": "changed",
+    "bytes": 23150,
+    "sha256": "656acd5e70e99d7b20a4ef91458471506c0b858c28a9afbb65efe50d555f52a9"
+  },
+  "test/api/test_router_candidate_dispatch.py": {
+    "role": "changed",
+    "bytes": 17728,
+    "sha256": "0e32bf61bd22bfd0d620a11dffdf69541ff4d83b3818d08d961c17b52fd624ff"
+  },
+  "test/api/test_candidate_dispatch_reads.py": {
+    "role": "changed",
+    "bytes": 6399,
+    "sha256": "474771b15610ddedec482e3c7811ff8a141409d716a675562f17b3f0e1f16238"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_admission.py": {
+    "role": "retained_dependency",
+    "bytes": 30115,
+    "sha256": "501785c7585fb064b07414107eca93f9c4bfdea734ccf82b0157b1468da0c324"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py": {
+    "role": "retained_dependency",
+    "bytes": 28279,
+    "sha256": "9a44d9a6495d3d3cb946fe62adf03724b00d216190cd5ed2fd12d3ddb0c348ea"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py": {
+    "role": "retained_dependency",
+    "bytes": 36301,
+    "sha256": "49e89dd5613a89f90d3f042814fbf6b979d9746b5e7c76411e18362cc5682308"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/owner_worker_attempt.py": {
+    "role": "retained_dependency",
+    "bytes": 16016,
+    "sha256": "61d59d23fc7a6ab6fe6b916f9e52fe7f962b749f9fc25f95d79491fb8b641650"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py": {
+    "role": "retained_dependency",
+    "bytes": 12215,
+    "sha256": "9810ccfbcf5c4385402284b77f3c3ab5bb86c5f877133327a4e7bc7029831a16"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py": {
+    "role": "retained_dependency",
+    "bytes": 17850,
+    "sha256": "a3f85057af4f5b1e2afde7cf05bc1f65066cc4c8ca99a244be0ead9a3d641d9d"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_broker.py": {
+    "role": "retained_dependency",
+    "bytes": 8681,
+    "sha256": "c926f8ea9a7a4fe6eeed2fc90baf9ecbd000f475cd076807bfdb9d624e4fc730"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_client.py": {
+    "role": "retained_dependency",
+    "bytes": 12869,
+    "sha256": "4a2ce59f24a0bd5ed66d75e93e3de161e846a888ed9f930ecd67868a86155ac7"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py": {
+    "role": "retained_dependency",
+    "bytes": 19938,
+    "sha256": "3909c94a0e79540cc8a401eed4935dcccaaf037766b913d6e60812d296153a87"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py": {
+    "role": "retained_dependency",
+    "bytes": 20382,
+    "sha256": "c0df1ff3034024d2fff37dc51ef1947946964f2a7ebfce30c53e1e95741a1ea7"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py": {
+    "role": "retained_dependency",
+    "bytes": 23490,
+    "sha256": "f76763ea8ca218a68f96a7e502af4722defdad20465018dba09ee265bd90780c"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/worker_source_client.py": {
+    "role": "retained_dependency",
+    "bytes": 33259,
+    "sha256": "ad2e47300e8f0738a19b821cf14dcc1717b7a36bc0a3b74b33df52df9c6dac2b"
+  },
+  "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py": {
+    "role": "retained_dependency",
+    "bytes": 321499,
+    "sha256": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c"
+  },
+  "test/api/test_native_candidate_round_admission.py": {
+    "role": "retained_dependency",
+    "bytes": 24320,
+    "sha256": "156806c4ac23d50982a87baf5c37eb657d7b471078d7235253f5ff03aee38050"
+  },
+  "test/api/test_current_source_task_admission.py": {
+    "role": "retained_dependency",
+    "bytes": 22616,
+    "sha256": "1ff08889ada83fe92f45db800406834dfc7bc053a7ebc477c0a0e8fcdbe5b6f6"
+  },
+  "test/api/test_current_source_worktree_allocation.py": {
+    "role": "retained_dependency",
+    "bytes": 19137,
+    "sha256": "c2c23e9f266c712111395fd115d119e9ec5f8fd212784233a43bc793b593909c"
+  }
+}

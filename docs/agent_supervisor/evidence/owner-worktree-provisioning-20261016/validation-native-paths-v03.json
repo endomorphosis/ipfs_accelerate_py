@@ -1,0 +1,7 @@
+{
+  "tmpdir": "/home/barberb/.p",
+  "pytest_basetemp": "/home/barberb/.w16n03",
+  "protected_ancestors_verified": true,
+  "existing_permissions_changed": false,
+  "reason": "v02 reached actual provisioning and first-child retirement, then candidate-dispatch socket exceeded AF_UNIX pathname limit. Shorten only tempfile root; no source or guard changes."
+}

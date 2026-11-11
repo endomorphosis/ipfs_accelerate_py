@@ -1,0 +1,26 @@
+{
+  "changes": "Only the three worktree roots updated in both wrappers",
+  "dependencies": {
+    "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+    "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79"
+  },
+  "files": [
+    {
+      "adopted_sha256": "9924086ff9f66d56db22d798dd913d42b7af720653c0a0d8bd4395f94da82fd9",
+      "name": "run-leased-qualification.py",
+      "original_sha256": "2b68a656ca24f1fbe23dcda7fd0853ed37c97685e22064674f2366104b410c8c"
+    },
+    {
+      "adopted_sha256": "05bf539bc7663c47a40e7d7b7aefb5a6b3ce5d46afa7510495c6aa17b2240970",
+      "name": "run-with-pinned-owner.py",
+      "original_sha256": "2dc812b67a04b163d6a4c7a547281753f60c66b6f2d62f3d0f71c51874b62111"
+    },
+    {
+      "adopted_sha256": "633c7ce3ebb0a722797e008c9dd6d9fa9666db5fbe1fa7412a596811b515826e",
+      "name": "probe-environment.py",
+      "original_sha256": "633c7ce3ebb0a722797e008c9dd6d9fa9666db5fbe1fa7412a596811b515826e"
+    }
+  ],
+  "policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "source": "/home/barberb/lift_coding/artifacts/world-residual-selection-20261015-01"
+}

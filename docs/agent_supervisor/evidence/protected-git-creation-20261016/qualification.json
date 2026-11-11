@@ -1,0 +1,448 @@
+{
+  "schema": "protected-git-creation-qualification@1",
+  "recorded_utc": "2026-10-16T03:11:41.075328+00:00",
+  "accelerate_base": "516dd2febb93a517d384f21c9eaf4b99d4e8eaad",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the pinned sibling datasets checkout; accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "dataset_resource_scheduler_source": {
+    "bytes": 121503,
+    "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+  },
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_and_candidate_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "Static reads/AST/edits/security review only; no agent runtime, imports, tests or probes.",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/protected-git-creation-20261016-01",
+  "qualification_counts": {
+    "tests": 289,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 8
+  },
+  "new_creation_cases": 20,
+  "qualified_modules": [
+    "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_agent_supervisor_checkout_git_serialization",
+    "test.api.test_agent_supervisor_prior_attempt_seed",
+    "test.api.test_owner_writable_worktree",
+    "test.api.test_protected_git_worktree_creation",
+    "test.api.test_provider_failure_checkpoint_retention",
+    "test.api.test_workspace_root_quarantine"
+  ],
+  "qualifying_runs": [
+    "creation-focused-v02",
+    "creation-checkout-regression-v02",
+    "creation-archive-provisioning-v02",
+    "creation-retention-pool-submodule-v01"
+  ],
+  "runs": [
+    {
+      "label": "creation-archive-provisioning-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-archive-provisioning-v01",
+        "started_utc": "2026-10-16T03:02:48.572608+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:03:25.277234+00:00"
+      },
+      "junit": {
+        "tests": 238,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 51121,
+        "sha256": "56556d8cb5fe135fec2f77acdd8529b4fd320b7c64fc54e6ef175afccfc436c6"
+      },
+      "nonqualifying_reason": "238 passes superseded as part of the same first qualification iteration, before explicit per-run orchestration containment and the final source freeze.",
+      "stdout.log": {
+        "bytes": 57772,
+        "sha256": "48b46b4055a75a1e2c5f2b65b6657216a4d23f03c1f24d59f2f98beb7b4552a2"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "creation-archive-provisioning-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-archive-provisioning-v02",
+        "started_utc": "2026-10-16T03:06:05.362249+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:06:40.855780+00:00"
+      },
+      "junit": {
+        "tests": 238,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 51121,
+        "sha256": "7a28e640f9f2c020de93cda8ab221dc0245a86b06231c5b7d6bdd8559df2acd4"
+      },
+      "stdout.log": {
+        "bytes": 57772,
+        "sha256": "4cd212dea1ccc636ef3f754d5fc38d6c05e195d09721fcc71f618ee83ba66c2e"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "creation-checkout-regression-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-checkout-regression-v02",
+        "started_utc": "2026-10-16T03:06:05.342029+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:06:11.571676+00:00"
+      },
+      "junit": {
+        "tests": 27,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_agent_supervisor_checkout_git_serialization",
+          "api.test_workspace_root_quarantine"
+        ],
+        "normalized_modules": [
+          "test.api.test_agent_supervisor_checkout_git_serialization",
+          "test.api.test_workspace_root_quarantine"
+        ],
+        "bytes": 5061,
+        "sha256": "d6a0afc18e7014a7bf0eebead954fef1dd4026689d0c826e4719081ffa06bafe"
+      },
+      "stdout.log": {
+        "bytes": 9684,
+        "sha256": "f966ebef71c84072caac34455e5ff8f7968e824b72e9e6393d04ba6f3cb9646d"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "creation-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-environment-v01",
+        "started_utc": "2026-10-16T02:55:03.150991+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:55:03.303271+00:00"
+      },
+      "nonqualifying_reason": "Native environment probe; no contribution to test counts.",
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "creation-focused-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-focused-v01",
+        "started_utc": "2026-10-16T03:02:48.613184+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:03:36.632198+00:00"
+      },
+      "junit": {
+        "tests": 20,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_protected_git_worktree_creation"
+        ],
+        "normalized_modules": [
+          "test.api.test_protected_git_worktree_creation"
+        ],
+        "bytes": 3472,
+        "sha256": "d09f635bb1b79c92b8c2c8384de73120971db8330fa5d31a4616540382cc10ab"
+      },
+      "nonqualifying_reason": "Twenty passes superseded: orchestration-containment fixture source changed while the first qualification group was active. Final rerun uses frozen final fixture and explicit private orchestration state.",
+      "stdout.log": {
+        "bytes": 18384,
+        "sha256": "52049267299da3f851c7f89f7d819024ef395080b17486fd8c8fc3c65087fa18"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "creation-focused-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-focused-v02",
+        "started_utc": "2026-10-16T03:06:05.329138+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:06:12.606525+00:00"
+      },
+      "junit": {
+        "tests": 20,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_protected_git_worktree_creation"
+        ],
+        "normalized_modules": [
+          "test.api.test_protected_git_worktree_creation"
+        ],
+        "bytes": 3470,
+        "sha256": "c001f135b8f32795ff5336b0a085fdfb66f0ad47054ce074fb0da6ca43eafe5d"
+      },
+      "stdout.log": {
+        "bytes": 18600,
+        "sha256": "930f53b78e986da2f6412a12bb556b1979fe0b084b05d4f40c1af47b98832409"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "creation-pool-checkout-regression-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-pool-checkout-regression-v01",
+        "started_utc": "2026-10-16T03:02:48.593777+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 4,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:02:53.120175+00:00"
+      },
+      "junit": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 2,
+        "skipped": 0,
+        "raw_modules": [
+          ""
+        ],
+        "normalized_modules": [
+          ""
+        ],
+        "bytes": 2314,
+        "sha256": "d68596cb6f528f77b07c661674e32d8603c29a731250eccbfe677fa339a9b2a2"
+      },
+      "nonqualifying_reason": "Collection failed before the selected regression cases ran: two unchanged legacy modules import APIs absent from the pinned checkout. No pool-regression or production-test pass is claimed from this attempt.",
+      "stdout.log": {
+        "bytes": 2233,
+        "sha256": "6588535af4d61892a358be7287cb18e10a87763465fe3e3e4c252bfa58a4a0bf"
+      },
+      "stderr.log": {
+        "bytes": 1615,
+        "sha256": "be4b80d9f0ab859374ced08248d476e23a49e64263c6a5f86ca4d8ddec780646"
+      }
+    },
+    {
+      "label": "creation-retention-pool-submodule-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "creation-retention-pool-submodule-v01",
+        "started_utc": "2026-10-16T03:08:18.879204+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T03:08:24.182771+00:00"
+      },
+      "junit": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_agent_supervisor_prior_attempt_seed",
+          "api.test_provider_failure_checkpoint_retention",
+          "api.test_workspace_root_quarantine"
+        ],
+        "normalized_modules": [
+          "test.api.test_agent_supervisor_prior_attempt_seed",
+          "test.api.test_provider_failure_checkpoint_retention",
+          "test.api.test_workspace_root_quarantine"
+        ],
+        "bytes": 899,
+        "sha256": "e49b424db5322cf37eed516c5e43aea814f305b795318af2e3abc86e73ddc7d8"
+      },
+      "stdout.log": {
+        "bytes": 3723,
+        "sha256": "b108ac69582a49aeb02e29edff567d9fc57893fc02bb64258d286cdaaf4a9eb5"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "module_normalization": "api.* and test.api.* pytest classnames are normalized to the same test/api source module.",
+  "source_verification": "Three final changed-file hashes frozen before final qualification and verified before publication. Production daemon and docs never changed during qualification; the first iteration test fixture changed only to isolate constructor orchestration state while those runs were active, so every first-iteration run is excluded. Final qualifying runs all use the final fixture hash and explicit per-run private orchestration paths.",
+  "fixture_revision_ledger": [
+    {
+      "source_sha256": "7b2e492f4cf7c80ab29ef3497c9da5ee0822d8a989e54bd853901bc9e9688a99",
+      "runs": [
+        "creation-focused-v01",
+        "creation-archive-provisioning-v01",
+        "creation-pool-checkout-regression-v01"
+      ],
+      "qualifying": false,
+      "source_changed_while_iteration_active": true
+    },
+    {
+      "source_sha256": "deeed4820145e9bdcdcf7fabf1bba49e70bec9704999c244d4d669101a78749b",
+      "runs": [
+        "creation-focused-v02",
+        "creation-checkout-regression-v02",
+        "creation-archive-provisioning-v02",
+        "creation-retention-pool-submodule-v01"
+      ],
+      "qualifying": true,
+      "change": "Explicit temporary orchestration override for driver/daemon fixture; final runs also set per-run override before collection. Production code and 20 behavior assertions unchanged."
+    }
+  ],
+  "legacy_regression_collection_errors": [
+    {
+      "module": "test/api/test_agent_supervisor_incremental_runtime.py",
+      "absent_import": "guarded_worktree_pool_mutation",
+      "owner": "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+      "preexisting_at_base": true
+    },
+    {
+      "module": "test/api/test_agent_supervisor_todo_daemon_port.py",
+      "absent_import": "_DEFAULT_COPILOT_TIMEOUT_SECONDS",
+      "owner": "ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py",
+      "preexisting_at_base": true
+    }
+  ],
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "docker_runs": 0,
+  "real_boundaries": [
+    "Actual decorated PortalImplementationDaemon fresh nonpooled/no-seed/no-submodule factory and actual Git worktree add under isolated parent masks002 and000",
+    "Root/directories700, regular files/linked marker600 and executable700 are observed at birth; Git executable index mode100755 and source bytes preserved",
+    "Actual original parent /proc Umask plus before/after sentinel writes remain unchanged; any production os.umask call is refused by the fixture hook",
+    "Actual creation output passes strict descriptor provisioner without fixture chmod normalization of the checkout; declared outside private sentinel remains unchanged",
+    "Exact integer077/worktree-add restriction, default keyword omission, no-optional-locks and existing Git failure behavior verified",
+    "Real checkout/index contention and quarantine barriers remain intact, including the decorated changed factory entry",
+    "Actual cold pooled/nonpooled failed inert children preserve their native commits without completion/retry/seed authority; independent cold pool allocation and submodule baseline/index preservation regressions pass",
+    "Existing whole-tree provisioner, generated wrapper, native continuation and archive source-pin refusal regressions pass"
+  ],
+  "authored_fixture_boundaries": [
+    "Owner deployment boundary authentication and selected worker UID remain authored host seams; only same-UID host Git/provisioning is exercised",
+    "Controlled parents are created0700 before the factory; this does not qualify daemon creation of new managed-parent directories under permissive ambient masks",
+    "Ordinary local Git fixture with no selected pool, seed or submodule on the protected-input path; Git hook/configuration behavior is not audited by the provisioner",
+    "Isolated application drivers reuse the unchanged pinned native-owner runner via an explicit test environment path; they receive only public runtime controls and no inherited native/provider auth or sealed parent FD metadata",
+    "Compatible retention regression authors an inert Python child rather than invoking a model adapter; legacy unavailable modules provide no qualification",
+    "Previously qualified provisioner/candidate fixture still authors Quack transport and deployment admission; its actual controls/children/resource leaf remain real"
+  ],
+  "limitations": [
+    "Creation-time Git default only; no normalization of existing or worker-owned trees, and no guarantee for all seeded/pool/submodule/prior-replay outputs",
+    "Protected parent paths remain a prerequisite; inherited ACL/GID or Git configuration/hooks may produce outcomes independently refused by the provisioner",
+    "New canonical Git administration may be owner-only; separate-UID worker Git-control read delegation remains unqualified",
+    "Signed-route helper0400 authority blobs in editable source require a separate protected-file policy before composition",
+    "Broad legacy incremental/todo regression modules remain uncollectable at this base; compatible cold pool coverage does not qualify warm reuse",
+    "No cross-owner native allocation/run/resource handoff, actual Docker/separate-UID deployment or installed continuation retry default enabled",
+    "No external provider/model/training run, matched TerminalBench measurement, total token-savings or legal correctness claim"
+  ]
+}

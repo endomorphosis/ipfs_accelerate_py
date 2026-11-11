@@ -1,0 +1,490 @@
+{
+  "schema": "native-candidate-router-qualification@1",
+  "recorded_utc": "2026-10-15T22:11:45.805025+00:00",
+  "accelerate_base": "269f14c53852a9e039820b8543b32f2761d4c8e4",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the explicitly pinned sibling datasets checkout; accelerate gitlink is d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "root_only_runtime": true,
+  "agent_work": "static reads/AST/edits only",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/native-candidate-router-20261015-01",
+  "qualification_counts": {
+    "tests": 464,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 12
+  },
+  "qualified_modules": [
+    "api.test_candidate_dispatch",
+    "api.test_candidate_dispatch_reads",
+    "api.test_native_candidate_round_worker",
+    "api.test_router_candidate_dispatch",
+    "api.test_router_failure_diagnostics",
+    "api.test_router_implementation_runner",
+    "api.test_router_owner_worker_attempt_identity",
+    "api.test_router_prompt_selection",
+    "api.test_router_provider_failure_diagnostics",
+    "api.test_worker_candidate_round_broker",
+    "api.test_worker_candidate_round_client",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability"
+  ],
+  "qualifying_runs": [
+    "router-final-regressions-v01",
+    "router-archive-compatibility-v01",
+    "router-reader-launcher-regressions-v01",
+    "native-dispatch-transport-v02",
+    "native-dispatch-router-e2e-v02",
+    "native-dispatch-reads-v01"
+  ],
+  "runs": [
+    {
+      "label": "native-dispatch-pipeline-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-dispatch-pipeline-v01",
+        "started_utc": "2026-10-15T22:02:11.395792+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": null,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:06:11.490330+00:00"
+      },
+      "outcome": "incomplete_bounded_qualification_timeout",
+      "timeout_seconds": 240,
+      "note": "Retained as nonqualifying; split transport and full-router groups passed separately. No timeout limit was increased.",
+      "stdout.log": {
+        "bytes": 162505,
+        "sha256": "978640dbcd0dd442af085469b1e8550c46eae597f81c79f37480d600a3e12153"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-dispatch-reads-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-dispatch-reads-v01",
+        "started_utc": "2026-10-15T22:10:00.605098+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:11:29.282482+00:00"
+      },
+      "junit": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_dispatch_reads"
+        ],
+        "bytes": 542,
+        "sha256": "372c7d37569091a9f706dd3e66d3c9a787bcbde0dde1fa9f9aba7930df42a456"
+      },
+      "stdout.log": {
+        "bytes": 13347,
+        "sha256": "e0934cfd5d2d433fe9e1c70f6816c0c72fd7b1d42cd32148d816d6a1945e7b4d"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-dispatch-router-e2e-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-dispatch-router-e2e-v02",
+        "started_utc": "2026-10-15T22:06:30.068969+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:07:22.293837+00:00"
+      },
+      "junit": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_dispatch"
+        ],
+        "bytes": 551,
+        "sha256": "008854613de2da2e3e658328d3791df4b6a1883d101d330de916b30e9f958a35"
+      },
+      "stdout.log": {
+        "bytes": 26035,
+        "sha256": "705e2ee8e42574a87a627f4ecaef92ffaeefb4ad29a6eea785723ceaecdb8211"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-dispatch-transport-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-dispatch-transport-v02",
+        "started_utc": "2026-10-15T22:06:28.908291+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:09:48.538605+00:00"
+      },
+      "junit": {
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_dispatch"
+        ],
+        "bytes": 1907,
+        "sha256": "ecc2cf0bb958f72d3fa27206ed5f80e47d3f43aefc39f1c4a488a399392f2a5a"
+      },
+      "stdout.log": {
+        "bytes": 138069,
+        "sha256": "a52c0c7b71c23bb817c1dcf133ead9fe51f6efbf896261913cbd92a743e7764e"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-router-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-router-environment-v01",
+        "started_utc": "2026-10-15T21:48:52.079369+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T21:48:52.225599+00:00"
+      },
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "router-archive-compatibility-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "router-archive-compatibility-v01",
+        "started_utc": "2026-10-15T21:58:26.749016+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T21:58:39.025521+00:00"
+      },
+      "junit": {
+        "tests": 179,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability"
+        ],
+        "bytes": 40215,
+        "sha256": "5e4f1ec495c6495d9a52b17a8884509114c8f8501e7d9c2e595836e078d3f38b"
+      },
+      "stdout.log": {
+        "bytes": 35534,
+        "sha256": "6ab628200f3970428aad47c7e4d3a08f9b28f082e3de138104e4e8e8fcbad8be"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "router-candidate-client-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "router-candidate-client-v01",
+        "started_utc": "2026-10-15T21:58:18.965447+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T21:58:20.775359+00:00"
+      },
+      "junit": {
+        "tests": 57,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_router_candidate_dispatch"
+        ],
+        "bytes": 9519,
+        "sha256": "aecd436e2b333bf7b344927c7cf9be86c90177e3fcca499f39052617b9105606"
+      },
+      "stdout.log": {
+        "bytes": 8497,
+        "sha256": "1d0f5a0fe4b2395396a6f29942ab902b3c08f93e4c1cfbfd19b8d55b95606ad8"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "router-existing-attempt-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "router-existing-attempt-v01",
+        "started_utc": "2026-10-15T21:53:48.715099+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T21:53:50.212561+00:00"
+      },
+      "junit": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_router_owner_worker_attempt_identity"
+        ],
+        "bytes": 5416,
+        "sha256": "53158c76af7322da64306cec229e13826e0842196675d9a37d58b170c2459a09"
+      },
+      "stdout.log": {
+        "bytes": 5048,
+        "sha256": "b7485d4840cd73804f432eec1f47062f762941064391ae0d0b178aa78596d354"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "router-existing-core-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "router-existing-core-v01",
+        "started_utc": "2026-10-15T21:54:20.765936+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T21:54:29.381749+00:00"
+      },
+      "junit": {
+        "tests": 92,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_router_failure_diagnostics",
+          "api.test_router_implementation_runner",
+          "api.test_router_prompt_selection",
+          "api.test_router_provider_failure_diagnostics"
+        ],
+        "bytes": 14128,
+        "sha256": "f3fb7fdbdcf385a123ab347f991802e188c2ab0d5e83f0c37e8400bd2694e5e9"
+      },
+      "stdout.log": {
+        "bytes": 12240,
+        "sha256": "8b5d5b1bfdfa736143970f5aabe44d39ea5ef29562ba400c45999350ad349296"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "router-final-regressions-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "router-final-regressions-v01",
+        "started_utc": "2026-10-15T22:00:52.327375+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:01:03.412860+00:00"
+      },
+      "junit": {
+        "tests": 178,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_router_candidate_dispatch",
+          "api.test_router_failure_diagnostics",
+          "api.test_router_implementation_runner",
+          "api.test_router_owner_worker_attempt_identity",
+          "api.test_router_prompt_selection",
+          "api.test_router_provider_failure_diagnostics"
+        ],
+        "bytes": 28571,
+        "sha256": "0ed3c38f91cd0e652febd1b51ce79138bb6101f524f1ab629a0f066a5e97e391"
+      },
+      "stdout.log": {
+        "bytes": 24879,
+        "sha256": "5db8fd95a202bed0195ee461a0dd32159e25ee4f1d8ca30cb1b5d80b733dd98e"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "router-reader-launcher-regressions-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "router-reader-launcher-regressions-v01",
+        "started_utc": "2026-10-15T22:00:53.472283+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:03:31.744945+00:00"
+      },
+      "junit": {
+        "tests": 91,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_worker",
+          "api.test_worker_candidate_round_broker",
+          "api.test_worker_candidate_round_client"
+        ],
+        "bytes": 14528,
+        "sha256": "a71d0070e19c133351437596bd35ce45d400f3d24ebf71442a092da6ab62dd9d"
+      },
+      "stdout.log": {
+        "bytes": 113850,
+        "sha256": "8ffef3d28a867b134e81578a0338e2d8b406c67826143b680a5ab376f4bf46ff"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "full_native_router_provider_stub_cases": [
+    "success",
+    "observed_failed_exit_7"
+  ],
+  "real_boundaries": [
+    "Native task body/claim, active daemon grant, Portal projection and allocation lifecycle",
+    "Independent native supervisor_run lease, original cumulative monotonic deadline and source generation",
+    "Prior waited failed worker, fresh actual Popen and immutable worker census events",
+    "Actual Unix socket, owner peer PID/start identity and registered-child ancestry",
+    "Issued process-bound typed client, exact candidate input bytes, policy and worker attempt",
+    "Server-global irreversible consumption before native closing checks and response delivery",
+    "Router full-prompt rendering/measurement, actual provider adapter invocation boundary and receipt emission",
+    "Actual native usage recovery from authored JSONL on provider-stub success/failure",
+    "Full host launcher cleanup, stopped service thread and removed socket/descriptor before census retirement",
+    "Original V1 read-only behavior and runtime archive source compatibility"
+  ],
+  "authored_fixture_boundaries": [
+    "Quack transport and deployment path/UID admission from the existing real-native fixture",
+    "Same-UID host fixture maps worker UID observations while retaining actual kernel PID/birth/ancestry",
+    "Lightweight router tests author descriptor/RPC exchange, boundary and provider seams",
+    "Full native tests author container-boundary validation and provider/catalog initialization only",
+    "Literal inert child commands, local descendant cleanup, UTF-8 token estimate and provider JSONL observations"
+  ],
+  "limitations": [
+    "Host-only native owner/child integration; deployed Terminal wrapper does not automatically invoke this route",
+    "Separate deployed wrapper cannot reconstruct live typed native owner handles from serialized identifiers",
+    "Production owner-wrapper authentication, separate worker UID and writable allocation delegation remain required",
+    "Native supervisor_run fencing lease does not establish quantitative CPU/memory/child-slot reservation",
+    "Production original absolute provider deadline and explicit two-child policy still require a genuine handoff",
+    "Bounded sequential source/authority checks are not filesystem or distributed atomicity",
+    "Candidate prompt itself remains advisory and dispatch_usable=False; V1 reads/raw JSON remain insufficient",
+    "No target code execution, candidate proof acceptance, automatic task completion or default retry enablement",
+    "Provider-stub usage is authored, not billing or measured model cost",
+    "No matched TerminalBench token/reward trial or full-workflow token savings/correctness claim"
+  ]
+}
