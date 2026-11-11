@@ -1,0 +1,111 @@
+{
+  "automatic_retries": 0,
+  "bundle_argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment",
+    "bundle",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/runtime-01",
+    "--source",
+    "/home/barberb/lift_coding/.worktrees/supervisor-tool-event-census-20261015",
+    "--datasets",
+    "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+    "--kit",
+    "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+    "--extension-dir",
+    "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+    "--source384-config",
+    "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+    "--torch-cpu-wheel",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "--torch-cpu-wheel-sha256",
+    "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+    "--lean-toolchain",
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1",
+    "--grok-binary",
+    "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok"
+  ],
+  "candidate_rounds": 1,
+  "coding_reply_mode": "legacy",
+  "datasets": {
+    "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014"
+  },
+  "disable_intent_autoencoder": true,
+  "doctor_coding_policy": null,
+  "excluded_inputs": [
+    "tests",
+    "solution",
+    "historical private owner state",
+    "provider transcripts"
+  ],
+  "expected_progress_schema": "native-grok-stream-progress@4",
+  "grok_coding_max_turns": 8,
+  "inline_evidence_dispatch_enabled": false,
+  "kit": {
+    "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+    "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+  },
+  "max_coding_invocations": 1,
+  "minimum_free_bytes": 34359738368,
+  "official_verifier_enabled": false,
+  "official_verifier_executed": false,
+  "planning_mode": "declared-contract@1",
+  "provider_fallback": false,
+  "provider_generation_calls": 0,
+  "provider_profile": "grok-4.7-cli-1.0.46@1",
+  "public_input_bindings": [
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "public_profile": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/largest-eigenval-public-profile.json",
+  "python": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+  "resource_profile": "source384-5cpu-20gib-formalization@1",
+  "roots": {
+    "datasets": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014"
+    },
+    "kit": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+    },
+    "source": {
+      "commit": "24de5a01c43aede768426cca794e36f68c5d3fe4",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-tool-event-census-20261015"
+    }
+  },
+  "runtime": "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/runtime-01",
+  "schema": "tool-event-public-diagnostic-launch-recipe@1",
+  "semantic_metadata_view": "legacy",
+  "semantic_pack_projection_dispatch_enabled": false,
+  "semantic_transport_schema": "supervisor-semantic-router-input@1",
+  "semantic_working_set": "legacy",
+  "source": "/home/barberb/lift_coding/.worktrees/supervisor-tool-event-census-20261015",
+  "source384_config": {
+    "bytes": 1739,
+    "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+    "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+  },
+  "source_base_commit": "d355df25a3311454d3fe0bdd8b5e8f48f7752d83",
+  "source_edit_mode": "disabled",
+  "source_view_profile": "identity@1",
+  "status": "frozen_after_root_qualification",
+  "task": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval",
+  "working_set_census_only": false
+}

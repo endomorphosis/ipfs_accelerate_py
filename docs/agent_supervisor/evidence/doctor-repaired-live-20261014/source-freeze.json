@@ -1,0 +1,10 @@
+{
+  "provider_calls": 0,
+  "qualification_distinct_tests": 426,
+  "qualification_modules": 12,
+  "root_authorized_source_freeze": true,
+  "schema": "repaired-doctor-source-freeze@1",
+  "source_commit": "3ee0d2901b9b61234ebb3efb150513e505ada6ac",
+  "source_root": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014",
+  "source_tracked_clean": true
+}

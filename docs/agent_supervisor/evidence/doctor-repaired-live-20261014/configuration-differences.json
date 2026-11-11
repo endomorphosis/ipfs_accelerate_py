@@ -1,0 +1,28 @@
+{
+  "causal_savings_comparison": false,
+  "differences": [
+    {
+      "path": "/agents/0/kwargs/runtime_archive",
+      "prior": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/runtime-01",
+      "repaired": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/runtime-01"
+    },
+    {
+      "path": "/jobs_dir",
+      "prior": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/jobs",
+      "repaired": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/jobs"
+    }
+  ],
+  "prior": {
+    "bytes": 3384,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/live-trials/grok-two-attempts-turns8-01/config.json",
+    "sha256": "9e1647a71cfcc2f39809247673479f1b3421eb1661e51db131ff5304efab2be5"
+  },
+  "repaired": {
+    "bytes": 3388,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/config.json",
+    "sha256": "11ea41ff518e05a52a34fab5fd1c010e3a5dd23541fc6ec2e643c809ec678a29"
+  },
+  "same_runtime": false,
+  "same_task_provider_resource_policy_controls": true,
+  "schema": "repaired-doctor-configuration-differences@1"
+}

@@ -85,7 +85,8 @@ def terminal_profile_partition(*, repository: Path, manifest: dict) -> TerminalS
         _, evidence = local._verify_planning_inputs(manifest)
         if not evidence:
             raise TerminalSourcePartitionError("public planning profile requires selected evidence")
-        expected_spec["acceptance"][0]["evidence_cids"] = [evidence[0].evidence_cid]
+        for criterion in expected_spec["acceptance"]:
+            criterion["evidence_cids"] = [evidence[0].evidence_cid]
     if manifest["tasks"][0] != expected_spec:
         raise TerminalSourcePartitionError("profile differs from independently signed task effects or checks")
     expected_smoke = task_profile_smoke(profile).encode("utf-8")

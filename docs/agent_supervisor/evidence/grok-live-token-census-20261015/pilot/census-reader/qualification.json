@@ -1,0 +1,46 @@
+{
+  "errors": 0,
+  "failures": 0,
+  "files": [
+    {
+      "bytes": 1936,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualify_census.py",
+      "sha256": "10eb1c8676ee396eb1354e8360ceaf0745a810f6c62853c7ab9f75d06af6bc22"
+    },
+    {
+      "bytes": 9391,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/read_census.py",
+      "sha256": "7d37151a114661474fcb8edd6056bfe9c0c43b57016c1d206f73131948d2b1d0"
+    },
+    {
+      "bytes": 10467,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/test_read_census.py",
+      "sha256": "8f6c085000991d0c6d94cad280fc8d1a9c5e929beafcd79d194435ec26c470c6"
+    },
+    {
+      "bytes": 43934,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    },
+    {
+      "bytes": 93403,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "9abe4d304d2ae3f5a9b0f843ff4dc289408bba5c2d1918ee7b94c962c22094ef"
+    }
+  ],
+  "passed": true,
+  "provider_calls": 0,
+  "retained_reports_read": 0,
+  "runtime_modules_imported": [],
+  "schema": "closed-semantic-census-reader-qualification@1",
+  "seconds": 0.014448978006839752,
+  "skipped": 0,
+  "source_or_prompt_text_exported": false,
+  "source_pins_unchanged": true,
+  "tests_log": {
+    "bytes": 1927,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/tests-final.log",
+    "sha256": "b5c61abedd825c148a4ea4f8eb8a25f61e681063a4b20d20cc63cac42be23970"
+  },
+  "tests_run": 15
+}

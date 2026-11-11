@@ -1,0 +1,28 @@
+{
+  "all_archive_members_match": true,
+  "archive": {
+    "bytes": 1411471754,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/runtime-01/runtime.tar.gz",
+    "sha256": "2d7bce19663b874610a9e59cee6d5c8b71393145637df2e9918138c3612307fe"
+  },
+  "archive_copied": false,
+  "archive_expanded": false,
+  "archive_hash_rechecked": true,
+  "complete_inventory_verification_reused": {
+    "bytes": 736,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/verify-result.json",
+    "sha256": "d6199a14b1f11006470e259f15cc50d760600893c9f0d3a5d2f91b719b22b6d7"
+  },
+  "current_doctor_policy_sources_match": true,
+  "current_grok_turn_policy_sources_match": true,
+  "exit_code": 0,
+  "manifest": {
+    "bytes": 6225257,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/runtime-01/manifest.json",
+    "sha256": "c3616deb3d96e6bdb40effb52c960d028cb9afdb657d5ffa191178bdcf72c609"
+  },
+  "provider_calls": 0,
+  "seconds": 1.0531108900904655,
+  "source_pins_unchanged": true,
+  "step": "verify"
+}

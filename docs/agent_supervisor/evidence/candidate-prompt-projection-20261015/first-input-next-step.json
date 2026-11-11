@@ -1,0 +1,397 @@
+{
+  "docker_calls": 0,
+  "facts": [
+    {
+      "classification": "source_fact",
+      "finding": "Semantic, formalization, world and code-retrieval bodies are converted into required text chunks; required means INVARIANT, not optional metadata.",
+      "sources": [
+        {
+          "line": 64882,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+        },
+        {
+          "line": 64970,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+        },
+        {
+          "line": 64992,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+        },
+        {
+          "line": 65041,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+        },
+        {
+          "line": 574,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"
+        },
+        {
+          "line": 606,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Compiler includes every required reference or raises RequiredContextOverflowError; retry reconstruction rejects dropping or downgrading required evidence.",
+      "sources": [
+        {
+          "line": 4886,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"
+        },
+        {
+          "line": 5160,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Semantic transport reconstructs all ordered semantic chunks and checks required flags, full-artifact binding, per-chunk hashes and bytes against the nominated current artifact. Replacing summaries with hashes would violate this contract.",
+      "sources": [
+        {
+          "line": 293,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+        },
+        {
+          "line": 324,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "The existing capsule-references@1 profile removes only its closed capsule provenance allowlist. Behavioral fields, unknown fields, raw sources, admissions, native task context and world/formalization evidence remain literal.",
+      "sources": [
+        {
+          "line": 1,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py"
+        },
+        {
+          "line": 27,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py"
+        },
+        {
+          "line": 175,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "The profile is explicitly admitted only with full indexed arm, enabled source view, transport@1 and legacy metadata view. It is a config selection, not a user permission gap.",
+      "sources": [
+        {
+          "line": 38,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Descriptor@4 advertises selected-capsules@1. Existing broker retains exact selected capsules, authenticates peers and checks current source before/after page access; stale baseline expansion refuses after edits.",
+      "sources": [
+        {
+          "line": 103,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+        },
+        {
+          "line": 199,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py"
+        },
+        {
+          "line": 17,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Capsule expansion is bounded to 16 selected capsules/32768 aggregate capsule bytes; pages carry session/source bindings, artifact and slice hashes, cursor bounds and false authority flags. This is not a general proof/world/formalization artifact endpoint.",
+      "sources": [
+        {
+          "line": 30,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py"
+        },
+        {
+          "line": 94,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Router compares complete rendered input bytes, including source/workspace/public/Doctor/reply/expansion wrappers; selects only a strict reduction. Selected profile performs one authenticated 4096-byte-bound preflight request before generation; preflight content is not added to model input.",
+      "sources": [
+        {
+          "line": 293,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py"
+        },
+        {
+          "line": 932,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+        },
+        {
+          "line": 1217,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "DuckDB already retains vector snapshots and IntentRepository state. Native retrieval replays the query over a complete source AST and matches source/symbol/span identities before capsule ranking. Provider children are refused inherited database authority.",
+      "sources": [
+        {
+          "line": 1140,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+        },
+        {
+          "line": 67,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/code_retrieval_context.py"
+        },
+        {
+          "line": 111,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py"
+        },
+        {
+          "line": 961,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Owner-side worker projection already allows bounded ranked capsule subsets while retaining full source/index and exact required raw paths. Current preparation passes query and 32768-byte worker limit; required public instruction and smoke source remain literal.",
+      "sources": [
+        {
+          "line": 103,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py"
+        },
+        {
+          "line": 147,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py"
+        },
+        {
+          "line": 1148,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Explicit one-capsule@1 and two-capsules@1 budgets and verified-retrieval-symbol-rank@1 selection exist. These change advisory selection before required chunk compilation rather than deleting required evidence afterward.",
+      "sources": [
+        {
+          "line": 8,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_capsule_selection_policy.py"
+        },
+        {
+          "line": 56,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "PlannerDoctor already represents satisfied proofs as optional digest handles and expansion CIDs as optional suggestions. Operational Doctor residual context currently appends an advisory to the native prompt; it does not replace the full required context.",
+      "sources": [
+        {
+          "line": 1463,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py"
+        },
+        {
+          "line": 42,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py"
+        },
+        {
+          "line": 797,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Current source-view profiles are identity, Python whitespace and Python comments views. They do not globally rename or round-trip an entire on-disk codebase; capsule-reference profile leaves raw source inline.",
+      "sources": [
+        {
+          "line": 8,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py"
+        },
+        {
+          "line": 1,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py"
+        }
+      ]
+    },
+    {
+      "classification": "source_fact",
+      "finding": "Current semantic component census groups 15 other semantic fields together and non-semantic/formalization evidence together. It cannot yet identify which of those fields contributes most of the remaining bytes.",
+      "sources": [
+        {
+          "line": 525,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+        },
+        {
+          "line": 599,
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py"
+        }
+      ]
+    }
+  ],
+  "inferences": [
+    {
+      "classification": "inference",
+      "finding": "Capsule provenance deferral alone has limited headroom: even the entire measured capsule value array is under 10% of the complete first input, and the existing profile removes only a subset while adding instructions/references. Its net benefit may be small or zero."
+    },
+    {
+      "classification": "inference",
+      "finding": "The 269557 figure covers the complete first native coding invocation, including multiple CLI turns and tool history. Shortening its initial 67380-byte input cannot by itself guarantee proportional reduction in that aggregate."
+    },
+    {
+      "classification": "inference",
+      "finding": "Larger safe reductions likely require a small required decision packet plus owner-retained expandable provenance/proof artifacts. Existing DuckDB/indexes can support selection and retention, but storage availability alone does not authorize replacing required bodies with digests."
+    }
+  ],
+  "larger_reduction_implementation_plan": [
+    "Extend the closed census with fixed labels for reconstruction, refresh_lineage, preparation_bounds, pack, worker_projection and required_raw_paths; split world/retrieval evidence groups. Export only counts/hashes, and keep unknown field labels aggregated.",
+    "Use census evidence to choose one provenance-only field group for a new versioned disclosure policy. Keep goal, authority, acceptance, public constraints, Doctor residuals, behavioral capsule fields, required raw-source rules and unknown fields inline.",
+    "Extend the owner-admitted evidence descriptor and pager for that exact retained artifact/group, tied to task/source tree, generation, session, original artifact hash and expected expansion hash. Reuse bounded paging, authenticated peer checks, source checks, revocation and accounting. Existing selected-capsules@1 does not authorize arbitrary world/formalization retrieval.",
+    "Compile the new policy at the owner boundary before required references are produced; preserve immutable original artifact and reversible provider projection. Do not edit required=True to False or infer omission from evidence kind.",
+    "Preserve current obligations/pending proof states in the required decision packet; represent only actually satisfied proofs with existing digest-handle contracts. A Lean syntax check or autoencoder output is not a discharged behavioral obligation.",
+    "Qualify exact inverse, literal constraint preservation, unknown-field preservation, forged/missing/stale/wrong-session expansion refusal, before/after-edit behavior, end-to-end input audit, response decoding and complete-input size selection before a separate matched live ablation."
+  ],
+  "narrowest_safe_ablation": {
+    "before_paid_generation": "Measure complete candidate/native bytes on an owner-created authored or public-input fixture with the real router/source broker and a capturing provider. Verify selection, exact inverse, required fields, stale-source refusal and request accounting.",
+    "control": "Current qualified commit, full indexed source identity@1, semantic_working_set=legacy.",
+    "measurement_gap": "Existing census_only guard supports semantic metadata views and forbids working-set selection. A first-class provider-free working-set census would need a small separately qualified mode; do not silently weaken this guard.",
+    "outcomes": [
+      "first complete input bytes and selected mode",
+      "per-invocation observed final native token categories with missingness",
+      "whole-run observed subtotal and task reward",
+      "native turns and capped/terminal status",
+      "capsule expansion requests/bytes and latency",
+      "source/candidate retrieval bytes separately; direct CLI file reads remain incompletely observed"
+    ],
+    "paired_live_controls": [
+      "same qualified source/dependency commits",
+      "fresh isolated stores and workspace per arm",
+      "same task/profile/provider/model",
+      "same 5 CPUs/20 GiB resource profile",
+      "same 8-turn/1800-second limits",
+      "same candidate projection implementation in both arms",
+      "no retries or fallback"
+    ],
+    "reason": "Already implemented explicit field-level deferral with exact expansion/inverse, freshness and accounting; no new omission semantics.",
+    "separate_followup": "If worthwhile, test --capsule-budget one-capsule@1 or verified retrieval ranking as separate ablations. Do not combine them with provenance deferral in the first comparison.",
+    "treatment": "Same commit and all other frozen controls; --semantic-working-set capsule-references@1 only."
+  },
+  "prior_closed_observations": {
+    "admission_value_bytes": 1155,
+    "capsule_budget": "legacy",
+    "capsule_value_bytes": 6395,
+    "census_source": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/size-table.json",
+    "counts_are_nested_do_not_sum_all_rows": true,
+    "first_call_observed_final_usage_subtotal": 269557,
+    "first_complete_model_input_utf8_bytes": 67380,
+    "full_native_usage_and_billing_complete": false,
+    "other_semantic_field_value_bytes": 10028,
+    "raw_source_value_bytes": 9977,
+    "remaining_native_evidence_array_bytes": 22101,
+    "source": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/readout-final.json",
+    "source_view": "identity@1",
+    "usage_subtotal_is_not_initial_prompt_token_count": true,
+    "working_set": "legacy"
+  },
+  "production_edits": 0,
+  "provider_calls": 0,
+  "raw_prompts_transcripts_or_hidden_verifier_read": false,
+  "schema": "first-coding-input-next-step@1",
+  "scope": "Read-only source analysis and closed prior metadata; no new runtime implementation or live experiment.",
+  "source_bindings": [
+    {
+      "bytes": 7314,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_capsule_selection_policy.py",
+      "sha256": "99c15d47099d8de2d054ba4a6ad0ae3b70ed3ddcb8f2bcda8bb129906ab64eb2"
+    },
+    {
+      "bytes": 82129,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "3666ca21205438bd5e7bc9b1b636b47e11f8741abf81bee19c3c02578ca1a47a"
+    },
+    {
+      "bytes": 4593,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py",
+      "sha256": "446e6818fb201e5cd92a989e1621b44153981a5a880ef739f81e797303aed606"
+    },
+    {
+      "bytes": 3513,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py",
+      "sha256": "46e93f671ad340cbbbd97f8a783d45a3738c94869586713e293a90d0ae85145d"
+    },
+    {
+      "bytes": 294621,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "sha256": "a8928c0e227dcbb0f7b31f877713c0fdeeb37699d110404cfc638ac4a1995b90"
+    },
+    {
+      "bytes": 102188,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+      "sha256": "dff5d9e8752fdaaf9c49c6a38939c5aae6594663e1ae7d871ef43226c7c0b603"
+    },
+    {
+      "bytes": 14320,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/code_retrieval_context.py",
+      "sha256": "795946d7b82f06c5156487d615099d08ff85750d4f84d085b0868b22814c0885"
+    },
+    {
+      "bytes": 15967,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_context.py",
+      "sha256": "f4d6d3aa2b61a27bd5512a939e6de51be125816132029de56af40c0dc01221e5"
+    },
+    {
+      "bytes": 95728,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "50452ccbfaa229ea51704a7c750f0bacfd778aa10200db5a42167df83bc73280"
+    },
+    {
+      "bytes": 7723,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_capsule_selection.py",
+      "sha256": "6737a0c21c5e29f8f1afca9b02d5f93e2f202be5a8258a4fc851c59f29dbba59"
+    },
+    {
+      "bytes": 48928,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_context_runtime.py",
+      "sha256": "e487cc4a2126397568324c016b43e1d9025db9ff95b256842781e7e566a5860e"
+    },
+    {
+      "bytes": 43934,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
+      "sha256": "47d0526ca1e4000c94f76f881e5207645cfff60169796ed5e8b49fa32e8b3d6e"
+    },
+    {
+      "bytes": 22746,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py",
+      "sha256": "28e386246430a6ee46152d3ef3b2bb755fcccc6ce6653b7fb91aab8de6354c29"
+    },
+    {
+      "bytes": 5151,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence.py",
+      "sha256": "ab3367e0f974a6a7e7fa5de5b76815896e3ee00cc898d4a9fba5da4d5665917b"
+    },
+    {
+      "bytes": 12365,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_semantic_evidence_client.py",
+      "sha256": "e4714fd9bffa8275cb6570039139d7cc7aa8399681ce18ef76be9243c59cb736"
+    },
+    {
+      "bytes": 23653,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_broker.py",
+      "sha256": "e00d460e68602359c896fc81dcf1602d438ae3b7721135d511fe321e2c45c633"
+    },
+    {
+      "bytes": 3262438,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-candidate-projection-20261015/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "sha256": "613d2883ad3ff9fe6b04d84e1dd3288673e1dcdb2dfbdd2e9534c5f9a65b2579"
+    }
+  ]
+}

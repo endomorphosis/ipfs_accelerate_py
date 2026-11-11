@@ -1,0 +1,143 @@
+{
+  "binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "findings": [
+    {
+      "documented_example_kind": "read",
+      "documented_example_tool_name": "read_file",
+      "exhaustive_kind_enum_documented": false,
+      "exhaustive_name_enum_documented": false,
+      "kind_is_acp_derived": true,
+      "note": "The update example omits toolName; this does not establish that all call or update frames must follow that example.",
+      "scope": "streaming-json",
+      "tool_name_is_xai_extension": true
+    },
+    {
+      "documented_internal_ids": [
+        "read_file",
+        "grep",
+        "list_dir",
+        "web_search",
+        "web_fetch",
+        "search_replace",
+        "run_terminal_cmd"
+      ],
+      "note": "These are documented examples, not a complete stream taxonomy. The documentation distinguishes shell internal ID from bash.",
+      "scope": "headless tool filtering"
+    },
+    {
+      "documented_names": [
+        "read_file",
+        "search_replace",
+        "grep",
+        "list_dir",
+        "run_terminal_command",
+        "web_search",
+        "web_fetch",
+        "todo_write",
+        "spawn_subagent",
+        "memory_search"
+      ],
+      "note": "The shell spelling differs from the headless tool-filtering guide; no reviewed section guarantees which spelling appears in all streaming frames.",
+      "scope": "built-in tools guide"
+    },
+    {
+      "aliases": {
+        "Bash": "run_terminal_command",
+        "Edit": "search_replace",
+        "Glob": "list_dir",
+        "Grep": "grep",
+        "ListDir": "list_dir",
+        "MultiEdit": "search_replace",
+        "Read": "read_file",
+        "Task": "spawn_subagent",
+        "WebSearch": "web_search",
+        "Write": "search_replace"
+      },
+      "note": "Matcher compatibility is not proof that these aliases appear in streaming-json toolName.",
+      "scope": "hook matchers only"
+    },
+    {
+      "documented_names": [
+        "Bash",
+        "Read",
+        "Edit",
+        "Write",
+        "Grep",
+        "Glob",
+        "MCPTool",
+        "WebFetch",
+        "WebSearch"
+      ],
+      "note": "Permission-rule vocabulary is distinct from raw stream identity.",
+      "scope": "permission rules only"
+    }
+  ],
+  "interpretation": {
+    "actual_fresh_stream_names_examined": false,
+    "kind_can_prove_exact_tool_identity": false,
+    "kind_candidate": "A separately attributed bounded category could retain ACP kind in a future schema; exact-name completeness must remain independent. This review did not find a complete kind taxonomy in the pinned public sections.",
+    "next_step": "A future independently qualified schema may retain closed name-shape/category evidence and distinct payload bound reasons. Do not change current runtime based solely on ambiguous examples or raise bounds blindly.",
+    "observed_run_terminal_command_alias_confirmed": false,
+    "unknown_stream_name_can_be_resolved_from_these_docs_alone": false
+  },
+  "privacy": {
+    "binary_executed": false,
+    "provider_calls": 0,
+    "raw_document_bodies_exported": false,
+    "raw_live_artifacts_read": false,
+    "raw_tool_names_extracted_from_live_streams": false,
+    "runtime_edits": false
+  },
+  "references": [
+    {
+      "body_exported": false,
+      "bytes": 3025,
+      "end_byte_exclusive": 7590631,
+      "id": "streaming_json",
+      "sha256": "9df2f3daa9b6fc1fb8f90bd6b8e4e56831de3e7a85008797de37c0d43dc5b9c0",
+      "start_byte_inclusive": 7587606
+    },
+    {
+      "body_exported": false,
+      "bytes": 3243,
+      "end_byte_exclusive": 7583705,
+      "id": "headless_tool_filtering",
+      "sha256": "ca42536112ff9742a774914a5358f0f7fa7c9660216c0c83489cd947eb8594a1",
+      "start_byte_inclusive": 7580462
+    },
+    {
+      "body_exported": false,
+      "bytes": 1115,
+      "end_byte_exclusive": 7256980,
+      "id": "builtin_tools",
+      "sha256": "3c4b0bec7534b342b41b90ae70d095d61b4482489a145a5f8c71e9675ed9825f",
+      "start_byte_inclusive": 7255865
+    },
+    {
+      "body_exported": false,
+      "bytes": 494,
+      "end_byte_exclusive": 7479936,
+      "id": "hook_tool_name_aliases",
+      "sha256": "6175caf3fb0eb6b370af417306837447a75457cfd0d99aaa0c5b752dcebc06e0",
+      "start_byte_inclusive": 7479442
+    },
+    {
+      "body_exported": false,
+      "bytes": 945,
+      "end_byte_exclusive": 7487963,
+      "id": "hook_input_example",
+      "sha256": "9ac4f5f66055d9465cfda673589fe4e0ef4a2123387f5759b0c91a6d8607e8c5",
+      "start_byte_inclusive": 7487018
+    },
+    {
+      "body_exported": false,
+      "bytes": 757,
+      "end_byte_exclusive": 7754293,
+      "id": "permission_rule_tool_names",
+      "sha256": "c8a24d2402457fa4df79b0f707ba60c3f0e4f88e171cf6d9d70f4fe320daa132",
+      "start_byte_inclusive": 7753536
+    }
+  ],
+  "schema": "grok-public-tool-taxonomy-audit@1",
+  "version": "1.0.46"
+}

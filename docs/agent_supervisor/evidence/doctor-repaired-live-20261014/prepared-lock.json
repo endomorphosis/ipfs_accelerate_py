@@ -1,0 +1,74 @@
+{
+  "execution_started": false,
+  "files": [
+    {
+      "bytes": 147615,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/recipe.json",
+      "sha256": "f0b29c924bb03d3b1f78804297897627f943ea59c57f29041903f26905429165"
+    },
+    {
+      "bytes": 1677,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/environment.json",
+      "sha256": "557e383e45035a92b777a86bf82979f8ca784e6a92edc98ed8ec8c9fa6e025ea"
+    },
+    {
+      "bytes": 9864,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/run.py",
+      "sha256": "c3772f2981374b08fe574f7991c56b003556efd845e527fd1386c25109c86603"
+    },
+    {
+      "bytes": 374,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/source-freeze.json",
+      "sha256": "dbbf9bc9ea6e9bb9a3d5988251379ac60f71c0697d8879e5ca1c8fb0183939da"
+    },
+    {
+      "bytes": 610,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/runner-adaptation.json",
+      "sha256": "17aa1737e497d15c52c672a467ee6585847cb05c6fe4574688d70cbcf75c25ae"
+    },
+    {
+      "bytes": 533,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/bundle-result.json",
+      "sha256": "8111ff429b0bcfe2bb26d6034fe37a868fa95f011ac26b16ff76383536335619"
+    },
+    {
+      "bytes": 2690,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/verify-result.json",
+      "sha256": "0d0cca724dea836e5a53ef4bdacfa88ab6e82ed337b3e191ecc0e77478a7081c"
+    },
+    {
+      "bytes": 539,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/prepare-result.json",
+      "sha256": "7a3f192fa1760f05c7956a97ef93dc6171ec9dcef3e42447362e7143155e8647"
+    },
+    {
+      "bytes": 3294,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/reporting-freeze.json",
+      "sha256": "a59fdd02a18d2e36934ded0491099f4c101b9478622945ba0517df7c1bb40477"
+    },
+    {
+      "bytes": 1263,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/configuration-differences.json",
+      "sha256": "7afd0d50e41d5b713cef18b37f380317a264b91c4fc1603f4a565dcb71224cf4"
+    },
+    {
+      "bytes": 2306,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/readout-prepared.json",
+      "sha256": "e28a365e152ea7a36d70a7ef29975c789201e8c0515069207f624d0783ecb7f4"
+    },
+    {
+      "bytes": 3388,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/config.json",
+      "sha256": "11ea41ff518e05a52a34fab5fd1c010e3a5dd23541fc6ec2e643c809ec678a29"
+    },
+    {
+      "bytes": 89932,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/preparation.json",
+      "sha256": "4186fa2182838fa28df921213dc8987fdebad906a1eeba4b4981c123361fa825"
+    }
+  ],
+  "provider_calls_during_preparation": 0,
+  "reader_tests_passed": 17,
+  "schema": "repaired-doctor-prepared-lock@1",
+  "source_pins_verified": true
+}

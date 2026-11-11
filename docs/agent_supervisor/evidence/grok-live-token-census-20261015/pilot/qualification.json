@@ -1,0 +1,52 @@
+{
+  "changes": [
+    "Accept only the exact native max_turns_reached to cancelled end trailer pair, retaining failed outcome and one final usage envelope.",
+    "Use existing JSON structured route for schema-bearing candidate requests; retain streaming progress for schema-free coding."
+  ],
+  "historical_live_usage_rewritten": false,
+  "limits": [
+    "No authority or billing completeness inferred from stream transport.",
+    "No summation of per-event usage counters.",
+    "One nonfunctional capture-test comment/import cleanup supersedes its128 earlier cases;169 other cases retained."
+  ],
+  "live_validation_of_new_fixes_completed": false,
+  "native_cli_tests": "Authored subprocess responses; actual provider adapter and parser code run.",
+  "passed_cases": 415,
+  "provider_calls": 0,
+  "runs": [
+    {
+      "all_selected_source_pins_match": true,
+      "excluded_test_files": [],
+      "label": "candidate-adapter01",
+      "selected_cases": 38
+    },
+    {
+      "all_selected_source_pins_match": true,
+      "excluded_test_files": [
+        "test/api/test_grok_stream_capture.py"
+      ],
+      "label": "cap-trailer-dev01",
+      "selected_cases": 169
+    },
+    {
+      "all_selected_source_pins_match": true,
+      "excluded_test_files": [],
+      "label": "cap-final01",
+      "selected_cases": 208
+    }
+  ],
+  "schema": "grok-coding-route-qualification@1",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9abe4d304d2ae3f5a9b0f843ff4dc289408bba5c2d1918ee7b94c962c22094ef",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "3012753ab16919bdc88cf2cb0d04eddb42cb042acb21faa0225d0fadc0df295e",
+    "ipfs_accelerate_py/llm_router.py": "e9ba968993d1b836f5926667a34c64aee8f964ace4dcbfa0edce53f8cc112a9b",
+    "test/api/test_candidate_router_dispatch.py": "fab0112d6bc0e732b140ea7244585ce486ddd3b74ec1849008a72ebbda1671ea",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474",
+    "test/api/test_grok_nonstream_outcome.py": "a9eb81007646deb9e6bb8138a71439ba788d41b5f308b66cf6c24f21e1ea1787",
+    "test/api/test_grok_stream_capture.py": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+    "test/api/test_grok_stream_router.py": "dba9401bcdab44702b6e1f883e1f0d5c60d2539acd80545e153d5f4960e37c6b",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_structured_output.py": "567a46e70cb73c6ade55c4c77bfd232b8719490d7f517b066ab28d623c73bf94",
+    "test/api/test_grok_terminal_rejection.py": "fe3c41286af1e44b4516a11ca612501ee6e96e6ef85f5d5304d103ec0b3b3426"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "artifacts": {
+    "native-final02-result.json": "dfc9e7ab7b10c48d9454d5606739ef78ad58e427d75fc8d0bded476a831701bd",
+    "native-final02-source-pins.json": "e6fb2a9554cc85802e6fd3d330c88f2662187cdb1e05a392015e2c252f211abe",
+    "native-final02.xml": "fa729ce3030c19b5224b499fbfce1e3aaa51158e92f22709fc0b4fc278650ac1"
+  },
+  "dependencies_unchanged": true,
+  "distribution_pins_unchanged": true,
+  "metric": {
+    "actual_router_children": 2,
+    "candidate_complete_bytes": 42785,
+    "complete_run_token_savings_claimed": false,
+    "forged_receipt_variants_refused": 5,
+    "live_provider_calls": 0,
+    "native_complete_bytes": 46230,
+    "original_requirements_exactly_restored": true,
+    "provider_token_usage_verified": false,
+    "public_check_execution_authored": true,
+    "raw_content_exported": false,
+    "representation_bytes_removed": 3445,
+    "retained_input_audit_verified": true,
+    "retained_input_audit_verified_after_cleanup_and_source_edit": true,
+    "schema": "authored-native-candidate-projection-qualification@1",
+    "selected_complete_bytes": 42785,
+    "selected_mode": "native-context-object@1"
+  },
+  "qualification_counts": {
+    "passed": 1
+  },
+  "raw_content_exported": false,
+  "schema": "native-candidate-projection-metric-export@1",
+  "source_pins_unchanged": true
+}

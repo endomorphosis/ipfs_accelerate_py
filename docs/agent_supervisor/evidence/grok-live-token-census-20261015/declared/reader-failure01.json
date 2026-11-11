@@ -1,0 +1,8 @@
+{
+  "schema": "closed-reporting-failure@1",
+  "error_type": "ModuleNotFoundError",
+  "module": "diagnostic_custody_contract",
+  "operation": "read_planning_ablation.py",
+  "report_export_completed": false,
+  "provider_calls": 0
+}

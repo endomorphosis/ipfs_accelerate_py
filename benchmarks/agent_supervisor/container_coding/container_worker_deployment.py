@@ -176,6 +176,11 @@ def validate_legacy_semantic_route(*, policyoptions: dict, rendereroptions: dict
         "query_reference_policy": "legacy", "semantic_context_profile": "legacy-bounded@1",
         "capsule_selection": "lexical-query-symbol-name@1", "capsule_budget": "legacy",
         "metadata_census_only": False,
+
+        'candidate_rounds': 1,
+        'doctor_coding_policy': None,
+        'working_set_census_only': False,
+        'grok_pruning_profile': 'legacy',
     }
     if any(key not in defaults and key != "provider" for key in rendereroptions):
         raise ValueError("unknown semantic renderer option")
@@ -340,33 +345,19 @@ if any(part=='--owner-worker-attempt-id' or part.startswith('--owner-worker-atte
 if cwd.resolve()!=cwd or not any(cwd!=pathlib.Path(p) and cwd.is_relative_to(p) for p in boundary['allowed_worktree_roots']):raise SystemExit('allocated candidate required')
 # The fixed lease includes allocation checks, ownership setup and formalization.
 from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import _argument,MAX_SESSION_SECONDS
+owner_candidate_rounds=1
+owner_doctor_coding_policy=None
+owner_initial_argv=list(sys.argv[1:])
+if any(arg==flag or arg.startswith(flag+'=') for arg in owner_initial_argv for flag in ('--candidate-rounds','--doctor-coding-policy')):
+ from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import split_owner_coding_controls
+ owner_candidate_rounds,owner_doctor_coding_policy,owner_initial_argv=split_owner_coding_controls(list(sys.argv[1:]))
 owner_candidate_round_deadline=None
 try:
  owner_candidate_round_timeout=int(_argument(list(sys.argv[1:]),'--timeout','90'))
  if 1<=owner_candidate_round_timeout<=MAX_SESSION_SECONDS:owner_candidate_round_deadline=owner_candidate_round_started+owner_candidate_round_timeout
 except (TypeError,ValueError,OverflowError):
  pass
-if globals().get('owner_provider_deadline_ns') is not None:
- # A requested local cap may shorten the inherited budget, never restart it.
- if owner_candidate_round_deadline is not None:
-  owner_deadline_numerator,owner_deadline_denominator=owner_candidate_round_deadline.as_integer_ratio()
-  owner_provider_deadline_ns=min(owner_provider_deadline_ns,owner_deadline_numerator*1_000_000_000//owner_deadline_denominator)
- # Conservatively round the effective budget's float view down for old APIs.
- owner_candidate_round_deadline=math.nextafter(owner_provider_deadline_ns/1_000_000_000,-math.inf)
-# Initial provisioning completes before source brokers or the first census.
-# The helper preflights the whole owner-only tree before changing any mode,
-# keeps its root private while applying descriptor changes, and publishes last.
-owner_workspace_deadline_ns=owner_provider_deadline_ns
-if owner_workspace_deadline_ns is None and owner_candidate_round_deadline is not None:
- owner_deadline_numerator,owner_deadline_denominator=owner_candidate_round_deadline.as_integer_ratio()
- owner_workspace_deadline_ns=owner_deadline_numerator*1_000_000_000//owner_deadline_denominator
-from ipfs_accelerate_py.agent_supervisor.runtime.owner_writable_worktree import provision_owner_writable_worktree
-owner_worktree_traversal=None
-if any(name in boundary for name in ('worktree_traversal_anchor','worktree_traversal_directories','worker_shared_group')):
- from ipfs_accelerate_py.agent_supervisor.runtime.owner_worktree_traversal import provision_owner_worktree_traversal
- owner_worktree_traversal=provision_owner_worktree_traversal(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
-owner_workspace_provisioning=provision_owner_writable_worktree(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
-worker_arguments=sys.argv[1:]
+worker_arguments=owner_initial_argv
 owner_prompt_bytes=None
 if any(part=='--semantic-native-input' or part.startswith('--semantic-native-input=') for part in worker_arguments) and any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-policy-artifact','--semantic-decision-policy-sha256','--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):raise SystemExit('semantic native input excludes semantic decision policy and nomination')
 # Capture original stdin once through the existing bounded sealed handoff.
@@ -401,7 +392,7 @@ if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag
 numerical_obligation_broker=None
 worker_source_broker=None
 repository_source_owner=None
-owner_worker_attempt=None
+owner_candidate_launch=None
 try:
  from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import prepare_numerical_obligation_broker
  numerical_obligation_broker=prepare_numerical_obligation_broker(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,input_fd=0)
@@ -412,6 +403,7 @@ try:
  from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_dispatch import configure_repository_source_owner_dispatch
  repository_source_owner=configure_repository_source_owner_dispatch(argv=handoff['argv'],boundary=root/'container-boundary.json',workspace=cwd,deadline_monotonic=owner_candidate_round_deadline)
  if repository_source_owner is not None:
+  if owner_candidate_rounds==2:raise ValueError("candidate rounds exclude repository source owner sessions")
   import signal
   def repository_source_interrupted(signum,frame):
    raise InterruptedError('repository source owner interrupted')
@@ -419,16 +411,10 @@ try:
   from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
   repository_source_owner.start()
   command.extend(repository_source_owner.extra_argv)
- # Ordinary coding has exactly one router invocation per isolated child.
- # Decision dialogues retain their independent all-call accounting contract;
- # provider-free, census, planning and preflight routes have no coding call.
- owner_attempt_excluded=('--preflight','--semantic-metadata-census-only','--doctor-candidate-artifact','--doctor-contract-artifact','--finite-repository-artifact')
- owner_attempt_selected=_argument(handoff['argv'],'--purpose','coding')=='coding' and not any(part==flag or part.startswith(flag+'=') for part in handoff['argv'] for flag in owner_attempt_excluded) and not any(part.startswith('--semantic-decision-') for part in worker_arguments)
- if owner_attempt_selected:
-  from ipfs_accelerate_py.agent_supervisor.runtime.owner_worker_attempt import prepare_owner_worker_attempt
-  owner_worker_attempt=prepare_owner_worker_attempt(boundary=root/'container-boundary.json',workspace=cwd,input_fd=0,absolute_deadline=owner_candidate_round_deadline)
-  command.extend(['--owner-worker-attempt-id',owner_worker_attempt.attempt_id])
-  if owner_provider_deadline_ns is not None:command.extend(['--owner-provider-deadline-ns',str(owner_provider_deadline_ns)])
+ if owner_candidate_rounds==2:
+  if numerical_obligation_broker is not None or proof_query_guard is not None:raise ValueError('candidate rounds require ordinary coding')
+  from ipfs_accelerate_py.agent_supervisor.runtime.owner_candidate_dispatch import capture_original_coding_launch
+  owner_candidate_launch=capture_original_coding_launch(source_broker=worker_source_broker,argv=handoff['argv'],absolute_deadline=owner_candidate_round_deadline,max_rounds=owner_candidate_rounds,doctor_coding_policy=owner_doctor_coding_policy)
 except BaseException:
  if repository_source_owner is not None:
   for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
@@ -445,6 +431,9 @@ except BaseException:
      from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
      repository_source_retirement=retire_repository_source_owner(repository_source_owner)
  raise
+if owner_candidate_launch is not None:
+ from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_monitor import run_candidate_coding_rounds
+ raise SystemExit(run_candidate_coding_rounds(launch=owner_candidate_launch,command=command))
 """
     + OWNER_MONITOR
 )
@@ -531,6 +520,8 @@ parser.add_argument('--semantic-metadata-tokenizer-artifact',type=pathlib.Path)
 parser.add_argument('--semantic-metadata-tokenizer-sha256')
 parser.add_argument("--semantic-working-set",choices=["legacy","capsule-references@1"],default="legacy")
 parser.add_argument('--semantic-metadata-census-only',action='store_true')
+parser.add_argument('--semantic-working-set-census-only',action='store_true')
+parser.add_argument('--semantic-working-set-census-schema',choices=['router-semantic-working-set-census@1','router-semantic-working-set-census@2','router-semantic-working-set-census@3'],default='router-semantic-working-set-census@1')
 parser.add_argument('--coding-reply-mode',choices=['legacy','ordinary-completion@1'],default='legacy')
 parser.add_argument('--tool-output-policy',choices=['legacy','artifact-preview@1','artifact-preview@2'],default='legacy')
 parser.add_argument('--source-view-advisory-policy',choices=['legacy','source-view-raw@1','source-view-compact@1'],default='legacy')
@@ -567,10 +558,15 @@ parser.add_argument('--numerical-obligation-descriptor-sha256')
 parser.add_argument('--source-lookup-descriptor',type=pathlib.Path)
 parser.add_argument('--source-lookup-descriptor-sha256')
 parser.add_argument('--grok-coding-max-turns',type=int,default=128)
+parser.add_argument('--grok-pruning-profile',choices=('legacy','grok-pruning-off@1','grok-pruning-on@1'),default='legacy')
 parser.add_argument('--source-view-profile',default='disabled',choices=('disabled','identity@1','python-whitespace@1','python-comments@1'))
 parser.add_argument('--source-edit-mode',default='disabled',choices=('disabled','mapped-span@1','mapped-span@2'))
 parser.add_argument('--source-view-descriptor',type=pathlib.Path)
 parser.add_argument('--source-view-descriptor-sha256')
+parser.add_argument('--candidate-dispatch-handoff',type=pathlib.Path)
+parser.add_argument('--candidate-dispatch-handoff-sha256')
+parser.add_argument('--candidate-round-descriptor',type=pathlib.Path)
+parser.add_argument('--candidate-round-descriptor-sha256')
 parser.add_argument('--preflight',action='store_true');parser.add_argument('--preflight-sleep',type=int,default=0)
 # Inspect original spellings before argparse can normalize or overwrite them.
 # Only the owner creates this public pair; private native grants have no CLI.
@@ -598,8 +594,8 @@ if any(value is not None for value in metadata_tokenizer_values):
  tokenizer_artifact=args.semantic_metadata_tokenizer_artifact
  tokenizer_sha256=args.semantic_metadata_tokenizer_sha256
  if tokenizer_artifact is None or not tokenizer_artifact.is_absolute() or tokenizer_artifact==pathlib.Path('/') or '..' in tokenizer_artifact.parts or len(str(tokenizer_artifact))>4096 or '\0' in str(tokenizer_artifact) or type(tokenizer_sha256) is not str or len(tokenizer_sha256)!=64 or any(char not in '0123456789abcdef' for char in tokenizer_sha256):raise SystemExit('exact local semantic metadata tokenizer artifact and SHA256 required')
- if args.semantic_metadata_view=='legacy' or args.semantic_repository is None or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values):raise SystemExit('metadata tokenizer requires original semantic router coding')
-if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
+ if args.semantic_metadata_view=='legacy' or args.semantic_repository is None or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values):raise SystemExit('metadata tokenizer requires original semantic router coding')
+if any(value is not None for value in source_lookup_values) and (not all(source_lookup_values) or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('exact source lookup descriptor requires isolated router coding')
 source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha256)
 tokenizer_values=(args.prompt_tokenizer_artifact,args.prompt_tokenizer_sha256)
 decision_values=(args.semantic_decision_policy_artifact,args.semantic_decision_policy_sha256)
@@ -619,14 +615,33 @@ if args.max_input_tokens is not None and args.max_input_tokens<1:raise SystemExi
 if (any(tokenizer_values) or args.max_input_tokens is not None) and (args.preflight or any(finite_values) or any(proof_query_values) or any(contract_values) or any(doctor_values)):raise SystemExit('prompt tokenizer and token budget require router invocation')
 if args.source_view_profile!='disabled' and any(value!='legacy' for value in (args.source_view_advisory_policy,args.repository_source_policy,args.source_input_policy,args.query_reference_policy)):raise SystemExit('signed source views cannot combine with advisory or projected source policies')
 if not 1<=args.grok_coding_max_turns<=128:raise SystemExit('Grok coding turn bound must be 1 through 128')
-if args.grok_coding_max_turns!=128 and (args.provider!='grok_cli' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('nondefault coding turns require isolated Grok model-router coding')
-if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only):raise SystemExit('source editing requires selected coding views')
+if args.grok_coding_max_turns!=128 and (args.provider!='grok_cli' or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('nondefault coding turns require isolated Grok model-router coding')
+if args.source_edit_mode!='disabled' and (args.source_view_profile=='disabled' or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only):raise SystemExit('source editing requires selected coding views')
+candidate_values=(args.candidate_dispatch_handoff,args.candidate_dispatch_handoff_sha256,args.candidate_round_descriptor,args.candidate_round_descriptor_sha256)
+if any(value is not None for value in candidate_values):
+ if not all(candidate_values) or args.purpose!='coding' or args.semantic_repository is None or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values) or any(residual_values) or any(instruction_values) or any(formalization_values) or any(numerical_obligation_values) or any(source_lookup_values) or any(source_view_values) or args.source_view_profile!='disabled' or args.source_edit_mode!='disabled' or decision_options or semantic_options or args.semantic_working_set!='legacy' or args.semantic_metadata_view!='legacy' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.coding_reply_mode!='legacy':raise SystemExit('exact candidate handoff requires independent ordinary coding')
+pruning_path=root/'grok-pruning.json';deployed_pruning='legacy'
+if args.grok_pruning_profile!='legacy' or pruning_path.exists() or pruning_path.is_symlink():
+ from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_profile,validate_grok_pruning_declaration,observe_deployed_grok_pruning
+ validate_grok_pruning_profile(args.grok_pruning_profile,provider=args.provider,purpose=args.purpose)
+if pruning_path.exists() or pruning_path.is_symlink():
+ import stat
+ info=pruning_path.lstat()
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o444 or info.st_size>4096:raise SystemExit('protected Grok pruning declaration required')
+ pruning_declaration=validate_grok_pruning_declaration(json.loads(pruning_path.read_bytes()))
+ deployed_pruning=pruning_declaration['profile']
+if not args.preflight and (args.purpose!='coding' and deployed_pruning!='legacy' or args.purpose=='coding' and args.grok_pruning_profile!=deployed_pruning):raise SystemExit('Grok pruning selection differs from deployment')
+if args.grok_pruning_profile!='legacy':
+ if args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values) or any(candidate_values) or args.source_edit_mode!='disabled':raise SystemExit('pruning requires independent ordinary Grok coding')
+ observe_deployed_grok_pruning(args.grok_pruning_profile)
 if args.source_view_profile!='disabled' or any(value is not None for value in source_view_values):
  if args.source_view_profile=='disabled' or not all(source_view_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values):raise SystemExit('exact source descriptor requires isolated semantic coding')
 if any(value is not None for value in numerical_obligation_values) and (not all(numerical_obligation_values) or not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact numerical obligation descriptor requires owner formalization coding')
 if any(formalization_values) and (not all(formalization_values) or args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('exact owner formalization handoff requires semantic router coding')
 if args.semantic_metadata_view!='legacy' and (args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('metadata view requires original semantic router coding')
 if args.semantic_working_set!='legacy' and (args.source_view_profile=='disabled' or args.semantic_repository is None or args.purpose!='coding' or args.semantic_transport_schema!='supervisor-semantic-router-input@1' or args.semantic_metadata_view!='legacy' or args.semantic_metadata_census_only or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('working set requires original semantic router coding with source retrieval')
+if args.semantic_working_set_census_only and (args.semantic_working_set!='capsule-references@1' or args.semantic_metadata_census_only or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('working-set census requires its separate capsule reference route')
+if args.semantic_working_set_census_schema!='router-semantic-working-set-census@1' and not args.semantic_working_set_census_only:raise SystemExit('extended census requires explicit census-only mode')
 if args.semantic_metadata_census_only and args.semantic_metadata_view not in ('common-bindings@1','common-bindings-instruction@1'):raise SystemExit('metadata census requires common bindings')
 if args.semantic_transport_schema!='supervisor-semantic-router-input@1' and (args.semantic_repository is None or args.purpose!='coding' or args.preflight or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('controller dictionary transport requires semantic router coding')
 if args.tool_output_policy!='legacy' and (args.provider!='codex_cli' or args.semantic_repository is None or args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or any(contract_values) or any(doctor_values) or any(finite_values)):raise SystemExit('tool output policy requires semantic Codex router coding')
@@ -730,6 +745,8 @@ else:
  if args.semantic_working_set!='legacy':sys.argv+=['--semantic-working-set',args.semantic_working_set]
  if args.semantic_metadata_tokenizer_artifact is not None:sys.argv+=['--semantic-metadata-tokenizer-artifact',str(args.semantic_metadata_tokenizer_artifact),'--semantic-metadata-tokenizer-sha256',args.semantic_metadata_tokenizer_sha256]
  if args.semantic_metadata_census_only:sys.argv+=['--semantic-metadata-census-only']
+ if args.semantic_working_set_census_only:sys.argv+=['--semantic-working-set-census-only']
+ if args.semantic_working_set_census_schema!='router-semantic-working-set-census@1':sys.argv+=['--semantic-working-set-census-schema',args.semantic_working_set_census_schema]
  if args.coding_reply_mode!='legacy':sys.argv+=['--coding-reply-mode',args.coding_reply_mode]
  if args.tool_output_policy!='legacy':sys.argv+=['--tool-output-policy',args.tool_output_policy]
  if args.source_view_advisory_policy!='legacy':sys.argv+=['--source-view-advisory-policy',args.source_view_advisory_policy]
@@ -743,14 +760,17 @@ else:
  if args.numerical_obligation_descriptor is not None:sys.argv+=['--numerical-obligation-descriptor',str(args.numerical_obligation_descriptor),'--numerical-obligation-descriptor-sha256',args.numerical_obligation_descriptor_sha256]
  if args.source_lookup_descriptor is not None:sys.argv+=['--source-lookup-descriptor',str(args.source_lookup_descriptor),'--source-lookup-descriptor-sha256',args.source_lookup_descriptor_sha256]
  if args.grok_coding_max_turns!=128:sys.argv+=['--grok-coding-max-turns',str(args.grok_coding_max_turns)]
+ if args.grok_pruning_profile!='legacy':sys.argv+=['--grok-pruning-profile',args.grok_pruning_profile]
  if args.source_view_profile!='disabled':sys.argv+=['--source-view-profile',args.source_view_profile,'--source-view-descriptor',str(args.source_view_descriptor),'--source-view-descriptor-sha256',args.source_view_descriptor_sha256]
  if args.source_edit_mode!='disabled':sys.argv+=['--source-edit-mode',args.source_edit_mode]
+ if any(candidate_values):sys.argv+=['--candidate-dispatch-handoff',str(args.candidate_dispatch_handoff),'--candidate-dispatch-handoff-sha256',args.candidate_dispatch_handoff_sha256,'--candidate-round-descriptor',str(args.candidate_round_descriptor),'--candidate-round-descriptor-sha256',args.candidate_round_descriptor_sha256]
  raise SystemExit(run_with_child_custody(main))
 """)
 
 
 async def install_worker_boundary(environment, *, container_name: str, output: Path, provider: str = "codex_cli",
-                                  repository_source_resources: dict | None = None) -> dict:
+                                  repository_source_resources: dict | None = None,
+                                  grok_pruning_profile: str = "legacy") -> dict:
     if provider not in {"codex_cli", "grok_cli"}:
         raise ValueError("explicit supported container provider required")
     from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_configuration import validate_source_owner_configuration
@@ -758,6 +778,9 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         owner_private_paths=[ROOT + "/state"])
     if repository_source_resources is not None and provider != "codex_cli":
         raise ValueError("repository source resources require the Codex worker boundary")
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+        validate_grok_pruning_profile, render_grok_pruning_config, grok_pruning_declaration, grok_pruning_selection)
+    validate_grok_pruning_profile(grok_pruning_profile, provider=provider)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
 
@@ -841,6 +864,15 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         + ROOT
         + "/bin/worker-entry *\n"
     )
+    pruning_files = []
+    if grok_pruning_profile != "legacy":
+        declaration = grok_pruning_declaration(grok_pruning_profile)
+        pruning_files = [
+            ("grok-pruning-config", render_grok_pruning_config(grok_pruning_profile),
+                ROOT + "/worker-home/.grok/config.toml", "0444"),
+            ("grok-pruning-selection", (json.dumps(declaration, sort_keys=True) + "\n").encode(),
+                ROOT + "/grok-pruning.json", "0444"),
+        ]
     with tempfile.TemporaryDirectory() as temporary:
         for name, data, target, mode in [
             ("boundary", raw, ROOT + "/container-boundary.json", "0444"),
@@ -849,6 +881,7 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
             ("worker", WORKER_ENTRY.encode(), ROOT + "/bin/worker-entry", "0555"),
             ("source-lookup", SOURCE_LOOKUP_ENTRY.encode(), ROOT + "/bin/source-lookup", "0555"),
             ("sudoers", sudoers.encode(), "/etc/sudoers.d/supervisor-worker", "0440"),
+            *pruning_files,
         ]:
             path = Path(temporary) / name
             path.write_bytes(data)
@@ -863,11 +896,14 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
     )
     result = {
         "schema": "container-worker-deployment@1",
+        **grok_pruning_selection(grok_pruning_profile),
+        **({"grok_pruning_declaration": declaration} if pruning_files else {}),
         "boundary": boundary,
         "boundary_sha256": hashlib.sha256(raw).hexdigest(),
         "implementation_command": ROOT
         + "/bin/router-worker --provider " + provider + " --model "
-        + ("grok-4.7" if provider == "grok_cli" else "gpt-6.1-sol") + " --reasoning-effort high --timeout 90",
+        + ("grok-4.7" if provider == "grok_cli" else "gpt-6.1-sol") + " --reasoning-effort high --timeout 90"
+        + (" --grok-pruning-profile " + grok_pruning_profile if grok_pruning_profile != "legacy" else ""),
         "candidate_runner_argv": [ROOT + "/bin/validation-worker"],
         "worker_worktree_root": ROOT + "/worktrees",
         "provider_calls": 0,
@@ -878,7 +914,8 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
 
 
 async def deploy_worker_boundary(environment, *, output: Path, provider: str = "codex_cli",
-                                 repository_source_resources: dict | None = None) -> dict:
+                                 repository_source_resources: dict | None = None,
+                                 grok_pruning_profile: str = "legacy") -> dict:
     """Fresh Harbor deployment: install and exercise the actual worker boundary."""
     from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_configuration import validate_source_owner_configuration
     repository_source_resources = validate_source_owner_configuration(
@@ -892,7 +929,8 @@ async def deploy_worker_boundary(environment, *, output: Path, provider: str = "
     container = await environment._platform._resolve_service_container("main")
     installed = await install_worker_boundary(
         environment, container_name=container, output=output / "installation", provider=provider,
-        **({"repository_source_resources": repository_source_resources} if repository_source_resources is not None else {})
+        **({"repository_source_resources": repository_source_resources} if repository_source_resources is not None else {}),
+        **({"grok_pruning_profile": grok_pruning_profile} if grok_pruning_profile != "legacy" else {})
     )
     qualified = await qualify_worker_boundary(environment, output=output / "qualification")
     result = {**installed, "qualified": qualified["qualified"], "qualification": qualified}

@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 0.21320577198639512,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/collect.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 224324,
+    "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/collect.stdout",
+    "sha256": "c0c936e96942c2aad81edd8ce073d1de811ff3974a113b563660e1a7f2ab4240"
+  },
+  "step": "collect"
+}

@@ -1,0 +1,16 @@
+{
+  "base_commit": "5f5812b42807fabec9bb9ec8a82e618c90e9b81a",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py": "3cfc5f805cfe77dd9718dfb63aeb2dfa9ad668eaa124728a52a43c934eed6a9b",
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "8521db2b4fb3de7e50b633e0b7645e706fb9879ad35605970430fb8ad413c74f",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_coding_policy.py": "b99a41de4c5ce86b842fb0918fb3a3b54f808cbcb86255ad40812905332c7a4d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_doctor_coding_policy.py": "26375f937419a06e2a6607ea921189e55cda66f5ab38ab5a9de88276e74a9c27",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_prompt_projection.py": "fb8138bf52bbb417c48427725c025d41330b0cf5b96473b47c47160ab39e02c0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "50452ccbfaa229ea51704a7c750f0bacfd778aa10200db5a42167df83bc73280",
+    "test/api/test_candidate_dispatch_native_pipeline.py": "593f82eb9ba67a42a8fa93a74be4d7934ea8f91162e81a2aed1efcd806076930",
+    "test/api/test_candidate_prompt_projection.py": "17dfab1a1561d6a8c1a111baa558ed6dc9e77e153eb10fe79f8d55cc25539b1c",
+    "test/api/test_candidate_prompt_projection_native.py": "6e2a55f3acdbd17a50c1815372822bf2f2347daffe6c1f438ba9c8eece76d877",
+    "test/api/test_candidate_router_dispatch.py": "a6a5c83c9f14eba7c2b6047bdc3cba25da32060c95da62fad647516b6718fcf0",
+    "test/api/test_doctor_candidate_dispatch.py": "d380ab10ae9afba4eb5e1fa92478829af38694eb4060680523536658a3f8067b"
+  }
+}

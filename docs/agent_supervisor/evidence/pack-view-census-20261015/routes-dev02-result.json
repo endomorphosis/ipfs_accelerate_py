@@ -1,0 +1,63 @@
+{
+  "exit_code": 0,
+  "seconds": 89.24154974007979,
+  "live_provider_calls": 0,
+  "source_pins_unchanged": true,
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--tb=short",
+    "--color=no",
+    "-o",
+    "log_cli=false",
+    "-o",
+    "addopts=",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_census_worker_wiring.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py",
+    "test/api/test_semantic_working_set_census_dispatch.py",
+    "-x",
+    "--junitxml=/home/barberb/lift_coding/artifacts/pack-view-census-20261015/routes-dev02.xml"
+  ],
+  "counts": {
+    "passed": 116
+  },
+  "dependencies": {
+    "ipfs_datasets_py": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "tracked_status": ""
+    },
+    "ipfs_kit_py": {
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "tracked_status": ""
+    }
+  },
+  "dependencies_unchanged": true,
+  "dependency_import_origins": {
+    "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/__init__.py",
+    "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit/ipfs_kit_py/__init__.py"
+  },
+  "distribution_pins": {
+    "multiformats": {
+      "version": "0.3.1.post4",
+      "metadata_sha256": "983d90687bea02cf1244f730d9b1575c4633c76f60a2177b6a19e4de7b3f101b"
+    },
+    "multiformats-config": {
+      "version": "0.3.1",
+      "metadata_sha256": "bc1354b0aac1e441ea030cd6d149dcd1738a21add13c47255ab2bbc69892c754"
+    },
+    "bases": {
+      "version": "0.3.0",
+      "metadata_sha256": "dec42e7aaeaa33bb2e6e0290d86ebf1c2400cb096bfd3258257dbbe93215b918"
+    },
+    "typing-validation": {
+      "version": "1.2.12",
+      "metadata_sha256": "75c9b28c8f307a5b5d67022412095a31a1adb0b5baeec9cc10883190b5bca8b5"
+    }
+  },
+  "distribution_pins_unchanged": true
+}

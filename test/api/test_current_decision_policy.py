@@ -63,6 +63,8 @@ def test_invalid_controls_refuse_without_reading_artifacts(options):
     {"metadata_census_only": True}, {"metadata_census_only": 0},
     {"planning_mode": "declared"}, {"timeout": 601}, {"timeout": True},
     {"purpose": "planning"}, {"unknown_mode": "enabled"},
+    {"candidate_rounds": 2}, {"doctor_coding_policy": "doctor-coding-two-attempts@1"},
+    {"working_set_census_only": True}, {"grok_pruning_profile": "grok-pruning-on@1"},
 ])
 def test_selected_unsupported_routes_refuse_before_effects(options):
     values = {"arm": "full", "provider": "codex_cli", **options}
@@ -168,3 +170,10 @@ def test_self_consistent_tar_digest_does_not_authenticate_missing_or_changed_sou
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
     with pytest.raises(ValueError, match="selected decision"):
         policy.require_decision_archive(archive, manifest, selected)
+
+
+@pytest.mark.parametrize("selection", [SELECTED, NOMINATED])
+def test_selected_routes_accept_explicit_inert_historical_coding_controls(selection):
+    policy.validate_decision_route(policy.decision_selection(**selection), arm="full", provider="codex_cli",
+        candidate_rounds=1, doctor_coding_policy=None, working_set_census_only=False,
+        grok_pruning_profile="legacy")

@@ -1,0 +1,42 @@
+{
+  "allowlist": [
+    "X final recipe/source freeze/launch lock and current source/qualification bindings",
+    "X provider-free archive verification receipt and archive/manifest hashes; do not copy the multi-GB archive",
+    "X execution/collection timing and bounded cleanup observations",
+    "X safe readout from reader-v2 with T as comparison, plus reader43-case qualification and pure module source pins",
+    "X production415-case qualification and scoped authored regression evidence, preserving red reproduction provenance",
+    "T readout-final-v2 and live-comparison plus Z already-qualified safe prior readout; preserve empty failed T output and reader-failure provenance"
+  ],
+  "comparison_rules": [
+    "same declared planning controls as T, changed runtime repair is explicit",
+    "single sequential trials, descriptive observations only",
+    "declared signed-task construction does not infer intent or discharge semantic obligations",
+    "report lack of independent host replay of owner-private evidence",
+    "no total-token, billing, causal savings or completion claim without the corresponding retained evidence"
+  ],
+  "completion_authority": false,
+  "destination": "new isolated evidence checkout after X collection and cleanup; frozen J remains unchanged",
+  "diagnostic_questions": [
+    "Does the first capped streaming child now retain one final-envelope usage record while remaining max_turns failure with actual cancelled trailer and process outcome?",
+    "Does the second candidate reach native structured JSON CLI observation rather than failing adapter option validation before CLI launch?",
+    "Are actual attempts joined to distinct router receipts, public validation observations and original deadline without claiming provider-internal call counts?",
+    "What verifier reward and public structural/eigenpair/performance status were actually observed?",
+    "Which usage categories and completeness fields remain unavailable? Never sum unverified per-event counters or recover absent old totals."
+  ],
+  "excluded": [
+    "raw provider/model transcripts and raw router prompts",
+    "CLI stderr/stdout or supervisor whole report bodies",
+    "authentication material",
+    "private owner archives",
+    "hidden benchmark tests or solutions"
+  ],
+  "execution_authority": false,
+  "prerequisites": [
+    "execute and collect results retained without overwriting prior steps",
+    "native container cleanup observed",
+    "all frozen source/reader/recipe/archive hashes still match"
+  ],
+  "provider_calls": 0,
+  "schema": "grok-fixed-pilot-evidence-packaging-plan@1",
+  "status": "post_collect_only"
+}

@@ -10,6 +10,9 @@ from __future__ import annotations
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
     DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns,
 )
+from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+    DEFAULT_GROK_PRUNING_PROFILE, validate_grok_pruning_profile,
+)
 
 import hashlib
 import json
@@ -24,6 +27,9 @@ SEMANTIC_WORKING_SET_SCHEMA = "terminal-benchmark-declared-controls@6"
 GROK_CODING_SCHEMA = "terminal-benchmark-declared-controls@7"
 METADATA_TOKENIZER_SCHEMA = "terminal-benchmark-declared-controls@6"
 COMBINED_METADATA_SCHEMA = "terminal-benchmark-declared-controls@8"
+DOCTOR_CODING_SCHEMA = "terminal-benchmark-declared-controls@11"
+WORKING_SET_CENSUS_SCHEMA = "terminal-benchmark-declared-controls@9"
+GROK_PRUNING_SCHEMA = "terminal-benchmark-declared-controls@10"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
             "agent_timeout_multiplier", "agent_setup_timeout_multiplier",
@@ -33,6 +39,62 @@ JOB_KEYS = ("n_attempts", "n_concurrent_trials", "retry", "timeout_multiplier",
 AGENT_KEYS = ("override_timeout_sec", "max_timeout_sec", "override_setup_timeout_sec",
               "n_concurrent", "concurrency_group", "mcp_servers", "skills",
               "extra_allowed_hosts", "load_trajectory", "resume_trajectory")
+
+
+def validate_full_supervisor_grok_pruning(value=DEFAULT_GROK_PRUNING_PROFILE, *,
+        provider=None, metadata_census_only=False, working_set_census_only=False,
+        candidate_rounds=1, doctor_coding_policy=None, source_edit_mode="disabled", planning_mode="model"):
+    """Admit an explicit coding-only declaration without inferring native effect."""
+    selected = validate_grok_pruning_profile(value, provider=provider)
+    if selected != DEFAULT_GROK_PRUNING_PROFILE and (metadata_census_only or working_set_census_only
+            or type(candidate_rounds) is not int or candidate_rounds != 1
+            or doctor_coding_policy is not None or source_edit_mode != "disabled"
+            or planning_mode != "declared-contract@1"):
+        raise ValueError("Grok pruning requires declared planning and ordinary coding without census or continuation")
+    return selected
+
+
+def grok_pruning_from_controls(value):
+    from .benchmark_provider_profile import resolve_provider_profile
+    return validate_full_supervisor_grok_pruning(
+        value.get("grok_pruning_profile", DEFAULT_GROK_PRUNING_PROFILE),
+        provider=resolve_provider_profile(value.get("provider_profile"))["provider"],
+        metadata_census_only=value.get("metadata_census_only", False),
+        working_set_census_only=value.get("working_set_census_only", False),
+        candidate_rounds=value.get("candidate_rounds", 1),
+        doctor_coding_policy=value.get("doctor_coding_policy"),
+        source_edit_mode=value.get("source_edit_mode", "disabled"),
+        planning_mode=value.get("planning_mode", "model"))
+
+
+def validate_full_supervisor_candidate_rounds(value=1, *, arm=None,
+        doctor_coding_policy=None, source_view_profile="disabled", source_edit_mode="disabled",
+        numerical_formalization_profile=None, task_profile=None):
+    """Admit the exact optional coding-attempt policy before setup work."""
+    from .terminal_doctor_coding_policy import validate_doctor_coding_selection
+    return validate_doctor_coding_selection(value, doctor_coding_policy,
+        arm=arm, source_view_profile=source_view_profile, source_edit_mode=source_edit_mode,
+        numerical_formalization_profile=numerical_formalization_profile, task_profile=task_profile)
+
+
+def validate_frozen_candidate_rounds(prepared, config):
+    """Reject a changed or unsupported selection before execute/collect work."""
+    kwargs = config["agents"][0].get("kwargs", {})
+    chosen = validate_full_supervisor_candidate_rounds(prepared.get("candidate_rounds", 1),
+        arm=prepared.get("arm"), doctor_coding_policy=prepared.get("doctor_coding_policy"),
+        source_view_profile=prepared.get("source_view_profile", "disabled"),
+        source_edit_mode=prepared.get("source_edit_mode", "disabled"),
+        numerical_formalization_profile=prepared.get("numerical_formalization_profile"),
+        task_profile=kwargs.get("task_profile"))
+    configured = validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1),
+        arm=kwargs.get("arm"), doctor_coding_policy=kwargs.get("doctor_coding_policy"),
+        source_view_profile=kwargs.get("source_view_profile", "disabled"),
+        source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
+        numerical_formalization_profile=kwargs.get("numerical_formalization_profile"),
+        task_profile=kwargs.get("task_profile"))
+    if chosen != configured or prepared.get("doctor_coding_policy") != kwargs.get("doctor_coding_policy"):
+        raise ValueError("prepared candidate rounds changed")
+    return chosen
 
 
 def _digest(value):
@@ -87,6 +149,9 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
     if agent.get("model_name") != model:
         raise ValueError("declared model differs from configuration")
     kwargs = agent.get("kwargs", {})
+    if "working_set_census_only" in kwargs:
+        from .terminal_semantic_working_set_policy import frozen_working_set_census
+        frozen_working_set_census(kwargs, config)
     if agent.get("name") == "codex" and not agent.get("import_path"):
         if kwargs != {"version": cli_version, "reasoning_effort": reasoning_effort}:
             raise ValueError("native model controls differ from declared CLI/reasoning")
@@ -102,7 +167,13 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         if (model, reasoning_effort, cli_version) != tuple(selected[key] for key in
                 ("model", "reasoning_effort", "cli_version")):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {'semantic_metadata_tokenizer', 'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'grok_coding_max_turns', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy', 'prompt_tokenizer_artifact', 'prompt_tokenizer_sha256', 'max_input_tokens', 'semantic_slot_policy_revision', 'semantic_context_projection', 'semantic_native_input', 'semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens', 'doctor_dispatch_policy'}:
+        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"),
+            doctor_coding_policy=kwargs.get("doctor_coding_policy"),
+            source_view_profile=kwargs.get("source_view_profile", "disabled"),
+            source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
+            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"),
+            task_profile=kwargs.get("task_profile"))
+        if set(kwargs) - {'candidate_rounds', 'doctor_coding_policy', 'working_set_census_only', 'grok_pruning_profile', 'semantic_metadata_tokenizer', 'arm', 'capsule_budget', 'capsule_selection', 'coding_reply_mode', 'grok_coding_max_turns', 'intent_requirement_contract', 'model_revision', 'numerical_formalization_profile', 'planning_mode', 'provider_profile', 'query_reference_policy', 'repository_source_policy', 'resource_profile', 'runtime_archive', 'semantic_context_profile', 'semantic_metadata_view', 'semantic_transport_schema', 'semantic_working_set', 'setup_cache_selection', 'source_edit_mode', 'source_input_policy', 'source_view_advisory_policy', 'source_view_policy', 'source_view_profile', 'task_profile', 'tool_output_policy', 'prompt_tokenizer_artifact', 'prompt_tokenizer_sha256', 'max_input_tokens', 'semantic_slot_policy_revision', 'semantic_context_projection', 'semantic_native_input', 'semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens', 'doctor_dispatch_policy'}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         # Validate additive legacy/typed routes against their native closed
         # contracts; the full serialized configuration commits their values.
@@ -143,6 +214,7 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         validate_source_context_combination(**{key: kwargs[key] for key in (
             "source_view_profile", "source_view_advisory_policy", "repository_source_policy",
             "source_input_policy", "query_reference_policy", "capsule_selection", "semantic_context_profile") if key in kwargs})
+        grok_pruning_from_controls(kwargs)
         validate_grok_coding_max_turns(kwargs.get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
             provider=selected["provider"])
         if "semantic_working_set" in kwargs:
@@ -251,6 +323,15 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
                    for key, value in task_input_sha256.items())):
         raise ValueError("complete task input hashes required")
     agent = config["agents"][0]
+    if agent.get("import_path") == (
+            "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"):
+        kwargs = agent.get("kwargs", {})
+        validate_full_supervisor_candidate_rounds(kwargs.get("candidate_rounds", 1), arm=kwargs.get("arm"),
+            doctor_coding_policy=kwargs.get("doctor_coding_policy"),
+            source_view_profile=kwargs.get("source_view_profile", "disabled"),
+            source_edit_mode=kwargs.get("source_edit_mode", "disabled"),
+            numerical_formalization_profile=kwargs.get("numerical_formalization_profile"),
+            task_profile=kwargs.get("task_profile"))
     if agent.get("model_name") != model:
         raise ValueError("frozen model differs from configuration")
     if agent.get("name") == "codex" and not agent.get("import_path"):
@@ -331,6 +412,21 @@ def _control_record(config, *, task_input_sha256, task, model, reasoning_effort,
         # identity without treating a different staging directory as content.
         controls.setdefault("experimental_controls_sha256", {})["semantic_metadata_tokenizer"] = (
             _digest(snapshot.observation()))
+    if "working_set_census_only" in kwargs:
+        from .terminal_semantic_working_set_policy import frozen_working_set_census
+        frozen_working_set_census(kwargs, config)
+    if kwargs.get("candidate_rounds", 1) == 2:
+        controls["schema"] = DOCTOR_CODING_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {}).update(
+            candidate_rounds=_digest(kwargs["candidate_rounds"]),
+            doctor_coding_policy=_digest(kwargs["doctor_coding_policy"]))
+    if kwargs.get("working_set_census_only", False):
+        controls["schema"] = WORKING_SET_CENSUS_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {})["working_set_census_only"] = _digest(True)
+    pruning = grok_pruning_from_controls(kwargs)
+    if pruning != DEFAULT_GROK_PRUNING_PROFILE:
+        controls["schema"] = GROK_PRUNING_SCHEMA
+        controls.setdefault("experimental_controls_sha256", {})["grok_pruning_profile"] = _digest(pruning)
     controls["sha256"] = _digest(controls)
     return controls
 
@@ -341,7 +437,36 @@ def validate_controls(value):
             "agent_controls_sha256", "sha256"}
     if not isinstance(value, dict):
         return False
-    if value.get("schema") == COMBINED_METADATA_SCHEMA:
+    if value.get("schema") == GROK_PRUNING_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or not {"grok_pruning_profile", "planning_mode"} <= set(experiment)
+                or set(experiment) - {"semantic_metadata_tokenizer", "grok_pruning_profile", "grok_coding_max_turns",
+                    "semantic_working_set", "capsule_budget", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())
+                or experiment["grok_pruning_profile"] not in {
+                    _digest("grok-pruning-off@1"), _digest("grok-pruning-on@1")}
+                or experiment["planning_mode"] != _digest("declared-contract@1")):
+            return False
+    elif value.get("schema") == WORKING_SET_CENSUS_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict
+                or not {"working_set_census_only", "semantic_working_set", "planning_mode"} <= set(experiment)
+                or set(experiment) - {"semantic_metadata_tokenizer", "working_set_census_only", "grok_coding_max_turns",
+                    "semantic_working_set", "capsule_budget", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())
+                or experiment["working_set_census_only"] != _digest(True)):
+            return False
+    elif value.get("schema") == DOCTOR_CODING_SCHEMA:
+        keys.add("experimental_controls_sha256")
+        experiment = value.get("experimental_controls_sha256")
+        if (type(experiment) is not dict or not {"candidate_rounds", "doctor_coding_policy"} <= set(experiment)
+                or set(experiment) - {"semantic_metadata_tokenizer", "candidate_rounds", "doctor_coding_policy", "grok_coding_max_turns",
+                    "semantic_working_set", "capsule_budget", "source_edit_mode", "planning_mode", "numerical_formalization_profile"}
+                or any(type(item) is not str or not _DIGEST.fullmatch(item) for item in experiment.values())):
+            return False
+    elif value.get("schema") == COMBINED_METADATA_SCHEMA:
         keys.add("experimental_controls_sha256")
         experiment = value.get("experimental_controls_sha256")
         if (type(experiment) is not dict or "semantic_metadata_tokenizer" not in experiment

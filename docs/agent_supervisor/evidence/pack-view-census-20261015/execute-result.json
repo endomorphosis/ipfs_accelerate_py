@@ -1,0 +1,17 @@
+{
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "observation": {
+    "bytes": 40784,
+    "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/actual-public-census-01.json",
+    "sha256": "c352ccb6ceaf7c2187a7f0163cd7e6faa67700aab56866eefa70b4ada6ef6362"
+  },
+  "outer_failure": null,
+  "qualified": true,
+  "seconds": 221.5486244810745,
+  "step": "execute"
+}

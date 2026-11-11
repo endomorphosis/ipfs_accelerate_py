@@ -1,0 +1,48 @@
+{
+  "freeze_script": {
+    "bytes": 4460,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/freeze.py",
+    "sha256": "faa66693a5761d9116c7bea3d844e97d8a2256234a862b1dd3e0fcf809175f54"
+  },
+  "launcher_adaptation": {
+    "bytes": 2466,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/launcher-adaptation.json",
+    "sha256": "7f8847a8717bb5e3ac0b33b37854632038ccb792040eb8a2201432ee831b1720"
+  },
+  "observed_at": "2026-10-15T02:45:04.613913+00:00",
+  "prior_cleanup": {
+    "bytes": 292,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/cleanup-observation.json",
+    "sha256": "336dd635d78c5d532d92d0ae1e0314507364705427e6b6e8a7be1409772bdb05"
+  },
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 6972,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/qualification.json",
+    "sha256": "2e65a2ed6fb0e33269c8072478aa8e1f3bde759d4c4ebd2ca173124f744712d1"
+  },
+  "reader_qualification": {
+    "bytes": 17407,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reader/qualification-dev01.json",
+    "sha256": "54551b4187799430ea1f37ccdb579795aecdf6c1152992a108125759758b5f7e"
+  },
+  "recipe": {
+    "bytes": 151814,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/recipe.json",
+    "sha256": "7905f68e5b2793afb72002bdcf21495cf58458e7391e2e1f930fec4be20b30fe"
+  },
+  "reporting": {
+    "bytes": 17735,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/reporting-freeze-v2.json",
+    "sha256": "906f8ef9e0583b05610e9b109fce08c40a0f38b94ac632cb964fa5ec3158dd77"
+  },
+  "root_authorized_source_freeze": true,
+  "runner": {
+    "bytes": 13259,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/run.py",
+    "sha256": "318824b6ba4f496b3d7cb1c9fa1f413dbe62e82338d948b63f768555e769dab5"
+  },
+  "schema": "candidate-projection-source-freeze@1",
+  "source_commit": "cef1bb3764aa2ea9ed453a2feec5c240cca2dc54",
+  "worktree_clean": true
+}

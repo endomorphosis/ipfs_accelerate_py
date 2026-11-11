@@ -282,6 +282,9 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         source_input_policy: str = "legacy", query_reference_policy: str = "legacy",
                         semantic_working_set: str = "legacy",
                         grok_coding_max_turns: int = 128, provider: str = "codex_cli",
+                        grok_pruning_profile: str = "legacy",
+                        candidate_rounds: int = 1,
+                        doctor_coding_policy: str | None = None,
                         prompt_tokenizer_artifact: str | Path | None = None,
                         prompt_tokenizer_sha256: str | None = None,
                         max_input_tokens: int | None = None,
@@ -401,6 +404,25 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
             "query_reference_policy": query_reference_policy, "provider": provider})
     from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import validate_grok_coding_max_turns
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider)
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import (
+        validate_candidate_rounds, validate_doctor_coding_policy,
+    )
+    validate_candidate_rounds(candidate_rounds)
+    validate_doctor_coding_policy(doctor_coding_policy, candidate_rounds=candidate_rounds)
+    provider_free_candidate = doctor is not None and doctor.get("route") in {
+        "doctor_candidate", "doctor_contract_candidate"}
+    if candidate_rounds == 2 and (doctor is not None and doctor_coding_policy is None
+            or not provider_free_candidate and (semantic_repository is None or source_view_profile == "disabled")):
+        raise ValueError("candidate continuation requires ordinary semantic source coding")
+    if doctor_coding_policy is not None and doctor is None:
+        raise ValueError("explicit Doctor coding policy requires Doctor dispatch constraints")
+    if doctor_coding_policy is not None and source_edit_mode != "disabled":
+        raise ValueError("Doctor coding continuation does not admit mapped source edits")
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_profile
+    validate_grok_pruning_profile(grok_pruning_profile, provider=provider)
+    if grok_pruning_profile != "legacy" and (provider_free_candidate or candidate_rounds != 1
+            or doctor_coding_policy is not None or source_edit_mode != "disabled"):
+        raise ValueError("Grok pruning requires an ordinary model coding route")
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
     tokenizer_selection = semantic_metadata_tokenizer_selection(
@@ -484,9 +506,15 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                 "--doctor-candidate-sha256", doctor["sha256"], "--doctor-task-cid", doctor["task_cid"]]
     if doctor is not None and (doctor.get("route") != "model_router" or doctor.get("status") != "residual"):
         raise ValueError("Doctor dispatch is neither a candidate nor a residual fallback")
+    if doctor_coding_policy is not None and (type(doctor.get("residual_context")) is not dict
+            or not all(doctor["residual_context"].get(key) for key in ("artifact", "sha256", "task_cid"))):
+        raise ValueError("Doctor continuation requires the exact residual context binding")
     return [str(router), "--model", model, "--reasoning-effort", reasoning,
             "--timeout", str(timeout), "--max-output-tokens", "4096",
+            *(["--candidate-rounds", "2"] if candidate_rounds == 2 else []),
+            *(["--doctor-coding-policy", doctor_coding_policy] if doctor_coding_policy is not None else []),
             *(["--grok-coding-max-turns", str(grok_coding_max_turns)] if grok_coding_max_turns != 128 else []),
+            *(["--grok-pruning-profile", grok_pruning_profile] if grok_pruning_profile != "legacy" else []),
             *(["--semantic-repository", str(semantic_repository)] if semantic_repository is not None else []),
             *(["--semantic-transport-schema", semantic_transport_schema]
               if semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA else []),

@@ -39,6 +39,35 @@ SOURCE_LOOKUP_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR"
 SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_LOOKUP_DESCRIPTOR_SHA256"
 SOURCE_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR"
 SOURCE_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_SOURCE_VIEW_DESCRIPTOR_SHA256"
+CANDIDATE_DESCRIPTOR_ENV = "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR"
+CANDIDATE_DESCRIPTOR_DIGEST_ENV = "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR_SHA256"
+
+
+def doctor_budget_capability(*, provider, requested_output_tokens, budget_observation):
+    """Describe native coding limits without turning advisory limits into admission.
+
+    Both CLI adapters receive max_tokens/max_new_tokens through the shared
+    router, but neither establishes a native output or total-token hard cap.
+    A residual-proposal budget is not a ledger for their internal agent turns.
+    """
+    if (provider not in {"codex_cli", "grok_cli"}
+            or type(requested_output_tokens) is not int
+            or not 1 <= requested_output_tokens <= 16_384):
+        raise ValueError("explicit Doctor coding budget capability settings required")
+    from .doctor_residual_budget import validate_budget_observation
+    budget_observation = validate_budget_observation(budget_observation)
+    raw = json.dumps(budget_observation, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False).encode()
+    return {"schema": "doctor-native-coding-budget-capability@1",
+        "provider": provider, "requested_output_tokens": requested_output_tokens,
+        "budget_observation_sha256": hashlib.sha256(raw).hexdigest(),
+        "requested_output_tokens_semantics": "shared-router-generation-request",
+        "native_output_token_cap_enforced": False,
+        "native_total_token_cap_enforced": False,
+        "provider_cost_cap_enforced": False,
+        "provider_usage_converted_to_residual_budget": False,
+        "additional_router_rounds_admitted": False,
+        "completion_authority": False}
 
 
 @contextmanager
@@ -608,6 +637,26 @@ def _verify_world_residual_counter_snapshot(counter, snapshot, *, provider, mode
             or current[1] != snapshot[1] or current[2] is not snapshot[2]):
         raise ValueError("world residual counter binding changed")
 
+def _working_set_preflight(*, view, descriptor_path, descriptor_sha256, workspace, source_receipt):
+    """Probe one exact capsule through the admitted, source-checked endpoint."""
+    from .worker_semantic_evidence_client import request_page, canonical_json as evidence_json
+    references = json.loads(view.provider_prompt)["working_set"]["capsule_references"]
+    if not references:
+        raise ValueError("selected working set has no retrievable capsule")
+    reference = references[0]
+    probe = request_page(descriptor_path, descriptor_sha256,
+        capsule_index=reference["capsule_index"], max_bytes=4096, workspace=workspace)
+    if (probe.get("ok") is not True
+            or probe["page"]["artifact_sha256"] != reference["capsule_sha256"]):
+        raise ValueError("selected working set evidence is unavailable")
+    probe_bytes = evidence_json(probe)
+    return dict(schema="supervisor-semantic-working-set-preflight@1", requests=1,
+        session_id=source_receipt["session_id"], capsule_index=reference["capsule_index"],
+        capsule_sha256=reference["capsule_sha256"],
+        response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
+        provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
+
+
 def _grok_progress_emitter(invocation_id: str):
     """Keep advisory progress outside native JSON receipt and custody parsers."""
     def emit(value):
@@ -693,6 +742,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     "credential_isolation", "provider_discovery", "provider_allocation",
     "provider_initialization", "provider_invocation", "provider_result_validation",
     "semantic_response_decode", "coding_reply_validation", "unclassified",
+    "candidate_dispatch_context", "candidate_round_preflight", "candidate_reply_contract", "candidate_reply_validation",
 })
 RUNNER_FAILURE_TYPES = frozenset({
     "ValueError", "TypeError", "RuntimeError", "PermissionError", "FileNotFoundError",
@@ -702,7 +752,8 @@ RUNNER_FAILURE_TYPES = frozenset({
 })
 RUNNER_FAILURE_FILES = frozenset({
     "router_implementation_runner.py", "container_worker_boundary.py",
-    "semantic_router_translation.py", "doctor_residual_context.py",
+    "semantic_router_translation.py", "doctor_residual_context.py", "doctor_residual_budget.py",
+    "candidate_doctor_dispatch.py", "candidate_round_policy.py",
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
     'semantic_metadata_view.py',
@@ -722,6 +773,13 @@ RUNNER_FAILURE_FILES = frozenset({
     'repository_world_invocation_replay.py',
     'repository_world_artifact_retention.py',
     'repository_world_attempt_journal.py',
+    'semantic_working_set_census.py',
+    'inline_evidence_projection.py',
+    'semantic_pack_census.py',
+    'semantic_pack_projection.py',
+    'candidate_dispatch_context.py',
+    'candidate_reply_contract.py',
+    'worker_candidate_round_client.py',
 })
 
 
@@ -844,7 +902,8 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
                         world_packet: bool = False,
                         tool_output_binding: dict | None = None,
                         source_view_binding: dict | None = None,
-                        repository_source_binding: dict | None = None) -> tuple[str, str]:
+                        repository_source_binding: dict | None = None,
+                        candidate_transport: bool = False) -> tuple[str, str]:
     """Preserve native task bytes while making the allocated coding path explicit."""
     if purpose not in {"planning", "coding"}:
         raise ValueError("explicit planning or coding purpose required")
@@ -871,6 +930,8 @@ def render_model_prompt(*, prompt: str, purpose: str, workspace: Path,
         + ("Current task requirements and source-bound world context follow. This is a self-contained "
            "decision packet; no retained prior provider context is assumed. Observations and retrieval "
            "references do not grant proof or completion authority:\n" if world_packet else
+           "Independently admitted candidate task context follows, retaining the complete original requirements:\n"
+           if candidate_transport else
            "Task context follows using a reversible semantic symbol table; source code and authority remain canonical:\n"
            if semantic_transport else "Original native task prompt follows without modification:\n")
     )
@@ -901,7 +962,8 @@ def _refuse_candidate_preparation(prompt):
     except (ValueError, RecursionError):
         return
     if (type(envelope) is dict and type(envelope.get("schema")) is str
-            and envelope["schema"].startswith("supervisor-owner-candidate-router-input@")):
+            and envelope["schema"].startswith(("supervisor-owner-candidate-router-input@",
+                "supervisor-candidate-provider-view@"))):
         raise ValueError("candidate round prompt requires independent dispatch admission")
 @dataclass(frozen=True)
 class _WorldTaskPresentationSnapshot:
@@ -969,6 +1031,60 @@ def _world_task_presentation_material(presentation, packet, *, expected=None):
         packet.prompt, presented, sidecar, codec_bytes, metadata_bytes)
 
 
+def _candidate_round_guidance(binding):
+    """Point only at the admitted generation's bounded advisory reader."""
+    generation = binding["workspace_generation"]
+    return ("\n\nFresh candidate context is available through the separate read-only candidate session. "
+        "From the allocated workspace run: /opt/ipfs-supervisor/venv/bin/python -I "
+        "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_client.py "
+        "--expected-workspace-generation " + generation + " --select --artifact catalog. "
+        "The helper reads this invocation's IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR and "
+        "IPFS_SUPERVISOR_CANDIDATE_ROUND_DESCRIPTOR_SHA256. Select candidate capsules or obligations with "
+        "--select --artifact capsules or --select --artifact obligations, optionally filtering --path, "
+        "--symbol-id or --function-id using the returned candidate catalog. For source use --path <path> "
+        "--view compact or --view original. Preserve the returned next_cursor JSON with --cursor to "
+        "continue a page and keep the exact workspace generation. These candidate identifiers differ "
+        "from baseline symbols. Baseline proof, capsule and alias bindings are historical and confer "
+        "no current evidence. Candidate formulas remain pending or unsupported as reported; retrieval "
+        "does not discharge obligations. This session cannot refresh after edits: read needed context "
+        "before editing, then edit the original allocated files. The owner validates resulting effects.\n")
+
+
+def _candidate_dispatch_observation(*, prompt, repository, workspace, boundary,
+        boundary_sha256, handoff, handoff_sha256, descriptor_path, descriptor_sha256,
+        launch_settings):
+    from .worker_candidate_round_client import load_descriptor
+    from .candidate_dispatch_context import validate_candidate_dispatch_context
+
+    descriptor = load_descriptor(descriptor_path, descriptor_sha256, workspace=workspace)
+    return validate_candidate_dispatch_context(prompt=prompt, repository=repository,
+        workspace=workspace, boundary=boundary, boundary_sha256=boundary_sha256,
+        handoff=handoff, handoff_sha256=handoff_sha256, descriptor=descriptor,
+        descriptor_path=descriptor_path, descriptor_sha256=descriptor_sha256,
+        launch_settings=launch_settings)
+
+
+def _candidate_round_preflight(*, descriptor_path, descriptor_sha256, workspace, binding):
+    """Require one bounded owner exchange from this registered child lineage."""
+    from .worker_candidate_round_client import request_context_page, canonical_json
+
+    response = request_context_page(descriptor_path, descriptor_sha256, artifact="summary",
+        expected_workspace_generation=binding["workspace_generation"], max_bytes=8192, workspace=workspace)
+    if (response.get("ok") is not True
+            or response["page"]["artifact_sha256"] != binding["candidate_artifacts"]["summary"]["sha256"]
+            or response["page"]["workspace_generation"] != binding["workspace_generation"]):
+        raise ValueError("admitted candidate summary is unavailable or differs")
+    raw = canonical_json(response)
+    if len(raw) > 8192:
+        raise ValueError("candidate summary preflight exceeds response bound")
+    return dict(schema="supervisor-candidate-round-preflight@1", requests=1,
+        session_id=binding["session_id"], workspace_generation=binding["workspace_generation"],
+        artifact="summary", artifact_sha256=response["page"]["artifact_sha256"],
+        response_sha256=hashlib.sha256(raw).hexdigest(), response_bytes=len(raw),
+        provider_input_bytes=0, child_custody_checked=True, source_freshness_checked=True,
+        producer_freshness_checked=True, proof_authority=False, completion_authority=False)
+
+
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
         reasoning_effort: str = "high", container_boundary: Path | None = None,
         container_boundary_sha256: str = "", purpose: str = "coding",
@@ -989,6 +1105,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_metadata_view: str = "legacy",
         semantic_working_set: str = "legacy",
         grok_coding_max_turns: int = 128,
+        grok_pruning_profile: str = "legacy",
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
         semantic_metadata_tokenizer_artifact: Path | None = None,
         semantic_metadata_tokenizer_sha256: str = "",
@@ -1003,6 +1120,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         source_input_policy: str = "legacy",
         query_reference_policy: str = "legacy",
         census_only: bool = False,
+        working_set_census_only: bool = False,
+        working_set_census_schema: str = "router-semantic-working-set-census@1",
         coding_reply_mode: str = "legacy",
         doctor_residual_artifact: Path | None = None,
         doctor_residual_sha256: str = "", doctor_residual_task_cid: str = "",
@@ -1019,9 +1138,12 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_task_presentation: PreparedRepositoryWorldPacketPresentation | None = None,
         world_packet_artifact_dir: Path | None = None,
         world_task_attempt_journal: RepositoryWorldAttemptJournal | None = None,
+        candidate_dispatch_handoff: Path | None = None,
+        candidate_dispatch_handoff_sha256: str | None = None,
+        candidate_round_descriptor: Path | None = None,
+        candidate_round_descriptor_sha256: str | None = None,
         world_task_residual_alternatives=None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
-    _refuse_candidate_preparation(prompt)
     if world_packet_audit_directory is not None and (
             world_packet_artifact_dir is not None or world_task_presentation is not None
             or world_task_residual_alternatives is not None):
@@ -1050,6 +1172,33 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if world_packet_artifact_dir is not None:
             raise ValueError("world attempt journal requires separate historical artifact processing")
         RepositoryWorldAttemptJournal.require_open(world_task_attempt_journal)
+    candidate_args = (candidate_dispatch_handoff, candidate_dispatch_handoff_sha256,
+                      candidate_round_descriptor, candidate_round_descriptor_sha256)
+    candidate_selected = any(value is not None for value in candidate_args)
+    if candidate_selected:
+        if (not all(candidate_args) or purpose != "coding"
+                or any(value is not None for value in (world_task_packet, world_packet_audit_directory,
+                    world_task_presentation, world_packet_artifact_dir, world_task_attempt_journal,
+                    world_task_residual_alternatives, prompt_token_counter, prompt_tokenizer_artifact, max_input_tokens))
+                or prompt_tokenizer_sha256 or codex_cli_literal_response
+                or any(value != "legacy" for value in (tool_output_policy, source_view_advisory_policy,
+                    repository_source_policy, source_input_policy, query_reference_policy)) or semantic_repository is None
+                or container_boundary is None or not container_boundary_sha256 or census_only or working_set_census_only
+                or source_formalization_handoff is not None or source_formalization_handoff_sha256 is not None
+                or numerical_obligation_descriptor is not None or numerical_obligation_descriptor_sha256 is not None
+                or source_lookup_descriptor is not None or source_lookup_descriptor_sha256 is not None
+                or source_view_descriptor is not None or source_view_descriptor_sha256 is not None
+                or source_view_profile != "disabled" or source_edit_mode != "disabled"
+                or semantic_transport_schema != "supervisor-semantic-router-input@1"
+                or semantic_metadata_view != "legacy" or semantic_working_set != "legacy"
+                or semantic_metadata_token_counter is not None or coding_reply_mode != "legacy"
+                or any((doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid,
+                        public_instruction_artifact, public_instruction_sha256, public_instruction_task_cid))):
+            raise ValueError("candidate dispatch requires its separate complete isolated coding route")
+    else:
+        _refuse_candidate_preparation(prompt)
+        if any(key in os.environ for key in (CANDIDATE_DESCRIPTOR_ENV, CANDIDATE_DESCRIPTOR_DIGEST_ENV)):
+            raise ValueError("candidate descriptor environment requires explicit owner selection")
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
@@ -1130,7 +1279,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_presentation_snapshot = _world_task_presentation_material(world_task_presentation, world_task_packet)
     from .worker_source_client import PROFILES
     if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1", "mapped-span@2"}
-            or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only)):
+            or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only or working_set_census_only)):
         raise ValueError("source editing requires an enabled coding source session")
     source_args = (source_view_descriptor, source_view_descriptor_sha256)
     source_selected = any(value is not None for value in source_args)
@@ -1155,7 +1304,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     source_lookup_selected = any(value is not None for value in source_lookup_args)
     if source_lookup_selected:
         if (not all(source_lookup_args) or purpose != "coding" or container_boundary is None
-                or not container_boundary_sha256 or census_only):
+                or not container_boundary_sha256 or census_only or working_set_census_only):
             raise ValueError("exact source descriptor requires isolated coding dispatch")
     elif any(key in os.environ for key in (SOURCE_LOOKUP_DESCRIPTOR_ENV, SOURCE_LOOKUP_DESCRIPTOR_DIGEST_ENV)):
         raise ValueError("source descriptor environment requires explicit owner selection")
@@ -1239,8 +1388,21 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             raise ValueError("metadata token counter must match the pinned provider and model")
     if type(census_only) is not bool:
         raise ValueError("explicit Boolean census selection required")
+    if type(working_set_census_only) is not bool:
+        raise ValueError("explicit Boolean working-set census selection required")
+    from .semantic_working_set_census import validate_census_schema
+    validate_census_schema(working_set_census_schema, census_only=working_set_census_only)
+    if working_set_census_only and (census_only or semantic_working_set != "capsule-references@1"
+            or semantic_metadata_token_counter is not None):
+        raise ValueError("working-set census requires its separate explicit capsule reference profile")
     from .grok_coding_budget import validate_grok_coding_max_turns
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider, purpose=purpose)
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_profile
+    validate_grok_pruning_profile(grok_pruning_profile, provider=provider, purpose=purpose)
+    if grok_pruning_profile != "legacy" and (census_only or working_set_census_only
+            or candidate_dispatch_handoff is not None or candidate_round_descriptor is not None
+            or source_edit_mode != "disabled"):
+        raise ValueError("explicit pruning requires independent ordinary Grok coding")
     if grok_coding_max_turns != 128 and census_only:
         raise ValueError("nondefault coding turns require generation, not metadata census")
     if type(semantic_working_set) is not str or semantic_working_set not in {
@@ -1338,6 +1500,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     encoded = None
     semantic_component_census = None
     residual_receipt = None
+    residual_capability = None
     residual_advisory = ""
     router_prompt = prompt
     required_suffix = ""
@@ -1372,6 +1535,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             world_packet_artifact_sha256 = hashlib.sha256(world_packet_artifact).hexdigest()
             world_packet_store_identity = prepare_repository_world_artifact_directory(
                 world_packet_audit_directory, workspace=root)
+    candidate_receipt = None
+    candidate_reply_receipt = None
+    candidate_projection_receipt = None
+    candidate_guidance = ""
+    candidate_settings = dict(provider=provider, model=model, reasoning_effort=reasoning_effort,
+        max_output_tokens=max_output_tokens, budget_profile=budget_profile,
+        grok_coding_max_turns=grok_coding_max_turns)
     if semantic_repository is not None:
         semantic_repository = Path(semantic_repository).resolve(strict=True)
         if semantic_repository == root:
@@ -1387,30 +1557,49 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             return Path(value).resolve(strict=True)
         if common_dir(semantic_repository) != common_dir(root):
             raise ValueError("semantic source repository differs from allocated worktree")
-        from .semantic_router_translation import encode_semantic_router_prompt
-        encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
-                                               transport_schema=semantic_transport_schema)
-        router_prompt = encoded.provider_prompt
-        # Retain size diagnostics outside the model input. This observes the
-        # verified transport before optional metadata projection and wrappers;
-        # the existing model_prompt fields bind the actual final input.
-        try:
-            from .semantic_router_translation import census_semantic_router_prompt
-            semantic_component_census = census_semantic_router_prompt(encoded=encoded)
-        except Exception:
-            # Diagnostic failure cannot change dispatch or expose source text
-            # through an exception. The encoder's validation above still rules.
-            semantic_component_census = {
-                "schema": "supervisor-semantic-prompt-component-census@1",
-                "status": "unavailable",
-                "raw_content_exported": False,
-            }
+        if not candidate_selected:
+            from .semantic_router_translation import encode_semantic_router_prompt
+            encoded = encode_semantic_router_prompt(prompt=prompt, repository=semantic_repository,
+                                                   transport_schema=semantic_transport_schema)
+            router_prompt = encoded.provider_prompt
+            # Retain size diagnostics outside the model input. This observes the
+            # verified transport before optional metadata projection and wrappers;
+            # the existing model_prompt fields bind the actual final input.
+            try:
+                from .semantic_router_translation import (census_semantic_router_prompt,
+                    DETAILED_COMPONENT_CENSUS_SCHEMA)
+                semantic_component_census = census_semantic_router_prompt(encoded=encoded,
+                    **({"census_schema": DETAILED_COMPONENT_CENSUS_SCHEMA} if working_set_census_only else {}))
+            except Exception:
+                if working_set_census_only:
+                    raise ValueError("working-set component census unavailable") from None
+                # Diagnostic failure cannot change dispatch or expose source text
+                # through an exception. The encoder's validation above still rules.
+                semantic_component_census = {
+                    "schema": "supervisor-semantic-prompt-component-census@1",
+                    "status": "unavailable",
+                    "raw_content_exported": False,
+                }
     failure_phase = "source_formalization_context"
-    from .source_formalization_context import validate_source_formalization_context
-    formalization_receipt = None if candidate_round_input is not None else validate_source_formalization_context(
-        prompt=prompt, repository=semantic_repository, workspace=root,
-        boundary=container_boundary, boundary_sha256=container_boundary_sha256 or None,
-        handoff=source_formalization_handoff, handoff_sha256=source_formalization_handoff_sha256)
+    formalization_receipt = None
+    if candidate_selected:
+        failure_phase = "candidate_dispatch_context"
+        candidate_receipt = _candidate_dispatch_observation(prompt=prompt,
+            repository=semantic_repository, workspace=root, boundary=container_boundary,
+            boundary_sha256=container_boundary_sha256, handoff=candidate_dispatch_handoff,
+            handoff_sha256=candidate_dispatch_handoff_sha256, descriptor_path=candidate_round_descriptor,
+            descriptor_sha256=candidate_round_descriptor_sha256, launch_settings=candidate_settings)
+        candidate_guidance = _candidate_round_guidance(candidate_receipt)
+        router_prompt += candidate_guidance
+        timeout = min(timeout, candidate_receipt["remaining_timeout_seconds"])
+        if type(timeout) is not int or timeout < 1:
+            raise ValueError("candidate dispatch has no remaining admitted time")
+    else:
+        from .source_formalization_context import validate_source_formalization_context
+        formalization_receipt = validate_source_formalization_context(
+            prompt=prompt, repository=semantic_repository, workspace=root,
+            boundary=container_boundary, boundary_sha256=container_boundary_sha256 or None,
+            handoff=source_formalization_handoff, handoff_sha256=source_formalization_handoff_sha256)
     numerical_receipt = None
     if numerical_selected:
         failure_phase = "numerical_obligation_descriptor"
@@ -1470,6 +1659,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         residual_advisory, residual_receipt = load_doctor_residual_advisory(
             artifact=doctor_residual_artifact, expected_sha256=doctor_residual_sha256,
             repository=semantic_repository, task_cid=doctor_residual_task_cid, prompt=prompt, workspace=root)
+        if residual_receipt["schema"] == "doctor-residual-router-context@2":
+            residual_capability = doctor_budget_capability(provider=provider,
+                requested_output_tokens=max_output_tokens,
+                budget_observation=residual_receipt["budget_observation"])
         router_prompt += residual_advisory
         required_suffix += residual_advisory
     failure_phase = "public_instruction"
@@ -1530,7 +1723,51 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                                                 semantic_transport=encoded is not None,
                                                 world_packet=world_task_packet is not None,
                                                 tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
-                                                repository_source_binding=repository_source_binding)
+                                                repository_source_binding=repository_source_binding,
+                                                candidate_transport=candidate_receipt is not None)
+    if candidate_receipt is not None:
+        failure_phase = "candidate_reply_contract"
+        from .candidate_reply_contract import (MAX_PROMPT_BYTES, apply_candidate_reply_contract,
+            candidate_completion_schema)
+        model_prompt, candidate_reply_receipt = apply_candidate_reply_contract(
+            model_prompt=model_prompt, binding=candidate_receipt)
+        # The admitted owner envelope stays unchanged. Only its provider-facing
+        # representation may change, after handoff validation and an exact inverse.
+        from .candidate_prompt_projection import (CandidatePromptProjectionError,
+            project_candidate_prompt, select_candidate_prompt)
+        try:
+            candidate_view = project_candidate_prompt(prompt)
+        except CandidatePromptProjectionError:
+            # Unsupported representations retain every original byte.
+            candidate_view = None
+        if candidate_view is not None:
+            projected_router = candidate_view.provider_prompt + candidate_guidance
+            projected_model, projected_advisory = render_model_prompt(prompt=projected_router,
+                purpose=purpose, workspace=root, candidate_transport=True)
+            if projected_advisory != advisory:
+                raise ValueError("candidate projection changed the workspace advisory")
+            projection = None
+            # A larger alternative must not reject an already valid legacy
+            # input when the final reply grammar pushes it over the limit.
+            if (len(projected_model.encode()) + candidate_reply_receipt["instruction_bytes"]
+                    <= MAX_PROMPT_BYTES):
+                projected_model, projected_reply = apply_candidate_reply_contract(
+                    model_prompt=projected_model, binding=candidate_receipt)
+                try:
+                    projection = select_candidate_prompt(candidate_view, model_prompt, projected_model)
+                except CandidatePromptProjectionError:
+                    # Unsupported complete representations retain the original.
+                    pass
+            if projection is not None:
+                candidate_projection_receipt = projection.receipt
+                if projection.selected_mode != "legacy":
+                    router_prompt = projected_router
+                    model_prompt = projection.selected_prompt
+                    candidate_reply_receipt = projected_reply
+        if provider == "grok_cli":
+            response_format = {"type": "json_schema", "json_schema": {
+                "name": "supervisor_candidate_completion", "strict": True,
+                "schema": candidate_completion_schema(candidate_receipt)}}
     coding_reply_receipt = None
     if coding_reply_mode != "legacy":
         failure_phase = "coding_reply_contract"
@@ -1612,6 +1849,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     working_set_evaluated = None
     working_set_counter_inputs = None
     working_set_native_schema = None
+    native_working_set_model_prompt = model_prompt
     if semantic_working_set != "legacy":
         failure_phase = "semantic_working_set"
         from .semantic_working_set import project_semantic_working_set, select_working_set
@@ -1841,6 +2079,28 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if any(name in os.environ for name in (*DATABASE_PROGRAM_ENV_NAMES, *STATE_CREDENTIAL_ENV_NAMES,
                                            "IPFS_ACCELERATE_AGENT_STATE_OWNER_TOKEN")):
         raise ValueError("implementation inherited database authority")
+    if working_set_census_only:
+        failure_phase = "semantic_working_set"
+        current = _source_broker_observation(path=source_view_descriptor,
+            digest=source_view_descriptor_sha256, workspace=root, encoded=encoded,
+            boundary_sha256=container_boundary_sha256, profile=source_view_profile,
+            semantic_working_set=semantic_working_set)
+        if current != source_receipt:
+            raise ValueError("source descriptor changed before working-set census")
+        preflight = None
+        if working_set_receipt["selected_mode"] != "legacy":
+            preflight = _working_set_preflight(view=view, descriptor_path=source_view_descriptor,
+                descriptor_sha256=source_view_descriptor_sha256, workspace=root, source_receipt=source_receipt)
+        from .semantic_working_set_census import working_set_census_receipt
+        receipt = working_set_census_receipt(selection=selection, encoded=encoded, prompt=prompt, model=model,
+            workspace=root, provider=provider, components=semantic_component_census,
+            source_receipt=source_receipt, preflight=preflight, advisory=advisory,
+            boundary_sha256=container_boundary_sha256, reply=coding_reply_receipt,
+            **({"census_schema": working_set_census_schema,
+                "native_model_prompt": native_working_set_model_prompt}
+                if working_set_census_schema != "router-semantic-working-set-census@1" else {}),
+            formalization=formalization_receipt, doctor=residual_receipt, public=instruction_receipt)
+        return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     if census_only:
         failure_phase = "semantic_metadata_census"
         if metadata_local_tokenizer is not None:
@@ -1900,6 +2160,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if metadata_tokenizer_source is not None:
             receipt["semantic_metadata_tokenizer_source"] = metadata_tokenizer_source
             receipt["semantic_metadata_tokenizer_dispatch_rechecked"] = False
+        if residual_capability is not None:
+            receipt["doctor_budget_capability"] = residual_capability
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -1927,11 +2189,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "schema": "router-implementation-invocation@1", "invocation_id": invocation,
         "provider": provider, "model": model, "allocation_catalog": route.catalog_revision,
         "reasoning_effort": reasoning_effort, "purpose": purpose,
-        # Keep the original fields bound to native stdin for capsule comparison.
-        # The distinct model fields attest the complete actual provider input.
+        # Prompt fields bind actual stdin. For a separately admitted candidate
+        # envelope, native fields retain the original task instruction identity.
+        # Model fields always attest the complete actual provider input.
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "prompt_bytes": len(prompt.encode()),
-        "native_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-        "native_prompt_bytes": len(prompt.encode()),
+        "native_prompt_sha256": (candidate_receipt["native_prompt_sha256"] if candidate_receipt is not None
+                                 else hashlib.sha256(prompt.encode()).hexdigest()),
+        "native_prompt_bytes": (candidate_receipt["native_prompt_bytes"] if candidate_receipt is not None
+                                else len(prompt.encode())),
         "model_prompt_sha256": hashlib.sha256(model_prompt.encode()).hexdigest(),
         "model_prompt_bytes": len(model_prompt.encode()),
         "workspace_advisory_sha256": hashlib.sha256(advisory.encode()).hexdigest() if advisory else None,
@@ -1947,15 +2212,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "usage": None, "completion_authority": False,
         "external_container_boundary": boundary,
     }
-    if owner_worker_attempt_id is not None:
-        # Observation join only: this caller-supplied label grants no child
-        # launch, retry, task, proof, settlement, or completion authority.
-        receipt["owner_worker_attempt_id"] = owner_worker_attempt_id
-    if owner_provider_deadline_ns is not None:
-        receipt["owner_provider_deadline_ns"] = owner_provider_deadline_ns
-    if candidate_receipt is not None:
-        receipt["candidate_round_dispatch"] = dict(candidate_receipt,
-            dispatch_requested=False, dispatch_consumed=False, provider_attempted=False)
+    if residual_capability is not None:
+        receipt["doctor_budget_capability"] = residual_capability
     if coding_reply_receipt is not None:
         receipt["coding_reply_contract"] = coding_reply_receipt
     if world_packet_receipt is not None:
@@ -1975,6 +2233,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             receipt["world_task_presentation"] = json.loads(world_presentation_snapshot.metadata_bytes)
     if world_residual_selection is not None:
         receipt["world_task_residual_selection"] = world_residual_selection
+    if candidate_receipt is not None:
+        receipt["candidate_round_dispatch"] = candidate_receipt
+        receipt["candidate_reply_contract"] = candidate_reply_receipt
+        if candidate_projection_receipt is not None:
+            receipt["candidate_prompt_projection"] = candidate_projection_receipt
+        receipt["candidate_retrieval_guidance"] = dict(
+            sha256=hashlib.sha256(candidate_guidance.encode()).hexdigest(),
+            bytes=len(candidate_guidance.encode()), requests_observed=False,
+            proof_authority=False, completion_authority=False)
     if semantic_component_census is not None:
         receipt["semantic_prompt_components"] = semantic_component_census
     if tool_output_binding is not None:
@@ -2038,6 +2305,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "completion_authority": False,
             "settlement_authority": False,
         }}
+    if candidate_reply_receipt is not None and provider == "codex_cli":
+        provider_options["codex_output_schema"] = candidate_completion_schema(candidate_receipt)
+        receipt["provider_invocation_policy"] = {"structured_output": {
+            "schema": "codex-native-candidate-completion-json-schema@1",
+            "native_schema_requested": True, "response_schema_validated": False,
+            "execution_authority": False, "completion_authority": False,
+            "settlement_authority": False,
+        }}
     if formalization_receipt is not None:
         receipt["source_formalization_context"] = formalization_receipt
     if numerical_receipt is not None:
@@ -2081,8 +2356,17 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             provider_options["resume_session_id"] = resume_session_id
             receipt["provider_invocation_policy"]["native_resume_session_id"] = resume_session_id
             receipt["provider_invocation_policy"]["native_resume_identity_verified"] = False
-        if purpose == "coding":
+        # The shared provider supports native schemas through its JSON route.
+        # Combining that route with streaming progress is rejected before CLI
+        # launch, so candidate replies must retain their schema in JSON mode.
+        if grok_pruning_profile != "legacy":
+            if response_format is not None:
+                raise ValueError("explicit pruning does not support structured candidate replies")
+            provider_options["grok_pruning_profile"] = grok_pruning_profile
+        if purpose == "coding" and response_format is None:
             provider_options.update(grok_stream_progress=True,
+                                    grok_tool_event_census=True,
+                        grok_tool_event_schema="native-grok-tool-events@2",
                                     grok_progress_callback=_grok_progress_emitter(invocation))
         if response_format is not None:
             provider_options["response_format"] = response_format
@@ -2128,6 +2412,30 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                     and worker_forwarding_interruption is None):
                 worker_forwarding_interruption = close_error
     try:
+        if candidate_receipt is not None:
+            failure_phase = "candidate_dispatch_context"
+            current = _candidate_dispatch_observation(prompt=prompt,
+                repository=semantic_repository, workspace=root, boundary=container_boundary,
+                boundary_sha256=container_boundary_sha256, handoff=candidate_dispatch_handoff,
+                handoff_sha256=candidate_dispatch_handoff_sha256, descriptor_path=candidate_round_descriptor,
+                descriptor_sha256=candidate_round_descriptor_sha256, launch_settings=candidate_settings)
+            if ({key: value for key, value in current.items() if key != "remaining_timeout_seconds"}
+                    != {key: value for key, value in candidate_receipt.items()
+                        if key != "remaining_timeout_seconds"}):
+                raise ValueError("candidate dispatch context changed before provider dispatch")
+            timeout = min(timeout, current["remaining_timeout_seconds"])
+            if type(timeout) is not int or timeout < 1:
+                raise ValueError("candidate dispatch has no remaining admitted time")
+            receipt["timeout_seconds"] = timeout
+            receipt["candidate_round_dispatch"] = current
+            failure_phase = "candidate_round_preflight"
+            receipt["candidate_round_preflight"] = _candidate_round_preflight(
+                descriptor_path=candidate_round_descriptor, descriptor_sha256=candidate_round_descriptor_sha256,
+                workspace=root, binding=current)
+            timeout = min(timeout, (current["dispatch_deadline_monotonic_ns"] - time.monotonic_ns()) // 1_000_000_000)
+            if type(timeout) is not int or timeout < 1:
+                raise ValueError("candidate dispatch has no remaining admitted time after preflight")
+            receipt["timeout_seconds"] = timeout
         if repository_owner_selected:
             failure_phase = "repository_source_worker_forwarding"
             try:
@@ -2296,13 +2604,44 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 world_artifact_retention = RepositoryWorldArtifactRetention(
                     world_packet_artifact_dir, workspace=root, invocation_id=invocation)
                 receipt["world_packet_artifacts"] = world_artifact_retention.retain_packet(world_task_packet)
+        if candidate_receipt is not None and candidate_receipt.get("schema") == "supervisor-candidate-dispatch-observation@2":
+            failure_phase = "candidate_dispatch_context"
+            # Candidate summary retrieval covers only the indexed inventory.
+            # Doctor can depend on additional files: recheck its full inventory
+            # after that exchange and immediately before the outer router call.
+            current = _candidate_dispatch_observation(prompt=prompt,
+                repository=semantic_repository, workspace=root, boundary=container_boundary,
+                boundary_sha256=container_boundary_sha256, handoff=candidate_dispatch_handoff,
+                handoff_sha256=candidate_dispatch_handoff_sha256, descriptor_path=candidate_round_descriptor,
+                descriptor_sha256=candidate_round_descriptor_sha256, launch_settings=candidate_settings)
+            if ({key: value for key, value in current.items() if key != "remaining_timeout_seconds"}
+                    != {key: value for key, value in candidate_receipt.items() if key != "remaining_timeout_seconds"}):
+                raise ValueError("Doctor candidate context changed after retrieval preflight")
+            timeout = min(timeout, current["remaining_timeout_seconds"])
+            if type(timeout) is not int or timeout < 1:
+                raise ValueError("Doctor candidate has no remaining original coding time")
+            receipt["timeout_seconds"] = timeout
+            receipt["candidate_round_dispatch"] = current
+        if residual_receipt is not None:
+            failure_phase = "doctor_residual"
+            # Provider discovery and source preflight can take time. Doctor's
+            # inventory can exceed the retrieval inventory, so check the whole
+            # admitted residual again immediately before spending a model call.
+            current_advisory, current_residual = load_doctor_residual_advisory(
+                artifact=doctor_residual_artifact, expected_sha256=doctor_residual_sha256,
+                repository=semantic_repository, task_cid=doctor_residual_task_cid,
+                prompt=prompt, workspace=root)
+            if current_advisory != residual_advisory or current_residual != residual_receipt:
+                raise ValueError("Doctor residual context changed before provider dispatch")
         failure_phase = "provider_invocation"
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
                 _candidate_descriptor_environment(candidate_round_input), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
-                                                      source_lookup_descriptor_sha256):
+                                                      source_lookup_descriptor_sha256), \
+                _descriptor_environment(candidate_round_descriptor, candidate_round_descriptor_sha256,
+                                        CANDIDATE_DESCRIPTOR_ENV, CANDIDATE_DESCRIPTOR_DIGEST_ENV):
             if repository_source_parent_lease is not None:
                 failure_phase = "repository_source_resources"
                 validate_owner_resources(parent_lease=repository_source_parent_lease,
@@ -2431,6 +2770,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 observation.get("codex_repository_source_config_sha256") != repository_source_binding["config_sha256"]
                 or observation.get("codex_repository_source_configured") is not True):
             raise RuntimeError("repository source native configuration observation is missing or differs")
+        if grok_pruning_profile != "legacy":
+            from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_preflight
+            try:
+                validate_grok_pruning_preflight(observation.get("native_grok_pruning"),
+                                               profile=grok_pruning_profile)
+            except (TypeError, ValueError):
+                raise RuntimeError("Grok pruning preflight receipt is missing or invalid") from None
         if observation.get("exit_code") != 0:
             raise RuntimeError("coding CLI did not return an observed successful exit")
         if not isinstance(output, str) or not output.strip():
@@ -2443,6 +2789,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             output = validate_planning_response(output, codex_planning_validator)
             receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         if response_format is not None:
+            if candidate_receipt is not None:
+                failure_phase = "candidate_reply_validation"
             # The shared adapter enforces this too. Keep the runner boundary
             # explicit in case an injected provider returns unchecked text.
             from ipfs_accelerate_py.cli_runtime.grok_structured_output import validate_response_format, decode_response
@@ -2452,6 +2800,16 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 wire_format = {**response_format, "json_schema": {**response_format["json_schema"], "schema": _wire_schema}}
                 _wire, _argument, wire_validator = validate_response_format(wire_format)
             output = decode_response(json.dumps({"text": output}), validator, additional_validator=wire_validator)
+            receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
+        if candidate_reply_receipt is not None:
+            failure_phase = "candidate_reply_validation"
+            if provider == "codex_cli" and (
+                    observation.get("codex_output_schema_sha256") != candidate_reply_receipt["native_output_schema_sha256"]
+                    or observation.get("codex_output_schema_bytes") != candidate_reply_receipt["native_output_schema_bytes"]):
+                raise RuntimeError("Codex candidate reply schema invocation metadata is missing or differs")
+            from .candidate_reply_contract import validate_candidate_completion_reply
+            output = validate_candidate_completion_reply(output, binding=candidate_receipt)
+            candidate_reply_receipt["response_validated"] = True
             receipt["provider_invocation_policy"]["structured_output"]["response_schema_validated"] = True
         if encoded is not None:
             failure_phase = "semantic_response_decode"
@@ -2554,6 +2912,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             else:
                 from ipfs_accelerate_py.cli_runtime.grok_native_usage import grok_outcome_receipt, grok_usage_receipt
                 receipt["native_rollout_usage"] = grok_usage_receipt(observation)
+                if grok_pruning_profile != "legacy":
+                    from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_preflight
+                    try:
+                        receipt["provider_invocation_policy"]["grok_pruning"] = validate_grok_pruning_preflight(
+                            observation.get("native_grok_pruning"), profile=grok_pruning_profile)
+                    except (TypeError, ValueError):
+                        receipt["grok_pruning_error"] = "missing_or_invalid_preflight"
                 try:
                     from ipfs_accelerate_py.cli_runtime.grok_prompt_accounting import grok_prompt_accounting_receipt
                     receipt["native_prompt_accounting"] = grok_prompt_accounting_receipt(observation)
@@ -2660,6 +3025,8 @@ def main():
     parser.add_argument("--prompt-tokenizer-artifact", type=Path)
     parser.add_argument("--prompt-tokenizer-sha256")
     parser.add_argument("--grok-coding-max-turns", type=int, default=128)
+    parser.add_argument("--grok-pruning-profile", default="legacy",
+                        choices=("legacy", "grok-pruning-off@1", "grok-pruning-on@1"))
     parser.add_argument("--reasoning-effort", default="high", choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--purpose", default="coding", choices=["planning", "coding"])
     parser.add_argument("--container-boundary", type=Path)
@@ -2683,6 +3050,10 @@ def main():
     parser.add_argument("--source-edit-mode", default="disabled", choices=("disabled", "mapped-span@1", "mapped-span@2"))
     parser.add_argument("--source-view-descriptor", type=Path)
     parser.add_argument("--source-view-descriptor-sha256")
+    parser.add_argument("--candidate-dispatch-handoff", type=Path)
+    parser.add_argument("--candidate-dispatch-handoff-sha256")
+    parser.add_argument("--candidate-round-descriptor", type=Path)
+    parser.add_argument("--candidate-round-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
     parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"])
@@ -2704,6 +3075,12 @@ def main():
     parser.add_argument("--query-reference-policy", default="legacy", choices=QUERY_REFERENCE_POLICIES)
     parser.add_argument("--semantic-metadata-census-only", action="store_true",
                         help="Check the complete metadata view and emit only census metadata before provider dispatch")
+    parser.add_argument("--semantic-working-set-census-only", action="store_true",
+                        help="Measure capsule-reference input with authenticated preflight and no provider allocation")
+    parser.add_argument("--semantic-working-set-census-schema", default="router-semantic-working-set-census@1",
+                        choices=["router-semantic-working-set-census@1", "router-semantic-working-set-census@2",
+                            "router-semantic-working-set-census@3"],
+                        help="Extended censuses measure independent evidence and pack representations")
     parser.add_argument("--coding-reply-mode", default="legacy",
                         choices=["legacy", "ordinary-completion@1"])
     parser.add_argument("--doctor-residual-artifact", type=Path)
@@ -2753,6 +3130,10 @@ def main():
                         source_edit_mode=args.source_edit_mode,
                         source_view_descriptor=args.source_view_descriptor,
                         source_view_descriptor_sha256=args.source_view_descriptor_sha256,
+                        candidate_dispatch_handoff=args.candidate_dispatch_handoff,
+                        candidate_dispatch_handoff_sha256=args.candidate_dispatch_handoff_sha256,
+                        candidate_round_descriptor=args.candidate_round_descriptor,
+                        candidate_round_descriptor_sha256=args.candidate_round_descriptor_sha256,
                         semantic_transport_schema=args.semantic_transport_schema,
                         semantic_metadata_view=args.semantic_metadata_view,
                         semantic_working_set=args.semantic_working_set,
@@ -2766,7 +3147,12 @@ def main():
                         repository_source_owner_descriptor_sha256=args.repository_source_owner_descriptor_sha256,
                         source_input_policy=args.source_input_policy,
                         query_reference_policy=args.query_reference_policy,
+                        **({"grok_pruning_profile": args.grok_pruning_profile}
+                            if args.grok_pruning_profile != "legacy" else {}),
                         census_only=args.semantic_metadata_census_only,
+                        working_set_census_only=args.semantic_working_set_census_only,
+                        **({"working_set_census_schema": args.semantic_working_set_census_schema}
+                            if args.semantic_working_set_census_schema != "router-semantic-working-set-census@1" else {}),
                         coding_reply_mode=args.coding_reply_mode,
                         doctor_residual_artifact=args.doctor_residual_artifact,
                         doctor_residual_sha256=args.doctor_residual_sha256,

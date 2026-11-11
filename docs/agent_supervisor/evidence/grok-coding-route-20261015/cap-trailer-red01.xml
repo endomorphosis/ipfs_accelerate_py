@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="14.976" timestamp="2026-10-15T01:21:03.158043+00:00" hostname="spark-b271"><testcase classname="api.test_grok_stream_router" name="test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage[None]" time="0.043"><failure message="TypeError: 'NoneType' object is not subscriptable">test/api/test_grok_stream_router.py:135: in test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage
+    assert usage["usage"] == {"input_tokens": 13, "cached_input_tokens": 21,
+           ^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not subscriptable</failure></testcase><testcase classname="api.test_grok_stream_router" name="test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage[True]" time="0.018"><failure message="TypeError: 'NoneType' object is not subscriptable">test/api/test_grok_stream_router.py:135: in test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage
+    assert usage["usage"] == {"input_tokens": 13, "cached_input_tokens": 21,
+           ^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not subscriptable</failure></testcase><testcase classname="api.test_grok_stream_router" name="test_cancelled_turn_cap_trailer_then_live_process_remains_timeout" time="0.307"><failure message="KeyError: 'native_grok_task_complete'">test/api/test_grok_stream_router.py:156: in test_cancelled_turn_cap_trailer_then_live_process_remains_timeout
+    assert observation["native_grok_task_complete"] is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'native_grok_task_complete'</failure></testcase></testsuite></testsuites>

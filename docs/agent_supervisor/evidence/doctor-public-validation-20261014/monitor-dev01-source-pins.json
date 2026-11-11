@@ -1,0 +1,31 @@
+{
+  "base_commit": "3193000dbf3b9e3262f1c32dc420640e56b62fc8",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "170382deaa2a47dd0600eb118cce25e29b3ca0aa82a5c4b545eb01e019820d43",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "2381ae4cd4820d7aecb1866ce70800d94a7b1d463973f8c1566ee9d187962c42",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "f571910f6ebd98c6e36779cae6e4192df0b90f1331b86e2ad830d24badec6224",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_attempt_accounting.py": "8970baf54b0ced856c394f15b651d6925476667a3e34ac23abe32e6d5d0bfb3c",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py": "af947abc64a57208117ef32d231bb6e6f89e6bb716c85a2b51cfbfc82abfa106",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "199327b3c580c131e102318df2288f4d0c5db06ac6d013d7413eab8b0a4f161b",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_coding_policy.py": "cb575fcfba23cde295f631e567e4b7c210a4c6e3366bbdd2b8be7c828f4a5acb",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "3666ca21205438bd5e7bc9b1b636b47e11f8741abf81bee19c3c02578ca1a47a",
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": "3641c7cc4dbc69d03442076f4a16621eb7070e8dac9e9784c2f321b7e7e4e7bb",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py": "390177dde80e57a6823877530e39c8804b990ce705812b5e088bc47ec347f773",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py": "66af6edb4d8f47e9cc33a44441178058594b069a4709a745931110cef22ff354",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py": "ad667a86a338a5c54262d793ef1340fdfb8ab82e91094878649b4e3c9349fbbe",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_doctor_dispatch.py": "5cfdb23552baadcbd052edb03f6ad5e3d6eb014960a76d1507175f9ab6c70c4f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py": "d7f88e3b46b9ae6e897c80424770fd439aaf07a771d65cca1c70fff4d4693279",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_public_validation.py": "3e7bb3b2a46620a768e2fa200539730078659e41c0d848f7a6bbbfc234d79747",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py": "41d0f21cc5c173045cebaa9d046e850d339e5df77dd61afb12a150f45ec10661",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py": "b1a3c130491c9b94809d46211a31d54e5e2eef8d29a03c5ef4e6b610844eb8ea",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py": "096af342600b6dd9778e285aff63327c2d21051a837c575e030df2dedede9d78",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "dfe5ef4e8f13463b0cfe18faaccaf10045660a45781e15a3b6c2b1c9fa8cd3da",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py": "6f651b35be1ed1316002950615c702bef60040cdbc9e50aeea1737b9f1684e62",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch_audit.py": "a5c15b7d4ec6e5389be45de27ccbfd971cdd57adaf1f73a7fcfdf088e3de93c2",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py": "c48da0e61535138e7fd01d3744c05a375573b0c61be9d0a446f84e178cfab2b3",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py": "c3fe290c1c16323979ae79387106927f1f750c2d6ee20dd278cf9b47688c6f54",
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": "c6141f0a9845ec8ace7634fe0af20deed3e786af45a4829c65842a03db18c64b",
+    "test/api/test_candidate_round_monitor.py": "5f55a001638f9410fee1942ac4ce7a62088762bab0c9ac832a9dd3e6c0d83075",
+    "test/api/test_candidate_round_policy.py": "ecc85d71151cb1fea83094508461080d368a0c76f335e117387d40cf5ff6d4f3"
+  }
+}

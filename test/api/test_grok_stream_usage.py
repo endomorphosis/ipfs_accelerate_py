@@ -147,6 +147,7 @@ def test_historical_progress_stays_historical_and_has_no_invented_usage_rows():
     _, state = observed(usage())
     state["schema"] = LEGACY_SCHEMA
     del state["usage_observations"]
+    del state["terminal_rejection"]
     assert validate_grok_stream_progress(state) == state
     assert "usage_observations" not in validate_grok_stream_progress(state)
 

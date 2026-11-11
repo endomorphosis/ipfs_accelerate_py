@@ -284,3 +284,25 @@ def test_rehashed_control_versions_cannot_launder_mixed_or_unchecked_experiments
         {key: value for key, value in record.items() if key != "sha256"},
         sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
     assert validate_controls(record) is False
+
+
+def test_doctor_controls_keep_distinct_identity_from_combined_metadata():
+    from benchmarks.agent_supervisor.container_coding import benchmark_controls as owner
+
+    assert owner.COMBINED_METADATA_SCHEMA == "terminal-benchmark-declared-controls@8"
+    assert owner.DOCTOR_CODING_SCHEMA == "terminal-benchmark-declared-controls@11"
+
+
+@pytest.mark.parametrize("version,experiment,accepted", [
+    (11, {"candidate_rounds": "2", "doctor_coding_policy": "authored-policy-fingerprint"}, True),
+    (8, {"candidate_rounds": "2", "doctor_coding_policy": "authored-policy-fingerprint"}, False),
+    (11, {"semantic_metadata_tokenizer": "authored-tokenizer-fingerprint", "semantic_working_set": "capsule-references@1"}, False),
+])
+def test_rehashed_doctor_and_metadata_records_cannot_cross_version_contracts(version, experiment, accepted):
+    from benchmarks.agent_supervisor.container_coding import benchmark_controls as owner
+
+    record = declaration(config_for(Path("/dataset"), Path("/out")))
+    record["schema"] = f"terminal-benchmark-declared-controls@{version}"
+    record["experimental_controls_sha256"] = {key: owner._digest(value) for key, value in experiment.items()}
+    record["sha256"] = owner._digest({key: value for key, value in record.items() if key != "sha256"})
+    assert validate_controls(record) is accepted

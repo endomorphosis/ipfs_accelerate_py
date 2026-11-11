@@ -1,0 +1,68 @@
+{
+  "billing_total_verified": false,
+  "coding_receipts": 1,
+  "coding_tokens": null,
+  "complete_tokens": null,
+  "execute_seconds": 585.131650858093,
+  "failure_observation_scope": "unattributed child reports; exact failed lifetime conjunct unknown",
+  "input_audit": {
+    "all_observed_coding_inputs_verified": true,
+    "coding_receipts_seen": 1,
+    "prior_receipt_matches_reported": [],
+    "reason": "per_invocation_context_and_input_comparison",
+    "schema": "terminal-final-context-audit@1",
+    "status": "verified_all_observed_model_inputs",
+    "usable_coding_receipts": 1
+  },
+  "native_completion": false,
+  "observed_planning_only_tokens": 22214,
+  "official_reward": 0.0,
+  "official_tests": [
+    {
+      "name": "test_outputs.py::test_eigen_pair",
+      "status": "passed"
+    },
+    {
+      "name": "test_outputs.py::test_dominance_eigenvalue",
+      "status": "passed"
+    },
+    {
+      "name": "test_outputs.py::test_speedup",
+      "status": "failed"
+    }
+  ],
+  "owner_rounds": [
+    {
+      "process_started": true,
+      "retirement_observed": true,
+      "returncode": 1,
+      "round_number": 1,
+      "wait_completed": true
+    },
+    {
+      "process_started": true,
+      "retirement_observed": true,
+      "returncode": 1,
+      "round_number": 2,
+      "wait_completed": true
+    }
+  ],
+  "raw_provider_data_exported": false,
+  "runtime_commit": "3ee0d2901b9b61234ebb3efb150513e505ada6ac",
+  "schema": "repaired-doctor-live-results@1",
+  "source_bindings": [
+    {
+      "bytes": 142451,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__od9RZvp/agent/supervisor-result.json",
+      "sha256": "702c9a3308a79a3ae4a052e3b1410e98d2f02e75c2cc4f933f5bd9f77f8c082d"
+    },
+    {
+      "bytes": 3316,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__od9RZvp/verifier/ctrf.json",
+      "sha256": "07aaf4eb723458e9b3cecd4016f7137f86b85e4c9480ef9c067bb569c5de60ba"
+    }
+  ],
+  "source_pins_unchanged": true,
+  "supervisor_seconds": 429.83576950710267,
+  "token_savings_established": false
+}

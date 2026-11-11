@@ -1,0 +1,85 @@
+{
+  "assessment": [
+    "Structured candidate replies now retain the existing native JSON schema route; unschematized first coding attempts retain streaming progress. The formerly conflicting streaming-plus-response_format combination is no longer constructed.",
+    "Candidate regressions invoke the actual Grok provider adapter and schema decoder with only CLI subprocess execution authored. Wrong workspace generation, cancelled native outcome and nonzero process exit remain failures; each native call preserves observed usage.",
+    "Trailer compatibility is limited to a max_turns_reached terminal followed by end with exact stopReason cancelled. All existing field, frozen identity/spend, duplicate and malformed-frame checks remain active.",
+    "The single untouched trailer supplies final-envelope usage; per-event usage remains unverified and summation is forbidden. The primary max_turns cause, actual cancelled trailer reason, actual process result and timeout precedence stay distinct.",
+    "Transport completion does not imply task completion. response_usable remains false for the capped run, including process exit zero. Missing usage-completeness fields remain unknown; no verified billing or whole-run token total is created.",
+    "These offline fixes do not change retained Z/T live outcomes, grant additional attempts, change original deadlines, lift Grok turn limits or establish successful task verification."
+  ],
+  "authorship_disclosure": {
+    "independent_review_of_own_changes_claimed": false,
+    "parent_review_reported_no_blocker": true,
+    "production_authored_by_reviewer": [
+      "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+      "ipfs_accelerate_py/llm_router.py"
+    ]
+  },
+  "base_commit": "4acfdce7aa7059d40e2bdcfa9a0470bce195c40c",
+  "blocking_findings": 0,
+  "causal_token_savings_claim": false,
+  "completion_authority": false,
+  "execution_authority": false,
+  "findings": [],
+  "independent_review_scope": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+    "test/api/test_candidate_router_dispatch.py"
+  ],
+  "limitations": [
+    "Real model execution was not performed by this review.",
+    "Authored counters validate accounting behavior; they do not recover missing historical live counters.",
+    "The declared-contract planning trial continues on the unchanged prior frozen runtime, so it does not test these repairs."
+  ],
+  "proof_authority": false,
+  "qualification": {
+    "distinct_passing_cases": 415,
+    "live_provider_calls": 0,
+    "retained_development_red_result_sha256": "20ed52537f158e7478d1e25781d179e44b703d20791aac17f3e9b06cfb06d9ab",
+    "runs": {
+      "candidate-adapter01": {
+        "accepted_case_count": 38,
+        "log_sha256": "a0f3e98d0e6bae7d4f0948963acb5a4e227078324336971a929ddc649a794731",
+        "result_sha256": "ad92797ed62a4857fab550ea622b6e55367d39ea6a202eccaaeba148eb352703",
+        "source_pins_sha256": "4fdfee934ad9d57c2f93eb411064e4869c593b9ff5d3e5b20d526afb381d94fa",
+        "xml_sha256": "555980343851583ada494dce424d471601e50b8b53101619bff03ae331f04c5f"
+      },
+      "cap-final01": {
+        "accepted_case_count": 208,
+        "log_sha256": "59bdda437e618a2e0b81641a61b70cf0abbcab3fa07609086153a400091a4c4a",
+        "result_sha256": "3d2efd9babbebb5399d67ec4f1fa6eeddc037ae48138fe9a77e0cf5df201211f",
+        "source_pins_sha256": "5acf9bdedbdc77cac9d8119e09668f71536c744a98fe6b986b976e0b09350232",
+        "xml_sha256": "4ca5f610d1d95c4104847102b30be0cc014d71b57571472282347104a253ca4e"
+      },
+      "cap-trailer-dev01": {
+        "accepted_case_count": 169,
+        "log_sha256": "cfb318d4d28a61dfbec05f4cae48013957f349daaedd74dfb01e14e63e671205",
+        "result_sha256": "beb61a65be40279ba9f13ecb14303e81040a0464f061d58b07c4883dd4a4e6de",
+        "source_pins_sha256": "edfc331aa61ddcdb83c8425f049de9c5d753b3c331c901188b1160f9bedb552a",
+        "xml_sha256": "52fc86e0f7d3763316aa10f79e399f7ceab10a7a9f3ca7abd8a5652f5693fce4"
+      }
+    },
+    "superseded_test_only_hashes": {
+      "test/api/test_grok_stream_capture.py": {
+        "current_sha256": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+        "previous_sha256": "da1e1645e23910f94039b1294733cb122a276dc056a4e0f2bc5d35c4a275ba1c",
+        "reason": "test-only comment provenance clarification and removal of unused import; all 128 current capture cases rerun in cap-final01"
+      }
+    }
+  },
+  "qualified_current_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9abe4d304d2ae3f5a9b0f843ff4dc289408bba5c2d1918ee7b94c962c22094ef",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "3012753ab16919bdc88cf2cb0d04eddb42cb042acb21faa0225d0fadc0df295e",
+    "ipfs_accelerate_py/llm_router.py": "e9ba968993d1b836f5926667a34c64aee8f964ace4dcbfa0edce53f8cc112a9b",
+    "test/api/test_candidate_router_dispatch.py": "fab0112d6bc0e732b140ea7244585ce486ddd3b74ec1849008a72ebbda1671ea",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474",
+    "test/api/test_grok_nonstream_outcome.py": "a9eb81007646deb9e6bb8138a71439ba788d41b5f308b66cf6c24f21e1ea1787",
+    "test/api/test_grok_stream_capture.py": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+    "test/api/test_grok_stream_router.py": "dba9401bcdab44702b6e1f883e1f0d5c60d2539acd80545e153d5f4960e37c6b",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_structured_output.py": "567a46e70cb73c6ade55c4c77bfd232b8719490d7f517b066ab28d623c73bf94",
+    "test/api/test_grok_terminal_rejection.py": "fe3c41286af1e44b4516a11ca612501ee6e96e6ef85f5d5304d103ec0b3b3426"
+  },
+  "reviewer": "doctor_budget_design",
+  "schema": "grok-cap-end-independent-review@1",
+  "worktree": "/home/barberb/lift_coding/.worktrees/supervisor-grok-cap-end-20261015"
+}

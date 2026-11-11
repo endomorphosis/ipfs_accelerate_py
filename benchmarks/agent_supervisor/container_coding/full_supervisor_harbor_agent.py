@@ -5,6 +5,11 @@ Installation is setup time, measured by Harbor separately for both harnesses.
 """
 from __future__ import annotations
 
+from ipfs_accelerate_py.cli_runtime.grok_pruning import (
+    DEFAULT_GROK_PRUNING_PROFILE, grok_pruning_selection,
+    require_grok_pruning_archive, grok_pruning_runtime_matches,
+)
+
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
     DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
     require_grok_coding_archive, grok_coding_runtime_matches,
@@ -92,6 +97,10 @@ from .terminal_planning_policy import (
 from .terminal_semantic_working_set_policy import (
     DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
+    validate_working_set_census, working_set_census_observation, working_set_census_runtime_matches,
+)
+from .terminal_doctor_coding_policy import (
+    doctor_coding_observation, require_doctor_coding_archive, doctor_coding_runtime_declared_matches,
 )
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
@@ -564,6 +573,9 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                  grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
                  semantic_metadata_tokenizer: dict | None = None,
+                 grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
+                 candidate_rounds: int = 1,
+                 doctor_coding_policy: str | None = None,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -573,6 +585,7 @@ class FullSupervisorAgent(BaseAgent):
                  numerical_formalization_profile: str | None = None,
                  planning_mode: str = DEFAULT_PLANNING_MODE,
                  metadata_census_only: bool = False,
+                 working_set_census_only: bool = False,
                  prompt_tokenizer_artifact: str | Path | None = None,
                  prompt_tokenizer_sha256: str | None = None,
                  max_input_tokens: int | None = None,
@@ -590,6 +603,11 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_decision_max_total_input_tokens: int | None = None,
                  doctor_dispatch_policy: str = "auto",
                  **kwargs):
+        from .benchmark_controls import validate_full_supervisor_candidate_rounds
+        selected_rounds = validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
+            doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
+            source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
+            task_profile=task_profile)
         decision = _decision_options({**kwargs, **locals()}, arm=arm,
             provider=resolve_provider_profile(provider_profile)["provider"])
         doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
@@ -628,8 +646,15 @@ class FullSupervisorAgent(BaseAgent):
             'capsule_budget': capsule_budget,
             'metadata_census_only': metadata_census_only,
             "provider": resolve_provider_profile(provider_profile)["provider"],
-        })
+
+        'candidate_rounds': candidate_rounds,
+        'doctor_coding_policy': doctor_coding_policy,
+        'working_set_census_only': working_set_census_only,
+        'grok_pruning_profile': grok_pruning_profile,
+    })
         super().__init__(*args, **kwargs)
+        self.candidate_rounds = self._frozen_candidate_rounds = selected_rounds
+        self.doctor_coding_policy = self._frozen_doctor_coding_policy = doctor_coding_policy
         selected_provider = resolve_provider_profile(provider_profile)
         if self.model_name != selected_provider["model"] or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
@@ -680,6 +705,12 @@ class FullSupervisorAgent(BaseAgent):
         self.grok_coding_max_turns = validate_grok_coding_max_turns(
             grok_coding_max_turns, provider=selected_provider["provider"])
         self._frozen_grok_coding_max_turns = self.grok_coding_max_turns
+        from .benchmark_controls import validate_full_supervisor_grok_pruning
+        self.grok_pruning_profile = self._frozen_grok_pruning_profile = validate_full_supervisor_grok_pruning(
+            grok_pruning_profile, provider=selected_provider["provider"],
+            metadata_census_only=metadata_census_only, working_set_census_only=working_set_census_only,
+            candidate_rounds=selected_rounds, doctor_coding_policy=doctor_coding_policy,
+            source_edit_mode=self.source_edit_mode, planning_mode=self.planning_mode)
         if self.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS and metadata_census_only:
             raise ValueError("nondefault coding turns require generation, not metadata census")
         if type(metadata_census_only) is not bool:
@@ -718,6 +749,12 @@ class FullSupervisorAgent(BaseAgent):
                 separators=(",", ":"), allow_nan=False)
             self._frozen_metadata_tokenizer_route = (arm, selected_provider["provider"], self.model_name,
                 self.semantic_metadata_view, self.semantic_transport_schema, metadata_census_only)
+        self.working_set_census_only = self._frozen_working_set_census_only = validate_working_set_census(
+            working_set_census_only, arm=arm, planning_mode=self.planning_mode,
+            semantic_working_set=self.semantic_working_set, source_view_profile=self.source_view_profile,
+            transport_schema=self.semantic_transport_schema, metadata_view=self.semantic_metadata_view,
+            source_edit_mode=self.source_edit_mode, candidate_rounds=selected_rounds,
+            metadata_census_only=metadata_census_only)
         self.numerical_formalization_profile = validate_numerical_profile(numerical_formalization_profile)
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
@@ -820,6 +857,15 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared Grok coding turn bound changed")
         return value
 
+    def _checked_grok_pruning_profile(self):
+        from .benchmark_controls import grok_pruning_from_controls
+        selected = grok_pruning_from_controls({key: getattr(self, key) for key in (
+            "grok_pruning_profile", "provider_profile", "metadata_census_only", "working_set_census_only",
+            "candidate_rounds", "doctor_coding_policy", "source_edit_mode", "planning_mode") if hasattr(self, key)})
+        if selected != getattr(self, "_frozen_grok_pruning_profile", DEFAULT_GROK_PRUNING_PROFILE):
+            raise ValueError("prepared Grok pruning profile changed")
+        return selected
+
     def _checked_semantic_working_set(self):
         mode = validate_semantic_working_set(getattr(self, "semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
             arm=self.arm, source_view_profile=getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
@@ -830,6 +876,20 @@ class FullSupervisorAgent(BaseAgent):
         if mode != getattr(self, "_frozen_semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET):
             raise ValueError("prepared semantic working set changed")
         return mode
+
+    def _checked_working_set_census(self):
+        selected = validate_working_set_census(getattr(self, "working_set_census_only", False),
+            arm=self.arm, planning_mode=getattr(self, "planning_mode", DEFAULT_PLANNING_MODE),
+            semantic_working_set=getattr(self, "semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET),
+            source_view_profile=getattr(self, "source_view_profile", DEFAULT_SOURCE_VIEW_PROFILE),
+            transport_schema=getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            metadata_view=getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            source_edit_mode=getattr(self, "source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
+            candidate_rounds=getattr(self, "candidate_rounds", 1),
+            metadata_census_only=getattr(self, "metadata_census_only", False))
+        if selected != getattr(self, "_frozen_working_set_census_only", False):
+            raise ValueError("prepared working set census selection changed")
+        return selected
 
     def _checked_source_edit_mode(self, profile):
         mode = validate_source_edit_mode(getattr(self, "source_edit_mode", DEFAULT_SOURCE_EDIT_MODE),
@@ -876,8 +936,24 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared metadata tokenizer selection changed")
         return verify_metadata_tokenizer_bundle_snapshot(snapshot, expected_selection=selected)
 
+    def _checked_candidate_rounds(self):
+        from .benchmark_controls import validate_full_supervisor_candidate_rounds
+        selected = validate_full_supervisor_candidate_rounds(getattr(self, "candidate_rounds", 1), arm=self.arm,
+            doctor_coding_policy=getattr(self, "doctor_coding_policy", None),
+            source_view_profile=getattr(self, "source_view_profile", "disabled"),
+            source_edit_mode=getattr(self, "source_edit_mode", "disabled"),
+            numerical_formalization_profile=getattr(self, "numerical_formalization_profile", None),
+            task_profile=getattr(self, "task_profile", None))
+        if (selected != getattr(self, "_frozen_candidate_rounds", 1)
+                or getattr(self, "doctor_coding_policy", None) != getattr(self, "_frozen_doctor_coding_policy", None)):
+            raise ValueError("prepared candidate rounds changed")
+        return selected
+
     async def setup(self, environment):
+        candidate_rounds = self._checked_candidate_rounds()
         tokenizer_snapshot = self._checked_metadata_tokenizer()
+        working_set_census = self._checked_working_set_census()
+        doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import (
             validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
         )
@@ -932,6 +1008,9 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_working_set_archive(manifest, working_set)
         grok_turns = self._checked_grok_coding_max_turns()
         require_grok_coding_archive(manifest, grok_turns)
+        grok_pruning = self._checked_grok_pruning_profile()
+        require_grok_pruning_archive(manifest, grok_pruning)
+        require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
@@ -965,6 +1044,7 @@ class FullSupervisorAgent(BaseAgent):
                                 **({"setup_cache_selection": selection} if selection is not None else {}))
         boundary = self.logs_dir / "worker-boundary"
         deployed_boundary = await deploy_worker_boundary(environment, output=boundary,
+            **grok_pruning_selection(grok_pruning),
             **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
         if tokenizer_snapshot is not None:
             from .terminal_metadata_tokenizer_deployment import deploy_metadata_tokenizer_bundle
@@ -973,8 +1053,8 @@ class FullSupervisorAgent(BaseAgent):
             self._metadata_tokenizer_deployment = await deploy_metadata_tokenizer_bundle(environment,
                 snapshot=tokenizer_snapshot, output=self.logs_dir / "metadata-tokenizer-deployment")
             self._metadata_tokenizer_remote_ready = True
-        if getattr(self, "metadata_census_only", False):
-            if validate_source384_binding(manifest) is None:
+        if getattr(self, "metadata_census_only", False) or working_set_census:
+            if not working_set_census and validate_source384_binding(manifest) is None:
                 raise ValueError("live census requires current Source384 assets")
             # This is the actual independent namespace/permission/termination
             # qualification, protected by container root before owner use.
@@ -986,7 +1066,7 @@ class FullSupervisorAgent(BaseAgent):
                                                user="root", cwd="/", timeout_sec=5)
             if protected.return_code:
                 raise RuntimeError("live census qualification protection failed")
-        if selected_provider["provider"] == "grok_cli":
+        if selected_provider["provider"] == "grok_cli" and not working_set_census:
             from .terminal_grok_deployment import require_grok_credential_readiness
             await require_grok_credential_readiness(environment,
                 output=self.logs_dir / "provider-readiness")
@@ -998,6 +1078,7 @@ class FullSupervisorAgent(BaseAgent):
 
     async def run(self, instruction: str, environment, context: AgentContext):
         run_started = monotonic()
+        candidate_rounds = self._checked_candidate_rounds()
         _decision_options(vars(self), arm=self.arm,
             provider=resolve_provider_profile(getattr(self, "provider_profile", None))["provider"])
         doctor_arguments = doctor_dispatch_arguments(arm=self.arm,
@@ -1039,7 +1120,12 @@ class FullSupervisorAgent(BaseAgent):
             'capsule_budget': getattr(self, 'capsule_budget', 'legacy'),
             'metadata_census_only': getattr(self, 'metadata_census_only', False),
             "provider": resolve_provider_profile(getattr(self, "provider_profile", None))["provider"],
-        })
+
+        'candidate_rounds': getattr(self, 'candidate_rounds', 1),
+        'doctor_coding_policy': getattr(self, 'doctor_coding_policy', None),
+        'working_set_census_only': getattr(self, 'working_set_census_only', False),
+        'grok_pruning_profile': getattr(self, 'grok_pruning_profile', 'legacy'),
+    })
         semantic_arguments = semantic_context_arguments(
             semantic_slot_policy_revision=getattr(self, "semantic_slot_policy_revision", "legacy@1"),
             semantic_context_projection=getattr(self, "semantic_context_projection", False),
@@ -1055,6 +1141,8 @@ class FullSupervisorAgent(BaseAgent):
             semantic_decision_max_calls=getattr(self, "semantic_decision_max_calls", 3),
             semantic_decision_max_total_input_tokens=getattr(self, "semantic_decision_max_total_input_tokens", None))
 
+        working_set_census = self._checked_working_set_census()
+        doctor_coding_policy = getattr(self, "doctor_coding_policy", None)
         from .terminal_setup_cache_advice import validate_setup_cache_selection
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
@@ -1107,6 +1195,9 @@ class FullSupervisorAgent(BaseAgent):
         require_semantic_working_set_archive(manifest, working_set)
         grok_turns = self._checked_grok_coding_max_turns()
         require_grok_coding_archive(manifest, grok_turns)
+        grok_pruning = self._checked_grok_pruning_profile()
+        require_grok_pruning_archive(manifest, grok_pruning)
+        require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
         capsule_selection = validate_capsule_selection(
             getattr(self, "capsule_selection", DEFAULT_CAPSULE_SELECTION), arm=self.arm)
         require_capsule_selection_archive(manifest, capsule_selection)
@@ -1170,8 +1261,12 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--source-edit-mode", source_edit]
         if working_set != DEFAULT_SEMANTIC_WORKING_SET:
             argv += ["--semantic-working-set", working_set]
+        if candidate_rounds == 2:
+            argv += ["--candidate-rounds", "2", "--doctor-coding-policy", doctor_coding_policy]
         if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
             argv += ["--grok-coding-max-turns", str(grok_turns)]
+        if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE:
+            argv += ["--grok-pruning-profile", grok_pruning]
         if planning_mode != DEFAULT_PLANNING_MODE:
             argv += ["--planning-mode", planning_mode]
         if numerical_profile is not None:
@@ -1208,6 +1303,8 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--semantic-context-profile", semantic_profile]
         if getattr(self, "metadata_census_only", False):
             argv += ["--metadata-census-only"]
+        if working_set_census:
+            argv += ["--working-set-census-only"]
         task_profile = getattr(self, "task_profile", None)
         if task_profile is not None:
             from .terminal_task_profile import validate_task_profile
@@ -1257,6 +1354,9 @@ class FullSupervisorAgent(BaseAgent):
                             **semantic_context_selection(semantic_profile),
                             **semantic_working_set_observation(working_set),
                             **grok_coding_selection(grok_turns),
+                            **working_set_census_observation(working_set_census),
+                            **grok_pruning_selection(grok_pruning),
+                            **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
                             **numerical_observation(numerical_profile, self.arm),
                             **planning_observation(planning_mode),
                             **_intent_selection(requirement_contract, planning_mode=planning_mode),
@@ -1412,6 +1512,8 @@ class FullSupervisorAgent(BaseAgent):
                     context.metadata["semantic_working_set_runtime_declared_matches"] = all(
                         type(report.get(key)) is type(value) and report.get(key) == value
                         for key, value in expected_working_set.items())
+                if working_set_census:
+                    context.metadata["working_set_census_runtime_matches"] = working_set_census_runtime_matches(report)
                 if grok_turns != DEFAULT_GROK_CODING_MAX_TURNS:
                     context.metadata["grok_coding_runtime_declared_matches"] = (
                         type(report.get("grok_coding_max_turns")) is int
@@ -1419,9 +1521,17 @@ class FullSupervisorAgent(BaseAgent):
                     context.metadata["grok_coding_runtime_policy_matches"] = grok_coding_runtime_matches(report, grok_turns)
                     context.metadata["grok_coding_not_applicable_provider_free"] = (
                         grok_coding_not_applicable_provider_free(report, grok_turns))
+                if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE:
+                    context.metadata["grok_pruning_runtime_declared_matches"] = (
+                        type(report.get("grok_pruning_profile")) is str
+                        and report["grok_pruning_profile"] == grok_pruning)
+                    context.metadata["grok_pruning_runtime_policy_matches"] = grok_pruning_runtime_matches(report, grok_pruning)
+                if candidate_rounds == 2:
+                    context.metadata["doctor_coding_runtime_declared_matches"] = doctor_coding_runtime_declared_matches(
+                        report, candidate_rounds, doctor_coding_policy)
                 usage = measured_usage(report)
                 populate_harbor_usage(context, usage)
-                context.metadata.update(task_completed=report["task_completed"], usage=usage,
+                context.metadata.update(task_completed=False if working_set_census else report["task_completed"], usage=usage,
                                         supervisor_seconds=report["seconds"], phases=report["phases"],
                                         intent_preplanning=(report.get("planning") or {}).get(
                                             "intent_preplanning", report.get("intent_preplanning")),

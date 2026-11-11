@@ -1,0 +1,536 @@
+{
+  "pilot": {
+    "all_phase_usage": {
+      "all_native_contracts_complete": false,
+      "billing_total_verified": false,
+      "complete_native_totals": {
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reasoning_output_tokens": null,
+        "total_tokens": null
+      },
+      "missing_categories": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 0
+      },
+      "observed_subtotals": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 197248,
+        "input_tokens": 102333,
+        "output_tokens": 11103,
+        "reasoning_output_tokens": 9270,
+        "total_tokens": 310684
+      },
+      "outer_router_calls": 2,
+      "reasoning_is_separate_not_added_to_total": true,
+      "receipts": 2,
+      "retained_aggregate_completeness_agrees": false,
+      "unreceipted_attempt_reported": false
+    },
+    "continuation": {
+      "candidate_receipts": 1,
+      "continuation_supported_by_retained_report": true,
+      "in_container_accounting_agrees": true,
+      "independent_owner_replay_performed": false,
+      "native_accounting": {
+        "complete_usage_established": false,
+        "doctor_attempts_reserved": [
+          1,
+          2
+        ],
+        "doctor_coding_policy": "doctor-coding-public-validation-two-attempts@1",
+        "doctor_coding_policy_sha256": "01daeed88fa535d8436937c77af57e93d546dd08bbb59e7fd8a63ce00457f3d7",
+        "owner_lifecycle_sha256": "0d1ce72f2faf3ec2251314fd41ca39773f88b88c7fb10eae37b2e8ef6bdd3c8b",
+        "potential_unreceipted_attempt": false,
+        "provider_internal_calls_bounded": false,
+        "reason": "each_started_child_has_distinct_router_receipt",
+        "rounds": [
+          {
+            "possible_unreceipted_attempt": false,
+            "process_started": true,
+            "receipt_observed": true,
+            "round_number": 1
+          },
+          {
+            "possible_unreceipted_attempt": false,
+            "process_started": true,
+            "receipt_observed": true,
+            "round_number": 2
+          }
+        ],
+        "schema": "terminal-candidate-attempt-accounting@1",
+        "status": "matched_round_receipts",
+        "total_cost_bounded": false,
+        "total_tokens_bounded": false
+      },
+      "two_coding_router_calls_joined": true
+    },
+    "invocations": [
+      {
+        "failure_phase": "provider_invocation",
+        "model_prompt_bytes": 67380,
+        "native_cli": {
+          "exit_code": 1,
+          "num_turns": 8,
+          "stop_reason": "cancelled"
+        },
+        "native_progress": {
+          "duration_seconds": 122.22632871801034,
+          "events_after_final": 1,
+          "final_event_type": "max_turns_reached",
+          "final_reason_code": "max_turns",
+          "returncode": 1,
+          "stream_tainted": false
+        },
+        "phase": "coding",
+        "status": "failed",
+        "terminal_rejection": null,
+        "usage": {
+          "arithmetic_valid": true,
+          "counters": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 195712,
+            "input_tokens": 67307,
+            "output_tokens": 6538,
+            "reasoning_output_tokens": 4836,
+            "total_tokens": 269557
+          },
+          "retained_native_fields": {
+            "billing_total_verified": false,
+            "cache_included_in_input": false,
+            "observed_final_usage_records": 1,
+            "schema": "native-grok-final-usage@1",
+            "task_complete_observed": false,
+            "totals_scope": "native_final_envelope",
+            "usage_available": true,
+            "usage_complete_observed": null,
+            "usage_observation_sha256": "cb9f67f497b923fe0bd8df5c2ef6c722e5d1d2ca836cf1244af510449745435c"
+          },
+          "usage_complete_under_native_contract": false
+        }
+      },
+      {
+        "failure_phase": null,
+        "model_prompt_bytes": 91839,
+        "native_cli": {
+          "exit_code": 0,
+          "num_turns": 1,
+          "stop_reason": "end_turn"
+        },
+        "native_progress": {
+          "duration_seconds": null,
+          "events_after_final": null,
+          "final_event_type": null,
+          "final_reason_code": null,
+          "returncode": null,
+          "stream_tainted": null
+        },
+        "phase": "coding",
+        "status": "provider_returned",
+        "terminal_rejection": null,
+        "usage": {
+          "arithmetic_valid": true,
+          "counters": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 1536,
+            "input_tokens": 35026,
+            "output_tokens": 4565,
+            "reasoning_output_tokens": 4434,
+            "total_tokens": 41127
+          },
+          "retained_native_fields": {
+            "billing_total_verified": false,
+            "cache_included_in_input": false,
+            "observed_final_usage_records": 1,
+            "schema": "native-grok-final-usage@1",
+            "task_complete_observed": true,
+            "totals_scope": "native_final_envelope",
+            "usage_available": true,
+            "usage_complete_observed": null,
+            "usage_observation_sha256": "c07f5dec00672de10b2b4fdceba4d7fafe5a04ed0b281ae02c6957d35fc0e8f8"
+          },
+          "usage_complete_under_native_contract": null
+        }
+      }
+    ],
+    "official_reward": 0.0,
+    "phase_seconds": {
+      "context_seconds": 3.6390296920435503,
+      "doctor_seconds": 1.7827312010340393,
+      "initial_context_seconds": 14.227689321967773,
+      "planning_seconds": 4.391944996081293,
+      "prepare_seconds": 0.7480571819469333
+    },
+    "planning": {
+      "completion_authority": false,
+      "declared_route_supported_by_retained_report": true,
+      "execution_authority": false,
+      "formal_plan_consistent_reported": true,
+      "goals": 2,
+      "independent_admission_replay_performed": false,
+      "instruction_interpreted": false,
+      "interpretation_scope": "exact_signed_task_structure_only",
+      "model_calls_reported": 0,
+      "observation_only": true,
+      "pending_requirements": 9,
+      "planning_native_receipts": 0,
+      "planning_tokens_saved": null,
+      "proof_authority": false,
+      "provider_calls_reported": 0,
+      "qualified": true,
+      "receipt_bytes": 938,
+      "receipt_schema": "supervisor-declared-contract-planning@1",
+      "receipt_sha256": "22b0fef01b8e97151c213b6d7cf6ccded0d78a1fdca02f4cc0c5210c8cf5a02f",
+      "semantic_alignment_verified": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "validated_retained_declared_plan",
+      "tasks": 1,
+      "total_token_savings_established": false
+    },
+    "public_validation": {
+      "owner_returncode": 1,
+      "owner_validation_outcome": "inconclusive",
+      "status": "validated_retained_observation"
+    },
+    "rounds": [
+      {
+        "actual_returncode": 1,
+        "checks": [
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-structural-smoke"
+          },
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-eigenpair-behavior"
+          },
+          {
+            "reason": "timing_unstable",
+            "status": "inconclusive",
+            "validation_key": "public-eigenvalue-performance"
+          }
+        ],
+        "round_number": 1,
+        "status": "inconclusive",
+        "workspace_generation": "3608e69424772e8fc78f089c63f16b264dbbb8549e33a520de6ed9688f51ea63"
+      },
+      {
+        "actual_returncode": 0,
+        "checks": [
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-structural-smoke"
+          },
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-eigenpair-behavior"
+          },
+          {
+            "reason": "timing_unstable",
+            "status": "inconclusive",
+            "validation_key": "public-eigenvalue-performance"
+          }
+        ],
+        "round_number": 2,
+        "status": "inconclusive",
+        "workspace_generation": "3608e69424772e8fc78f089c63f16b264dbbb8549e33a520de6ed9688f51ea63"
+      }
+    ],
+    "seconds": 461.31504030898213,
+    "task_completed_reported": false,
+    "trial": "largest-eigenval__HjiUdZn"
+  },
+  "prior": {
+    "all_phase_usage": {
+      "all_native_contracts_complete": false,
+      "billing_total_verified": false,
+      "complete_native_totals": {
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reasoning_output_tokens": null,
+        "total_tokens": null
+      },
+      "missing_categories": {
+        "cache_write_input_tokens": 2,
+        "cached_input_tokens": 2,
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "reasoning_output_tokens": 2,
+        "total_tokens": 2
+      },
+      "observed_subtotals": {
+        "cache_write_input_tokens": null,
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reasoning_output_tokens": null,
+        "total_tokens": null
+      },
+      "outer_router_calls": 2,
+      "reasoning_is_separate_not_added_to_total": true,
+      "receipts": 2,
+      "retained_aggregate_completeness_agrees": false,
+      "unreceipted_attempt_reported": false
+    },
+    "continuation": {
+      "candidate_receipts": 1,
+      "continuation_supported_by_retained_report": true,
+      "in_container_accounting_agrees": true,
+      "independent_owner_replay_performed": false,
+      "native_accounting": {
+        "complete_usage_established": false,
+        "doctor_attempts_reserved": [
+          1,
+          2
+        ],
+        "doctor_coding_policy": "doctor-coding-public-validation-two-attempts@1",
+        "doctor_coding_policy_sha256": "daedc7bf9f9adeefa60ba84d1ca1c5ec41bb64b4c0f5dba62182dbe1807aa834",
+        "owner_lifecycle_sha256": "fd6c1a9e670170a2386a9ab01277dc544d3be5f40dc2831be6cfe9098a5bec93",
+        "potential_unreceipted_attempt": false,
+        "provider_internal_calls_bounded": false,
+        "reason": "each_started_child_has_distinct_router_receipt",
+        "rounds": [
+          {
+            "possible_unreceipted_attempt": false,
+            "process_started": true,
+            "receipt_observed": true,
+            "round_number": 1
+          },
+          {
+            "possible_unreceipted_attempt": false,
+            "process_started": true,
+            "receipt_observed": true,
+            "round_number": 2
+          }
+        ],
+        "schema": "terminal-candidate-attempt-accounting@1",
+        "status": "matched_round_receipts",
+        "total_cost_bounded": false,
+        "total_tokens_bounded": false
+      },
+      "two_coding_router_calls_joined": true
+    },
+    "invocations": [
+      {
+        "failure_phase": "provider_invocation",
+        "model_prompt_bytes": 67380,
+        "native_cli": {
+          "exit_code": 1
+        },
+        "native_progress": {
+          "duration_seconds": 129.5200176690705,
+          "events_after_final": 1,
+          "final_event_type": "max_turns_reached",
+          "final_reason_code": "max_turns",
+          "returncode": 1,
+          "stream_tainted": true
+        },
+        "phase": "coding",
+        "status": "failed",
+        "terminal_rejection": {
+          "completion_authority": false,
+          "elapsed_seconds": 128.1068607880734,
+          "event_type": "end",
+          "field_shapes": {
+            "cancellationCategory": "missing",
+            "cost_is_partial": "missing",
+            "is_error": "missing",
+            "message": "missing",
+            "modelUsage": "object",
+            "num_turns": "integer",
+            "requestId": "string",
+            "sessionId": "string",
+            "stopReason": "string",
+            "stop_reason": "missing",
+            "subtype": "missing",
+            "text": "missing",
+            "thought": "missing",
+            "total_cost_usd": "number",
+            "total_cost_usd_ticks": "integer",
+            "type": "string",
+            "usage": "object",
+            "usage_is_incomplete": "missing"
+          },
+          "frame_ordinal": 596,
+          "incoming_reason_code": "cancelled",
+          "incoming_stop_reason": "cancelled",
+          "observation_only": true,
+          "prior_field_shapes": {
+            "cancellationCategory": "missing",
+            "cost_is_partial": "missing",
+            "is_error": "missing",
+            "message": "missing",
+            "modelUsage": "missing",
+            "num_turns": "missing",
+            "requestId": "missing",
+            "sessionId": "missing",
+            "stopReason": "missing",
+            "stop_reason": "missing",
+            "subtype": "missing",
+            "text": "missing",
+            "thought": "missing",
+            "total_cost_usd": "missing",
+            "total_cost_usd_ticks": "missing",
+            "type": "string",
+            "usage": "missing",
+            "usage_is_incomplete": "missing"
+          },
+          "prior_reason_code": "max_turns",
+          "prior_terminal_type": "max_turns_reached",
+          "raw_provider_data_exported": false,
+          "reason": "end_reason_mismatch",
+          "rejected_fields": [],
+          "schema": "native-grok-terminal-rejection@1",
+          "unexpected_fields": [],
+          "unknown_field_count": 0
+        },
+        "usage": {
+          "arithmetic_valid": null,
+          "counters": {
+            "cache_write_input_tokens": null,
+            "cached_input_tokens": null,
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_output_tokens": null,
+            "total_tokens": null
+          },
+          "retained_native_fields": {},
+          "usage_complete_under_native_contract": null
+        }
+      },
+      {
+        "failure_phase": "provider_invocation",
+        "model_prompt_bytes": 91841,
+        "native_cli": {},
+        "native_progress": {
+          "duration_seconds": null,
+          "events_after_final": null,
+          "final_event_type": null,
+          "final_reason_code": null,
+          "returncode": null,
+          "stream_tainted": null
+        },
+        "phase": "coding",
+        "status": "failed",
+        "terminal_rejection": null,
+        "usage": {
+          "arithmetic_valid": null,
+          "counters": {
+            "cache_write_input_tokens": null,
+            "cached_input_tokens": null,
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_output_tokens": null,
+            "total_tokens": null
+          },
+          "retained_native_fields": {},
+          "usage_complete_under_native_contract": null
+        }
+      }
+    ],
+    "official_reward": 0.0,
+    "phase_seconds": {
+      "context_seconds": 3.9073665980249643,
+      "doctor_seconds": 1.8304058220237494,
+      "initial_context_seconds": 14.996175828040577,
+      "planning_seconds": 4.666124962968752,
+      "prepare_seconds": 0.6725182050140575
+    },
+    "planning": {
+      "completion_authority": false,
+      "declared_route_supported_by_retained_report": true,
+      "execution_authority": false,
+      "formal_plan_consistent_reported": true,
+      "goals": 2,
+      "independent_admission_replay_performed": false,
+      "instruction_interpreted": false,
+      "interpretation_scope": "exact_signed_task_structure_only",
+      "model_calls_reported": 0,
+      "observation_only": true,
+      "pending_requirements": 9,
+      "planning_native_receipts": 0,
+      "planning_tokens_saved": null,
+      "proof_authority": false,
+      "provider_calls_reported": 0,
+      "qualified": true,
+      "receipt_bytes": 938,
+      "receipt_schema": "supervisor-declared-contract-planning@1",
+      "receipt_sha256": "e63efb2bb1bbc28cb0d7718ad7b6ffd04736b8b9e0e127c17981ed53fc94e848",
+      "semantic_alignment_verified": false,
+      "source_obligations_discharged": 0,
+      "source_semantics_verified": false,
+      "status": "validated_retained_declared_plan",
+      "tasks": 1,
+      "total_token_savings_established": false
+    },
+    "public_validation": {
+      "owner_returncode": 1,
+      "owner_validation_outcome": "inconclusive",
+      "status": "validated_retained_observation"
+    },
+    "rounds": [
+      {
+        "actual_returncode": 1,
+        "checks": [
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-structural-smoke"
+          },
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-eigenpair-behavior"
+          },
+          {
+            "reason": "timing_unstable",
+            "status": "inconclusive",
+            "validation_key": "public-eigenvalue-performance"
+          }
+        ],
+        "round_number": 1,
+        "status": "inconclusive",
+        "workspace_generation": "983ec5b3226cc0344f59823e910c4df4defe5c22a803512f40d561f8fa28964d"
+      },
+      {
+        "actual_returncode": 1,
+        "checks": [
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-structural-smoke"
+          },
+          {
+            "reason": "obligations_satisfied",
+            "status": "passed",
+            "validation_key": "public-eigenpair-behavior"
+          },
+          {
+            "reason": "timing_unstable",
+            "status": "inconclusive",
+            "validation_key": "public-eigenvalue-performance"
+          }
+        ],
+        "round_number": 2,
+        "status": "inconclusive",
+        "workspace_generation": "983ec5b3226cc0344f59823e910c4df4defe5c22a803512f40d561f8fa28964d"
+      }
+    ],
+    "seconds": 397.5991736740107,
+    "task_completed_reported": false,
+    "trial": "largest-eigenval__LJh3TxD"
+  }
+}

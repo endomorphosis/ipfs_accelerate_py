@@ -1,0 +1,329 @@
+{
+  "archive_verification": {
+    "all_archive_members_verified": true,
+    "archive_bytes": 1411551713,
+    "archive_members": 27554,
+    "uncompressed_bytes": 4072818161
+  },
+  "artifact_launcher_exporter_passed_cases": 47,
+  "artifact_sha256": {
+    "bundle_result": "b308644ccc4d00b415ba0bd25ce58ce797dc194dd8211707347a1c4019804c3c",
+    "closed_export": "c352ccb6ceaf7c2187a7f0163cd7e6faa67700aab56866eefa70b4ada6ef6362",
+    "execute_result": "526b9d7d5631e5561c0783ad0998fa5105492f84b4a2187cd833a9853346d04e",
+    "final_freeze_check": "8112248579962ac818fba2b2899be0fe1ae2565c9eac01c032b6c49445e4e0b6",
+    "runtime_archive": "ff9e2c085caa28c506a9af796feda36d45cfce17c099984aea5dc8eca86d56ad",
+    "source_freeze": "5928a447fc96f0a02573dfc732ef5977bf9a7fe20da77add660f2a956eb9b5cb",
+    "verification_result": "f6dd2ee8b0c6e4dcd2c7c0cb3217dd03af39f45a4ebe62ef4c4876ee05234605"
+  },
+  "cleanup": {
+    "allocated_worktree_removed": true,
+    "container_stop_returned": true,
+    "exact_container_absence_observations": [
+      true,
+      true
+    ],
+    "post_yield_admission_task_revalidated": true,
+    "source_session_stopped": true,
+    "worker_cleanup_returncode": 0
+  },
+  "final_freeze": {
+    "all_frozen_inputs_unchanged": true,
+    "checked_utc": "2026-10-15T05:43:55.040726+00:00",
+    "free_bytes": 126958620672,
+    "minimum_free_bytes": 34359738368,
+    "provider_calls": 0,
+    "public_input_and_asset_bindings_checked": 21,
+    "recipe_binding_checked": true,
+    "roots": {
+      "datasets": {
+        "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+        "unchanged": true
+      },
+      "kit": {
+        "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+        "unchanged": true
+      },
+      "source": {
+        "commit": "19dbb524c80d6fdfedd5ce15e696cbf911eed8c1",
+        "unchanged": true
+      }
+    },
+    "schema": "terminal-pack-view-final-freeze-check@1",
+    "script_and_manifest_bindings_checked": 11,
+    "source_freeze_sha256": "5928a447fc96f0a02573dfc732ef5977bf9a7fe20da77add660f2a956eb9b5cb",
+    "source_qualification_file_count": 14
+  },
+  "generation": {
+    "coding_provider_calls": 0,
+    "complete_run_token_savings_claimed": false,
+    "official_reward": null,
+    "official_verifier_executed": false,
+    "planning_provider_calls": 0,
+    "provider_generation_calls": 0,
+    "provider_tokens": null,
+    "task_completed": false
+  },
+  "measurement": {
+    "candidate_pack_bytes": 5106,
+    "capsule_complete_reduction_bytes": 81,
+    "capsule_selected_complete_bytes": 67120,
+    "independent_original_baseline_comparisons": true,
+    "inline_complete_reduction_bytes": 749,
+    "inline_dispatch_enabled": false,
+    "inline_gross_removed_string_overhead_bytes": 1373,
+    "inline_selected_complete_bytes": 66452,
+    "original_complete_bytes": 67201,
+    "original_pack_bytes": 6266,
+    "pack_added_representation_overhead_bytes": 855,
+    "pack_candidate_complete_bytes": 66896,
+    "pack_complete_reduction_bytes": 305,
+    "pack_complete_reduction_percent": 0.45386229371586734,
+    "pack_composed_with_capsule_references": false,
+    "pack_composed_with_inline_evidence": false,
+    "pack_dispatch_enabled": false,
+    "pack_exact_transport_inverse_verified": true,
+    "pack_fallback_reason": null,
+    "pack_gross_reduction_bytes": 1160,
+    "pack_identifiers_preserved": true,
+    "pack_inner_contract_preserved": true,
+    "pack_reference_count": 6,
+    "pack_reference_default_fields": 6,
+    "pack_reference_fields_factored": 36,
+    "pack_reference_roles_preserved": true,
+    "pack_selected_complete_bytes": 66896,
+    "pack_selected_mode": "semantic-pack-view@1",
+    "pack_token_estimate_factored": true,
+    "pack_unknown_fields_preserved": true,
+    "unit": "utf8_bytes"
+  },
+  "owner_context": {
+    "doctor_residual_included": true,
+    "full_capsule_count": 8,
+    "graph_goal_count": 2,
+    "graph_task_count": 1,
+    "indexed_symbol_count": 4,
+    "native_fact_rows_replayed": 4,
+    "retained_owner_planning_receipt_join_verified": true,
+    "source_count": 5,
+    "worker_capsule_count": 2
+  },
+  "pack_census": {
+    "contract_object": {
+      "members": {
+        "assumptions": {
+          "count": 1,
+          "member_bytes": 282,
+          "value_bytes": 268
+        },
+        "counterexample_cids": {
+          "count": 1,
+          "member_bytes": 24,
+          "value_bytes": 2
+        },
+        "delta_cid": {
+          "count": 1,
+          "member_bytes": 73,
+          "value_bytes": 61
+        },
+        "dependency_capsule_cids": {
+          "count": 1,
+          "member_bytes": 155,
+          "value_bytes": 129
+        },
+        "escalation_recommendation": {
+          "count": 1,
+          "member_bytes": 34,
+          "value_bytes": 6
+        },
+        "estimator_version": {
+          "count": 1,
+          "member_bytes": 56,
+          "value_bytes": 36
+        },
+        "exclusions": {
+          "count": 1,
+          "member_bytes": 15,
+          "value_bytes": 2
+        },
+        "interface_cids": {
+          "count": 1,
+          "member_bytes": 19,
+          "value_bytes": 2
+        },
+        "objective": {
+          "count": 1,
+          "member_bytes": 731,
+          "value_bytes": 719
+        },
+        "obligation_cids": {
+          "count": 1,
+          "member_bytes": 20,
+          "value_bytes": 2
+        },
+        "other_fields": {
+          "count": 0,
+          "member_bytes": 0,
+          "value_bytes": 0
+        },
+        "risk": {
+          "count": 1,
+          "member_bytes": 12,
+          "value_bytes": 5
+        },
+        "route": {
+          "count": 1,
+          "member_bytes": 27,
+          "value_bytes": 19
+        },
+        "surrounding_source_cid": {
+          "count": 1,
+          "member_bytes": 86,
+          "value_bytes": 61
+        },
+        "target_source_cid": {
+          "count": 1,
+          "member_bytes": 81,
+          "value_bytes": 61
+        },
+        "test_source_cid": {
+          "count": 1,
+          "member_bytes": 79,
+          "value_bytes": 61
+        },
+        "token_totals": {
+          "count": 1,
+          "member_bytes": 207,
+          "value_bytes": 192
+        }
+      },
+      "object_bytes": 1918,
+      "outer_punctuation_bytes": 17
+    },
+    "nested_partitions_overlap": true,
+    "pack_object": {
+      "members": {
+        "budget_exceeded": {
+          "count": 1,
+          "member_bytes": 23,
+          "value_bytes": 5
+        },
+        "coverage_satisfied": {
+          "count": 1,
+          "member_bytes": 25,
+          "value_bytes": 4
+        },
+        "decisions": {
+          "count": 1,
+          "member_bytes": 508,
+          "value_bytes": 496
+        },
+        "interface": {
+          "count": 1,
+          "member_bytes": 27,
+          "value_bytes": 15
+        },
+        "other_fields": {
+          "count": 0,
+          "member_bytes": 0,
+          "value_bytes": 0
+        },
+        "pack": {
+          "count": 1,
+          "member_bytes": 1925,
+          "value_bytes": 1918
+        },
+        "pack_cid": {
+          "count": 1,
+          "member_bytes": 72,
+          "value_bytes": 61
+        },
+        "production_slice_cid": {
+          "count": 1,
+          "member_bytes": 27,
+          "value_bytes": 4
+        },
+        "references": {
+          "count": 1,
+          "member_bytes": 3311,
+          "value_bytes": 3298
+        },
+        "schema": {
+          "count": 1,
+          "member_bytes": 48,
+          "value_bytes": 39
+        },
+        "token_estimate": {
+          "count": 1,
+          "member_bytes": 289,
+          "value_bytes": 272
+        }
+      },
+      "object_bytes": 6266,
+      "outer_punctuation_bytes": 11
+    },
+    "reference_array_bytes": 3298,
+    "reference_row_count": 6,
+    "removable_bytes_estimated": false,
+    "repetition_overlaps_partitions": true,
+    "typed_identifier_repetition": {
+      "all_occurrences_in_repeated_groups_included": true,
+      "distinct_native_identities": 5,
+      "literal_embedded_identifiers_counted": false,
+      "occurrences_beyond_first": 10,
+      "removable_bytes_estimated": false,
+      "repeated_groups_translated_value_bytes": 763,
+      "repeated_identity_groups": 5,
+      "scope": "known-native-pack-identifier-slots@1",
+      "singleton_translated_value_bytes": 0,
+      "slots": 15,
+      "translated_value_bytes": 763
+    }
+  },
+  "qualified": true,
+  "runtime_commit": "19dbb524c80d6fdfedd5ce15e696cbf911eed8c1",
+  "runtime_qualification_passed_cases": 177,
+  "schema": "terminal-pack-view-operational-summary@1",
+  "seconds": {
+    "bundle": 34.71633289800957,
+    "context_seconds": 3.96437607309781,
+    "execute": 221.5486244810745,
+    "initial_context_seconds": 16.512272629886866,
+    "owned_lifecycle": 220.22588140005246,
+    "planning_seconds": 4.698117529042065,
+    "prepare_seconds": 0.4584890021942556,
+    "verify": 12.044107012916356,
+    "working_set_census_seconds": 30.259583232924342
+  },
+  "source384": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "currentness_verified": true,
+    "inference_performed_by_census": false,
+    "inference_sha256": "f94093a69f0c4eec262b0129e7e596a1a8975908b49f533955f97d83cca3393d",
+    "neural_inference_replayed": false,
+    "present": true,
+    "seconds": 11.240554712945595
+  },
+  "source_edit_freeze_released_after_final_checks": true,
+  "source_session": {
+    "audit_sha256": "c782d0f5148e4d131ffa144c8fab90a9d5a30cb79b89d40fad6a7a815f3def5c",
+    "closed_observation_replayed": true,
+    "complete_input_replayed": true,
+    "completion_authority": false,
+    "deployment_sha256": "09bd10b6b5f991eec6a47e82439d9535e4ab85a5e2de4753930111b888c35dde",
+    "descriptor_sha256": "5d5b683abe1b78ce91b5936431ca64cde31716d06109ff54d6f0f4566934c484",
+    "observation_only": true,
+    "proof_authority": false,
+    "provider_calls": 0,
+    "provider_input_bytes": 0,
+    "provider_tokens": null,
+    "raw_content_exported": false,
+    "schema": "terminal-working-set-census-source-observation@1",
+    "source_evidence_bytes": 2327,
+    "source_response_bytes": 4096,
+    "source_session_accounting_complete": true,
+    "source_session_requests": 1,
+    "source_session_stopped": true,
+    "total_token_savings_measured": false
+  }
+}
