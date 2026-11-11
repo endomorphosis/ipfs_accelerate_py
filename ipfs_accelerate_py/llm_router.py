@@ -8785,6 +8785,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     try:
                         if stream_progress:
                             from .cli_runtime.grok_stream_capture import capture_grok_stream
+                            from .cli_runtime.grok_invocation_observation import begin_native_grok_dispatch
+                            observation_dispatch_token = begin_native_grok_dispatch()
                             census_options = {"tool_event_census": True} if tool_event_census else {}
                             if tool_event_schema != "native-grok-tool-events@1":
                                 census_options["tool_event_schema"] = tool_event_schema

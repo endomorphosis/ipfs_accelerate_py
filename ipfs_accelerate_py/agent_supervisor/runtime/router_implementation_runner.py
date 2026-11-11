@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from .candidate_dispatch_client import AdmittedCandidateRouterInput
     from .repository_world_packet import PreparedRepositoryWorldPacket
     from .semantic_metadata_view import SemanticMetadataTokenCounter
-    from .repository_world_packet import PreparedRepositoryWorldPacket
     from .repository_world_packet_presentation import PreparedRepositoryWorldPacketPresentation
     from .repository_world_attempt_journal import RepositoryWorldAttemptJournal
 
@@ -729,6 +728,7 @@ RUNNER_FAILURE_PHASES = frozenset({
     'world_task_packet',
     'world_task_packet_currentness',
     'world_packet_audit_admission',
+    'candidate_dispatch',
     'semantic_metadata_view',
     'semantic_working_set',
     'semantic_metadata_tokenizer',
@@ -767,6 +767,7 @@ RUNNER_FAILURE_FILES = frozenset({
     'local_prompt_tokenizer.py',
     'repository_world_packet.py',
     'repository_world_artifact_store.py',
+    'candidate_dispatch_client.py',
     'semantic_capsule_columns.py',
     'repository_world_packet_presentation.py',
     'repository_world_packet_replay.py',
@@ -1134,6 +1135,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_packet_audit_directory: Path | None = None,
         compact_world_prompt: bool = True,
         codex_cli_literal_response: bool = False,
+        owner_worker_attempt_id: str | None = None,
+        owner_provider_deadline_ns: int | None = None,
+        candidate_round_input: AdmittedCandidateRouterInput | None = None,
         receipt_observer: Callable[[dict], None] | None = None,
         world_task_presentation: PreparedRepositoryWorldPacketPresentation | None = None,
         world_packet_artifact_dir: Path | None = None,
@@ -1144,6 +1148,16 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         candidate_round_descriptor_sha256: str | None = None,
         world_task_residual_alternatives=None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
+    candidate_args = (candidate_dispatch_handoff, candidate_dispatch_handoff_sha256,
+                      candidate_round_descriptor, candidate_round_descriptor_sha256)
+    candidate_selected = any(value is not None for value in candidate_args)
+    if candidate_selected and candidate_round_input is not None:
+        raise ValueError("candidate dispatch protocols are mutually exclusive")
+    if not candidate_selected and candidate_round_input is None:
+        _refuse_candidate_preparation(prompt)
+    if candidate_round_input is not None and (world_task_packet is not None
+            or world_packet_audit_directory is not None):
+        raise ValueError("candidate input requires an independently selected isolated Codex coding route")
     if world_packet_audit_directory is not None and (
             world_packet_artifact_dir is not None or world_task_presentation is not None
             or world_task_residual_alternatives is not None):
@@ -1172,9 +1186,46 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if world_packet_artifact_dir is not None:
             raise ValueError("world attempt journal requires separate historical artifact processing")
         RepositoryWorldAttemptJournal.require_open(world_task_attempt_journal)
-    candidate_args = (candidate_dispatch_handoff, candidate_dispatch_handoff_sha256,
-                      candidate_round_descriptor, candidate_round_descriptor_sha256)
-    candidate_selected = any(value is not None for value in candidate_args)
+    if owner_provider_deadline_ns is not None:
+        if type(owner_provider_deadline_ns) is not int or not 0 < owner_provider_deadline_ns < (1 << 63):
+            raise ValueError("bounded exact owner provider deadline restriction required")
+        if (purpose != "coding" or census_only is not False or working_set_census_only
+                or owner_worker_attempt_id is None
+                or container_boundary is None or not container_boundary_sha256):
+            raise ValueError("owner provider deadline restriction requires isolated owner coding")
+    if candidate_round_input is not None:
+        from .candidate_dispatch_client import AdmittedCandidateRouterInput
+        if type(candidate_round_input) is not AdmittedCandidateRouterInput:
+            raise ValueError("exact authenticated candidate router input required")
+        # A current native owner, rather than the candidate's advisory JSON,
+        # supplies the separate permission to attempt this provider invocation.
+        if (purpose != "coding" or provider != "codex_cli" or census_only is not False or working_set_census_only
+                or container_boundary is None or not container_boundary_sha256
+                or owner_worker_attempt_id is None or semantic_repository is not None
+                or semantic_transport_schema != "supervisor-semantic-router-input@1"
+                or semantic_metadata_token_counter is not None or semantic_metadata_tokenizer_artifact is not None
+                or coding_reply_mode != "legacy"
+                or source_view_profile != "disabled" or source_edit_mode != "disabled"
+                or grok_coding_max_turns != 128
+                or any(value is not None for value in (
+                    source_formalization_handoff, source_formalization_handoff_sha256,
+                    numerical_obligation_descriptor, numerical_obligation_descriptor_sha256,
+                    source_lookup_descriptor, source_lookup_descriptor_sha256,
+                    source_view_descriptor, source_view_descriptor_sha256,
+                    doctor_residual_artifact, public_instruction_artifact))
+                or any((doctor_residual_sha256, doctor_residual_task_cid,
+                    public_instruction_sha256, public_instruction_task_cid))
+                or any(value != "legacy" for value in (semantic_metadata_view,
+                    semantic_working_set, tool_output_policy, source_view_advisory_policy,
+                    repository_source_policy, source_input_policy, query_reference_policy))):
+            raise ValueError("candidate input requires an independently selected isolated Codex coding route")
+    if owner_worker_attempt_id is not None:
+        if (type(owner_worker_attempt_id) is not str or len(owner_worker_attempt_id) != 32
+                or any(char not in "0123456789abcdef" for char in owner_worker_attempt_id)):
+            raise ValueError("owner worker attempt identity requires exactly 32 lowercase hexadecimal characters")
+        if (purpose != "coding" or census_only is not False or working_set_census_only
+                or container_boundary is None or not container_boundary_sha256):
+            raise ValueError("owner worker attempt identity requires isolated coding generation")
     if candidate_selected:
         if (not all(candidate_args) or purpose != "coding"
                 or any(value is not None for value in (world_task_packet, world_packet_audit_directory,
@@ -1195,8 +1246,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 or any((doctor_residual_artifact, doctor_residual_sha256, doctor_residual_task_cid,
                         public_instruction_artifact, public_instruction_sha256, public_instruction_task_cid))):
             raise ValueError("candidate dispatch requires its separate complete isolated coding route")
-    else:
-        _refuse_candidate_preparation(prompt)
+    elif candidate_round_input is None:
         if any(key in os.environ for key in (CANDIDATE_DESCRIPTOR_ENV, CANDIDATE_DESCRIPTOR_DIGEST_ENV)):
             raise ValueError("candidate descriptor environment requires explicit owner selection")
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
@@ -1435,7 +1485,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if world_task_residual_alternatives is not None:
             residual_local_tokenizer = local
     elif (prompt_token_counter is None and purpose == "coding"
-            and semantic_repository is None and not census_only
+            and candidate_round_input is None
+            and semantic_repository is None and world_task_packet is None and not census_only
             and not source_lookup_selected
             and all(policy == "legacy" for policy in (
                 semantic_metadata_view, semantic_working_set, tool_output_policy,
@@ -1488,10 +1539,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
     if Path(top).resolve() != root:
         raise ValueError("implementation must start at its allocated Git worktree root")
-    candidate_receipt = None
+    admitted_candidate_receipt = None
     if candidate_round_input is not None:
         failure_phase = "candidate_dispatch"
-        candidate_receipt = AdmittedCandidateRouterInput.validate_for_run(candidate_round_input,
+        admitted_candidate_receipt = AdmittedCandidateRouterInput.validate_for_run(candidate_round_input,
             prompt=prompt, provider=provider, model=model, timeout=timeout,
             max_output_tokens=max_output_tokens, reasoning_effort=reasoning_effort,
             workspace=root, boundary_sha256=container_boundary_sha256,
@@ -1594,7 +1645,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         timeout = min(timeout, candidate_receipt["remaining_timeout_seconds"])
         if type(timeout) is not int or timeout < 1:
             raise ValueError("candidate dispatch has no remaining admitted time")
-    else:
+    elif candidate_round_input is None:
         from .source_formalization_context import validate_source_formalization_context
         formalization_receipt = validate_source_formalization_context(
             prompt=prompt, repository=semantic_repository, workspace=root,
@@ -2212,6 +2263,15 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         "usage": None, "completion_authority": False,
         "external_container_boundary": boundary,
     }
+    if owner_worker_attempt_id is not None:
+        # Observation join only: this caller-supplied label grants no child
+        # launch, retry, task, proof, settlement, or completion authority.
+        receipt["owner_worker_attempt_id"] = owner_worker_attempt_id
+    if owner_provider_deadline_ns is not None:
+        receipt["owner_provider_deadline_ns"] = owner_provider_deadline_ns
+    if admitted_candidate_receipt is not None:
+        receipt["candidate_round_dispatch"] = dict(admitted_candidate_receipt,
+            dispatch_requested=False, dispatch_consumed=False, provider_attempted=False)
     if residual_capability is not None:
         receipt["doctor_budget_capability"] = residual_capability
     if coding_reply_receipt is not None:
@@ -2718,7 +2778,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 timeout = min(timeout, candidate_dispatch["timeout_seconds"])
                 receipt["timeout_seconds"] = timeout
                 receipt["candidate_round_dispatch"].update(candidate_dispatch,
-                    dispatch_consumed=True, provider_attempted=True)
+                    dispatch_consumed=True, provider_attempted=False)
                 failure_phase = "provider_invocation"
             if owner_provider_deadline_ns is not None:
                 remaining = (owner_provider_deadline_ns - time.monotonic_ns()) / 1_000_000_000
@@ -2732,6 +2792,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 receipt["query_reference_dispatched"] = query_reference_selected
                 receipt["query_reference_provider_attempted"] = True
             receipt["router_calls"] = 1
+            if candidate_round_input is not None:
+                receipt["candidate_round_dispatch"]["provider_attempted"] = True
             if world_task_packet is not None:
                 receipt["world_task_packet"]["provider_attempted"] = True
             output = generate_text(
@@ -3102,6 +3164,10 @@ def main():
             != (args.candidate_dispatch_descriptor_sha256 is None)
             or args.candidate_dispatch_descriptor_sha256 == ""):
         parser.error("both candidate dispatch binding arguments require nonempty values")
+    if args.candidate_dispatch_descriptor is not None and any(value is not None for value in (
+            args.candidate_dispatch_handoff, args.candidate_dispatch_handoff_sha256,
+            args.candidate_round_descriptor, args.candidate_round_descriptor_sha256)):
+        parser.error("candidate dispatch protocols are mutually exclusive")
     try:
         prompt = sys.stdin.buffer.read(256_001).decode("utf-8")
         candidate_input = None

@@ -45,15 +45,22 @@ def _build_fixture_archive(root):
 @pytest.fixture(scope='module')
 def packaged_seed(tmp_path_factory):
     profile = os.environ.get(WORKER_BUNDLE_RETENTION, "")
-    if not profile:
-        yield None
-        return
-    if profile != "deduplicate-after-pass@1":
+    if profile not in ("", "deduplicate-after-pass@1"):
         raise ValueError("unknown worker bundle fixture retention profile")
     root = Path(tempfile.mkdtemp(prefix='worker-capability-seed-',
                                  dir=tmp_path_factory.getbasetemp()))
     archive, manifest = _build_fixture_archive(root)
     payload = archive / 'runtime.tar.gz'
+    def inventory():
+        digests = {}
+        for path in root.rglob('*'):
+            assert not path.is_symlink()
+            if path.is_file():
+                _catalog_identity(path)
+                digests[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return digests
+
+    baseline = inventory()
     seed_identity = _catalog_identity(payload)
     seed_digest = hashlib.sha256(payload.read_bytes()).hexdigest()
     with payload.open('rb') as stream:
@@ -64,6 +71,7 @@ def packaged_seed(tmp_path_factory):
     yield archive, manifest, seed_identity, seed_digest
     assert _catalog_identity(payload) == seed_identity
     assert hashlib.sha256(payload.read_bytes()).hexdigest() == seed_digest
+    assert inventory() == baseline
 
 
 def _retire_duplicate_worker_payload(tmp_path, archive, seed, nodeid):
@@ -131,19 +139,17 @@ class _WorkerBundleRetention:
 
 @pytest.fixture
 def packaged(tmp_path, packaged_seed, request):
-    if packaged_seed is None:
-        archive, manifest = _build_fixture_archive(tmp_path)
-    else:
-        seed_archive, seed_manifest, _, _ = packaged_seed
-        archive = tmp_path / 'bundle'
-        archive.mkdir()
-        for source in seed_archive.iterdir():
-            _catalog_identity(source)
-            target = archive / source.name
-            shutil.copyfile(source, target)
-            _catalog_identity(target)
-            assert target.read_bytes() == source.read_bytes()
-        manifest = copy.deepcopy(seed_manifest)
+    seed_archive, seed_manifest, _, _ = packaged_seed
+    archive = tmp_path / 'bundle'
+    archive.mkdir()
+    for source in seed_archive.iterdir():
+        _catalog_identity(source)
+        target = archive / source.name
+        shutil.copyfile(source, target)
+        _catalog_identity(target)
+        assert target.read_bytes() == source.read_bytes()
+    manifest = copy.deepcopy(seed_manifest)
+    if os.environ.get(WORKER_BUNDLE_RETENTION):
         request.config.pluginmanager.register(_WorkerBundleRetention(request, tmp_path, archive, packaged_seed))
     dataset = tmp_path / 'dataset'
     task = dataset / benchmark.TASK

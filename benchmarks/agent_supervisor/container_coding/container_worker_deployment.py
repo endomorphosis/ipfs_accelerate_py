@@ -357,6 +357,26 @@ try:
  if 1<=owner_candidate_round_timeout<=MAX_SESSION_SECONDS:owner_candidate_round_deadline=owner_candidate_round_started+owner_candidate_round_timeout
 except (TypeError,ValueError,OverflowError):
  pass
+if globals().get('owner_provider_deadline_ns') is not None:
+ # A requested local cap may shorten the inherited budget, never restart it.
+ if owner_candidate_round_deadline is not None:
+  owner_deadline_numerator,owner_deadline_denominator=owner_candidate_round_deadline.as_integer_ratio()
+  owner_provider_deadline_ns=min(owner_provider_deadline_ns,owner_deadline_numerator*1_000_000_000//owner_deadline_denominator)
+ # Conservatively round the effective budget's float view down for old APIs.
+ owner_candidate_round_deadline=math.nextafter(owner_provider_deadline_ns/1_000_000_000,-math.inf)
+# Initial provisioning completes before source brokers or the first census.
+# The helper preflights the whole owner-only tree before changing any mode,
+# keeps its root private while applying descriptor changes, and publishes last.
+owner_workspace_deadline_ns=owner_provider_deadline_ns
+if owner_workspace_deadline_ns is None and owner_candidate_round_deadline is not None:
+ owner_deadline_numerator,owner_deadline_denominator=owner_candidate_round_deadline.as_integer_ratio()
+ owner_workspace_deadline_ns=owner_deadline_numerator*1_000_000_000//owner_deadline_denominator
+from ipfs_accelerate_py.agent_supervisor.runtime.owner_writable_worktree import provision_owner_writable_worktree
+owner_worktree_traversal=None
+if any(name in boundary for name in ('worktree_traversal_anchor','worktree_traversal_directories','worker_shared_group')):
+ from ipfs_accelerate_py.agent_supervisor.runtime.owner_worktree_traversal import provision_owner_worktree_traversal
+ owner_worktree_traversal=provision_owner_worktree_traversal(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
+owner_workspace_provisioning=provision_owner_writable_worktree(boundary=root/'container-boundary.json',workspace=cwd,absolute_deadline_ns=owner_workspace_deadline_ns)
 worker_arguments=owner_initial_argv
 owner_prompt_bytes=None
 if any(part=='--semantic-native-input' or part.startswith('--semantic-native-input=') for part in worker_arguments) and any(part==flag or part.startswith(flag+'=') for part in worker_arguments for flag in ('--semantic-decision-policy-artifact','--semantic-decision-policy-sha256','--semantic-decision-nomination-artifact','--semantic-decision-nomination-sha256','--semantic-decision-task-id','--semantic-decision-typed-nomination','--semantic-decision-context-bundle-artifact','--semantic-decision-context-bundle-sha256','--semantic-decision-task-cid')):raise SystemExit('semantic native input excludes semantic decision policy and nomination')
@@ -392,6 +412,7 @@ if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag
 numerical_obligation_broker=None
 worker_source_broker=None
 repository_source_owner=None
+owner_worker_attempt=None
 owner_candidate_launch=None
 try:
  from ipfs_accelerate_py.agent_supervisor.runtime.numerical_obligation_broker import prepare_numerical_obligation_broker
@@ -411,10 +432,20 @@ try:
   from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_monitor import retire_repository_source_owner
   repository_source_owner.start()
   command.extend(repository_source_owner.extra_argv)
+ # Ordinary coding has exactly one router invocation per isolated child.
+ # Decision dialogues retain their independent all-call accounting contract;
+ # provider-free, census, planning and preflight routes have no coding call.
+ owner_attempt_excluded=('--preflight','--semantic-metadata-census-only','--semantic-working-set-census-only','--finite-proof-query-context','--doctor-candidate-artifact','--doctor-contract-artifact','--finite-repository-artifact')
+ owner_attempt_selected=_argument(handoff['argv'],'--purpose','coding')=='coding' and not any(part==flag or part.startswith(flag+'=') for part in handoff['argv'] for flag in owner_attempt_excluded) and not any(part.startswith('--semantic-decision-') for part in worker_arguments)
  if owner_candidate_rounds==2:
   if numerical_obligation_broker is not None or proof_query_guard is not None:raise ValueError('candidate rounds require ordinary coding')
   from ipfs_accelerate_py.agent_supervisor.runtime.owner_candidate_dispatch import capture_original_coding_launch
   owner_candidate_launch=capture_original_coding_launch(source_broker=worker_source_broker,argv=handoff['argv'],absolute_deadline=owner_candidate_round_deadline,max_rounds=owner_candidate_rounds,doctor_coding_policy=owner_doctor_coding_policy)
+ elif owner_attempt_selected:
+  from ipfs_accelerate_py.agent_supervisor.runtime.owner_worker_attempt import prepare_owner_worker_attempt
+  owner_worker_attempt=prepare_owner_worker_attempt(boundary=root/'container-boundary.json',workspace=cwd,input_fd=0,absolute_deadline=owner_candidate_round_deadline)
+  command.extend(['--owner-worker-attempt-id',owner_worker_attempt.attempt_id])
+  if owner_provider_deadline_ns is not None:command.extend(['--owner-provider-deadline-ns',str(owner_provider_deadline_ns)])
 except BaseException:
  if repository_source_owner is not None:
   for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
@@ -600,7 +631,7 @@ source_view_values=(args.source_view_descriptor,args.source_view_descriptor_sha2
 tokenizer_values=(args.prompt_tokenizer_artifact,args.prompt_tokenizer_sha256)
 decision_values=(args.semantic_decision_policy_artifact,args.semantic_decision_policy_sha256)
 decision_options=any(value is not None for value in decision_values)
-if args.owner_worker_attempt_id is not None and (args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or decision_options or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('worker attempt identity requires ordinary router coding')
+if args.owner_worker_attempt_id is not None and (args.purpose!='coding' or args.preflight or args.semantic_metadata_census_only or args.semantic_working_set_census_only or decision_options or any(contract_values) or any(doctor_values) or any(finite_values) or any(proof_query_values)):raise SystemExit('worker attempt identity requires ordinary router coding')
 semantic_options=args.semantic_native_input or args.semantic_context_projection or args.semantic_slot_policy_revision!='legacy@1'
 if args.semantic_native_input and (args.semantic_context_projection or args.semantic_slot_policy_revision!='legacy@1'):raise SystemExit('semantic native input requires exclusive legacy semantic context')
 if decision_options and not all(decision_values):raise SystemExit('exact semantic decision policy and digest required')

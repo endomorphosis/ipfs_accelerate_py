@@ -310,3 +310,66 @@ def test_cli_loads_the_selected_real_client_handle_and_forwards_exact_prompt(can
     assert type(seen[1]["candidate_round_input"]) is client.AdmittedCandidateRouterInput
     assert seen[1]["owner_worker_attempt_id"] == ATTEMPT
     assert capsys.readouterr().out.strip() == "Authored CLI response."
+
+
+@pytest.mark.parametrize(("option", "value"), [
+    ("candidate_dispatch_handoff", Path("/unselected/handoff.json")),
+    ("candidate_dispatch_handoff_sha256", "a" * 64),
+    ("candidate_round_descriptor", Path("/unselected/round.json")),
+    ("candidate_round_descriptor_sha256", "b" * 64),
+])
+def test_candidate_protocols_refuse_mixed_api_input(candidate, authored, option, value):
+    prior_requests = deepcopy(candidate["state"]["requests"])
+    with pytest.raises(ValueError, match="candidate dispatch protocols are mutually exclusive"):
+        _invoke(candidate, **{option: value})
+    assert candidate["state"]["requests"] == prior_requests
+    assert authored["discovery"] == 0
+    assert authored["seen"] == []
+
+
+@pytest.mark.parametrize(("option", "value"), [
+    ("--candidate-dispatch-handoff", "/unselected/handoff.json"),
+    ("--candidate-dispatch-handoff-sha256", "a" * 64),
+    ("--candidate-round-descriptor", "/unselected/round.json"),
+    ("--candidate-round-descriptor-sha256", "b" * 64),
+])
+def test_candidate_protocols_refuse_mixed_cli_input_before_reading_prompt(
+    monkeypatch, capsys, option, value,
+):
+    monkeypatch.setattr(runner.sys, "stdin", object())
+    monkeypatch.setattr(runner.sys, "argv", [
+        "router", "--provider", "codex_cli", "--model", "pinned",
+        "--candidate-dispatch-descriptor", "/unselected/dispatch.json",
+        "--candidate-dispatch-descriptor-sha256", "c" * 64,
+        option, value,
+    ])
+    with pytest.raises(SystemExit) as exc:
+        runner.main()
+    assert exc.value.code == 2
+    assert "candidate dispatch protocols are mutually exclusive" in capsys.readouterr().err
+
+
+def test_expired_owner_deadline_distinguishes_consumed_permit_from_provider_attempt(
+    candidate, authored, monkeypatch, capsys,
+):
+    deadline = 11_000_000_000
+    now = 10_000_000_000
+
+    def authorize(input_handle, *, invocation_id):
+        nonlocal now
+        receipt = original(input_handle, invocation_id=invocation_id)
+        now = deadline
+        return receipt
+
+    original = client.AdmittedCandidateRouterInput.authorize_dispatch
+    monkeypatch.setattr(runner, "time", SimpleNamespace(monotonic_ns=lambda: now, monotonic=runner.time.monotonic))
+    monkeypatch.setattr(client.AdmittedCandidateRouterInput, "authorize_dispatch", staticmethod(authorize))
+    with pytest.raises(TimeoutError, match="original owner provider deadline exhausted"):
+        _invoke(candidate, owner_provider_deadline_ns=deadline)
+
+    receipt = _receipt(capsys)
+    assert authored["seen"] == []
+    assert receipt["router_calls"] == 0
+    assert receipt["candidate_round_dispatch"]["dispatch_requested"] is True
+    assert receipt["candidate_round_dispatch"]["dispatch_consumed"] is True
+    assert receipt["candidate_round_dispatch"]["provider_attempted"] is False
