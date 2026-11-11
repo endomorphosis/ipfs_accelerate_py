@@ -65,6 +65,10 @@ def _instruction(binding):
         "and respect its raw-source requirements. "
         "Pass the query's path and symbol_id to repository_read for a supported Python definition and its verified local edit name. "
         "These definition reads are dedented and omit imports/enclosing context; omit symbol_id for a full file. "
+        "For a smaller exact read of any UTF-8 file, pass start_line and end_line together "
+        "with representation original (inclusive physical lines, at most 4096 lines/64 KiB). "
+        "Line ranges report omitted lines, omit other context and provide no symbol edit handle; "
+        "do not combine them with symbol_id. "
         f"The selected default representation is {representation}. "
         + selection +
         "Use repository_replace_symbol with the read's symbol, source_sha256 as expected_sha256, and returned representation for supported edits; "

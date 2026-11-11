@@ -31,6 +31,7 @@ _USAGE_KEYS = ("input_tokens", "cached_input_tokens", "output_tokens", "total_to
 _USAGE_OPTIONAL = ("cache_write_input_tokens", "reasoning_output_tokens")
 MAX_USAGE_GROWTH_RECORDS = 128
 MAX_USAGE_GROWTH_BYTES = 32_768
+USAGE_LIFECYCLE_COMPLETION_BASIS = "native_lifecycle_after_latest_usage@1"
 
 
 def _usage_categories(value):
@@ -267,7 +268,7 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
         completion_event_seen = False
         latest_usage_snapshot_valid = None
         counter_regression_observed = False
-        previous_valid_usage = None
+        counter_high_water = {}
         count = 0
         records = []
         malformed = 0
@@ -313,17 +314,24 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
                 completed = False
                 info = payload.get("info")
                 growth.observe(info)
+                cumulative = info.get("total_token_usage") if type(info) is dict else None
+                if type(cumulative) is dict:
+                    # Sparse observations cannot erase a reported category's
+                    # high water mark. They do not become valid full records
+                    # or change the consecutive-growth observations.
+                    for key in (*_USAGE_KEYS, *_USAGE_OPTIONAL):
+                        value = cumulative.get(key)
+                        if type(value) is int and 0 <= value < (1 << 63):
+                            previous = counter_high_water.get(key)
+                            if previous is not None and value < previous:
+                                counter_regression_observed = True
+                            counter_high_water[key] = max(value, previous if previous is not None else value)
                 # Native quota updates may carry no cumulative snapshot.
                 if info is None or (type(info) is dict and "total_token_usage" not in info):
                     continue
                 selected, _ = validated_cumulative_usage(payload)
                 latest_usage_snapshot_valid = selected is not None
                 if selected is not None:
-                    if previous_valid_usage is not None and any(
-                            selected[key] < previous_valid_usage[key]
-                            for key in selected.keys() & previous_valid_usage.keys()):
-                        counter_regression_observed = True
-                    previous_valid_usage = selected
                     usage = selected
                     count += 1
                 elif type(info) is dict and type(info.get("total_token_usage")) is dict and usage is None:
@@ -343,6 +351,9 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
                      and growth.sequence_consistent())
         complete = (completed and malformed == 0 and latest_usage_snapshot_valid is not False
                     and not counter_regression_observed)
+        _, final_usage_valid = _usage_categories(usage)
+        usage_lifecycle_complete = bool(complete and final_usage_valid
+            and latest_usage_snapshot_valid is True and count > 0)
         telemetry = build_interaction_telemetry(records, completed=complete, malformed=malformed)
         try:
             delivery = build_native_context_delivery(records, telemetry=telemetry)
@@ -358,6 +369,9 @@ def recover_codex_usage(*, home: Path, thread_id: str, workspace: Path) -> dict 
                 "usage_growth": growth.receipt(),
                 "latest_usage_snapshot_valid": latest_usage_snapshot_valid,
                 "counter_regression_observed": counter_regression_observed,
+                "completion_basis": USAGE_LIFECYCLE_COMPLETION_BASIS,
+                "lifecycle_malformed_records": malformed,
+                "usage_lifecycle_complete": usage_lifecycle_complete,
                 "tool_diagnostics": _tool_diagnostics(records, completed=complete, malformed=malformed),
                 "interaction_telemetry": telemetry,
                 "native_context_delivery": delivery,
