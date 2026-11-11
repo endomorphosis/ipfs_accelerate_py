@@ -1,0 +1,549 @@
+{
+  "schema": "owner-worker-attempt-census-qualification@1",
+  "recorded_utc": "2026-10-15T16:57:52.182055+00:00",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "accelerate_base": "90acc9b21c214e2f4c3a6c84769fd891cfdbd627",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Datasets qualification uses this explicit sibling checkout; the accelerate base gitlink points to d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "root_only_runtime": true,
+  "agent_work": "static reads/AST/edits only",
+  "qualification_counts": {
+    "tests": 533,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 13
+  },
+  "qualifying_runs": [
+    "owner-attempt-writer-v01",
+    "owner-router-identity-v01",
+    "owner-final-lifecycle-v01",
+    "owner-final-accounting-v01",
+    "owner-final-archive-v02"
+  ],
+  "runs": [
+    {
+      "label": "candidate-owner-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-owner-environment-v01",
+        "started_utc": "2026-10-15T16:41:13.186892+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:41:13.330353+00:00"
+      },
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-archive-pin-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-archive-pin-v01",
+        "started_utc": "2026-10-15T16:51:09.895263+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:52:44.826678+00:00"
+      },
+      "junit": {
+        "tests": 79,
+        "failures": 0,
+        "errors": 79,
+        "skipped": 0,
+        "sha256": "4b345101bd6f0dd8fe975b9148c802a43cbacfc0903b7403f26ee76bc65b132d"
+      },
+      "stdout.log": {
+        "bytes": 161010,
+        "sha256": "94604fc035b08667ff1b884b1470d4ce2f1896be11a6cb1513f6a37effd5fb4e"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-attempt-e2e-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-attempt-e2e-v01",
+        "started_utc": "2026-10-15T16:49:03.857613+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:49:05.251475+00:00"
+      },
+      "junit": {
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "b990d888d30fae5a72857805b545e0349e85c6d2b8647d78d7819d5fe709311f"
+      },
+      "stdout.log": {
+        "bytes": 2004,
+        "sha256": "80dbf3764c894bb361308c875c1e6c0d15d3b215d9e4fcdd78e3567a72ad5144"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-attempt-writer-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-attempt-writer-v01",
+        "started_utc": "2026-10-15T16:52:11.411897+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:52:43.654298+00:00"
+      },
+      "junit": {
+        "tests": 42,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "cbfd765c86fc5962e52c30e8cd92001cf25a01928217d6a47d941d4d9f1b23ed"
+      },
+      "stdout.log": {
+        "bytes": 261517,
+        "sha256": "acd48e12b73ac8385baf979d15b2094e55347c791ed836b20829e7ede8807c91"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-census-collector-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-census-collector-v01",
+        "started_utc": "2026-10-15T16:51:09.875169+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:52:43.821562+00:00"
+      },
+      "junit": {
+        "tests": 82,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "1b551d6c2ff03f511bc5ed2041ba6aec32cc37a046b4972474e80a0b402925cb"
+      },
+      "stdout.log": {
+        "bytes": 14457,
+        "sha256": "9683fecf420cdfdaabd2da21cd894cb42bcd56f86b2e379e4c6e0692fa2a0dde"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-final-accounting-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-final-accounting-v01",
+        "started_utc": "2026-10-15T16:55:02.920667+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:55:10.664277+00:00"
+      },
+      "junit": {
+        "tests": 217,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "746b7bf193857a5dc7dc96bcb167862ec1b622bf5de2849912bbc72532455a32"
+      },
+      "stdout.log": {
+        "bytes": 39396,
+        "sha256": "5650f2c30ba0bd757d002c48299abc3496509cf0b621f2de19643b42b4791ec3"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-final-archive-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-final-archive-v01",
+        "started_utc": "2026-10-15T16:55:02.959579+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:55:13.494377+00:00"
+      },
+      "junit": {
+        "tests": 159,
+        "failures": 45,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "8cc6dee9194b7b247b7ab7588f9697d9b090cc4c68e72a8ea84655118aa23efc"
+      },
+      "stdout.log": {
+        "bytes": 162098,
+        "sha256": "d4fa33f0a13b288246091da4a05d319264370fc69a06da398dbd284443c966dd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-final-archive-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-final-archive-v02",
+        "started_utc": "2026-10-15T16:56:25.362715+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:56:37.639043+00:00"
+      },
+      "junit": {
+        "tests": 159,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "a684a455e2bfc9164c4c2a150746e56f85e608c5e176202edc06d96bdbad38b5"
+      },
+      "stdout.log": {
+        "bytes": 30846,
+        "sha256": "c90c4c6befa37bb692b2a9919c53a641c62a4efea8059858cd5045986b93fcd2"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-final-lifecycle-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-final-lifecycle-v01",
+        "started_utc": "2026-10-15T16:55:02.919310+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:55:37.436645+00:00"
+      },
+      "junit": {
+        "tests": 86,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "6afe2e3432f6304c472c7fe7a26f176b5406475a134fede5979d7c9265ccc94f"
+      },
+      "stdout.log": {
+        "bytes": 15004,
+        "sha256": "843d60657dc5e9fb74e3bc4de4f1b010709f611519ee31dc83ab9ae7341ac949"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-monitor-regression-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-monitor-regression-v01",
+        "started_utc": "2026-10-15T16:46:55.411417+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:47:02.920413+00:00"
+      },
+      "junit": {
+        "tests": 32,
+        "failures": 11,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "eabf940255ba5dc4ab99d9a7f62dbc52ccb49aa7f614d8354787cb25876bf217"
+      },
+      "stdout.log": {
+        "bytes": 23298,
+        "sha256": "f2baa8ceb3f92c3a7892097f209c57c55f387f2eeaab37cc19b439e04c935746"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-monitor-regression-v02",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-monitor-regression-v02",
+        "started_utc": "2026-10-15T16:47:51.361370+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:48:08.066678+00:00"
+      },
+      "junit": {
+        "tests": 73,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "d61bfb2436fce4ffa580a4a4121962457e9ef2d71e3d396444fb1be12b8912fd"
+      },
+      "stdout.log": {
+        "bytes": 13077,
+        "sha256": "80e409caf35e8712eb9f258ddc803c715886f6531ce6e6460359abaf0603dc30"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "owner-router-identity-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "owner-router-identity-v01",
+        "started_utc": "2026-10-15T16:47:18.364653+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T16:47:19.878970+00:00"
+      },
+      "junit": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "sha256": "f94f18ff3fce4c4abbbf32c5d1c5b6dff37dfd3bebae8075b9a9d10f7287e96e"
+      },
+      "stdout.log": {
+        "bytes": 5051,
+        "sha256": "e122c908512cefe4d81b9a69e3866deee93324c575801e0dc6ee8791f16b12c3"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+      "sha256": "e81422703960ec85890ed4f430b9f3817faac5c5e7a38fbf5e155f3fb857ee05",
+      "bytes": 65873
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "sha256": "319ab6dcea89c8736fe2e2fa79ac1c2ab97339e060e024ffb4fe9099ea68e3f7",
+      "bytes": 119834
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_owner_worker_attempt_observation.py": {
+      "sha256": "7778b4ed4806081840964e9ff9adf00ad9e7e6f4163eb22428ef09b4ffdfee5d",
+      "bytes": 13923
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": {
+      "sha256": "08dea9ba8888fc5b650cd2e48f78327b094fdbfc5b147d886f2ba0276d18be2c",
+      "bytes": 9262
+    },
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py": {
+      "sha256": "0eeb43ffba6e071e2afd45b07ba3d6478bef7c71d807e4f0f1741507d5f116fe",
+      "bytes": 10239
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py": {
+      "sha256": "52a4e98f8d50d03073d6d38b10c191e742d7284d3b6f673cf4e27c51a81fbecb",
+      "bytes": 7896
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_owner_worker_attempt_observation.py": {
+      "sha256": "03cdcab8eccac76db6fa304ac25b9a9f70f812c78bf977ed50a12903d39e995f",
+      "bytes": 19347
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": {
+      "sha256": "dd6330264b5d809866f8b03b9096e4a4393b6ff48006f77509f2adf87c9458be",
+      "bytes": 20298
+    },
+    "docs/agent_supervisor/terminal_token_metadata_plan.md": {
+      "sha256": "30b5aba37c1e0107a1221ff8f9a393e6322426fa426afc8c9be52f42288ad647",
+      "bytes": 88744
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_worker_attempt.py": {
+      "sha256": "cbc35615b6b6bc120293b2b4d183bbcb3a46b9de44a92f4938e0fb4dbdee91c9",
+      "bytes": 15954
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "sha256": "0703c965eee93299aece18737e6c6624cf83dc76c960b83beed83a13cdf373ff",
+      "bytes": 128310
+    },
+    "test/api/test_owner_worker_attempt.py": {
+      "sha256": "08353ac86a1bbcd0802d9be31d4263cbc2f06ecff203cb1f71e4ec02b0a35009",
+      "bytes": 15362
+    },
+    "test/api/test_owner_worker_attempt_e2e.py": {
+      "sha256": "5383fcdf310fd9ccb4efaa9e34e6bdc884a0b38b8b9e383f8871ff56933a5523",
+      "bytes": 9112
+    },
+    "test/api/test_router_owner_worker_attempt_identity.py": {
+      "sha256": "0a6429b933940537b724379de35b9a875e697f84a668f5ec4c801420c1a83598",
+      "bytes": 7770
+    }
+  },
+  "raw_artifact_directory": "/home/barberb/lift_coding/artifacts/candidate-owner-continuation-20261015-01",
+  "native_environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "corrected_failures": [
+    {
+      "run": "owner-monitor-regression-v01",
+      "reason": "Deadline fragment fixture extended into unrelated owner deployment setup; narrowed to the deadline block."
+    },
+    {
+      "run": "owner-archive-pin-v01",
+      "reason": "Hermetic archive fixture lacked the two namespace initializers already required by production."
+    },
+    {
+      "run": "owner-final-archive-v01",
+      "reason": "Hermetic archive fixture omitted timeout_policy.py required by the existing deadline guard; stale-inventory assertion assumed later worker-guard ordering."
+    }
+  ],
+  "test_scope": {
+    "real_local_children": true,
+    "production_owner_monitor": true,
+    "private_immutable_writer": true,
+    "native_datasets_candidate_pipeline": true,
+    "container_boundary_admission": "authored",
+    "isolated_cleanup_executable": "authored local child",
+    "provider_receipts": "authored",
+    "router_providers": "scripted",
+    "docker_isolation_qualified": false,
+    "live_provider_calls": 0,
+    "model_inference_calls": 0,
+    "training_steps": 0,
+    "network_dependency_installation": false
+  },
+  "limitations": [
+    "Second coding launch remains disabled and requires fresh native owner admission on the retained database claim/resource scope.",
+    "Candidate prompt remains dispatch_usable=False; baseline and one-use native dispatch gates remain unchanged.",
+    "Child receipt coverage is separate from native token completeness and billing.",
+    "No full-workflow token savings or task correctness result is established.",
+    "Whole-tree arbitrary edited minification inversion is outside this accounting increment."
+  ],
+  "generated_script_syntax_validation": {
+    "schema": "generated-owner-worker-syntax-qualification@1",
+    "application_imports": 0,
+    "programs": {
+      "OWNER_MONITOR": {
+        "sha256": "8e780ce11a49382dd871d39f372a9f7d45bb30cca8c77db8e85672974e817d4f",
+        "bytes": 4847,
+        "compiles": true
+      },
+      "OWNER_ENTRY": {
+        "sha256": "4c5e56fa98b48a3e02dc0445de09b5f2568094d5ba4024ae3ffacdc0bfc21a1c",
+        "bytes": 13213,
+        "compiles": true
+      },
+      "VALIDATION_ENTRY": {
+        "sha256": "8ce91af163eebe186138fc7d8c16677915f1cf1beee89f4d045fe748d09fc0fc",
+        "bytes": 5188,
+        "compiles": true
+      },
+      "WORKER_ENTRY": {
+        "sha256": "9968de7d7ec2224350eb0f15ca7436c652572a87bb2572a59d2b30c4860356d8",
+        "bytes": 28885,
+        "compiles": true
+      }
+    }
+  }
+}

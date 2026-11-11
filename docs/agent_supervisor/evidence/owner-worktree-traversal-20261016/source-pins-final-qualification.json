@@ -1,0 +1,30 @@
+{
+  "ipfs_accelerate_py/agent_supervisor/runtime/owner_worktree_traversal.py": {
+    "bytes": 15139,
+    "sha256": "17a288134014f0e6d5ee638ecf2243b4730b0cab776ccdd21c85b18c7e65d64b"
+  },
+  "test/api/test_owner_worktree_traversal.py": {
+    "bytes": 20530,
+    "sha256": "1605b12f0fded057299aa316d9e5d04f56a151d6c8aaf57613e9c756c08f65a7"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_owner_worktree_traversal_wiring.py": {
+    "bytes": 4864,
+    "sha256": "ad906d825c41a0809b15228ff95dc41cfe317c39c3a80b92a838051a033fee05"
+  },
+  "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": {
+    "bytes": 68368,
+    "sha256": "d3a7d083e77c02eb5506b937d11bb5d11e81e92a0620c603ff03e9048a224562"
+  },
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": {
+    "bytes": 10664,
+    "sha256": "7a22714f7e53e6deac112ea4f815e28ee5436d1f011f1f13f1b68aca7b778a95"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": {
+    "bytes": 22513,
+    "sha256": "85a59ad2558a5ad97624043f38e7de791ece75dc53cd9a09be80c402da4c563b"
+  },
+  "docs/agent_supervisor/terminal_token_metadata_plan.md": {
+    "bytes": 121302,
+    "sha256": "ecb0227b4080cafbf9101126f259ba6c40332bddfa642a7a2c72e187b89aeeda"
+  }
+}

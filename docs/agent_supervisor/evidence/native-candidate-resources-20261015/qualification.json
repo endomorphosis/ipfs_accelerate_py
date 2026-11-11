@@ -1,0 +1,597 @@
+{
+  "schema": "native-candidate-resources-qualification@1",
+  "recorded_utc": "2026-10-15T22:46:29.389446+00:00",
+  "accelerate_base": "f2d66f7500ee44eb146ce953eae278a589e2d8af",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the explicitly pinned sibling datasets checkout; accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_and_candidate_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "static reads/AST/edits only",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/native-candidate-resources-20261015-01",
+  "qualification_counts": {
+    "tests": 438,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 13
+  },
+  "qualified_modules": [
+    "api.test_candidate_dispatch",
+    "api.test_candidate_resource_descriptor_isolation",
+    "api.test_candidate_resource_pipeline",
+    "api.test_native_candidate_round_admission",
+    "api.test_native_candidate_round_resources",
+    "api.test_native_candidate_round_worker",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_router_candidate_dispatch",
+    "test.api.test_router_failure_diagnostics",
+    "test.api.test_router_implementation_runner",
+    "test.api.test_router_owner_worker_attempt_identity",
+    "test.api.test_router_prompt_selection",
+    "test.api.test_router_provider_failure_diagnostics"
+  ],
+  "qualifying_runs": [
+    "candidate-resource-unit-v03",
+    "candidate-resource-isolation-v01",
+    "candidate-resource-gate-regression-v01",
+    "candidate-resource-recovery-v02",
+    "candidate-resource-cancellation-v02",
+    "candidate-resource-launcher-e2e-regression-v01",
+    "candidate-resource-router-archive-v02"
+  ],
+  "runs": [
+    {
+      "label": "candidate-resource-cancellation-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-cancellation-v01",
+        "started_utc": "2026-10-15T22:35:31.455886+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:36:21.943120+00:00"
+      },
+      "outcome": "passed_intermediate_or_environment",
+      "junit": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_resource_pipeline"
+        ],
+        "bytes": 1032,
+        "sha256": "0cc2a0e5fab26b5d8c37276c346b8214103516cdcf1bc4098add74868418a2a3"
+      },
+      "stdout.log": {
+        "bytes": 52222,
+        "sha256": "7ca36b96678368c56e854797d390ffcf0338b18ef0f0a81e84e0b318d0c87253"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-cancellation-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-cancellation-v02",
+        "started_utc": "2026-10-15T22:41:20.353352+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:42:13.120328+00:00"
+      },
+      "outcome": "passed",
+      "junit": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_resource_pipeline"
+        ],
+        "bytes": 1032,
+        "sha256": "895de79bcb4666194bce7dbf75894dec47878707b1c36900ba6c9fc1567fe097"
+      },
+      "stdout.log": {
+        "bytes": 52222,
+        "sha256": "c162f6c1a014149868a3653bd4086bdbce5c9af98f88702f97fe6bdbcbdd2fe8"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-gate-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-gate-regression-v01",
+        "started_utc": "2026-10-15T22:32:25.115555+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:35:24.176139+00:00"
+      },
+      "outcome": "passed",
+      "junit": {
+        "tests": 30,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_admission"
+        ],
+        "bytes": 5052,
+        "sha256": "ba6d9b67904e31c6c0f4c7b716c17f469f3cff3aebe27f36fcac76046880b3f4"
+      },
+      "stdout.log": {
+        "bytes": 291404,
+        "sha256": "a6ff420c1a0d1d6be10143d45f4cbadc0826f937fb3d72a7b67e7a04ecab519d"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-isolation-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-isolation-v01",
+        "started_utc": "2026-10-15T22:40:47.171850+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:41:01.320402+00:00"
+      },
+      "outcome": "passed",
+      "junit": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_resource_descriptor_isolation"
+        ],
+        "bytes": 843,
+        "sha256": "e30bd96b057bf08d7b00ca64a46fa2c65fde75058810a525906d9ef363758df1"
+      },
+      "stdout.log": {
+        "bytes": 11301,
+        "sha256": "8e98f7778f7fde4700271961bbe94219f1d2c2e797495604b9417f97dc0bea18"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-launcher-e2e-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-launcher-e2e-regression-v01",
+        "started_utc": "2026-10-15T22:37:07.365259+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:39:26.863855+00:00"
+      },
+      "outcome": "passed",
+      "junit": {
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_dispatch",
+          "api.test_native_candidate_round_worker"
+        ],
+        "bytes": 2076,
+        "sha256": "a4f70cf2f920cd085cf2dfd0471b3ad83d9683090da2a98e820663b44e7e2563"
+      },
+      "stdout.log": {
+        "bytes": 128419,
+        "sha256": "fb3d49f7beea0f123c2325f80665d000d1cf98c8e5919dafdfe5d4a302ed8895"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-recovery-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-recovery-v01",
+        "started_utc": "2026-10-15T22:34:23.406402+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:35:21.853570+00:00"
+      },
+      "outcome": "passed_intermediate_or_environment",
+      "junit": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_resource_pipeline"
+        ],
+        "bytes": 1059,
+        "sha256": "806a36c070af3b8b43bf7442b109bf9ddc2b57e9006c164ec514411d04905037"
+      },
+      "stdout.log": {
+        "bytes": 53118,
+        "sha256": "e057b57be39ea0e788eafcd5e22f603451232eeab6f2ba65e4cd3f9b5e637562"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-recovery-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-recovery-v02",
+        "started_utc": "2026-10-15T22:41:19.208967+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:42:18.005008+00:00"
+      },
+      "outcome": "passed",
+      "junit": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_resource_pipeline"
+        ],
+        "bytes": 1059,
+        "sha256": "a211919757759b6c92c123c469e8544a0eff91b5be2d2f8c283f3506b13869df"
+      },
+      "stdout.log": {
+        "bytes": 53118,
+        "sha256": "0bf80998b3caea525b10b53254165958a635ba0bfff47a5a2cc6ffff23b71673"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-router-archive-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-router-archive-v01",
+        "started_utc": "2026-10-15T22:37:06.195555+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:37:26.940070+00:00"
+      },
+      "outcome": "passed_intermediate_or_environment",
+      "junit": {
+        "tests": 360,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_router_candidate_dispatch",
+          "test.api.test_router_failure_diagnostics",
+          "test.api.test_router_implementation_runner",
+          "test.api.test_router_owner_worker_attempt_identity",
+          "test.api.test_router_prompt_selection",
+          "test.api.test_router_provider_failure_diagnostics"
+        ],
+        "bytes": 70137,
+        "sha256": "06038e98df54a7f093f8525075fe7e911b515422afc0cd0f33f9815791e76f6d"
+      },
+      "stdout.log": {
+        "bytes": 60835,
+        "sha256": "b94e650e513314d6ce5b3149cf55ac3777ffef1e0a51030456111b2fec29ac1b"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-router-archive-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-router-archive-v02",
+        "started_utc": "2026-10-15T22:45:00.237417+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:45:20.643456+00:00"
+      },
+      "outcome": "passed",
+      "junit": {
+        "tests": 360,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_router_candidate_dispatch",
+          "test.api.test_router_failure_diagnostics",
+          "test.api.test_router_implementation_runner",
+          "test.api.test_router_owner_worker_attempt_identity",
+          "test.api.test_router_prompt_selection",
+          "test.api.test_router_provider_failure_diagnostics"
+        ],
+        "bytes": 70137,
+        "sha256": "d3b0b4c2d28727d200b9a4e1275991c3fcf8a372844fc8f144dd66cf2f5b7525"
+      },
+      "stdout.log": {
+        "bytes": 60835,
+        "sha256": "bc6a53846711833e97298671eb06b0ed5097d51533feb4a2ab01fcc0aba48eba"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-unit-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-unit-v01",
+        "started_utc": "2026-10-15T22:32:23.923939+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:32:34.987042+00:00"
+      },
+      "outcome": "passed_intermediate_or_environment",
+      "junit": {
+        "tests": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_resources"
+        ],
+        "bytes": 3466,
+        "sha256": "542d596e604b24ed64735178826fdf29b071898cc3cd73fe5ad743e40c823dc5"
+      },
+      "stdout.log": {
+        "bytes": 3202,
+        "sha256": "bd955d4bf42831db289279ab47f4396f103f7b0e868a68197273ac96d9d1f2d8"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-unit-v02",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-unit-v02",
+        "started_utc": "2026-10-15T22:34:22.254525+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:34:23.907112+00:00"
+      },
+      "outcome": "passed_intermediate_or_environment",
+      "junit": {
+        "tests": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_resources"
+        ],
+        "bytes": 3465,
+        "sha256": "b3a5788e36665aa4a4cd19994fd1bd844c76b525e2e27372cbca1fd7354583d4"
+      },
+      "stdout.log": {
+        "bytes": 3202,
+        "sha256": "d8aa96758879e0541110b4a48ceb13afa771d5b2e88285109d5ccf4d900cf4f4"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "candidate-resource-unit-v03",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "candidate-resource-unit-v03",
+        "started_utc": "2026-10-15T22:40:46.008766+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:40:47.669648+00:00"
+      },
+      "outcome": "passed",
+      "junit": {
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_resources"
+        ],
+        "bytes": 3793,
+        "sha256": "95437ff45abffd094c8de0412ae222c57b473dde4c3d04eabe487e088adcf64d"
+      },
+      "stdout.log": {
+        "bytes": 3488,
+        "sha256": "e4f0ee3717c9d999cfcb6f58e83234945671a2d027c0bde1722986e696f6b572"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-resources-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-resources-environment-v01",
+        "started_utc": "2026-10-15T22:21:53.155722+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T22:22:13.329220+00:00"
+      },
+      "outcome": "passed_intermediate_or_environment",
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "source_verification": "Final source hashes retained and checked before evidence publication; final factory error handling is exercised by unit-v03. Unreserved gate/launcher regressions retain unchanged exercised paths.",
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "full_native_router_provider_stub_cases": [
+    "success",
+    "observed_failed_exit_7"
+  ],
+  "parent_capability_transport": "Actual outer native lease capability passed only to the owner test process in an immutable sealed private memfd; no capability bytes in logs or child environment.",
+  "real_boundaries": [
+    "Existing native scheduler and policy, actual keyed ResourceLease child below the validation parent, and unchanged original root charge",
+    "Locked native capability, immutable capacity and ancestry checks; foreign and empty keys refused",
+    "Native task claim, active daemon grant, independent supervisor_run fence and original source generation/deadline",
+    "Issued owner worker attempt, actual Popen child, exact input bytes, thread environment and immutable census",
+    "Resource cancellation during communicate waiting; prompt supplied exactly once and original deadline retained",
+    "Cancellation after late native observers and authenticated dispatch refusal",
+    "Actual child reap, descendant cleanup observation, stopped broker thread and removed endpoints before release",
+    "Failed cleanup and missing census publication retain capacity; explicit owner recovery preserves historical flags",
+    "Partial resource publication remains unmodified; fresh private nonce record precedes verified leaf removal",
+    "Suppressed recursive retirement cannot authorize release",
+    "Final construction refusal releases proven-unstarted child; failed abort preserves original error and accessible owner handle",
+    "Owner validation descriptor is present and sealed; actual child observes neither its descriptor nor private environment names",
+    "Existing typed router success/failure, V1 route and runtime archive source compatibility"
+  ],
+  "authored_fixture_boundaries": [
+    "Quack transport and deployment path/UID admission from the existing real-native fixture",
+    "Same-UID host fixture maps worker UID observations while retaining actual kernel PID/birth/ancestry",
+    "Literal inert child commands, trusted local descendant-cleanup callback and injected publication failures",
+    "Lightweight router seams and full-native provider/catalog initialization; authored JSONL usage observations"
+  ],
+  "limitations": [
+    "Host-only native owner/child integration; production Terminal wrapper does not automatically invoke this route",
+    "Strong pending custody protects a live owner only; supervisor-death accounting for surviving external children is unqualified",
+    "Cooperative CPU/RAM/process-slot admission is not kernel cgroup enforcement",
+    "Command subprocess demand must fit the declared child budget",
+    "Existing resources=None route remains explicitly unreserved",
+    "Separate deployed wrapper cannot reconstruct live typed native handles from serialized identifiers",
+    "Production wrapper authentication, original deadline, writable allocation delegation and explicit two-child policy remain required",
+    "Unknown birth without an actual retained process handle cannot be recovered as proven unstarted",
+    "Bounded sequential authority and source checks are not filesystem or distributed atomicity",
+    "No production retry default, target execution, proof acceptance or automatic task completion is enabled",
+    "Provider-stub usage is authored, not billing or measured model cost",
+    "No matched TerminalBench token/reward trial, total token savings or legal autoformalization correctness claim"
+  ]
+}
