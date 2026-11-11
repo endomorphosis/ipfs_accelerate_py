@@ -15,6 +15,7 @@ from benchmarks.agent_supervisor.container_coding.terminal_deployment import (
     SECURITY_CHECKPOINT_PATH, SECURITY_CHECKPOINT_HUB,
 )
 from benchmarks.agent_supervisor.container_coding.native_codex_baseline import config_for as baseline_config
+from benchmarks.agent_supervisor.container_coding.test_terminal_harbor_session_usage import _codex_receipt
 
 
 class ReceiptTests(unittest.TestCase):
@@ -63,18 +64,24 @@ class ReceiptTests(unittest.TestCase):
                 'source_checkpoint_included': True}}, 'full')
 
     def test_failed_and_successful_calls_both_count_cached_input_once(self):
-        rows = []
-        for identity, status, complete in (("planner", "provider_returned", True), ("coding", "failed", False)):
-            rows.append({"invocation_id": identity, "status": status, "native_rollout_usage": {
-                "usage": {"input_tokens": 100, "cached_input_tokens": 80, "output_tokens": 10, "total_tokens": 110},
-                "task_complete_observed": complete}})
+        # Failure can occur after a complete native session was observed. Task
+        # status does not alter the session's observed token categories.
+        rows = [_codex_receipt("planner"), _codex_receipt("coding", status="failed")]
         value = measured_usage({"provider_invocations": [*rows, rows[0]]})
         self.assertEqual(value["input_tokens"], 200)
         self.assertEqual(value["cached_input_tokens"], 160)
         self.assertEqual(value["total_tokens"], 220)
         self.assertEqual(value["provider_calls"], 2)
-        self.assertFalse(value["observed_complete_sessions"])
+        self.assertTrue(value["observed_complete_sessions"])
         self.assertIsNone(value["dollar_cost"])
+
+    def test_incomplete_native_session_retains_only_explicit_known_subtotals(self):
+        rows = [_codex_receipt("planner"), _codex_receipt("coding", status="failed", complete=False)]
+        value = measured_usage({"provider_invocations": rows})
+        self.assertIsNone(value["total_tokens"])
+        self.assertEqual(value["known_token_subtotals"]["total_tokens"], 220)
+        self.assertFalse(value["observed_complete_sessions"])
+        self.assertFalse(value["harbor_usage_exportable"])
 
     def test_absent_or_partial_usage_stays_unknown(self):
         self.assertIsNone(measured_usage({})["input_tokens"])

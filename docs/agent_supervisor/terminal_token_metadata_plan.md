@@ -12,6 +12,29 @@ The [world-model integration sequence](#semantic-world-model-integration-sequenc
 below distinguishes the existing components from their remaining worker-loop
 integration and measurement gates.
 
+The October 15 [residual request path](world_residual_requests.md) reuses an
+existing sealed residual packet to focus optional source retrieval. It retains
+the full task, required evidence and original validations, then dispatches
+through the current router and durable attempt journal. Qualification measures
+the complete rendered input, including the residual itself: narrow baseline
+retrieval can make this input larger. Selection remains explicit, and complete
+native session savings remain unqualified.
+
+The subsequent [matched selection](world_residual_selection.md) retains the
+same sealed failure context in both alternatives and compares complete rendered
+inputs. Failed, absent or non-improving local counts retain full evidence;
+counter drift refuses dispatch. This opt-in path uses the existing attempt
+journal and keeps complete-session accounting separate from local estimates.
+
+The October 15 [local tokenizer selection path](metadata_tokenizer_selection.md)
+adds an explicit pinned counter to the container supervisor, router worker and
+historical context audit. It compares complete original and compact coding
+prompts using a local estimate, while retaining defaults and native accounting.
+The subsequent Harbor integration stages the pinned assets, binds them into
+declared controls and checks the isolated worker's tokenizer runtime before
+planning. Provider tokenizer equivalence and a fresh controlled live pair remain
+unqualified; these local checks establish no complete-workflow savings.
+
 ## Working decision: optimize the whole reading and decision loop
 
 The October 14 source audit separates three questions that must not be treated

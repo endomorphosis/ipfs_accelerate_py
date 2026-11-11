@@ -22,6 +22,8 @@ def failed_receipt(**changes):
         "external_container_boundary": {"identity": "authored-container"},
         "usage": {"exit_code": 1}, "completion_authority": False,
         "native_rollout_usage": {"schema": "native-codex-cumulative-usage@1",
+            "thread_id": "authored-planning-session-123456789", "rollout_sha256": "a" * 64,
+            "observed_token_count_records": 0,
             "task_complete_observed": True, "task_complete_event_observed": True,
             "usage_available": False, "usage": {}, "cache_included_in_input": True},
     }
@@ -188,14 +190,19 @@ def planning_failure_report(tmp_path, monkeypatch):
     def run(argv, **kwargs):
         commands.append(argv)
         return SimpleNamespace(returncode=0)
-    monkeypatch.setattr(driver.subprocess, "run", run)
     class FailedPlanner:
         returncode = 1
         def __init__(self, argv, **kwargs):
             planner_calls.append(argv)
         def communicate(self, *args, **kwargs):
             return json.dumps(receipt) + "\n", ""
-    monkeypatch.setattr(driver.subprocess, "Popen", FailedPlanner)
+    # Patch this driver's reference, leaving dependency imports free to use
+    # the real shared subprocess module (for example, native ldconfig probes).
+    native_subprocess = driver.subprocess
+    subprocess_proxy = SimpleNamespace(**vars(native_subprocess))
+    subprocess_proxy.run = run
+    subprocess_proxy.Popen = FailedPlanner
+    monkeypatch.setattr(driver, "subprocess", subprocess_proxy)
     monkeypatch.setattr(driver.preparation, "prepare", lambda **kwargs: {"intent_preplanning": {}})
     def plan(*, provider_callable, **kwargs):
         return provider_callable("Authored public instruction", repository=tmp_path,
@@ -240,7 +247,7 @@ def test_closed_session_without_counters_remains_unknown_accounting():
     value = measured_usage({"provider_invocations": [failed_receipt()]})
     assert value["provider_calls"] == 1
     assert value["observed_complete_sessions"] is True
-    assert value["native_scoped_usage_complete_observed"] is True
+    assert value["native_scoped_usage_complete_observed"] is None
     assert value["harbor_usage_exportable"] is value["usage_accounting_complete"] is False
     for name in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens"):
         assert value[name] is None
@@ -250,7 +257,7 @@ def test_closed_session_without_counters_remains_unknown_accounting():
 def test_complete_native_accounting_is_distinct_from_task_success(counts):
     from benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent import measured_usage
     row = failed_receipt()
-    row["native_rollout_usage"].update(usage_available=True, usage=dict(zip(
+    row["native_rollout_usage"].update(usage_available=True, observed_token_count_records=1, usage=dict(zip(
         ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens"), counts)))
     value = measured_usage({"provider_invocations": [row]})
     assert value["usage_accounting_complete"] is True

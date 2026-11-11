@@ -332,69 +332,15 @@ async def _download_context_replay_evidence(environment, *, state: str,
 
 
 def _measured_native_usage(report: dict) -> dict:
-    """Count observed native totals once, retaining provider-specific semantics."""
-    from .native_usage_accounting import native_usage_contract
+    """Reconcile supplied native sessions before exporting Harbor counters.
 
-    rows = report.get("provider_invocations", [])
-    unique = {}
-    for row in rows:
-        identity = row.get("invocation_id")
-        if not isinstance(identity, str) or not identity:
-            raise ValueError("provider invocation identity is unavailable")
-        if identity in unique and unique[identity] != row:
-            raise ValueError("conflicting provider receipts")
-        unique[identity] = row
-    known = bool(unique) and not report.get("unreceipted_provider_attempt")
-    result = {}
-    for key in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens"):
-        values = [(row.get("native_rollout_usage") or {}).get("usage", {}).get(key)
-                  for row in unique.values()]
-        result[key] = sum(values) if known and all(type(v) is int and v >= 0 for v in values) else None
-    result["provider_calls"] = len(unique)
-    result["observed_complete_sessions"] = known and all(
-        (row.get("native_rollout_usage") or {}).get("task_complete_observed") is True
-        for row in unique.values()
-    ) if unique else False
-    contracts = [native_usage_contract(row, row.get("native_rollout_usage") or {})
-                 for row in unique.values()]
-    grok = any(row.get("provider") == "grok_cli"
-        or (row.get("native_rollout_usage") or {}).get("schema") == "native-grok-final-usage@1"
-        for row in unique.values())
-    cache_semantics = [contract[2] for contract in contracts]
-    result["cache_included_in_input"] = (cache_semantics[0] if cache_semantics
-        and all(type(value) is bool and value == cache_semantics[0] for value in cache_semantics)
-        else None)
-    result["source"] = "observed_native_final_totals" if grok else "observed_native_cumulative_totals"
-    if grok:
-        writes = [(row.get("native_rollout_usage") or {}).get("usage", {}).get("cache_write_input_tokens")
-                  for row in unique.values()]
-        result["cache_write_input_tokens"] = (sum(writes)
-            if known and all(type(value) is int and value >= 0 for value in writes) else None)
-        completeness = [(row.get("native_rollout_usage") or {}).get("usage_complete_observed")
-                        for row in unique.values()]
-        result["usage_complete_observed"] = (False if any(value is False for value in completeness)
-            else True if known and all(value is True for value in completeness) else None)
-    result["all_invocations_receipted"] = known
-    complete = [contract[0] for contract in contracts]
-    result["native_scoped_usage_complete_observed"] = (
-        False if any(value is False for value in complete)
-        else True if known and all(value is True for value in complete) else None)
-    scopes = {contract[1] for contract in contracts}
-    result["token_count_scope"] = next(iter(scopes)) if len(scopes) == 1 else None
-    if result["token_count_scope"] is None:
-        result["source"] = "observed_native_mixed_or_unknown_totals"
-    result["harbor_usage_exportable"] = (
-        result["native_scoped_usage_complete_observed"] is True
-        and result["token_count_scope"] is not None
-        and type(result["cache_included_in_input"]) is bool
-        and all(type(result.get(key)) is int and result[key] >= 0 for key in (
-            "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")))
-    # A native task_complete event can close a failed session with no token
-    # counters. Preserve that event separately from complete accounting.
-    result["usage_accounting_complete"] = result["harbor_usage_exportable"]
-    result["billing_total_verified"] = False
-    result["dollar_cost"] = None
-    return result
+    Distinct invocation IDs can refer to successive cumulative snapshots of
+    one Codex session. The shared accounting bridge selects that session once;
+    invocation counts remain separate from verified physical provider calls.
+    """
+    from .terminal_supervisor_usage_accounting import summarize_supervisor_usage
+
+    return summarize_supervisor_usage(report)
 
 
 def measured_usage(report: dict) -> dict:
@@ -415,18 +361,26 @@ def populate_harbor_usage(context: AgentContext, usage: dict) -> None:
     context.n_input_tokens = context.n_cache_tokens = context.n_output_tokens = None
     if usage.get("harbor_usage_exportable") is not True:
         return
-    value = usage["input_tokens"] if usage.get("cache_included_in_input") is True else None
-    if usage.get("cache_included_in_input") is False:
-        categories = [usage.get(key) for key in ("input_tokens", "cached_input_tokens",
-                                                "cache_write_input_tokens", "output_tokens", "total_tokens")]
-        if (all(type(item) is int and item >= 0 for item in categories)
-                and sum(categories[:4]) == categories[4]):
-            value = sum(categories[:3])
-    if value is None:
+    inputs, cached, outputs, total = [usage.get(key) for key in (
+        "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")]
+    if not all(type(item) is int and item >= 0 for item in (inputs, cached, outputs, total)):
+        return
+    if (usage.get("cache_included_in_input") is True
+            and usage.get("token_count_scope") == "native_session_cumulative"):
+        if cached > inputs or inputs + outputs != total:
+            return
+        value = inputs
+    elif (usage.get("cache_included_in_input") is False
+            and usage.get("token_count_scope") == "native_final_envelope"):
+        writes = usage.get("cache_write_input_tokens")
+        if type(writes) is not int or writes < 0 or inputs + cached + writes + outputs != total:
+            return
+        value = inputs + cached + writes
+    else:
         return
     context.n_input_tokens = value
-    context.n_cache_tokens = usage["cached_input_tokens"]
-    context.n_output_tokens = usage["output_tokens"]
+    context.n_cache_tokens = cached
+    context.n_output_tokens = outputs
 
 
 def security_asset_arguments(manifest: dict, arm: str) -> tuple[list[str], dict]:
@@ -609,6 +563,7 @@ class FullSupervisorAgent(BaseAgent):
                  semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                  semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                  grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
+                 semantic_metadata_tokenizer: dict | None = None,
                  capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                  capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                  source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -747,6 +702,22 @@ class FullSupervisorAgent(BaseAgent):
         if metadata_census_only and self.tool_output_policy != DEFAULT_TOOL_OUTPUT_POLICY:
             raise ValueError("tool output policy requires an executed coding route")
         self.metadata_census_only = metadata_census_only
+        self.semantic_metadata_tokenizer = None
+        self._metadata_tokenizer_snapshot = None
+        self._metadata_tokenizer_remote_ready = False
+        if semantic_metadata_tokenizer is not None:
+            from .terminal_metadata_tokenizer_bundle import read_metadata_tokenizer_bundle
+            snapshot = read_metadata_tokenizer_bundle(semantic_metadata_tokenizer, arm=arm,
+                provider=selected_provider["provider"], model=self.model_name,
+                semantic_metadata_view=self.semantic_metadata_view,
+                semantic_transport_schema=self.semantic_transport_schema,
+                metadata_census_only=metadata_census_only)
+            self.semantic_metadata_tokenizer = snapshot.selection()
+            self._metadata_tokenizer_snapshot = snapshot
+            self._frozen_metadata_tokenizer_selection = json.dumps(snapshot.selection(), sort_keys=True,
+                separators=(",", ":"), allow_nan=False)
+            self._frozen_metadata_tokenizer_route = (arm, selected_provider["provider"], self.model_name,
+                self.semantic_metadata_view, self.semantic_transport_schema, metadata_census_only)
         self.numerical_formalization_profile = validate_numerical_profile(numerical_formalization_profile)
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
@@ -879,13 +850,43 @@ class FullSupervisorAgent(BaseAgent):
             raise ValueError("prepared source view policy changed")
         return selected
 
+    def _checked_metadata_tokenizer(self):
+        """Revalidate captured bytes and frozen route without original files."""
+        selection = getattr(self, "semantic_metadata_tokenizer", None)
+        snapshot = getattr(self, "_metadata_tokenizer_snapshot", None)
+        if selection is None and snapshot is None:
+            if getattr(self, "_frozen_metadata_tokenizer_selection", None) is not None:
+                raise ValueError("prepared metadata tokenizer selection changed")
+            return None
+        from .terminal_metadata_tokenizer_bundle import (
+            validate_metadata_tokenizer_selection, verify_metadata_tokenizer_bundle_snapshot,
+        )
+        provider = resolve_provider_profile(getattr(self, "provider_profile", None))
+        route = (self.arm, provider["provider"], self.model_name,
+            getattr(self, "semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
+            getattr(self, "semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA),
+            getattr(self, "metadata_census_only", False))
+        if self.model_name != provider["model"] or route != getattr(self, "_frozen_metadata_tokenizer_route", None):
+            raise ValueError("prepared metadata tokenizer route changed")
+        selected = validate_metadata_tokenizer_selection(selection, arm=self.arm,
+            provider=provider["provider"], model=self.model_name, semantic_metadata_view=route[3],
+            semantic_transport_schema=route[4], metadata_census_only=route[5])
+        if (selected is None or json.dumps(selected, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                != getattr(self, "_frozen_metadata_tokenizer_selection", None)):
+            raise ValueError("prepared metadata tokenizer selection changed")
+        return verify_metadata_tokenizer_bundle_snapshot(snapshot, expected_selection=selected)
+
     async def setup(self, environment):
+        tokenizer_snapshot = self._checked_metadata_tokenizer()
         from .terminal_setup_cache_advice import (
             validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
         )
         selection = getattr(self, "setup_cache_selection", None)
         manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
         self._checked_decision_selection(manifest)
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
+            require_metadata_tokenizer_archive(manifest, tokenizer_snapshot.selection())
         from .terminal_worker_capability import require_worker_capability
         require_worker_capability(manifest, getattr(self, "resource_profile", None))
         require_planning_archive(manifest, self._checked_planning_mode())
@@ -965,6 +966,13 @@ class FullSupervisorAgent(BaseAgent):
         boundary = self.logs_dir / "worker-boundary"
         deployed_boundary = await deploy_worker_boundary(environment, output=boundary,
             **({"provider": "grok_cli"} if selected_provider["provider"] == "grok_cli" else {}))
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_deployment import deploy_metadata_tokenizer_bundle
+            tokenizer_snapshot = self._checked_metadata_tokenizer()
+            require_metadata_tokenizer_archive(manifest, tokenizer_snapshot.selection())
+            self._metadata_tokenizer_deployment = await deploy_metadata_tokenizer_bundle(environment,
+                snapshot=tokenizer_snapshot, output=self.logs_dir / "metadata-tokenizer-deployment")
+            self._metadata_tokenizer_remote_ready = True
         if getattr(self, "metadata_census_only", False):
             if validate_source384_binding(manifest) is None:
                 raise ValueError("live census requires current Source384 assets")
@@ -1051,6 +1059,12 @@ class FullSupervisorAgent(BaseAgent):
         manifest, _ = validate_setup_cache_selection(self.runtime_archive,
             getattr(self, "setup_cache_selection", None))
         self._checked_decision_selection(manifest)
+        tokenizer_snapshot = self._checked_metadata_tokenizer()
+        if tokenizer_snapshot is not None and getattr(self, "_metadata_tokenizer_remote_ready", False) is not True:
+            raise ValueError("metadata tokenizer deployment must be verified before execution")
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
+            require_metadata_tokenizer_archive(manifest, tokenizer_snapshot.selection())
         planning_mode = self._checked_planning_mode()
         require_planning_archive(manifest, planning_mode)
         retrieval_revision = require_retrieval_revision(manifest, self.arm,
@@ -1123,6 +1137,11 @@ class FullSupervisorAgent(BaseAgent):
             manifest, self.arm, getattr(self, "resource_profile", None))
         if getattr(self, "setup_cache_selection", None) is not None and numerical_assets["selected"]:
             raise ValueError("setup cache is not qualified for learned numerical selection")
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_deployment import verify_deployed_metadata_tokenizer_bundle
+            self._metadata_tokenizer_deployment = await verify_deployed_metadata_tokenizer_bundle(environment,
+                snapshot=self._checked_metadata_tokenizer())
+            tokenizer_snapshot = self._checked_metadata_tokenizer()
         public = self.logs_dir / "instruction.md"
         public.write_text(instruction)
         instruction_path = ROOT + "/instruction.md"
@@ -1173,6 +1192,11 @@ class FullSupervisorAgent(BaseAgent):
             argv += ["--coding-reply-mode", reply_mode]
         if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW:
             argv += ["--semantic-metadata-view", metadata_view]
+        if tokenizer_snapshot is not None:
+            from .terminal_metadata_tokenizer_deployment import metadata_tokenizer_remote_descriptor
+            artifact, digest = metadata_tokenizer_remote_descriptor(tokenizer_snapshot)
+            argv += ["--semantic-metadata-tokenizer-artifact", artifact,
+                     "--semantic-metadata-tokenizer-sha256", digest]
         if capsule_selection != DEFAULT_CAPSULE_SELECTION:
             argv += ["--capsule-selection", capsule_selection]
         if capsule_budget != DEFAULT_CAPSULE_BUDGET:
@@ -1214,6 +1238,9 @@ class FullSupervisorAgent(BaseAgent):
         argv += source384_arguments
         argv += numerical_arguments
         context.metadata = {"adapter_run_id": run_id, "arm": self.arm, "task_completed": False, "official_reward": None,
+                            **({"semantic_metadata_tokenizer_bundle": tokenizer_snapshot.observation(),
+                                "semantic_metadata_tokenizer_deployment": dict(self._metadata_tokenizer_deployment)}
+                               if tokenizer_snapshot is not None else {}),
                             "provider_profile": resolve_provider_profile(provider_profile),
                             **semantic_transport_selection(transport),
                             **coding_reply_selection(reply_mode),

@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     from .candidate_dispatch_client import AdmittedCandidateRouterInput
     from .repository_world_packet import PreparedRepositoryWorldPacket
     from .semantic_metadata_view import SemanticMetadataTokenCounter
+    from .repository_world_packet import PreparedRepositoryWorldPacket
+    from .repository_world_packet_presentation import PreparedRepositoryWorldPacketPresentation
+    from .repository_world_attempt_journal import RepositoryWorldAttemptJournal
 
 MAX_IMPLEMENTATION_TIMEOUT_SECONDS = 600
 MAX_MODEL_PROMPT_BYTES = 256_000
@@ -580,6 +583,31 @@ def _world_packet_prompt_measurement(*, model_prompt, measured):
     return receipt
 
 
+
+
+def _world_residual_counter_snapshot(counter, *, provider, model):
+    """Capture declared counter identity without invoking its callable."""
+    if counter is None:
+        return None
+    if type(counter) is not PromptTokenCounter:
+        raise ValueError("world residual selection requires an exact owner token counter")
+    binding = PromptTokenCounter.binding(counter)
+    if (any(type(value) is not str or not value or value.strip() != value for value in binding.values())
+            or binding["provider"] != provider or binding["model"] != model
+            or not callable(counter.count_tokens)):
+        raise ValueError("world residual counter differs from its pinned provider/model")
+    return counter, tuple(binding.items()), counter.count_tokens
+
+
+def _verify_world_residual_counter_snapshot(counter, snapshot, *, provider, model):
+    current = _world_residual_counter_snapshot(counter, provider=provider, model=model)
+    if snapshot is None:
+        if current is not None:
+            raise ValueError("world residual counter binding changed")
+    elif (current is None or current[0] is not snapshot[0]
+            or current[1] != snapshot[1] or current[2] is not snapshot[2]):
+        raise ValueError("world residual counter binding changed")
+
 def _grok_progress_emitter(invocation_id: str):
     """Keep advisory progress outside native JSON receipt and custody parsers."""
     def emit(value):
@@ -606,6 +634,41 @@ def implementation_timeout_limit(budget_profile=None):
     validate_budget_profile(budget_profile)
     return 1800 if budget_profile is not None else MAX_IMPLEMENTATION_TIMEOUT_SECONDS
 
+
+def load_semantic_metadata_tokenizer(*, artifact: Path, expected_sha256: str,
+                                     provider: str, model: str):
+    """Load the explicit local metadata counter and content-free provenance.
+
+    This shares the existing bounded, hash/version-bound JSON tokenizer loader.
+    Counts are a local estimate for complete rendered prompt text. The counter
+    revision additionally binds the special-token policy, without claiming that
+    this tokenizer is equivalent to the selected remote provider's tokenizer.
+    The returned owner object allows the dispatcher to recheck its exact assets
+    before the existing final native source and authority checks.
+    """
+    from .local_prompt_tokenizer import load_owner_prompt_tokenizer
+    from .semantic_metadata_view import SemanticMetadataTokenCounter, TOKEN_MEASUREMENT_SCOPE
+
+    local = load_owner_prompt_tokenizer(artifact=artifact, expected_sha256=expected_sha256,
+                                       provider=provider, model=model)
+    policy_pin = hashlib.sha256(local.special_token_policy.encode("utf-8")).hexdigest()
+    revision = local.tokenizer_revision + "/special-policy-sha256:" + policy_pin
+    counter = SemanticMetadataTokenCounter(count=local.count, provider=local.provider,
+        model=local.model, tokenizer=local.tokenizer_id, tokenizer_revision=revision,
+        qualification="estimate")
+    source = local.provenance()
+    provenance = dict(schema="supervisor-semantic-metadata-tokenizer-provenance@1",
+        backend=source["backend"], provider=local.provider, model=local.model,
+        tokenizer_id=local.tokenizer_id, tokenizer_revision=local.tokenizer_revision,
+        counter_tokenizer_revision=revision, special_token_policy=local.special_token_policy,
+        descriptor_sha256=source["descriptor_sha256"], asset_sha256=source["asset_sha256"],
+        tokenizers_version=source["tokenizers_version"], qualification="estimate",
+        measurement_scope=TOKEN_MEASUREMENT_SCOPE, compatibility_basis="owner_declaration",
+        provider_tokenizer_equivalence_verified=False, provider_usage_verified=False,
+        provider_ingestion_verified=False, complete_run_token_savings_claimed=False,
+        completion_authority=False)
+    return local, counter, provenance
+
 # Diagnostic vocabulary is intentionally closed: exception messages, dynamic
 # type names, caller paths and locals never enter the child-reported record.
 RUNNER_FAILURE_PHASES = frozenset({
@@ -614,9 +677,15 @@ RUNNER_FAILURE_PHASES = frozenset({
     "numerical_obligation_descriptor", "source_lookup_descriptor", "source_view_descriptor",
     "doctor_residual", "public_instruction", "model_prompt", "coding_reply_contract",
     "terminal_semantic_scope_currentness",
-    "world_task_packet", "world_task_packet_currentness", "world_packet_audit_admission",
-    "candidate_dispatch",
-    "semantic_metadata_view", "semantic_working_set",
+    'world_task_packet',
+    'world_task_packet_currentness',
+    'world_packet_audit_admission',
+    'semantic_metadata_view',
+    'semantic_working_set',
+    'semantic_metadata_tokenizer',
+    'world_task_presentation',
+    'world_task_attempt_journal',
+    'world_packet_artifact_retention',
     "semantic_metadata_census",
     "prompt_tokenizer", "prompt_selection",
     "source_input_view", "source_input_freshness", "query_reference_view", "query_reference_freshness",
@@ -636,13 +705,23 @@ RUNNER_FAILURE_FILES = frozenset({
     "semantic_router_translation.py", "doctor_residual_context.py",
     "router_public_instruction.py", "local_planning_admission.py",
     "terminal_planner_contract.py", "doctor_candidate_runner.py", "coding_reply_contract.py",
-    "semantic_metadata_view.py", "semantic_instruction_view.py",
-    "semantic_metadata_census.py", "semantic_working_set.py",
-    "source_formalization_context.py",
-    "numerical_obligation_client.py", "source_lookup_worker_client.py", "worker_source_client.py",
-    "local_prompt_tokenizer.py",
-    "repository_world_packet.py", "repository_world_artifact_store.py",
-    "candidate_dispatch_client.py",
+    'semantic_metadata_view.py',
+    'semantic_instruction_view.py',
+    'semantic_metadata_census.py',
+    'semantic_working_set.py',
+    'source_formalization_context.py',
+    'numerical_obligation_client.py',
+    'source_lookup_worker_client.py',
+    'worker_source_client.py',
+    'local_prompt_tokenizer.py',
+    'repository_world_packet.py',
+    'repository_world_artifact_store.py',
+    'semantic_capsule_columns.py',
+    'repository_world_packet_presentation.py',
+    'repository_world_packet_replay.py',
+    'repository_world_invocation_replay.py',
+    'repository_world_artifact_retention.py',
+    'repository_world_attempt_journal.py',
 })
 
 
@@ -824,6 +903,70 @@ def _refuse_candidate_preparation(prompt):
     if (type(envelope) is dict and type(envelope.get("schema")) is str
             and envelope["schema"].startswith("supervisor-owner-candidate-router-input@")):
         raise ValueError("candidate round prompt requires independent dispatch admission")
+@dataclass(frozen=True)
+class _WorldTaskPresentationSnapshot:
+    packet: object
+    packet_refs: tuple
+    presentation: object
+    presentation_refs: tuple
+    original_prompt: str
+    presented_prompt: str
+    sidecar_bytes: bytes
+    codec_receipt_bytes: bytes
+    metadata_bytes: bytes
+
+
+def _world_task_presentation_wire(value):
+    raw = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    if len(raw) > 16384:
+        raise ValueError("world task presentation receipt exceeds its bound")
+    return raw
+
+
+def _world_task_presentation_material(presentation, packet, *, expected=None):
+    """Pure original-reference/inverse checks, always before source closing fences."""
+    from .repository_world_packet import PreparedRepositoryWorldPacket, _ISSUED, _ISSUANCE_LOCK
+    from .repository_world_packet_presentation import (
+        MODE, RECEIPT_SCHEMA, PreparedRepositoryWorldPacketPresentation,
+    )
+    if type(packet) is not PreparedRepositoryWorldPacket or type(presentation) is not PreparedRepositoryWorldPacketPresentation:
+        raise ValueError("world task presentation requires exact original issued owners")
+    PreparedRepositoryWorldPacketPresentation._retained(presentation)
+    packet_refs = PreparedRepositoryWorldPacket._seal(packet)
+    with _ISSUANCE_LOCK:
+        original_packet = _ISSUED.get(packet)
+    if (original_packet is None or len(original_packet) != len(packet_refs)
+            or not all(a is b for a, b in zip(original_packet, packet_refs))
+            or any(key in packet.__dict__ for key in ("receipt", "validate_current", "_seal", "require_provider_dispatch"))):
+        raise ValueError("world task presentation original packet custody changed")
+    presentation_refs = PreparedRepositoryWorldPacketPresentation._seal_material(presentation)
+    codec = PreparedRepositoryWorldPacketPresentation.validate_original(presentation, packet.prompt)
+    codec_bytes = _world_task_presentation_wire(codec)
+    if codec["codec_supported"] is not True or codec["model_view_mode"] != MODE or codec["profile"] != MODE:
+        raise ValueError("world task presentation requires a supported lossless model view")
+    presented, sidecar = presentation.prompt, presentation.sidecar_bytes
+    metadata = dict(schema="router-world-task-presentation@1", profile=MODE, codec_receipt_schema=RECEIPT_SCHEMA,
+        model_view_mode=codec["model_view_mode"], codec_supported=True,
+        **{key: codec[key] for key in ("original_prompt_sha256", "original_prompt_bytes", "presented_prompt_sha256",
+            "presented_prompt_bytes", "sidecar_sha256", "sidecar_bytes")},
+        codec_receipt_sha256=hashlib.sha256(codec_bytes).hexdigest(), codec_receipt_bytes=len(codec_bytes),
+        inverse_verified=True, dispatch_rechecked=False, proof_authority=False, execution_authority=False,
+        completion_authority=False, omission_authority=False, provider_ingestion_verified=False,
+        total_token_savings_measured=False, source_freshness_verified=False)
+    metadata_bytes = _world_task_presentation_wire(metadata)
+    if expected is not None:
+        if (type(expected) is not _WorldTaskPresentationSnapshot or packet is not expected.packet
+                or presentation is not expected.presentation or packet.prompt is not expected.original_prompt
+                or presented is not expected.presented_prompt or sidecar is not expected.sidecar_bytes
+                or len(packet_refs) != len(expected.packet_refs)
+                or not all(a is b for a, b in zip(packet_refs, expected.packet_refs))
+                or len(presentation_refs) != len(expected.presentation_refs)
+                or not all(a is b for a, b in zip(presentation_refs, expected.presentation_refs))
+                or codec_bytes != expected.codec_receipt_bytes or metadata_bytes != expected.metadata_bytes):
+            raise ValueError("world task presentation captured material changed")
+        return expected
+    return _WorldTaskPresentationSnapshot(packet, packet_refs, presentation, presentation_refs,
+        packet.prompt, presented, sidecar, codec_bytes, metadata_bytes)
 
 
 def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_tokens: int,
@@ -847,6 +990,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         semantic_working_set: str = "legacy",
         grok_coding_max_turns: int = 128,
         semantic_metadata_token_counter: SemanticMetadataTokenCounter | None = None,
+        semantic_metadata_tokenizer_artifact: Path | None = None,
+        semantic_metadata_tokenizer_sha256: str = "",
         tool_output_policy: str = "legacy",
         source_view_advisory_policy: str = "legacy",
         repository_source_policy: str = "legacy",
@@ -870,56 +1015,41 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         world_packet_audit_directory: Path | None = None,
         compact_world_prompt: bool = True,
         codex_cli_literal_response: bool = False,
-        owner_worker_attempt_id: str | None = None,
-        owner_provider_deadline_ns: int | None = None,
-        candidate_round_input: AdmittedCandidateRouterInput | None = None,
-        receipt_observer: Callable[[dict], None] | None = None) -> tuple[str, dict]:
-    """Dispatch once; an optional owner-prepared packet replaces task context."""
+        receipt_observer: Callable[[dict], None] | None = None,
+        world_task_presentation: PreparedRepositoryWorldPacketPresentation | None = None,
+        world_packet_artifact_dir: Path | None = None,
+        world_task_attempt_journal: RepositoryWorldAttemptJournal | None = None,
+        world_task_residual_alternatives=None) -> tuple[str, dict]:
     failure_phase = "runner_initialization"
-    if owner_provider_deadline_ns is not None:
-        if type(owner_provider_deadline_ns) is not int or not 0 < owner_provider_deadline_ns < (1 << 63):
-            raise ValueError("bounded exact owner provider deadline restriction required")
-        if (purpose != "coding" or census_only is not False or owner_worker_attempt_id is None
-                or container_boundary is None or not container_boundary_sha256):
-            raise ValueError("owner provider deadline restriction requires isolated owner coding")
-    if candidate_round_input is None:
-        _refuse_candidate_preparation(prompt)
-        from .worker_candidate_round_client import DESCRIPTOR_ENV, DIGEST_ENV
-        if any(key in os.environ for key in (DESCRIPTOR_ENV, DIGEST_ENV)):
-            raise ValueError("candidate descriptor environment requires explicit authenticated input")
-    else:
-        from .candidate_dispatch_client import AdmittedCandidateRouterInput
-        if type(candidate_round_input) is not AdmittedCandidateRouterInput:
-            raise ValueError("exact authenticated candidate router input required")
-        # A current native owner, rather than the candidate's advisory JSON,
-        # supplies the separate permission to attempt this provider invocation.
-        if (purpose != "coding" or provider != "codex_cli" or census_only is not False
-                or container_boundary is None or not container_boundary_sha256
-                or owner_worker_attempt_id is None or semantic_repository is not None
-                or world_task_packet is not None or world_packet_audit_directory is not None
-                or semantic_transport_schema != "supervisor-semantic-router-input@1"
-                or semantic_metadata_token_counter is not None
-                or source_view_profile != "disabled" or source_edit_mode != "disabled"
-                or grok_coding_max_turns != 128
-                or any(value is not None for value in (
-                    source_formalization_handoff, source_formalization_handoff_sha256,
-                    numerical_obligation_descriptor, numerical_obligation_descriptor_sha256,
-                    source_lookup_descriptor, source_lookup_descriptor_sha256,
-                    source_view_descriptor, source_view_descriptor_sha256,
-                    doctor_residual_artifact, public_instruction_artifact))
-                or any((doctor_residual_sha256, doctor_residual_task_cid,
-                    public_instruction_sha256, public_instruction_task_cid))
-                or any(value != "legacy" for value in (semantic_metadata_view,
-                    semantic_working_set, tool_output_policy, source_view_advisory_policy,
-                    repository_source_policy, source_input_policy, query_reference_policy))):
-            raise ValueError("candidate input requires an independently selected isolated Codex coding route")
-    if owner_worker_attempt_id is not None:
-        if (type(owner_worker_attempt_id) is not str or len(owner_worker_attempt_id) != 32
-                or any(char not in "0123456789abcdef" for char in owner_worker_attempt_id)):
-            raise ValueError("owner worker attempt identity requires exactly 32 lowercase hexadecimal characters")
-        if (purpose != "coding" or census_only is not False
-                or container_boundary is None or not container_boundary_sha256):
-            raise ValueError("owner worker attempt identity requires isolated coding generation")
+    _refuse_candidate_preparation(prompt)
+    if world_packet_audit_directory is not None and (
+            world_packet_artifact_dir is not None or world_task_presentation is not None
+            or world_task_residual_alternatives is not None):
+        raise ValueError("world replay capture cannot combine independent retention or presentation routes")
+    if world_task_residual_alternatives is not None:
+        from .repository_world_residual_selection import PreparedRepositoryWorldResidualAlternatives
+        if (type(world_task_residual_alternatives) is not PreparedRepositoryWorldResidualAlternatives
+                or world_task_packet is not world_task_residual_alternatives.full_packet
+                or world_task_presentation is not None or world_packet_artifact_dir is not None
+                or world_task_attempt_journal is None or purpose != "coding" or provider != "codex_cli"):
+            raise ValueError("world residual alternatives require their full strict packet and current journal")
+    if world_task_packet is not None:
+        from .repository_world_packet import PreparedRepositoryWorldPacket
+        if type(world_task_packet) is not PreparedRepositoryWorldPacket:
+            raise ValueError("world task dispatch requires an exact prepared repository packet")
+        PreparedRepositoryWorldPacket.require_provider_dispatch(world_task_packet)
+    if world_task_presentation is not None and world_task_packet is None:
+        raise ValueError("world task presentation requires an original provider-eligible packet")
+    if world_task_presentation is not None and world_packet_artifact_dir is not None:
+        raise ValueError("world task presentation cannot use original-only packet artifact retention")
+    if world_task_attempt_journal is not None:
+        from .repository_world_attempt_journal import RepositoryWorldAttemptJournal
+        if (world_task_packet is None or provider != "codex_cli" or purpose != "coding"
+                or type(world_task_attempt_journal) is not RepositoryWorldAttemptJournal):
+            raise ValueError("world attempt journal requires an issued journal and strict Codex coding packet")
+        if world_packet_artifact_dir is not None:
+            raise ValueError("world attempt journal requires separate historical artifact processing")
+        RepositoryWorldAttemptJournal.require_open(world_task_attempt_journal)
     from ipfs_accelerate_py.cli_runtime.cli_metadata import get_last_cli_observation, set_last_cli_observation
     from ipfs_accelerate_py.llm_allocation.intelligence_index import discover_available_providers, select_efficient_route
     from ipfs_accelerate_py.llm_router import generate_text, get_llm_provider
@@ -978,6 +1108,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         if (purpose != "coding" or provider != "codex_cli" or semantic_repository is not None
                 or semantic_transport_schema != "supervisor-semantic-router-input@1"
                 or semantic_metadata_view != "legacy" or semantic_metadata_token_counter is not None
+                or semantic_metadata_tokenizer_artifact is not None or semantic_metadata_tokenizer_sha256 != ""
                 or source_input_policy != "legacy" or query_reference_policy != "legacy"
                 or source_view_advisory_policy != "legacy" or source_view_profile != "disabled"
                 or source_edit_mode != "disabled" or census_only
@@ -990,6 +1121,13 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 or any((doctor_residual_sha256, doctor_residual_task_cid,
                         public_instruction_sha256, public_instruction_task_cid))):
             raise ValueError("world task packet requires an independently selected Codex coding route")
+    if world_packet_artifact_dir is not None and (world_task_packet is None
+            or not isinstance(world_packet_artifact_dir, Path)):
+        raise ValueError("world artifact retention requires an exact live packet and host Path")
+    world_presentation_snapshot = None
+    if world_task_presentation is not None:
+        failure_phase = "world_task_presentation"
+        world_presentation_snapshot = _world_task_presentation_material(world_task_presentation, world_task_packet)
     from .worker_source_client import PROFILES
     if (type(source_edit_mode) is not str or source_edit_mode not in {"disabled", "mapped-span@1", "mapped-span@2"}
             or source_edit_mode != "disabled" and (source_view_profile == "disabled" or census_only)):
@@ -1034,6 +1172,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if source_view_profile != "disabled" and any(policy != "legacy" for policy in (
             source_view_advisory_policy, repository_source_policy, source_input_policy, query_reference_policy)):
         raise ValueError("signed source views require independently qualified projection policies")
+    if semantic_metadata_view == "capsule-columns@1" and (
+            source_input_policy != "legacy" or query_reference_policy != "legacy"):
+        raise ValueError("capsule columns require unchanged inline source and query inputs")
     from .coding_reply_contract import validate_coding_reply_mode
     validate_coding_reply_mode(mode=coding_reply_mode, purpose=purpose, provider=provider)
     from .tool_output_policy import validate_policy
@@ -1062,14 +1203,35 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if (semantic_transport_schema != "supervisor-semantic-router-input@1"
             and (purpose != "coding" or semantic_repository is None)):
         raise ValueError("compact semantic transport requires a semantic coding route")
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (purpose != "coding" or semantic_repository is None
             or semantic_transport_schema != "supervisor-semantic-router-input@1"):
         raise ValueError("metadata view requires the original semantic coding transport")
+    metadata_local_tokenizer = None
+    metadata_tokenizer_source = None
+    if type(semantic_metadata_tokenizer_sha256) is not str:
+        raise ValueError("exact local metadata tokenizer artifact binding required")
+    metadata_tokenizer_selected = (semantic_metadata_tokenizer_artifact is not None
+                                   or bool(semantic_metadata_tokenizer_sha256))
+    if metadata_tokenizer_selected:
+        if semantic_metadata_tokenizer_artifact is None or not semantic_metadata_tokenizer_sha256:
+            raise ValueError("exact local metadata tokenizer artifact binding required")
+        if semantic_metadata_view == "legacy":
+            raise ValueError("local metadata tokenizer requires the explicit metadata view")
+        if semantic_metadata_token_counter is not None:
+            raise ValueError("choose one metadata token-counter binding")
+        if (prompt_token_counter is not None or prompt_tokenizer_artifact is not None
+                or prompt_tokenizer_sha256 != "" or max_input_tokens is not None):
+            raise ValueError("local metadata tokenizer requires an independent metadata selection")
+        failure_phase = "semantic_metadata_tokenizer"
+        metadata_local_tokenizer, semantic_metadata_token_counter, metadata_tokenizer_source = (
+            load_semantic_metadata_tokenizer(artifact=semantic_metadata_tokenizer_artifact,
+                expected_sha256=semantic_metadata_tokenizer_sha256, provider=provider, model=model))
+        failure_phase = "argument_validation"
     if semantic_metadata_token_counter is not None:
         from .semantic_metadata_view import SemanticMetadataTokenCounter
-        if semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1"}:
+        if semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
             raise ValueError("metadata token counter requires the explicit metadata view")
         if (type(semantic_metadata_token_counter) is not SemanticMetadataTokenCounter
                 or semantic_metadata_token_counter.provider != provider
@@ -1094,6 +1256,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation prompt exceeds its byte bound")
     failure_phase = "prompt_tokenizer"
     tokenizer_source = None
+    residual_local_tokenizer = None
     if type(prompt_tokenizer_sha256) is not str:
         raise ValueError("exact local tokenizer artifact binding required")
     if prompt_tokenizer_artifact is not None or prompt_tokenizer_sha256:
@@ -1107,6 +1270,8 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         prompt_token_counter = PromptTokenCounter(**local.binding(), count_tokens=local.count,
                                                  compatibility_basis="owner_declaration")
         tokenizer_source = local.provenance()
+        if world_task_residual_alternatives is not None:
+            residual_local_tokenizer = local
     elif (prompt_token_counter is None and purpose == "coding"
             and semantic_repository is None and not census_only
             and not source_lookup_selected
@@ -1123,6 +1288,10 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     if semantic_working_set == "capsule-token-minimum@1" and prompt_token_counter is None:
         from .automatic_prompt_tokenizer import resolve_prompt_tokenizer
         prompt_token_counter, tokenizer_source = resolve_prompt_tokenizer(provider=provider, model=model)
+    residual_counter_snapshot = None
+    if world_task_residual_alternatives is not None:
+        residual_counter_snapshot = _world_residual_counter_snapshot(
+            prompt_token_counter, provider=provider, model=model)
     failure_phase = "planning_contract"
     response_format = None
     task_contract = None
@@ -1179,10 +1348,20 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     world_packet_artifact = None
     world_packet_artifact_sha256 = None
     world_packet_store_identity = None
+    world_residual_alternatives_receipt = None
     if world_task_packet is not None:
         failure_phase = "world_task_packet"
-        world_packet_receipt = world_task_packet.validate_current(workspace=root, task_text=prompt)
-        router_prompt = world_task_packet.prompt
+        if world_presentation_snapshot is not None:
+            failure_phase = "world_task_presentation"
+            _world_task_presentation_material(world_task_presentation, world_task_packet, expected=world_presentation_snapshot)
+            failure_phase = "world_task_packet"
+        world_packet_receipt = PreparedRepositoryWorldPacket.validate_current(world_task_packet, workspace=root, task_text=prompt)
+        if world_task_residual_alternatives is not None:
+            from .repository_world_residual_selection import validate_repository_world_residual_alternatives
+            world_residual_alternatives_receipt = validate_repository_world_residual_alternatives(
+                world_task_residual_alternatives, workspace=root, task_text=prompt)
+        router_prompt = (world_task_packet.prompt if world_presentation_snapshot is None
+                         else world_presentation_snapshot.presented_prompt)
         if world_packet_audit_directory is not None:
             failure_phase = "world_packet_audit_admission"
             from .repository_world_packet_replay import freeze_repository_world_packet
@@ -1369,6 +1548,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         failure_phase = "semantic_metadata_view"
         from .semantic_metadata_view import project_semantic_metadata_view, select_semantic_metadata_view
         selection_options = {}
+        selector_route_options = {}
         selector = select_semantic_metadata_view
         if semantic_metadata_view == "common-bindings-instruction@1":
             if instruction is None or instruction_receipt is None:
@@ -1378,6 +1558,11 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 instruction_block=instruction, instruction_receipt=instruction_receipt)
             selector = select_instruction_view
             selection_options["instruction_block"] = instruction
+        elif semantic_metadata_view == "capsule-columns@1":
+            from .semantic_capsule_columns import project_capsule_columns, select_capsule_columns
+            view = project_capsule_columns(encoded.provider_prompt)
+            selector = select_capsule_columns
+            selector_route_options = {"provider": provider, "model": model}
         else:
             view = project_semantic_metadata_view(encoded.provider_prompt)
         if not router_prompt.startswith(encoded.provider_prompt):
@@ -1411,7 +1596,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         else:
             selection = selector(view=view, native_complete_prompt=model_prompt,
                 candidate_complete_prompt=candidate_model, token_counter=semantic_metadata_token_counter,
-                **selection_options)
+                **selection_options, **selector_route_options)
             from .representation_displacement import observe_representation_displacement
             displacement_receipt = observe_representation_displacement(
                 view=view, selection=selection, native_complete_prompt=model_prompt,
@@ -1496,17 +1681,16 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     prompt_selection = None
     world_prompt_measurement = None
     world_prompt_compaction = None
-    metadata_candidate_receipt = None
     if world_task_packet is not None:
         failure_phase = "prompt_selection"
         world_prompt_compaction = {
             "schema": "supervisor-world-prompt-compaction@1",
-            "enabled": compact_world_prompt,
+            "enabled": compact_world_prompt and world_task_presentation is None and world_task_residual_alternatives is None,
             "projection": None,
             "selection": None,
             "selected_mode": "native",
         }
-        if compact_world_prompt:
+        if world_prompt_compaction["enabled"]:
             from .repository_world_packet import project_repository_world_prompt, restore_repository_world_prompt
             from .coding_reply_contract import coding_completion_schema
             world_view = project_repository_world_prompt(world_task_packet.prompt)
@@ -1543,7 +1727,52 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 if selection["selected_representation"] == "semantic_metadata":
                     world_prompt_compaction["selected_mode"] = "compact"
                     coding_reply_receipt = candidate_reply
-    if world_task_packet is not None and (prompt_token_counter is not None or max_input_tokens is not None):
+    world_residual_selection = None
+    metadata_candidate_receipt = None
+    if world_task_residual_alternatives is not None:
+        failure_phase = "prompt_selection"
+        from .repository_world_residual_selection import select_repository_world_residual_prompt
+        from .coding_reply_contract import apply_coding_reply_contract, coding_completion_schema
+        focused_packet = world_task_residual_alternatives.focused_packet
+        focused_router_prompt = focused_packet.prompt
+        focused_model_prompt, focused_advisory = render_model_prompt(
+            prompt=focused_router_prompt, purpose=purpose, workspace=root, world_packet=True,
+            tool_output_binding=tool_output_binding, source_view_binding=source_view_binding,
+            repository_source_binding=repository_source_binding)
+        if focused_advisory != advisory:
+            raise ValueError("world residual alternatives changed the common workspace contract")
+        focused_reply_receipt = None
+        if coding_reply_mode != "legacy":
+            focused_model_prompt, focused_reply_receipt = apply_coding_reply_contract(
+                model_prompt=focused_model_prompt, mode=coding_reply_mode, purpose=purpose, provider=provider)
+            prompt_fields = {"model_prompt_before_sha256", "model_prompt_before_bytes",
+                            "model_prompt_after_sha256", "model_prompt_after_bytes"}
+            if ({key: value for key, value in focused_reply_receipt.items() if key not in prompt_fields}
+                    != {key: value for key, value in coding_reply_receipt.items() if key not in prompt_fields}):
+                raise ValueError("world residual alternatives changed the coding reply contract")
+        _verify_world_residual_counter_snapshot(prompt_token_counter, residual_counter_snapshot,
+            provider=provider, model=model)
+        selected, core_selection, world_prompt_measurement = select_repository_world_residual_prompt(
+            alternatives_receipt=world_residual_alternatives_receipt,
+            full_complete_prompt=model_prompt, focused_complete_prompt=focused_model_prompt,
+            provider=provider, model=model, token_counter=prompt_token_counter,
+            max_input_tokens=max_input_tokens,
+            native_output_schema=coding_completion_schema() if coding_reply_receipt is not None else None)
+        _verify_world_residual_counter_snapshot(prompt_token_counter, residual_counter_snapshot,
+            provider=provider, model=model)
+        current_alternatives = validate_repository_world_residual_alternatives(
+            world_task_residual_alternatives, workspace=root, task_text=prompt)
+        if current_alternatives != world_residual_alternatives_receipt:
+            raise ValueError("world residual alternatives changed during complete prompt selection")
+        if selected == "focused":
+            world_task_packet = focused_packet
+            router_prompt, model_prompt = focused_router_prompt, focused_model_prompt
+            coding_reply_receipt = focused_reply_receipt
+            world_packet_receipt = PreparedRepositoryWorldPacket.receipt(world_task_packet)
+        elif selected != "full":
+            raise ValueError("world residual selector returned an unsupported packet")
+        world_residual_selection = {**core_selection, "dispatch_rechecked": False}
+    elif world_task_packet is not None and (prompt_token_counter is not None or max_input_tokens is not None):
         failure_phase = "prompt_selection"
         from .coding_reply_contract import coding_completion_schema
         if world_prompt_compaction["selection"] is not None:
@@ -1572,7 +1801,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             output_schema, _, _ = native_schema_projection(
                 response_format["json_schema"]["schema"], task_contract=task_contract)
         representation = ("semantic_metadata" if metadata_receipt is not None
-                          and metadata_receipt["selected_mode"] in {"common-bindings@1", "common-bindings-instruction@1"} else "semantic")
+                          and metadata_receipt["selected_mode"] in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"} else "semantic")
         model_prompt, prompt_selection = select_model_prompt(
             native_complete_prompt=native_model_prompt,
             candidate_complete_prompt=model_prompt if encoded is not None else None,
@@ -1614,6 +1843,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         raise ValueError("implementation inherited database authority")
     if census_only:
         failure_phase = "semantic_metadata_census"
+        if metadata_local_tokenizer is not None:
+            from .local_prompt_tokenizer import OwnerPromptTokenizer
+            OwnerPromptTokenizer._verify_binding(metadata_local_tokenizer)
         census = metadata_census
         def digest_json(value):
             if value is None:
@@ -1665,6 +1897,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             receipt["semantic_prompt_components"] = semantic_component_census
         if prompt_selection is not None:
             receipt["prompt_selection"] = prompt_selection
+        if metadata_tokenizer_source is not None:
+            receipt["semantic_metadata_tokenizer_source"] = metadata_tokenizer_source
+            receipt["semantic_metadata_tokenizer_dispatch_rechecked"] = False
         return json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False), receipt
     failure_phase = "provider_discovery"
     available = discover_available_providers()
@@ -1732,6 +1967,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
             "prompt_measurement": world_prompt_measurement,
             "prompt_compaction": world_prompt_compaction,
         }
+        if world_packet_audit_directory is None:
+            from .repository_world_artifact_retention import unavailable_world_packet_artifacts
+            receipt["world_packet_artifacts"] = unavailable_world_packet_artifacts(
+                invocation_id=invocation, reason="retention_not_requested")
+        if world_presentation_snapshot is not None:
+            receipt["world_task_presentation"] = json.loads(world_presentation_snapshot.metadata_bytes)
+    if world_residual_selection is not None:
+        receipt["world_task_residual_selection"] = world_residual_selection
     if semantic_component_census is not None:
         receipt["semantic_prompt_components"] = semantic_component_census
     if tool_output_binding is not None:
@@ -1768,6 +2011,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         receipt["prompt_selection"] = prompt_selection
     if tokenizer_source is not None:
         receipt["prompt_tokenizer_source"] = tokenizer_source
+    if metadata_tokenizer_source is not None:
+        receipt["semantic_metadata_tokenizer_source"] = metadata_tokenizer_source
+        receipt["semantic_metadata_tokenizer_dispatch_rechecked"] = False
     failure_phase = "provider_invocation"
     provider_options = {}
     if repository_source_binding is not None:
@@ -1867,6 +2113,20 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     worker_forwarding_fallback = None
     worker_forwarding_interruption = None
     pending_provider_error = None
+    world_artifact_retention = None
+
+    def close_world_artifact_retention():
+        nonlocal worker_forwarding_interruption
+        if world_artifact_retention is None:
+            return
+        try:
+            world_artifact_retention.close()
+        except BaseException as close_error:
+            receipt["world_packet_artifact_cleanup_error"] = "close_unavailable"
+            receipt["world_packet_artifacts"] = world_artifact_retention.unavailable("invocation_retention_failed")
+            if (not isinstance(close_error, Exception) and pending_provider_error is None
+                    and worker_forwarding_interruption is None):
+                worker_forwarding_interruption = close_error
     try:
         if repository_owner_selected:
             failure_phase = "repository_source_worker_forwarding"
@@ -1972,12 +2232,70 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                 capsule_sha256=reference["capsule_sha256"],
                 response_bytes=len(probe_bytes), response_sha256=hashlib.sha256(probe_bytes).hexdigest(),
                 provider_input_bytes=0, source_freshness_checked=True, proof_authority=False)
-        if world_task_packet is not None:
+        if metadata_local_tokenizer is not None:
+            # Counting can fail closed to the original transport, but a changed
+            # descriptor or asset must never authorize a provider dispatch.
+            # Complete this file/runtime check before final native closing
+            # fences, which may not be followed by an arbitrary counter call.
+            failure_phase = "semantic_metadata_tokenizer"
+            from .local_prompt_tokenizer import OwnerPromptTokenizer
+            OwnerPromptTokenizer._verify_binding(metadata_local_tokenizer)
+            receipt["semantic_metadata_tokenizer_dispatch_rechecked"] = True
+        if scoped_instruction:
+            # Provider initialization and earlier descriptor checks may run
+            # caller code. Rejoin the compiled selection and complete signed
+            # originals immediately before dispatch, without native owner keys.
+            failure_phase = "terminal_semantic_scope_currentness"
+            current_instruction, current_receipt = load_public_instruction(
+                artifact=public_instruction_artifact, expected_sha256=public_instruction_sha256,
+                task_cid=public_instruction_task_cid, prompt=prompt, workspace=root,
+                repository=semantic_repository)
+            if current_instruction != instruction or current_receipt != instruction_receipt:
+                raise ValueError("signed Terminal scope changed before provider dispatch")
+            receipt["terminal_semantic_scope_dispatch_rechecked"] = True
+        if world_task_residual_alternatives is not None:
+            # Provider initialization and earlier local callbacks precede these
+            # checks. Even a count-failure fallback retains asset custody and
+            # the exact same residual diagnostics in its full issued packet.
+            failure_phase = "prompt_tokenizer"
+            if residual_local_tokenizer is not None:
+                from .local_prompt_tokenizer import OwnerPromptTokenizer
+                OwnerPromptTokenizer._verify_binding(residual_local_tokenizer)
             failure_phase = "world_task_packet_currentness"
-            current_packet = world_task_packet.validate_current(workspace=root, task_text=prompt)
+            current_alternatives = validate_repository_world_residual_alternatives(
+                world_task_residual_alternatives, workspace=root, task_text=prompt)
+            if current_alternatives != world_residual_alternatives_receipt:
+                raise ValueError("world residual alternatives changed before provider dispatch")
+            failure_phase = "prompt_tokenizer"
+            _verify_world_residual_counter_snapshot(prompt_token_counter, residual_counter_snapshot,
+                provider=provider, model=model)
+        if world_task_attempt_journal is not None:
+            # Journal checks may read host custody. Complete all native source
+            # closing checks below them; perform no journal write before call.
+            failure_phase = "world_task_attempt_journal"
+            RepositoryWorldAttemptJournal.require_open(world_task_attempt_journal, workspace=root)
+        if world_task_packet is not None:
+            if world_presentation_snapshot is not None:
+                failure_phase = "world_task_presentation"
+                _world_task_presentation_material(world_task_presentation, world_task_packet, expected=world_presentation_snapshot)
+            failure_phase = "world_task_packet_currentness"
+            PreparedRepositoryWorldPacket.require_provider_dispatch(world_task_packet)
+            current_packet = PreparedRepositoryWorldPacket.validate_current(world_task_packet, workspace=root, task_text=prompt)
             if current_packet != world_packet_receipt:
                 raise ValueError("world task packet changed before provider dispatch")
             receipt["world_task_packet"]["dispatch_rechecked"] = True
+            if world_residual_selection is not None:
+                receipt["world_task_residual_selection"]["dispatch_rechecked"] = True
+            if world_presentation_snapshot is not None:
+                receipt["world_task_presentation"]["dispatch_rechecked"] = True
+            if world_packet_artifact_dir is not None:
+                failure_phase = "world_packet_artifact_retention"
+                receipt["world_packet_artifacts"] = unavailable_world_packet_artifacts(
+                    invocation_id=invocation, reason="packet_retention_failed")
+                from .repository_world_artifact_retention import RepositoryWorldArtifactRetention
+                world_artifact_retention = RepositoryWorldArtifactRetention(
+                    world_packet_artifact_dir, workspace=root, invocation_id=invocation)
+                receipt["world_packet_artifacts"] = world_artifact_retention.retain_packet(world_task_packet)
         failure_phase = "provider_invocation"
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \
@@ -2280,7 +2598,32 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                     "total_token_savings_measured": False,
                     "raw_content_exported": False,
                 }
+            if world_task_attempt_journal is not None:
+                try:
+                    # Freeze full native/derived accounting before historical
+                    # retention, printing, or caller output processing can fail.
+                    RepositoryWorldAttemptJournal.retain_receipt(world_task_attempt_journal, receipt)
+                except BaseException:
+                    # Custody failures cannot replace an observed provider result
+                    # or its original exception. Missing receipts remain unknown.
+                    try:
+                        RepositoryWorldAttemptJournal.mark_capture_error(world_task_attempt_journal)
+                    except BaseException:
+                        pass
+            if world_artifact_retention is not None:
+                try:
+                    if receipt["world_packet_artifacts"]["packet"] is not None:
+                        receipt["world_packet_artifacts"] = world_artifact_retention.finish(receipt)
+                except Exception:
+                    # Historical retention cannot replace provider outcome or native unknown usage.
+                    receipt["world_packet_artifacts"] = world_artifact_retention.unavailable(
+                        "invocation_retention_failed")
+                finally:
+                    close_world_artifact_retention()
         finally:
+            # Native usage recovery or optional accounting can fail before the
+            # normal retention finalizer. Close host custody on every exit.
+            close_world_artifact_retention()
             if previous is None:
                 os.environ.pop("ipfs_accelerate_py_CODEX_SANDBOX", None)
             else:
@@ -2342,8 +2685,11 @@ def main():
     parser.add_argument("--source-view-descriptor-sha256")
     parser.add_argument("--semantic-transport-schema", default="supervisor-semantic-router-input@1",
                         choices=["supervisor-semantic-router-input@1", "supervisor-semantic-router-input@2"])
-    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1"])
+    parser.add_argument("--semantic-metadata-view", default="legacy", choices=["legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"])
     parser.add_argument("--semantic-working-set", default="legacy", choices=["legacy", "capsule-references@1", "capsule-token-minimum@1"])
+    parser.add_argument("--semantic-metadata-tokenizer-artifact", type=Path,
+                        help="Explicit hash-bound local JSON tokenizer for metadata selection; local proxy only")
+    parser.add_argument("--semantic-metadata-tokenizer-sha256")
     from .tool_output_policy import POLICIES as TOOL_OUTPUT_POLICIES
     parser.add_argument("--tool-output-policy", default="legacy", choices=TOOL_OUTPUT_POLICIES)
     from .source_view_policy import POLICIES as SOURCE_VIEW_POLICIES
@@ -2370,6 +2716,9 @@ def main():
     if ((args.prompt_tokenizer_artifact is None) != (args.prompt_tokenizer_sha256 is None)
             or args.prompt_tokenizer_sha256 == ""):
         parser.error("both tokenizer binding arguments require nonempty values")
+    if ((args.semantic_metadata_tokenizer_artifact is None) != (args.semantic_metadata_tokenizer_sha256 is None)
+            or args.semantic_metadata_tokenizer_sha256 == ""):
+        parser.error("both metadata tokenizer binding arguments require nonempty values")
     if args.max_input_tokens is not None and args.max_input_tokens < 1:
         parser.error("max-input-tokens must be positive")
     if ((args.candidate_dispatch_descriptor is None)
@@ -2408,6 +2757,8 @@ def main():
                         semantic_metadata_view=args.semantic_metadata_view,
                         semantic_working_set=args.semantic_working_set,
                         grok_coding_max_turns=args.grok_coding_max_turns,
+                        semantic_metadata_tokenizer_artifact=args.semantic_metadata_tokenizer_artifact,
+                        semantic_metadata_tokenizer_sha256=args.semantic_metadata_tokenizer_sha256 or "",
                         tool_output_policy=args.tool_output_policy,
                         source_view_advisory_policy=args.source_view_advisory_policy,
                         repository_source_policy=args.repository_source_policy,
