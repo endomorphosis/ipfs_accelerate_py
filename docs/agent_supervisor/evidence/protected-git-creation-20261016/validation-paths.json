@@ -1,0 +1,11 @@
+{
+  "tmpdir": "/home/barberb/.p",
+  "pytest_basetemp": {
+    "creation-focused-v01": "/home/barberb/.g16f01",
+    "creation-pool-checkout-regression-v01": "/home/barberb/.g16r01",
+    "creation-archive-provisioning-v01": "/home/barberb/.g16a01"
+  },
+  "protected_ancestors_verified": true,
+  "basetemp_initially_absent": true,
+  "existing_permissions_changed": false
+}

@@ -3,6 +3,8 @@ import asyncio
 import copy
 import hashlib
 import json
+import shutil
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -21,15 +23,43 @@ from benchmarks.agent_supervisor.container_coding.test_terminal_deployment impor
 GTE_REVISION = '17e1f347d17fe144873b1201da91788898c639cd'
 
 
-@pytest.fixture
-def packaged(tmp_path):
-    inputs = _supervisor_inputs(tmp_path)
-    archive = tmp_path / 'bundle'
-    snapshot = tmp_path / GTE_REVISION
+@pytest.fixture(scope='module')
+def packaged_seed(tmp_path_factory):
+    # Keep one immutable authored source tree; each case gets ordinary private files.
+    root = Path(tempfile.mkdtemp(prefix='worker-capability-seed-',
+                                 dir=tmp_path_factory.getbasetemp()))
+    inputs = _supervisor_inputs(root)
+    archive = root / 'bundle'
+    snapshot = root / GTE_REVISION
     snapshot.mkdir()
     # Packaging selection fixture; actual GTE inference has a separate probe.
     (snapshot / 'config.json').write_text('{"fixture":true}')
     manifest = build_runtime_archive(output=archive, model_snapshot=snapshot, **inputs)
+    def inventory():
+        result = {}
+        for path in root.rglob('*'):
+            assert not path.is_symlink()
+            if path.is_file():
+                assert path.stat().st_nlink == 1
+                result[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return result
+    baseline = inventory()
+    yield archive, manifest
+    assert inventory() == baseline
+
+
+@pytest.fixture
+def packaged(tmp_path, packaged_seed):
+    seed_archive, seed_manifest = packaged_seed
+    archive = tmp_path / 'bundle'
+    archive.mkdir()
+    for source in seed_archive.iterdir():
+        assert source.is_file() and not source.is_symlink()
+        target = archive / source.name
+        shutil.copyfile(source, target)
+        assert target.stat().st_nlink == 1
+        assert target.read_bytes() == source.read_bytes()
+    manifest = copy.deepcopy(seed_manifest)
     dataset = tmp_path / 'dataset'
     task = dataset / benchmark.TASK
     task.mkdir(parents=True)
@@ -65,6 +95,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_owner_worker_attempt_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_evidence.py',
@@ -82,6 +113,24 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py',
         'source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_worker_attempt.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_client.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_broker.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_client.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_broker.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_admission.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_worker.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_resources.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_provider_deadline.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_continuation.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_writable_allocation.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_writable_worktree.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_worktree_parent.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_worktree_traversal.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py',
@@ -131,7 +180,18 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     'context_selection_observation.py', 'worker_source_request_observation.py',
     'terminal_world_packet_audit.py', 'terminal_world_nomination_audit.py', 'repository_world_packet.py',
     'repository_world_packet_replay.py', 'repository_world_invocation_replay.py',
-    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py'])
+    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py',
+    'owner_worker_attempt.py', 'terminal_owner_worker_attempt_observation.py',
+    'candidate_dispatch_client.py', 'candidate_dispatch_broker.py',
+    'worker_candidate_round_client.py', 'worker_candidate_round_broker.py',
+    'native_candidate_round_admission.py', 'native_candidate_round_worker.py',
+    'native_candidate_round_resources.py',
+    'owner_provider_deadline.py',
+    'native_candidate_continuation.py', 'native_writable_allocation.py', 'owner_writable_worktree.py',
+    'owner_worktree_parent.py',
+    'owner_worktree_traversal.py',
+    'owner_candidate_round_context.py', 'owner_candidate_round_prompt.py',
+    'current_source_task_admission.py', 'current_source_worktree_allocation.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])

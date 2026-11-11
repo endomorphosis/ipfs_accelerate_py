@@ -2336,3 +2336,579 @@ actual protected different-UID deployment qualification, followed by authorized
 matched provider/task/reward trials with complete native usage and failed-attempt
 accounting. No live providers, Docker operations, deployment, installation,
 training, active control database access or publication ran in this phase.
+
+## Historical candidate-owner branch notes retained for integration
+
+The following separately authored history is preserved without transferring its
+qualification to this merged candidate. Fresh combined validation remains pending.
+
+## October 15: account for every coding child before enabling continuation
+
+The next execution dependency is complete attempt accounting. The previous
+collector only flagged a missing final coding receipt when no coding receipts
+survived. One recorded invocation could therefore hide a later child with no
+final receipt. That would make a multi-round token comparison unreliable.
+
+Ordinary isolated coding now receives an owner-generated attempt ID. Before
+launch, the owner writes an exclusive private preparation event bound to the
+sealed native prompt, allocated workspace, container boundary, original absolute
+deadline and owner process birth. A second immutable event records the actual
+`Popen` child birth. Retirement records the observed wait, original child exit,
+isolated cleanup and broker closure, including failures. The events form a hash
+chain; files are owner-only, read-only, bounded and never adopted or overwritten.
+IDs and event files are accounting observations and grant no launch permission.
+
+The installed worker forwards the ID to the existing router, which retains it
+on successful and failed final receipts without putting it in model input. The
+Terminal collector matches every child to exactly one distinct invocation with
+the same ID, native prompt digest and workspace identity. Identical repeated
+receipts are harmless. Conflicting receipts remain retained separately and make
+coverage unknown; they cannot disappear through invocation-ID deduplication.
+Planning, provider-free candidates, metadata census, preflight and semantic
+decision dialogues retain their existing accounting routes.
+
+The report's `owner_worker_attempt_census` observes child/receipt coverage,
+separately from native token completeness. A missing later receipt, unfinished
+retirement, malformed event, prompt/workspace mismatch or uncertain child birth sets
+a nonempty `unreceipted_provider_attempt` marker with unknown usage. Existing
+Harbor and comparison projections then withhold complete token totals while
+preserving known receipts and charges. Observed receipt counts are not a complete
+physical provider-call census, and matching all child receipts does not establish
+native usage completeness, billing totals or saved tokens.
+
+A process-creation error before `Popen` assignment leaves preparation-only
+evidence: absence of a recorded PID cannot prove no child ever started. A live
+writer can record an explicit unstarted attempt only when its caller knows no
+launch was attempted. Retirement writing remains possible after deadline expiry;
+write failure preserves the worker outcome and leaves incomplete evidence.
+Archive compatibility now pins both the writer and collector, alongside the
+existing deployment, router and supervisor pins.
+
+This increment prepares accounting for a second coding round. It does not
+enable that round. The remaining launch work must retain the original database
+attempt, task claim, resource reservation and deadline, obtain a fresh typed
+candidate admission on that owner scope, and record a separate child birth.
+The existing finite-proof dispatch broker and database callback are one-use;
+replaying either or removing the candidate router refusal would bypass their
+contract. Candidate artifacts and serialized checkpoints cannot supply that
+admission. A successful coding child followed by validation failure also needs
+its own qualification because the current snapshot factory accepts positive
+failed-child exits only.
+
+Qualification uses real local children through the production monitor and
+writer, plus authored container admission, cleanup commands and provider
+receipts. It includes two separate children, missing second receipts, failed
+registration/cleanup/closure, failed birth observations, private-file drift and
+archive compatibility. These tests invoke no model and do not qualify Docker
+identity isolation or live candidate delivery. Results, dependency revisions and
+retained failed runs are recorded in
+[qualification.json](evidence/owner-worker-attempt-census-20261015/qualification.json).
+
+## October 15: host-native admission for one candidate child
+
+The next connection is a host-owner admission that joins the existing native
+task and allocation handles to the failed-child snapshot, complete candidate
+prompt, original deadline, supervisor run lease and both worker census handles.
+It admits at most one candidate child per retained original source worker.
+Serialized observations, checkpoints and read descriptors remain insufficient.
+
+`NativeSourceWorktreeAllocation.execute_with_current_claim(...)` now provides
+the required native boundary. The real process-serialized coordinator holds its
+task-claim transaction across the owner's callback, with COOR before SERVER lock
+order. The surrounding checks retain the full native task body, claim tuple,
+active daemon grant, Portal projection, ACTIVE worktree lifecycle, linked Git
+controls and monotonic lifecycle renewals. Reentry, a borrowed SQL transaction,
+or changed authority refuses the callback. This reusable boundary reads
+allocation controls; it does not turn source contents into proofs or authorize
+a coding command by itself.
+
+The new `capture_native_candidate_round_admission(...)` factory independently
+checks a successfully published prior retirement event, the actual waited
+positive failed child, exact native allocation/task identity, current candidate
+generation and producers, original requirements and new prepared worker event.
+The immutable candidate event must bind the exact complete candidate prompt and
+the same absolute deadline as its predecessor. The run lease is read from its
+existing native coordinator with the original owner and fencing identity.
+It is a `supervisor_run` lease, separately from quantitative CPU, memory and
+child-slot reservations; this increment does not establish those reservations.
+
+The issued handle consumes its birth admission once, holds the real native
+claim fence through actual `Popen` registration, and records the new census
+birth before external broker registration. A postbirth failure retains the
+actual process and possible effects; neither a failed acknowledgement nor a
+missing receipt becomes a refund or permission to launch another child.
+Source verification precedes birth. Afterward, the final pre-input check
+revalidates the candidate prompt/generation after coordinator closing callbacks
+and closes with native control and expiry observations. These are bounded
+sequential checks, not a filesystem or distributed transaction.
+
+`run_native_candidate_round_worker(...)` supplies the host-owner execution
+helper. It opens an empty stdin pipe, creates and registers the child through
+that admission, and releases the exact candidate bytes only after the native
+boundary and final checks return. Its wait uses the original remaining deadline.
+Failed registration, expiry, interrupted execution and failed cleanup preserve
+the child handle and census evidence. The caller supplies its existing
+descendant cleanup operation and owner output streams; the helper refuses an
+environment carrying database authority and unbounded output-pipe capture.
+Successful broker retirement also requires the reader thread to have exited
+and its descriptor and socket to have been removed.
+
+This qualifies a host-owner boundary with real native claims, grants,
+allocation/lifecycle records, run leases, candidate producers, private events
+and local children. The fixture authors Quack transport, deployment admission
+and cleanup for its inert same-UID children. It invokes no provider, executes
+no target code and leaves the native task in progress. The original candidate
+prompt remains `dispatch_usable=False`; the router still refuses it without a
+separate admitted input route.
+
+The deployed Terminal path still needs its authenticated daemon-to-wrapper
+handoff, original absolute provider deadline, explicit two-child policy and
+typed candidate router input. Ordinary single-lane execution must select shared
+coordinator serialization before opening its sidecar. Its group-writable
+container workspace also needs a separately qualified allocation contract: the
+existing source allocation handle continues rejecting those modes. None of
+these deployment properties is inferred from this host admission or enabled by
+default. Matched native token/reward trials remain a later measurement gate.
+
+Qualification results and explicit limitations are retained in
+[qualification.json](evidence/native-candidate-admission-20261015/qualification.json).
+
+## October 15: candidate dispatch through the existing router
+
+The host candidate launcher now accepts a `CandidateDispatchBroker` bound to
+the exact live `NativeCandidateRoundAdmission`. This extends the existing
+candidate read service with a distinct version-two descriptor and a closed
+check/consume operation. A version-one read descriptor still supplies no
+dispatch permission. Both endpoints retain the original snapshot generation;
+neither refreshes a changed candidate or publishes an accepted index.
+
+The dispatch service retains the complete candidate prompt hash and length,
+original requirements binding, context, owner attempt, original deadline, and
+explicit owner-selected Codex model, timeout, reasoning effort and output cap.
+It accepts requests only from the registered child's kernel ancestry through
+the existing UID, process-birth and Unix peer checks. The server replays the
+actual native admission, including its task claim, grant, run lease and source
+generation. It consumes the provider permit once before closing checks and
+response delivery. A failed check after consumption or a lost response leaves
+that permit spent; retrying the RPC cannot create a second invocation.
+
+`prepare_candidate_router_input(...)` creates a worker-local typed input from
+that protected descriptor and an authenticated owner exchange, retaining the
+exact stdin bytes. Serialized observations and candidate JSON are insufficient.
+`router_implementation_runner.run(candidate_round_input=...)` accepts this
+separate route only for isolated Codex coding with the matching worker attempt
+and policy. The ordinary raw-candidate refusal remains. The route preserves
+the complete original requirements, treats retained baseline evidence as
+historical, and adds the candidate read client's guidance. It excludes baseline
+translation, public-source currentness checks and unrelated projection routes.
+An explicitly selected tokenizer may measure the complete rendered prompt;
+the automatic ordinary-prompt tokenizer is not selected for this route.
+
+The runner consumes the live permit immediately before its existing provider
+call, after provider initialization, prompt measurement and descriptor-context
+entry. The actual timeout is capped by the original remaining deadline. Its
+ordinary invocation receipt and worker-attempt label retain usage and failures.
+An authorization request whose reply is lost records consumption as unknown,
+with zero router calls; it does not prove that the owner permit stayed unused.
+The dispatch observation itself cannot attest model execution, proof acceptance
+or completion. Reader transport is retired through the existing launcher.
+
+The explicit host CLI uses `--candidate-dispatch-descriptor` and
+`--candidate-dispatch-descriptor-sha256` together with the existing owner-attempt
+and isolated-boundary arguments. No installed Terminal wrapper or default retry
+policy enables these arguments automatically. The live native owner and the
+original worker census still have to share a genuine ownership scope; copying
+their identifiers into the separate deployed wrapper cannot establish it.
+The writable-allocation delegation, quantitative resource reservation and
+production absolute-deadline handoff described above remain required before
+production use. Matched TerminalBench token/reward trials remain outstanding.
+
+Qualification distinguishes actual native state, local processes and Unix
+transport from authored same-UID deployment admission and provider stubs. No
+external provider or target program is invoked. Results and limitations are in
+[qualification.json](evidence/native-candidate-router-20261015/qualification.json).
+
+## October 15: quantitative capacity through candidate retirement
+
+`reserve_native_candidate_round_resources(...)` now reserves a genuine native
+child `ResourceLease` below the caller's existing parent. It uses that same
+datasets scheduler, policy and authenticated capability; it creates no scheduler
+or new root reservation. The child fits the parent's CPU, RAM and child-slot
+capacity and retains the candidate worker attempt, repository, workspace and
+original absolute deadline. Detached IDs, tokens or observations cannot replace
+the owner-issued resource handle. Public metadata excludes capability keys.
+
+The optional `resources=` argument on native candidate admission joins this
+handle to the exact new worker attempt. Native owner checks authenticate the
+parent and child keys against locked scheduler state, retain immutable capacity
+and ancestry, and observe cancellation, release, expiry and policy drift. These
+checks accompany task/run/source checks before birth and input delivery; a
+resource-only closing check follows late native observers. The candidate
+dispatch broker therefore also refuses delivery if the selected resource scope
+has been cancelled. The existing host route without this explicit selection
+retains its unreserved status.
+
+The launcher applies the admitted CPU thread environment to its literal child
+and refuses conflicting declarations. It polls resource cancellation in bounded
+`communicate` waits, supplies the prompt exactly once, and continues subsequent
+waits without another input write. Every wait stays within the original deadline.
+Neither cancellation nor a later refusal authorizes another candidate child.
+
+Resource retirement occurs after actual child reap, the caller's descendant
+cleanup, complete broker closure and the immutable worker census. It publishes
+a separate private quiescence record before keyed native release, refuses live
+native consumers beneath the leaf, and verifies actual leaf removal rather than
+treating a release acknowledgement as freed capacity. A scope that never
+attempted birth can be aborted explicitly; its gate is consumed before release.
+
+Failed cleanup, missing census publication, uncertain birth and failed resource
+publication retain strong owner custody. For a known child,
+`recover_retirement(cleanup=...)` runs the existing owner cleanup operation,
+checks actual child and broker quiescence again, and writes a separate immutable
+resource record. Historical census flags remain unchanged. Partial publications
+remain in place; bounded nonce filenames let a fresh recovery publish its own
+witness without adopting or overwriting an uncertain file. Reentrant retirement
+is refused, including a suppressed recursive attempt inside cleanup. Unknown
+births without an actual process handle remain unresolved.
+If construction fails before any launch is admitted, the factory aborts its
+proven-unstarted sublease. A failed abort preserves the original error and
+attaches the live owner handle for explicit cleanup.
+
+This is cooperative admission accounting, not CPU/RAM cgroup enforcement. The
+declared child budget must cover the selected command's subprocess needs.
+Strong pending custody protects a live owner process; it does not qualify
+supervisor-death recovery while external children survive. The deployed wrapper
+ownership crossing, original production deadline, writable-allocation delegation
+and explicit two-child policy still require their separate integration. This
+increment enables none of those deployment defaults and measures no token saving.
+
+Qualification passes the existing validation parent's real capability to the
+owner test process through a sealed private descriptor. Tests acquire genuine
+nested capacity beneath it, preserve the scheduler policy and original root
+charge, and keep that descriptor out of worker inheritance and model input.
+They exercise native authority, actual local children, cancellation during
+waiting, failed and partial publication, explicit recovery, and the existing
+candidate route. Deployment UID/path admission remains authored, and no provider
+model or target code runs. Results and explicit limits are retained in
+[qualification.json](evidence/native-candidate-resources-20261015/qualification.json).
+
+## October 16: retain the provider deadline across the owner wrapper
+
+The daemon already creates an absolute provider deadline before its streamed
+launch. The exact `/opt/ipfs-supervisor/bin/router-worker` command now receives
+that restriction through an anonymous sealed descriptor. The payload binds the
+direct parent PID and birth, UID, boot, literal command, target workspace inode
+and process/mount namespaces, plus the time namespace where available. It carries
+no native task, resource, dispatch,
+retry or completion authority. The daemon may remain in its canonical repository
+while the child starts in the allocated worktree.
+
+The generated owner entry consumes the descriptor before changing workspace
+permissions, removes its private environment markers and closes it on acceptance
+or refusal. A partial pair, changed bytes or identity, missing seals, changed
+workspace, different direct parent or expired deadline refuses the handoff.
+Existing launches without a descriptor retain their previous contract.
+
+The owner uses the earlier of that inherited deadline and its valid requested
+local timeout cap. An invalid local timeout cannot erase the inherited limit.
+Workspace setup and prompt capture consume that budget. The effective deadline
+also bounds actual isolated child birth and wait and failed-worker candidate
+refresh, and is bound into the worker census. Retirement publication remains
+possible after expiry. A late birth is reaped through existing cleanup and remains
+an observed birth; an expired or interrupted wait keeps its census uncertainty.
+Cleanup retains its independent grace period rather than claiming that expiry
+has already stopped descendants.
+
+For ordinary coding, the owner generates `--owner-provider-deadline-ns` and
+rejects caller-supplied versions at its inlet. The isolated entry forwards only
+this integer restriction and the existing census identity. The router retains
+the deadline in its invocation receipt and recalculates remaining time after
+provider initialization and descriptor-context entry, immediately before its
+one provider attempt. Positive fractional timeouts are preserved; expiry keeps
+zero router calls. The value supplies no dispatch authority and does not enter
+the model prompt. The outer owner wait still bounds subsequent provider-adapter
+preparation and execution. Planning, decision dialogues and provider-free paths
+receive the owner wait limit, without this ordinary-coding router argument.
+
+Qualification exercises real sealed descriptors, direct children, a foreign
+grandchild refusal, differing daemon/worker directories, actual monitor waits
+and reaps, and the streamed launcher path. Deployment paths and cleanup remain
+authored host seams; router provider observations remain stubs. The generated
+scripts have not been installed or qualified in Docker by this increment.
+Shared native ownership, writable allocation delegation, quantitative production
+resources and the explicit second-child policy remain separate work. This
+change enables no candidate retry and measures no token saving. Results are in
+[qualification.json](evidence/owner-provider-deadline-20261015/qualification.json).
+
+## October 16: compose the native second-child owner lifecycle
+
+`prepare_native_candidate_continuation(...)` now combines the existing live
+owner components into one reusable entrypoint. Callers must already hold the
+exact native allocation, independent run coordinator and lease, quantitative
+resource parent, closed first source broker, original requirements and retired
+first worker census in the same owner process. This API reconstructs none of
+those handles from a checkpoint or deadline observation.
+
+The caller must explicitly select `max_worker_children=2` and the provider,
+model, timeout, reasoning effort, output cap and candidate resource demand.
+This bounds the composed lifecycle to the observed first worker and one
+candidate child. It does not count arbitrary subprocesses elsewhere in the
+owner; their demand remains part of quantitative resource admission.
+
+Preparation first verifies the actual positive failed exit and immutable
+wait/cleanup/broker retirement evidence, exact original requirements and
+deadline. Existing task/grant, independent run and keyed native parent checks
+precede fresh candidate generation. The composer then prepares the candidate
+snapshot and complete prompt, seals its input, creates a fresh worker census,
+reserves genuine child capacity, captures native admission and starts the
+authenticated candidate dispatch broker. Original authority material is
+retained across preparation callbacks and rechecked before later handoffs.
+
+`session.run(...)` consumes its one attempt before command validation. It
+appends the actual owner-generated dispatch bindings and census identity,
+rejects conflicting caller-supplied binding flags and delegates birth, prompt
+delivery, cancellation, wait and retirement to the existing native worker.
+A preparation failure consumes preparation for that original source broker;
+neither a missing acknowledgement nor an exception authorizes another attempt.
+Successful child exit remains a provider outcome, without task completion or
+proof acceptance.
+
+Errors after issuance retain the exact session when available. Uncertain
+native capacity retains strong custody based on the resource kernel's verified
+retirement state, rather than a local release acknowledgement. Preallocated
+broker objects remain reachable through partial construction failures.
+`abort_unstarted()` closes the retained service before delegating unstarted
+resource retirement; `recover_retirement(cleanup=...)` uses the existing
+known-child recovery and preserves historical census flags. The caller retains
+ownership of its original allocation, run lease and parent reservation.
+
+This closes manual orchestration of the host round-two path. The deployed
+daemon and wrapper still have separate live ownership scopes, and the ordinary
+native allocation contract continues rejecting group-writable workspaces.
+Their authenticated writable delegation remains separate work; this composer
+enables no installed retry default, transfers no native authority and measures
+no token saving. Qualification and fixture limits are recorded in
+[qualification.json](evidence/native-candidate-continuation-20261016/qualification.json).
+
+## October 16: capture a separately provisioned writable allocation
+
+`capture_native_delegated_source_worktree_allocation(...)` now captures an
+already provisioned writable worktree through the genuine native task admission.
+It issues the separate exact `NativeDelegatedSourceWorktreeAllocation` type.
+The ordinary `NativeSourceWorktreeAllocation` continues requiring its workspace
+to remain protected from group and other writes.
+
+The delegated root must have exact mode `03770`, owner UID and owner GID, with
+the linked `.git` marker an owner-controlled, single-link regular file at `0440`.
+Opened-descriptor checks retain root and marker device/inode, mount ID and mount
+namespace, and refuse access/default POSIX ACLs. Directory contents may change;
+the root custody and immutable marker witness may not. All canonical Git,
+registered worktree, Portal, lifecycle/index and attempt controls keep the
+existing strict native verification in a shared private kernel.
+
+Capture retains the actual first `OwnerWorkerAttempt`, its original prepared
+event and protected file witness, owner birth, boundary, workspace identity and
+absolute deadline. The workspace and host worktree root must be in the boundary's
+authenticated scope. The first attempt must remain unspent through the closing
+check after native constructor callbacks. Later observations allow that same
+attempt to advance through actual birth and retirement without rebinding it.
+
+Candidate admission and the continuation composer explicitly accept this new
+type and require its exact original first attempt, source-broker boundary and
+selected worker UID, workspace and deadline. Their native fences reuse the
+shared kernel. Delegation checks inspect retained controls and census evidence;
+they do not replay candidate source after a child has been born. Source binding
+retains the original publication and committed-inventory checks. The separate
+`SourceLookupWorkerBroker` launch lane remains restricted to the ordinary type.
+
+This API performs no chmod and certifies no permission transition. Its metadata
+states `permission_transition_verified=False`,
+`current_workspace_policy_verified=True` and `worker_isolation_qualified=False`.
+It does not qualify nested-tree permission safety, continuously prevent worker
+links, change group membership or reconstruct a native handle from metadata.
+Owner reads and candidate generation retain their existing source checks.
+
+Qualification uses actual host chmod, native authority, immutable controls,
+local first/second children and nested resource leases. Boundary/UID admission
+remains an authored host seam. The generated production permission loop, actual
+separate worker UID, Docker deployment and daemon-to-wrapper ownership handoff
+remain unqualified. No installed retry default or token-savings claim is enabled.
+Initial fixture provisioning and renewable-parent assertion failures are retained
+with the successful reruns in
+[qualification.json](evidence/native-delegated-allocation-20261016/qualification.json).
+
+## October 16: provision the initial owner-only workspace through descriptors
+
+The generated owner wrapper now calls `provision_owner_writable_worktree(...)`
+before source-broker construction or the first worker census. It derives the
+existing local timeout cap before provisioning and passes the minimum of that
+cap and any inherited provider deadline. Reserved first-attempt and deadline
+arguments are refused before workspace mutation.
+
+The provisioner supports an initial protected tree containing only owner-owned
+directories and single-link regular files in the declared shared group. It
+authenticates the existing boundary and exact allocated scope, requires declared
+owner-private paths to remain disjoint from the worktree, preflights the
+complete bounded inventory, and refuses links, special files, foreign ownership,
+group/other writes, POSIX ACLs and mount differences before any mode change.
+The root mount must also match its protected parent, preventing a separate root
+mount from being adopted solely because its descendants match each other.
+Worker-owned entries require separate retirement custody and are refused.
+Checkouts created with group-writable ambient permissions are also refused;
+supplying a protected fresh checkout remains a prerequisite. This change does
+not alter the daemon's worktree-creation umask.
+Nested `.git` controls are refused, so submodule and nested-repository trees
+require a separate provisioning policy.
+
+After preflight it gates the root to `0700`, applies changes through verified
+descriptors, and checks the complete inventory while the root remains private.
+Nested directories become `02770`, ordinary files `0660`, executable files
+`0770`, and the owner Git marker `0440`. It publishes root mode `03770` last.
+The original deadline continues to apply throughout these operations.
+
+Failure after mutation does not claim rollback. The helper attempts to keep the
+original root at `0700` and reports partial progress and whether quarantine of
+the still-named root was observed. Uncertain custody prevents success and the
+wrapper proceeds to neither source brokers nor the first census. Recovery of a
+partially provisioned tree requires separate owner action.
+
+This is an initial-workspace filesystem transition, not a kernel writer lease:
+root gating cannot revoke descriptors already held by another process. The
+caller must control the initial phase with no live worker. The receipt is inert
+and cannot replace native task, allocation, run or resource authority. Native
+delegated capture remains a separate check after actual first-census preparation;
+it does not upgrade its metadata from a provisioning receipt.
+
+Host qualification and authored deployment seams are recorded in
+[qualification.json](evidence/owner-worktree-provisioning-20261016/qualification.json).
+Separate-UID and Docker isolation, daemon-to-wrapper native ownership handoff,
+an installed continuation retry default and measured total token savings remain
+open.
+
+## October 16: create fresh checkout inputs with a child-only umask
+
+The fresh nonpooled branch of `_create_seeded_worktree(...)` now requests
+`child_umask=0o077` for its initial root `git worktree add`. `_run_git(...)`
+accepts this restriction only as the exact integer `077` on a worktree-add
+command and passes it directly to `subprocess.run`. Default calls omit the
+umask keyword entirely. The daemon changes no process-wide umask and uses no
+`preexec_fn`, so concurrent owner threads retain their permission defaults.
+
+Qualification exercises the real decorated daemon factory in isolated parent
+processes created with permissive `002` and `000` masks. With pooling disabled,
+seeding disabled and no submodules, ordinary Git creation produces protected
+root, tracked directories/files and the linked Git marker while preserving
+executable bits. The strict workspace provisioner can then inspect those
+creation outputs without fixture chmod normalization of the checkout. Parent
+mask observations and sentinel writes check that the restriction stays in the
+Git child.
+
+This closes the ambient-umask gap for ordinary fresh Git creation. It does not
+certify all outputs of the seeded-worktree method: later copies, shared links,
+prior-attempt replay, submodules and pooled reuse retain their existing
+contracts. Parent-directory protection remains a prerequisite. Inherited
+ACLs/GID and Git configuration/hooks can still affect creation outputs; the
+provisioner independently validates the resulting workspace.
+New Git administration can also become owner-only; separate-UID worker access
+to those controls needs explicit read delegation. The signed-route hardening
+helper's protected in-tree authority blobs likewise cannot be composed with
+ordinary writable source provisioning without a separate policy.
+
+Host tests and fixture limits are recorded in
+[qualification.json](evidence/protected-git-creation-20261016/qualification.json).
+Daemon-to-wrapper native ownership handoff, actual Docker/separate-UID
+qualification, an installed continuation retry default and matched token
+measurements remain open.
+
+## October 16: prepare protected parents in the explicit initial factory path
+
+`_create_seeded_worktree(..., protected_initial_parent=True)` now selects a
+separate initial path before fresh Git creation. It requires no selected pool,
+no context seeding, no effective submodules, and an absent candidate below the
+configured worktree root. The daemon retains the original configured root
+spelling so this path can refuse symlink aliases that ordinary constructor
+resolution would otherwise erase. Its existing workspace-quarantine decorator
+still runs before parent mutation.
+
+`prepare_owner_worktree_parent(...)` validates the existing protected prefix
+through no-follow directory descriptors before creating missing components.
+Existing owner-controlled `0700` or protected `0750` directories can be reused
+without changing their modes. Group/other writes, foreign ownership or group,
+links, POSIX ACLs and a target mount differing from its protected parent cause
+refusal. New components use descriptor-relative `mkdir(..., 0700)` and must
+actually have the declared owner, group, mode, mount and named inode.
+
+The helper performs no chmod, chown or process-wide umask change. It refuses an
+`EEXIST` race instead of adopting the competing entry, rechecks the complete
+named chain before success, and reports creation attempts and retained prefixes
+on failure. It does not roll back partially created directories or claim an
+atomic filesystem writer lease. A serialized receipt grants no native task,
+allocation, run, resource, worker-traversal or completion authority.
+
+Qualification extends the isolated permissive-mask factory tests to start with
+missing managed parents. The actual selected factory creates protected parents
+and a private Git checkout; the strict workspace provisioner then accepts those
+outputs without fixture parent or checkout normalization. Focused refusal,
+race, deadline and descriptor-closure checks and retained default-path
+regressions are recorded in
+[qualification.json](evidence/protected-parent-creation-20261016/qualification.json).
+The factory drivers use `offline_local_only=True`; the existing nonoffline
+submodule-configuration repair path is not qualified by these drivers.
+
+The ordinary outer implementation/manual paths retain their existing ambient
+parent creation. The new initial API must be selected before those legacy
+paths create an unsafe root; it refuses an existing writable root. This change
+does not install that selection in TerminalBench or enable a retry default.
+New `0700` parents also do not grant a separate worker UID traversal. Explicit
+read/traverse access to parents and Git controls, daemon-to-wrapper native
+ownership handoff, Docker qualification and matched token measurements remain
+open.
+
+## October 16: publish search permission on explicitly authorized parents
+
+`provision_owner_worktree_traversal(...)` adds a separate initial parent-search
+transition. The authenticated deployment boundary must declare
+`worktree_traversal_anchor`, `worktree_traversal_directories` and
+`worker_shared_group`. The group must exactly match the nonroot owner group.
+Selected directories must lie on the workspace's parent chain within the
+declared managed anchor and match an authenticated worktree root. Boundary
+and owner-private paths must remain disjoint from the selected directories.
+Unselected outer ancestors must already permit search using the declared
+group or other-search bits; private home directories are not inferred into
+the transition.
+
+The helper checks the complete protected ancestry, current boundary and
+private-path policy before changing permissions. Selected owner directories
+can move from `0700` to `0710`; selected `0710` or `0750` directories retain
+their modes. Before opening any `0700` gate, its immediate inventory must
+contain only the next directory on the workspace path. This prevents newly
+exposing readable siblings behind a previously private parent. Links, ACLs,
+foreign ownership/group, writable ancestry, selected mount transitions and
+changed names or controls cause refusal.
+
+Changes use retained no-follow descriptors, deepest parent first, with
+deadline and closing checks. The workspace itself remains `0700` throughout.
+Failures retain conservative permission-attempt and partial-progress evidence;
+the helper performs no rollback, chown, Git permission change or process-wide
+umask change. This remains an initial phase with no live worker, rather than
+an atomic writer lease or a way to revoke existing descriptors.
+
+The generated owner wrapper selects the helper only when any of the three
+opt-in boundary fields is present. Partial policy refuses through the helper.
+It runs before workspace provisioning, source brokers and the first census;
+a future native capture must follow these permission transitions.
+Boundaries without these fields retain their
+existing provisioning path. Exact worker archives now include the helper.
+
+Host filesystem and generated-wrapper qualification is recorded in
+[qualification.json](evidence/owner-worktree-traversal-20261016/qualification.json).
+The host denied the passwordless separate-UID capability probe, so declared
+group search bits do not establish actual worker membership, traversal or
+isolation. The receipt grants no task, run, resource, execution or completion
+authority.
+
+Canonical Git permissions remain unchanged. A later mediated Git profile must
+replace direct worker Git reads in preflight, formalization and candidate
+runners, while retaining owner checks and refusing unsupported routes. Native
+ownership handoff, Docker/separate-UID qualification, an installed continuation
+retry default and matched total-token measurements remain open.

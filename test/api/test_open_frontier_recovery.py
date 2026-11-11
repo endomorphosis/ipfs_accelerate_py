@@ -6,6 +6,7 @@ from ipfs_accelerate_py.agent_supervisor.rescue.board_stall_watchdog import pars
 from ipfs_accelerate_py.agent_supervisor.rescue.open_frontier_recovery import (
     classify_open_work,
     frontier_latch_action,
+    grok_usage_balance_exhausted,
     select_route,
 )
 
@@ -83,7 +84,7 @@ def test_reason_latch_holds_one_frontier_and_releases_the_next() -> None:
     )
     assert later["release"] is True
     assert later["hold"] is False
-    assert later["record_task_id"] == "LCM-001"
+    assert later["record_task_id"] == "LCM-000"
     assert later["work_complete"] is False
     clear = frontier_latch_action(
         "",
@@ -103,6 +104,37 @@ def test_reason_latch_holds_one_frontier_and_releases_the_next() -> None:
     assert structural["record_task_id"] == "LCM-000"
 
 
+def test_later_frontier_release_is_retried_until_the_latch_is_removed() -> None:
+    recorded = "LCM-074"
+    for _ in range(2):
+        # The health check persists record_task_id before unlinking the latch.
+        # A failed unlink or interrupted poll must not consume the transition.
+        action = frontier_latch_action(
+            "idle_with_open_work\n",
+            reason="idle_with_open_work",
+            task_id="LCM-075",
+            recorded_task_id=recorded,
+        )
+        assert action["release"] is True
+        assert action["hold"] is False
+        recorded = action["record_task_id"]
+    cleared = frontier_latch_action(
+        "",
+        reason="idle_with_open_work",
+        task_id="LCM-075",
+        recorded_task_id=recorded,
+    )
+    assert cleared["record_task_id"] == "LCM-075"
+    held = frontier_latch_action(
+        "idle_with_open_work\n",
+        reason="idle_with_open_work",
+        task_id="LCM-075",
+        recorded_task_id=cleared["record_task_id"],
+    )
+    assert held["hold"] is True
+    assert held["release"] is False
+
+
 def test_route_keeps_the_injected_provider_and_refuses_other_names() -> None:
     routed = select_route(True, False, decider=lambda _grok, _codex: {
         "selected_provider": "grok",
@@ -119,3 +151,22 @@ def test_route_keeps_the_injected_provider_and_refuses_other_names() -> None:
     assert refused["authorized"] is False
     assert refused["selected_provider"] == ""
     assert refused["completion_authority"] is False
+
+
+def test_known_402_balance_text_is_grok_quota_evidence() -> None:
+    text = (
+        '{"type":"error","message":"Internal error: {\\n  \\"message\\": '
+        '\\"API error (status 402 Payment Required): '
+        'Grok Build usage balance exhausted\\",\\n  \\"http_status\\": 402'
+        '\\n}","cwd":"/tmp"}'
+    )
+    assert grok_usage_balance_exhausted(text) is True
+    assert grok_usage_balance_exhausted("Error: max turns reached") is False
+
+
+def test_grok_usage_balance_quota_selects_codex() -> None:
+    routed = select_route(True, True, grok_hard_quota=True)
+    assert routed["authorized"] is True
+    assert routed["selected_provider"] == "codex"
+    assert routed["work_complete"] is False
+    assert routed["completion_authority"] is False

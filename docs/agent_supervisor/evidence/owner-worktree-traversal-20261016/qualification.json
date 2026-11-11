@@ -1,0 +1,310 @@
+{
+  "schema": "owner-worktree-traversal-qualification@1",
+  "recorded_utc": "2026-10-16T06:20:35.066261+00:00",
+  "accelerate_base": "4ef6ff1caf7cfe3feecb5145e1ab7b6336d0b9c2",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Previously pinned sibling dependency paths were absent at turn start, then recreated detached/locked at exactly the same revisions. Canonical source content was not changed. Accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "dataset_resource_scheduler_source": {
+    "bytes": 121503,
+    "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+  },
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_and_candidate_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "Agents performed static work only. Root alone bootstrapped the pinned scheduler; all successful application/test/probe subprocesses ran under its leases. Missing-dependency bootstrap failures occurred before admission.",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/owner-worktree-traversal-20261016-01",
+  "qualification_counts": {
+    "tests": 367,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 8
+  },
+  "traversal_helper_cases": 40,
+  "new_wrapper_ordering_cases": 7,
+  "qualified_modules": [
+    "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_owner_worktree_traversal_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_owner_worktree_parent",
+    "test.api.test_owner_worktree_traversal",
+    "test.api.test_owner_writable_worktree",
+    "test.api.test_protected_git_worktree_creation"
+  ],
+  "qualifying_runs": [
+    "traversal-focused-v01",
+    "traversal-wiring-v01",
+    "traversal-archive-regression-v01"
+  ],
+  "runs": [
+    {
+      "label": "traversal-archive-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "traversal-archive-regression-v01",
+        "started_utc": "2026-10-16T06:18:20.014485+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T06:19:05.497637+00:00"
+      },
+      "junit": {
+        "tests": 293,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_worktree_parent",
+          "test.api.test_owner_writable_worktree",
+          "test.api.test_protected_git_worktree_creation"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_owner_worktree_parent",
+          "test.api.test_owner_writable_worktree",
+          "test.api.test_protected_git_worktree_creation"
+        ],
+        "bytes": 59952,
+        "sha256": "d5a73aef5c94e5126fbc5235ab94c40726fe4c17ba2f138e22c89562cdddf3dc"
+      },
+      "stdout.log": {
+        "bytes": 92987,
+        "sha256": "084c2f05be9f08bebde09f54b58da42ed0ce8ef5fd55b98c2267d3ece68af524"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "traversal-environment-v02",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "traversal-environment-v02",
+        "started_utc": "2026-10-16T06:05:26.941495+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T06:05:27.092495+00:00"
+      },
+      "nonqualifying_reason": "Environment/capability probe; contributes no tests. Host UID-switch denial is not an actual separate-UID qualification.",
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "traversal-focused-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "traversal-focused-v01",
+        "started_utc": "2026-10-16T06:18:19.983744+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T06:18:22.756668+00:00"
+      },
+      "junit": {
+        "tests": 40,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_owner_worktree_traversal"
+        ],
+        "normalized_modules": [
+          "test.api.test_owner_worktree_traversal"
+        ],
+        "bytes": 6484,
+        "sha256": "ce51c4ba781d6d4953987f87c3b8f4ac460aea08fd217546431254f9073c0fdc"
+      },
+      "stdout.log": {
+        "bytes": 5814,
+        "sha256": "2c8550e0f1d15eb20639500f7d5ac5b56cac8a863cfa433d2d31ff505518fb00"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "traversal-host-uid-v02",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "traversal-host-uid-v02",
+        "started_utc": "2026-10-16T06:05:26.927589+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T06:05:27.083703+00:00"
+      },
+      "nonqualifying_reason": "Environment/capability probe; contributes no tests. Host UID-switch denial is not an actual separate-UID qualification.",
+      "stdout.log": {
+        "bytes": 245,
+        "sha256": "94c719bdaf5ac0581c19fcb534c404a7038c9a9256eab374937a6d901a9dbd1f"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "traversal-wiring-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "traversal-wiring-v01",
+        "started_utc": "2026-10-16T06:18:19.985516+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T06:18:21.059938+00:00"
+      },
+      "junit": {
+        "tests": 34,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_owner_worktree_traversal_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_owner_worktree_traversal_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring"
+        ],
+        "bytes": 7654,
+        "sha256": "6b1979926a8d85498ae22890694f6d788f52e0ded20f17366615012eaa98d55c"
+      },
+      "stdout.log": {
+        "bytes": 6939,
+        "sha256": "658dd9e00fa16518696ddb18c43a8a67242ad1a289351139c7733b19016fd30c"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "pre_admission_failures": {
+    "schema": "qualification-pre-admission-failure@1",
+    "runs": [
+      "traversal-environment-v01",
+      "traversal-host-uid-v01"
+    ],
+    "returncode": 1,
+    "phase": "pinned_scheduler_import_before_lease_acquisition",
+    "error": "ModuleNotFoundError: No module named ipfs_datasets_py",
+    "cause": "Pinned sibling datasets/kit worktree directories were absent at start of this continuation.",
+    "child_command_started": false,
+    "native_lease_acquired": false,
+    "qualifying": false,
+    "resolution": "Recreated detached locked dependency worktrees at exactly previously pinned revisions. No canonical source content modified."
+  },
+  "host_worker_uid_availability": {
+    "schema": "host-worker-uid-availability@1",
+    "owner_uid": 1000,
+    "owner_gid": 1000,
+    "sudo_available": true,
+    "worker_probe_succeeded": false,
+    "model_calls": 0,
+    "provider_calls": 0,
+    "returncode": 1,
+    "error_summary": "sudo: a password is required"
+  },
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "source_verification": "Seven changed files and generated OWNER_ENTRY/WORKER_ENTRY/OWNER_MONITOR were AST/whitespace checked and hash-frozen before every qualifying run. Production/test/docs bytes remained unchanged through qualification and were verified again before publication.",
+  "module_normalization": "api.* and test.api.* pytest classnames normalize to the same test/api source module.",
+  "static_review": {
+    "helper_sha256": "17a288134014f0e6d5ee638ecf2243b4730b0cab776ccdd21c85b18c7e65d64b",
+    "direct_test_sha256": "1605b12f0fded057299aa316d9e5d04f56a151d6c8aaf57613e9c756c08f65a7",
+    "outcome": "No blocking unsafe gap found in helper, explicit wrapper selection, final tests or claims."
+  },
+  "real_boundaries": [
+    "Actual owner parent directories move700 to710 through verified descriptors deepest-first; the actual workspace and marker bytes/inodes/modes and disjoint private sentinels remain unchanged",
+    "Selected710/750 directories are reused without chmod; actual file/directory siblings and selected symlinks refuse before any fchmod",
+    "Actual boundary byte mutation, selected directory rename/replacement and late sibling creation produce refusal using authored timing callbacks",
+    "Partial fchmod, apply-then-raise, deadline and reentry faults use authored triggers around real filesystem effects; acknowledge verified changes and report uncertain effects without rollback",
+    "Actual descriptor closure is tracked, including refusal after final direct reopen and after final closing/deadline exhaustion",
+    "Exact generated owner staging statements select traversal before workspace provisioning with the same original effective deadline; absence preserves default and partial opt-in/refusal stops worker setup",
+    "Retained host native continuation, owner provisioning, protected-parent creation, actual offline Git factories, worker archive refusal and generated deadline/provisioning checks pass"
+  ],
+  "authored_fixture_boundaries": [
+    "Deployment boundary authentication, selected worker UID and shared-group policy are authored host seams; these are owner-UID filesystem tests, not a second-UID launch",
+    "Foreign UID/GID/ACL/mount observations are narrow injected metadata seams; real foreign ownership, ACL installation and mount operations are not qualified",
+    "The new wrapper tests author the traversal/workspace helper responses to isolate ordering. No generated installed wrapper or model worker is launched by those tests",
+    "Only freshly owned pytest basetemp/tmp_path containers are changed750 to model already-searchable outer ancestry; account-private TMPDIR/home modes are not normalized",
+    "Retained candidate/continuation fixture authors Quack transport and deployment admission; actual host children, immutable controls and native resource leaf remain real",
+    "Inherited actual Git factory drivers remain offline/no-pool/no-seed/no-submodule and author deployment authentication; nonoffline configuration repair is not qualified"
+  ],
+  "limitations": [
+    "Explicit trusted boundary opt-in only; no deployer manifest is installed and existing boundaries without the new fields retain their previous route",
+    "Actual worker group membership, UID isolation, LSM access and traversal are unqualified: the harmless UID65534/group1000 sudo-n capability probe was denied because a password is required; no personal UID1001 process was used",
+    "Parent search bits alone do not enable existing worker routes: canonical Git controls and direct canonical-source reads still need a separately qualified access/profile design",
+    "Canonical Git permissions remain unchanged; owner-mediated Git routes must explicitly replace worker preflight/formalization/candidate direct reads and refuse unsupported routes",
+    "Declared private paths are checked for canonical scope/disjointness, not actual worker denial by this helper; exclusive immediate inventories prevent initial sibling exposure at newly opened gates",
+    "No continuous filesystem writer lease or descriptor revocation, no rollback and no automatic recovery of partial parent changes; caller must have no live worker during initial transition",
+    "Empty explicit selection no-op and legitimate outer mount transitions are implemented but not independently qualified; fault/metadata timing callbacks do not establish naturally occurring kernel races",
+    "Native allocation capture must follow permission transitions; generated owner wrapper still does not hand off native task/allocation/run/resource objects",
+    "Broad legacy incremental/todo modules known uncollectable at base and unrelated legacy refresh fixture are not included; compatible targeted checks do not claim whole-suite coverage",
+    "No Docker deployment, installed retry default, model/provider/training run, matched TerminalBench measurement, total token-savings or legal correctness claim"
+  ],
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "docker_runs": 0,
+  "network_dependency_installation": false,
+  "matched_terminalbench_runs": 0,
+  "evidence_writer": {
+    "bytes": 12586,
+    "sha256": "db4d719484a45875427d5ea08e86bd73e695e246d97631e560de68a7bed2bfa7"
+  }
+}

@@ -13,6 +13,7 @@ stay behind that latch.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from ipfs_accelerate_py.agent_supervisor.rescue.board_stall_watchdog import (
@@ -23,6 +24,17 @@ from ipfs_accelerate_py.agent_supervisor.rescue.board_stall_watchdog import (
 SCHEMA = "ipfs_accelerate_py/agent-supervisor/open-frontier-recovery@1"
 _COMPLETED = frozenset({"completed", "complete", "done"})
 _ROUTED = frozenset({"grok", "codex"})
+_GROK_USAGE_BALANCE_EXHAUSTED = re.compile(
+    r"API error \(status 402 Payment Required\):\s*"
+    r"Grok Build usage balance exhausted",
+    re.IGNORECASE,
+)
+
+
+def grok_usage_balance_exhausted(text: str) -> bool:
+    """True for the known Grok Build 402 balance envelope."""
+
+    return bool(_GROK_USAGE_BALANCE_EXHAUSTED.search(text or ""))
 
 
 def classify_open_work(parsed: BoardParse, *, worker_alive: bool) -> dict[str, Any]:
@@ -81,7 +93,10 @@ def frontier_latch_action(
     The watchdog compares the latch file to the stall reason. The same
     reason on a later task is not the same frontier. The first time a
     reason-only latch is seen, the current task is recorded and the latch
-    stays. A different recorded task releases it. No provider is ranked.
+    stays. A different recorded task releases it. Keep the old task recorded
+    until the latch is gone: the caller persists the record before unlinking
+    the latch, and an interrupted or failed unlink must remain retryable.
+    No provider is ranked.
     """
 
     held = str(latch_text or "").strip()
@@ -101,6 +116,7 @@ def frontier_latch_action(
         return payload
     if recorded and recorded != current:
         payload["release"] = True
+        payload["record_task_id"] = recorded
         return payload
     payload["hold"] = True
     return payload
@@ -111,13 +127,22 @@ def select_route(
     codex_ready: bool,
     *,
     decider: Callable[[bool, bool], dict[str, Any]] | None = None,
+    grok_hard_quota: bool = False,
 ) -> dict[str, Any]:
-    """Ask llm_router which provider may run. Observations are not re-ranked."""
+    """Ask llm_router which provider may run. Observations are not re-ranked.
+
+    ``grok_hard_quota`` is evidence that Grok already returned a hard quota
+    failure. The injected decider still receives only the two readiness flags.
+    """
 
     decision = (
         decider(grok_ready, codex_ready)
         if decider is not None
-        else _router_decision(grok_ready, codex_ready)
+        else _router_decision(
+            grok_ready,
+            codex_ready,
+            grok_hard_quota=grok_hard_quota,
+        )
     )
     provider = str(decision.get("selected_provider") or "")
     authorized = bool(decision.get("authorized")) and provider in _ROUTED
@@ -131,17 +156,32 @@ def select_route(
     }
 
 
-def _router_decision(grok_ready: bool, codex_ready: bool) -> dict[str, Any]:
+def _router_decision(
+    grok_ready: bool,
+    codex_ready: bool,
+    *,
+    grok_hard_quota: bool = False,
+) -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_provider_auto import (
+        PREFERRED_PROVIDER,
         probe_llm_router_backends,
         select_implementation_provider,
     )
 
+    usage = None
+    if grok_hard_quota:
+        usage = {
+            PREFERRED_PROVIDER: {
+                "hard_quota_exhausted": True,
+                "source": "grok_agent_cli_quota",
+            }
+        }
     observations = probe_llm_router_backends(
         grok_binary=bool(grok_ready),
         grok_authenticated=bool(grok_ready),
         codex_binary=bool(codex_ready),
         codex_authenticated=bool(codex_ready),
+        usage_observations=usage,
     )
     selection = select_implementation_provider(observations)
     provider = str(selection.selected_provider or "")

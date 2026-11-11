@@ -151,10 +151,27 @@ def test_exact_native_import_probe_refuses_missing_runtime_dependency(monkeypatc
 def test_extension_symlink_cannot_enter_runtime_archive(tmp_path):
     inputs = _inputs(tmp_path)
     target = inputs["extension_dir"] / "quack.duckdb_extension"
+    referent = inputs["extension_dir"] / "httpfs.duckdb_extension"
+    original = referent.read_bytes()
     target.unlink()
-    target.symlink_to(inputs["extension_dir"] / "httpfs.duckdb_extension")
-    with pytest.raises(ValueError, match="non-symlink"):
-        build_runtime_archive(output=tmp_path / "bundle", **inputs)
+    target.symlink_to(referent)
+    refused = False
+    try:
+        with pytest.raises(ValueError, match="non-symlink"):
+            build_runtime_archive(output=tmp_path / "bundle", **inputs)
+        refused = True
+    finally:
+        # Preserve the live symlink refusal, then retire only the authored
+        # alias so owned artifact finalization never follows or adopts it.
+        assert target.is_symlink() and target.readlink() == referent
+        target.unlink()
+        assert referent.read_bytes() == original
+        (tmp_path / "authored-extension-symlink.json").write_text(json.dumps({
+            "schema": "authored-extension-symlink-cleanup/v1",
+            "alias": target.name, "referent": referent.name,
+            "refusal_observed": refused, "alias_removed": True,
+            "referent_unchanged": True, "authority_granted": False,
+        }, sort_keys=True))
 
 
 def test_changed_runtime_archive_refused_before_container_calls(tmp_path):

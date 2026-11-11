@@ -24,6 +24,7 @@ from .current_source_lookup import CurrentSourceLookup, _SourceBindingAttempt
 from .current_source_task_admission import NativeSourceTaskAdmission
 
 SCHEMA = "supervisor-native-source-worktree-allocation@1"
+DELEGATED_SCHEMA = "supervisor-native-delegated-source-worktree-allocation@1"
 NOMINATED_ALLOCATION_SCHEMA = "supervisor-native-nominated-source-worktree-allocation@1"
 _SEAL = object()
 _BOUND = 262_144
@@ -105,12 +106,17 @@ def _branch(value):
     return value
 
 
-class NativeSourceWorktreeAllocation:
-    """Exact owner-issued source allocation handle; observations are inert."""
+class _NativeSourceWorktreeAllocationKernel:
+    """Shared native checks; exact public classes select distinct root policy."""
 
     def __init__(self, seal, *, task_admission, canonical_repository, workspace,
-                 worktree_root, attempt_root, merge_target_branch, board_namespace):
-        _need(seal is _SEAL and type(self) is NativeSourceWorktreeAllocation
+                 worktree_root, attempt_root, merge_target_branch, board_namespace,
+                 writable_policy=None):
+        from .native_writable_allocation import _WritableAllocationPolicy
+        _need(seal is _SEAL
+              and ((type(self) is NativeSourceWorktreeAllocation and writable_policy is None)
+                   or (type(self) is NativeDelegatedSourceWorktreeAllocation
+                       and type(writable_policy) is _WritableAllocationPolicy))
               and type(task_admission) is NativeSourceTaskAdmission,
               "exact native source task admission required")
         task = NativeSourceTaskAdmission.require_current(task_admission)
@@ -118,6 +124,7 @@ class NativeSourceWorktreeAllocation:
         self._task_admission, self._server = task_admission, task_admission._server
         self._canonical_repository, self._workspace = Path(canonical_repository), Path(workspace)
         self._worktree_root, self._attempt_root = Path(worktree_root), Path(attempt_root)
+        self._writable_policy = self._original_writable_policy = writable_policy
         self._merge_target, self._board_namespace = _branch(merge_target_branch), board_namespace
         _need(type(board_namespace) is str and 0 < len(board_namespace.encode()) <= 4096
               and board_namespace == board_namespace.strip()
@@ -130,7 +137,7 @@ class NativeSourceWorktreeAllocation:
         self._store_path = self._git / lifecycle.WORKTREE_LIFECYCLE_DIRNAME
         self._attempt_directory = self._attempt_root / hashlib.sha256(
             task_admission._claim["attempt_id"].encode()).hexdigest()[:24]
-        self._directories = tuple((path, _directory(path)) for path in dict.fromkeys((
+        self._directories = tuple((path, self._directory_identity(path)) for path in dict.fromkeys((
             self._canonical_repository, self._workspace, self._worktree_root,
             self._attempt_root, self._attempt_directory, self._git, self._git / "worktrees",
             self._store_path)))
@@ -158,20 +165,32 @@ class NativeSourceWorktreeAllocation:
         self._nominated_source_scope = self._original_nominated_source_scope = None
         self._nominated_scope_checking = False
         self._binding = self._checking = False
+        self._owner_callback_active = self._owner_callback_reentry_detected = False
         self._lock = threading.RLock()
         self._original = (self, task_admission, self._server, self._source, self._bridge, self._store,
             self._canonical_repository, self._workspace, self._worktree_root, self._attempt_root,
-            self._merge_target, self._board_namespace, self._task_bytes)
+            self._merge_target, self._board_namespace, self._task_bytes, self._writable_policy)
         self.require_current()
 
+    def _directory_identity(self, path):
+        if self._writable_policy is not None and path == self._workspace:
+            return self._writable_policy.directory_identity(path)
+        return _directory(path)
+
     def _retained(self):
+        from .native_writable_allocation import _WritableAllocationPolicy
         current = (
                   self, self._task_admission, self._server, self._source, self._bridge, self._store,
                   self._canonical_repository, self._workspace, self._worktree_root, self._attempt_root,
-                  self._merge_target, self._board_namespace, self._task_bytes)
-        _need(type(self) is NativeSourceWorktreeAllocation and self._seal is _SEAL
+                  self._merge_target, self._board_namespace, self._task_bytes, self._writable_policy)
+        _need(((type(self) is NativeSourceWorktreeAllocation and self._writable_policy is None)
+               or (type(self) is NativeDelegatedSourceWorktreeAllocation
+                   and type(self._writable_policy) is _WritableAllocationPolicy))
+              and self._writable_policy is self._original_writable_policy
+              and self._seal is _SEAL
               and self._issued_self is self and len(current) == len(self._original)
-              and all(a is b if n < 6 else a == b for n, (a, b) in enumerate(zip(current, self._original)))
+              and all(a is b if n < 6 or n == 13 else a == b
+                  for n, (a, b) in enumerate(zip(current, self._original)))
               and self._server is self._task_admission._server
               and self._source.intent is self._intent
               and self._intent._bound_connection is self._task_admission._connection
@@ -189,7 +208,7 @@ class NativeSourceWorktreeAllocation:
               and self._bridge.portal_factory is self._original_policy[6]
               and (self._original_custody is None or all(a is b for a, b in zip(
                   self._original_custody, (self._fixed_files, self._lifecycle_bytes, self._material))))
-              and all(_directory(path) == identity for path, identity in self._directories),
+              and all(self._directory_identity(path) == identity for path, identity in self._directories),
               "native source allocation original objects or policy changed")
         _need(self._nominated_source_scope is self._original_nominated_source_scope,
               "native allocation original nomination join changed")
@@ -278,6 +297,7 @@ class NativeSourceWorktreeAllocation:
     def require_current(self):
         """Fence COOR before SERVER, then close with detached allocation reads."""
         with self._lock:
+            self._refuse_owner_callback_reentry()
             _need(not self._checking, "native source allocation reentry refused")
             self._checking = True
             try:
@@ -297,37 +317,127 @@ class NativeSourceWorktreeAllocation:
                     admission._native()
                     final = self._observe()
                     _need(final == observed, "allocation changed after its native claim fence")
-                fixed, record, identity, binding = final
-                stable = record.to_dict()
-                renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
-                _need(self._fixed_files is None or fixed == self._fixed_files,
-                      "allocation immutable custody changed")
-                _need(self._lifecycle_bytes is None or _wire(stable) == self._lifecycle_bytes,
-                      "allocation lifecycle ownership changed")
-                _need(self._renewal is None or all(a >= b for a, b in zip(renewal, self._renewal)),
-                      "allocation lifecycle renewal rolled back")
-                if self._material is None:
-                    task = json.loads(self._task_bytes)
-                    material = dict(schema=SCHEMA, **{key: task[key] for key in (
-                        "task_cid", "task_alias", "task_revision", "expected_task_body_cid")},
-                        native_attempt_number=admission._claim["attempt_number"],
-                        portal_canonical_task_cid=identity["canonical_task_cid"], portal_binding_id=binding["binding_id"],
-                        lifecycle_record_id=record.record_id, lifecycle_attempt=record.attempt,
-                        lifecycle_initial_fence=record.fence,
-                        lifecycle_lease_identity_cid=cid_for_structured({"lease_id": record.lease_id}),
-                        lifecycle_owner_birth=record.owner.to_dict(), canonical_repository=str(self._canonical_repository),
-                        workspace=str(self._workspace), branch=record.branch, merge_target_branch=self._merge_target,
-                        allocation_ownership_verified=True, proof_authority=False, execution_authority=False,
-                        completion_authority=False, bootstrap_verified=False, compiled_context_verified=False,
-                        coding_process_verified=False)
-                    material["allocation_cid"] = cid_for_structured(material)
-                    self._material = canonical_json_bytes(material)
-                    self._fixed_files, self._lifecycle_bytes = fixed, _wire(stable)
-                    self._original_custody = (self._fixed_files, self._lifecycle_bytes, self._material)
-                self._renewal = renewal
-                return json.loads(self._material)
+                return self._retain_observation(final)
             finally:
                 self._checking = False
+
+    def _retain_observation(self, observed):
+        """Share the original immutable custody and monotonic renewal checks."""
+        fixed, record, identity, binding = observed
+        stable = record.to_dict()
+        renewal = tuple(stable.pop(key) for key in ("fence", "updated_at", "expires_at"))
+        _need(self._fixed_files is None or fixed == self._fixed_files,
+              "allocation immutable custody changed")
+        _need(self._lifecycle_bytes is None or _wire(stable) == self._lifecycle_bytes,
+              "allocation lifecycle ownership changed")
+        _need(self._renewal is None or all(a >= b for a, b in zip(renewal, self._renewal)),
+              "allocation lifecycle renewal rolled back")
+        if self._material is None:
+            task = json.loads(self._task_bytes)
+            material = dict(schema=SCHEMA if self._writable_policy is None else DELEGATED_SCHEMA,
+                **{key: task[key] for key in (
+                "task_cid", "task_alias", "task_revision", "expected_task_body_cid")},
+                native_attempt_number=self._task_admission._claim["attempt_number"],
+                portal_canonical_task_cid=identity["canonical_task_cid"], portal_binding_id=binding["binding_id"],
+                lifecycle_record_id=record.record_id, lifecycle_attempt=record.attempt,
+                lifecycle_initial_fence=record.fence,
+                lifecycle_lease_identity_cid=cid_for_structured({"lease_id": record.lease_id}),
+                lifecycle_owner_birth=record.owner.to_dict(), canonical_repository=str(self._canonical_repository),
+                workspace=str(self._workspace), branch=record.branch, merge_target_branch=self._merge_target,
+                allocation_ownership_verified=True, proof_authority=False, execution_authority=False,
+                completion_authority=False, bootstrap_verified=False, compiled_context_verified=False,
+                coding_process_verified=False)
+            if self._writable_policy is not None:
+                material.update(writable_delegation=self._writable_policy.observation(),
+                    permission_transition_verified=False, current_workspace_policy_verified=True,
+                    worker_isolation_qualified=False)
+            material["allocation_cid"] = cid_for_structured(material)
+            self._material = canonical_json_bytes(material)
+            self._fixed_files, self._lifecycle_bytes = fixed, _wire(stable)
+            self._original_custody = (self._fixed_files, self._lifecycle_bytes, self._material)
+        self._renewal = renewal
+        return json.loads(self._material)
+
+    def _refuse_owner_callback_reentry(self):
+        if self._owner_callback_active:
+            self._owner_callback_reentry_detected = True
+            raise CurrentSourceWorktreeAllocationError("native allocation owner callback reentry refused")
+
+    def _observe_callback_boundary(self):
+        """Under COOR then SERVER, read task/grant and allocation controls only."""
+        self._retained()
+        admission = self._task_admission
+        admission._require_inactive_owner_transaction()
+        before, grant = admission._native()
+        _need(before[0] == self._task_bytes, "allocation task snapshot changed")
+        observed = self._observe()
+        after, current = admission._native()
+        _need(before == after and after[0] == self._task_bytes
+              and grant.grant_id == current.grant_id,
+              "allocation native claim or grant changed during owner callback boundary")
+        self._retain_observation(observed)
+        _need(not self._owner_callback_reentry_detected
+              and not admission._owner_callback_reentry_detected,
+              "native allocation owner callback attempted reentry")
+        admission._require_inactive_owner_transaction()
+        self._retained()
+
+    def execute_with_current_claim(self, callback, *, minimum_remaining_ms=0):
+        """Run a trusted owner callback under the existing live task fence.
+
+        The callback receives the genuine immutable protected lease. Allocation
+        and admission locks, then COOR and SERVER, span its execution. Native
+        task/grant and allocation controls are checked before and after; source
+        contents are not read. This method grants no launch, retry or completion
+        authority. A failure after callback entry cannot undo external effects:
+        the caller retains its child cleanup and possible-effects obligations.
+        """
+        _need(callable(callback), "trusted owner callback required")
+        with self._lock:
+            self._refuse_owner_callback_reentry()
+            _need(not self._checking, "native source allocation reentry refused")
+            self._retained()
+            admission = self._task_admission
+            with admission._lock:
+                admission._refuse_owner_callback_reentry()
+                _need(not admission._checking, "native source task admission reentry refused")
+                # Check before acquiring COOR and again under SERVER, so an
+                # unrelated borrowed SQL transaction never reaches the callback.
+                admission._require_inactive_owner_transaction()
+                self._checking = admission._checking = True
+                self._owner_callback_active = admission._owner_callback_active = True
+                self._owner_callback_reentry_detected = admission._owner_callback_reentry_detected = False
+                try:
+                    def checked(lease):
+                        with self._server._lock:
+                            self._observe_callback_boundary()
+                            callback_error = None
+                            result = None
+                            try:
+                                result = callback(lease)
+                            except BaseException as error:
+                                callback_error = error
+                            try:
+                                self._observe_callback_boundary()
+                            except BaseException as closing_error:
+                                if callback_error is not None:
+                                    raise callback_error from closing_error
+                                raise
+                            if callback_error is not None:
+                                raise callback_error
+                            return result
+                    result = admission._coordinator.execute_with_task_claim_fence(
+                        admission._claim, checked, minimum_remaining_ms=minimum_remaining_ms)
+                    # The coordinator's own closing clock/commit can invoke
+                    # owner code. Close again after that fence without entering
+                    # another claim transaction or reading candidate contents.
+                    with self._server._lock:
+                        self._observe_callback_boundary()
+                    return result
+                finally:
+                    self._checking = admission._checking = False
+                    self._owner_callback_active = admission._owner_callback_active = False
+                    self._owner_callback_reentry_detected = admission._owner_callback_reentry_detected = False
 
     def bind_current_source_lookup(self, *, cas, expected_inventory_cid, request, limits,
                                    context_cid, allowed_paths, max_response_bytes=16384, max_slice_bytes=4096):
@@ -495,8 +605,54 @@ class NativeSourceWorktreeAllocation:
               "native allocation source binding changed")
 
 
+class NativeSourceWorktreeAllocation(_NativeSourceWorktreeAllocationKernel):
+    """Exact owner allocation whose workspace remains protected from writes."""
+
+
+class NativeDelegatedSourceWorktreeAllocation(_NativeSourceWorktreeAllocationKernel):
+    """Native custody of an already provisioned, separately delegated root.
+
+    Capture changes no permissions and qualifies no nested permission transition
+    or worker isolation. Native claim fences and all owner controls are shared
+    with the strict allocation kernel.
+    """
+
+    def require_candidate_binding(self, *, prior_worker_attempt, source_broker, absolute_deadline_ns):
+        _NativeSourceWorktreeAllocationKernel._retained(self)
+        return self._writable_policy.require_candidate_binding(
+            prior_worker_attempt=prior_worker_attempt, source_broker=source_broker,
+            absolute_deadline_ns=absolute_deadline_ns)
+
+
+def require_native_source_worktree_allocation(allocation):
+    """Retain an exact issued handle; observations and subclasses are inert."""
+    _need(type(allocation) in (NativeSourceWorktreeAllocation, NativeDelegatedSourceWorktreeAllocation),
+        "exact native source worktree allocation required")
+    _NativeSourceWorktreeAllocationKernel._retained(allocation)
+    return allocation
+
+
 def capture_native_source_worktree_allocation(*, task_admission, canonical_repository, workspace,
                                              worktree_root, attempt_root, merge_target_branch, board_namespace):
     return NativeSourceWorktreeAllocation(_SEAL, task_admission=task_admission,
         canonical_repository=canonical_repository, workspace=workspace, worktree_root=worktree_root,
         attempt_root=attempt_root, merge_target_branch=merge_target_branch, board_namespace=board_namespace)
+
+
+def capture_native_delegated_source_worktree_allocation(*, first_worker_attempt, task_admission,
+        canonical_repository, workspace, worktree_root, attempt_root, merge_target_branch, board_namespace):
+    """Capture existing native custody after independent trusted provisioning.
+
+    The exact first attempt must remain prepared through all native constructor
+    callbacks. Its legitimate later birth and retirement keep the same original
+    deadline, boundary and immutable prepared census.
+    """
+    from .native_writable_allocation import _capture_policy
+    policy = _capture_policy(first_worker_attempt=first_worker_attempt,
+        workspace=Path(workspace), worktree_root=Path(worktree_root))
+    result = NativeDelegatedSourceWorktreeAllocation(_SEAL, task_admission=task_admission,
+        canonical_repository=canonical_repository, workspace=workspace, worktree_root=worktree_root,
+        attempt_root=attempt_root, merge_target_branch=merge_target_branch,
+        board_namespace=board_namespace, writable_policy=policy)
+    policy.require_prepared()
+    return result
