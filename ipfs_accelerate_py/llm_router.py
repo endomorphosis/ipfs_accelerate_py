@@ -8496,6 +8496,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             named_request = kwargs.pop("grok_named_session_request", None)
             named_base_parts = None
             if named_request is not None:
+                if _grok_output_token_budget(dict(kwargs)) is not None:
+                    raise ValueError("Named Grok output token budgets require a qualified pinned owner cap")
                 from .cli_runtime.grok_named_session import validate_preparation_option
                 validate_preparation_option("grok_cli", named_request, kwargs)
                 if (not structured_cli or "temperature" not in kwargs
@@ -8776,7 +8778,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         cmd.extend(["--resume", resume_session_id])
                         env = named_lifetime.environment
                         timeout = named_lifetime.headless_timeout(timeout)
-                    elif temperature_supplied:
+                    elif temperature_supplied or output_token_budget is not None:
                         env = sampling_scope.enter_context(_grok_zero_temperature_environment(
                             env, model=model, command=cmd, zero_temperature=temperature_supplied,
                             output_token_budget=output_token_budget))
@@ -8833,6 +8835,10 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         pass
 
             payload = proc.final_payload if stream_progress else _grok_cli_json_payload(proc.stdout or "")
+            if stream_progress:
+                from .cli_runtime.grok_invocation_observation import record_native_grok_result
+                record_native_grok_result(payload, model=model, returncode=proc.returncode,
+                                          progress=stream_observation, dispatch_token=observation_dispatch_token)
             try:
                 from .cli_runtime.cli_metadata import remember_cli_run, set_last_cli_observation
 
@@ -13624,6 +13630,8 @@ def generate_text(
 
     named_request = kwargs.get("grok_named_session_request")
     if named_request is not None:
+        if _grok_output_token_budget(dict(kwargs)) is not None:
+            raise ValueError("Named Grok output token budgets require a qualified pinned owner cap")
         from .cli_runtime.grok_named_session import validate_public_dispatch
         validate_public_dispatch(provider=provider, model=model_name,
             request=kwargs["grok_named_session_request"], options=kwargs,
@@ -14056,6 +14064,30 @@ def generate_text(
                 kwargs=kwargs,
             )
         raise
+
+
+def generate_text_with_observation(prompt: str, *, observation_request_id: Optional[str] = None, **kwargs: object):
+    """Generate once through the existing router with current-call Grok evidence.
+
+    This additive API supports the exact Grok CLI provider only. Both fallback
+    paths are disabled and native streaming framing is required. Cache hits and
+    injected providers return text with absent native evidence; no global last
+    observation or requested identity is substituted for a process observation.
+    The result's text is product output; only its closed observation is a receipt.
+    """
+    from .cli_runtime.grok_invocation_observation import (
+        ObservedTextGeneration, capture_grok_invocation,
+    )
+    options = dict(kwargs)
+    if options.get("provider") != "grok_cli":
+        raise ValueError("observed text generation requires provider=grok_cli")
+    if options.get("grok_stream_progress", True) is not True:
+        raise ValueError("observed Grok generation requires native streaming")
+    options.update(allow_local_fallback=False, allow_cross_provider_fallback=False,
+                   grok_stream_progress=True)
+    with capture_grok_invocation(observation_request_id) as capture:
+        text = generate_text(prompt, **options)
+    return ObservedTextGeneration(text=text, observation=capture.observation)
 
 
 def _batch_worker_count(

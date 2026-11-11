@@ -1465,3 +1465,67 @@ def test_generation_grant_preserves_an_active_historical_original_request(servic
     with pytest.raises(executor.ExecutorHold,match='original_request_still_active'):
         executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
     assert health._document(health.descriptor(state))==value
+
+
+@pytest.fixture
+def merged_schema_dispatch_case(tmp_path, monkeypatch):
+    """Explicit dispatch-only metadata; no authorization or health is issued.
+
+    The original normal product module and health reader remain imported above.
+    Configuration admission and reconciliators are private modeled boundaries;
+    the already selected owning tests cover their real validation separately.
+    """
+    root = tmp_path / 'dispatch-proof'; root.mkdir(mode=0o700)
+    profile = dict(proof_root=str(root), receipt_path=str(root / 'absent-health.json'))
+    profile_ref = put(tmp_path / 'dispatch-profile.json', profile)
+    config = dict(max_cycles=10000)
+    config_ref = put(tmp_path / 'dispatch-config.json', config)
+    parser_ref = put(tmp_path / 'explicit-parser-fixture.py', b'# modeled dispatch parser DATA only\n')
+    opening = {'modeled_dispatch_identity': True}
+    monkeypatch.setattr(executor, 'load_configuration', lambda reference: (config, profile_ref, profile))
+    monkeypatch.setattr(executor, 'require_main_process', lambda *args: opening)
+    monkeypatch.setattr(executor, 'catalogue_parser_reference', lambda profile: parser_ref)
+    monkeypatch.setattr(executor, 'load_explicit_catalogue_parser', lambda reference: object())
+    def forbidden(*args, **kwargs):
+        pytest.fail('modeled dispatch must not run a cycle, observe Native or call an unrelated recovery owner')
+    for name in ('run_cycle', 'observe_native', 'reconcile_known_nonstarted',
+                 'reconcile_source_admission_recovery', 'reconcile_closed_catalogue_race_recovery'):
+        monkeypatch.setattr(executor, name, forbidden)
+    stop = threading.Event(); stop.set()
+    return dict(root=root, config_ref=config_ref, parser_ref=parser_ref, stop=stop, forbidden=forbidden)
+
+
+@pytest.mark.parametrize('mode', ['legacy13', 'closed_idle', 'closed200'])
+def test_merged_recovery_schema_dispatch_is_exclusive(merged_schema_dispatch_case, monkeypatch, mode):
+    """A schema chooses only its existing owner; this grants no authority."""
+    case = merged_schema_dispatch_case; seen = []
+    owners = {
+        'legacy13': ('reconcile_known_unselected_capacity_handover', executor.CAPACITY_SCHEMA, 13),
+        'closed_idle': ('reconcile_known_closed_idle', executor.CLOSED_IDLE_SCHEMA, 2),
+        'closed200': ('reconcile_closed_capacity_continuation', executor.CLOSED_CAPACITY_SCHEMA, (200, [])),
+    }
+    for name, _, _ in owners.values():
+        monkeypatch.setattr(executor, name, case['forbidden'])
+    name, schema, result = owners[mode]
+    def selected(*args, **kwargs):
+        seen.append((name, 'executor_lock' in kwargs))
+        return result
+    monkeypatch.setattr(executor, name, selected)
+    recovery_ref = put(case['root'].parent / 'modeled-recovery.json', dict(schema=schema))
+    options = {'catalogue_parser_ref': case['parser_ref']} if mode == 'closed200' else {}
+    assert executor.serve(case['config_ref'], case['stop'], recovery_ref=recovery_ref, **options) == 0
+    assert seen == [(name, mode == 'closed200')]
+    assert not (case['root'] / 'absent-health.json').exists()
+    assert not list(case['root'].glob('cycle-*'))
+
+
+def test_merged_unknown_recovery_schema_refuses_all_owner_paths(merged_schema_dispatch_case, monkeypatch):
+    case = merged_schema_dispatch_case
+    for name in ('reconcile_known_unselected_capacity_handover', 'reconcile_known_closed_idle',
+                 'reconcile_closed_capacity_continuation'):
+        monkeypatch.setattr(executor, name, case['forbidden'])
+    recovery_ref = put(case['root'].parent / 'unknown-recovery.json', dict(schema='fixture:unknown-recovery'))
+    with pytest.raises(executor.ExecutorHold, match='unknown_typed_recovery'):
+        executor.serve(case['config_ref'], case['stop'], recovery_ref=recovery_ref)
+    assert not (case['root'] / 'absent-health.json').exists()
+    assert not list(case['root'].glob('cycle-*'))

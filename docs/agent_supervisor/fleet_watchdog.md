@@ -1238,3 +1238,28 @@ The publication branch also merges upstream `ea6ebfa29e` without changing any of
 the 29 observed source origins from the 87-case cohort. The changed router and
 documentation inputs were unused by that cohort and retain no new qualification
 credit. The accepted active checkout and release remain unchanged.
+
+## Peer source history reconciliation
+
+The historical `agent/legal-ir-peer-source-refresh-20261021` branch at
+`517b6b6dfe410054642bd72fbd84b4615615075a` is retained as a merge parent after review of
+its three commits. Its two monitor owners already have current main successors;
+their original fleet and lane test definitions are AST-identical in this
+candidate, with additional tests retained from main. The
+newer monitor changes preserve optional watchdog diagnostics, native recovery
+observations, unavailable-source and retained-attempt refusals, and effect-boundary
+service-generation/retention rechecks. Those current safeguards are retained.
+All historical top-level functions and class methods remain present. This is
+source review, not a new monitor-suite or live deployment qualification.
+
+The historical peer task-revision repair and its complete owning runtime tests
+were already delivered in the [separate 72-case source qualification](evidence/peer-revision-router-qualification-20261109.json).
+The selected product generation remains `27ca9241fb8d3b5906a3612d3480a33200e2af5c` (tested
+product commit `9cab883ffd1a3a427d7b6b9935f5de974a2b8431` before its capsule).
+This history merge changes only this guide relative to that generation. It does
+not rerun or broaden those cases, replace the qualified product bytes, transfer
+monitor or provider qualification, activate a supervisor, alter restart budgets,
+or bypass a required hosted check. Earlier partial-closure and failed attempts
+retain their original scope. Historical source is recoverable from the exact
+second parent; private primary edits and accepted deployed generations remain
+separate from this published candidate.

@@ -23,6 +23,7 @@ import uuid
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
+    from .candidate_dispatch_client import AdmittedCandidateRouterInput
     from .repository_world_packet import PreparedRepositoryWorldPacket
     from .semantic_metadata_view import SemanticMetadataTokenCounter
     from .repository_world_packet import PreparedRepositoryWorldPacket
@@ -78,6 +79,17 @@ def _numerical_descriptor_environment(path, digest):
 @contextmanager
 def _source_descriptor_environment(path, digest):
     with _descriptor_environment(path, digest, SOURCE_DESCRIPTOR_ENV, SOURCE_DESCRIPTOR_DIGEST_ENV):
+        yield
+
+
+@contextmanager
+def _candidate_descriptor_environment(candidate_input):
+    if candidate_input is None:
+        yield
+        return
+    from .worker_candidate_round_client import DESCRIPTOR_ENV, DIGEST_ENV
+    with _descriptor_environment(candidate_input.descriptor_path,
+            candidate_input.descriptor_sha256, DESCRIPTOR_ENV, DIGEST_ENV):
         yield
 
 
@@ -1476,6 +1488,14 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
     if Path(top).resolve() != root:
         raise ValueError("implementation must start at its allocated Git worktree root")
+    candidate_receipt = None
+    if candidate_round_input is not None:
+        failure_phase = "candidate_dispatch"
+        candidate_receipt = AdmittedCandidateRouterInput.validate_for_run(candidate_round_input,
+            prompt=prompt, provider=provider, model=model, timeout=timeout,
+            max_output_tokens=max_output_tokens, reasoning_effort=reasoning_effort,
+            workspace=root, boundary_sha256=container_boundary_sha256,
+            worker_attempt_id=owner_worker_attempt_id)
     failure_phase = "semantic_context"
     encoded = None
     semantic_component_census = None
@@ -1484,6 +1504,9 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
     residual_advisory = ""
     router_prompt = prompt
     required_suffix = ""
+    if candidate_round_input is not None:
+        required_suffix = "\n\n" + AdmittedCandidateRouterInput.guidance(candidate_round_input)
+        router_prompt += required_suffix
     world_packet_receipt = None
     world_packet_artifact = None
     world_packet_artifact_sha256 = None
@@ -2614,6 +2637,7 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
         with _numerical_descriptor_environment(numerical_obligation_descriptor,
                                                numerical_obligation_descriptor_sha256), \
                 _source_descriptor_environment(source_view_descriptor, source_view_descriptor_sha256), \
+                _candidate_descriptor_environment(candidate_round_input), \
                 _source_lookup_descriptor_environment(source_lookup_descriptor,
                                                       source_lookup_descriptor_sha256), \
                 _descriptor_environment(candidate_round_descriptor, candidate_round_descriptor_sha256,
@@ -2681,6 +2705,27 @@ def run(*, prompt: str, provider: str, model: str, timeout: int, max_output_toke
                     raise ValueError("signed Terminal scope requires the current allocated worktree")
                 receipt["terminal_semantic_scope_dispatch_rechecked"] = True
             failure_phase = "provider_invocation"
+            if candidate_round_input is not None:
+                # Owner replays native claims, source generation and deadline
+                # after all initialization and descriptor-context callbacks.
+                # A lost reply or later provider failure cannot restore this
+                # one-use permit. Keep zero router calls on authorization loss.
+                failure_phase = "candidate_dispatch"
+                receipt["candidate_round_dispatch"].update(
+                    dispatch_requested=True, dispatch_consumed=None)
+                candidate_dispatch = AdmittedCandidateRouterInput.authorize_dispatch(
+                    candidate_round_input, invocation_id=invocation)
+                timeout = min(timeout, candidate_dispatch["timeout_seconds"])
+                receipt["timeout_seconds"] = timeout
+                receipt["candidate_round_dispatch"].update(candidate_dispatch,
+                    dispatch_consumed=True, provider_attempted=True)
+                failure_phase = "provider_invocation"
+            if owner_provider_deadline_ns is not None:
+                remaining = (owner_provider_deadline_ns - time.monotonic_ns()) / 1_000_000_000
+                if remaining <= 0:
+                    raise TimeoutError("original owner provider deadline exhausted before invocation")
+                timeout = min(timeout, remaining)
+                receipt["timeout_seconds"] = timeout
             if source_input_view is not None:
                 receipt["source_input_dispatched"] = True
             if query_reference_view is not None:
@@ -2986,6 +3031,13 @@ def main():
     parser.add_argument("--purpose", default="coding", choices=["planning", "coding"])
     parser.add_argument("--container-boundary", type=Path)
     parser.add_argument("--container-boundary-sha256", default="")
+    parser.add_argument("--owner-worker-attempt-id",
+                        help="Owner worker attempt observation identity; grants no launch or retry authority")
+    parser.add_argument("--owner-provider-deadline-ns", type=int,
+                        help="Original monotonic deadline restriction; grants no dispatch authority")
+    parser.add_argument("--candidate-dispatch-descriptor", type=Path,
+                        help="Explicit native-owner candidate dispatch endpoint")
+    parser.add_argument("--candidate-dispatch-descriptor-sha256")
     parser.add_argument("--semantic-repository", type=Path)
     parser.add_argument("--source-formalization-handoff", type=Path)
     parser.add_argument("--source-formalization-handoff-sha256")
@@ -3046,14 +3098,27 @@ def main():
         parser.error("both metadata tokenizer binding arguments require nonempty values")
     if args.max_input_tokens is not None and args.max_input_tokens < 1:
         parser.error("max-input-tokens must be positive")
+    if ((args.candidate_dispatch_descriptor is None)
+            != (args.candidate_dispatch_descriptor_sha256 is None)
+            or args.candidate_dispatch_descriptor_sha256 == ""):
+        parser.error("both candidate dispatch binding arguments require nonempty values")
     try:
         prompt = sys.stdin.buffer.read(256_001).decode("utf-8")
+        candidate_input = None
+        if args.candidate_dispatch_descriptor is not None:
+            from .candidate_dispatch_client import prepare_candidate_router_input
+            candidate_input = prepare_candidate_router_input(
+                descriptor_path=args.candidate_dispatch_descriptor,
+                descriptor_sha256=args.candidate_dispatch_descriptor_sha256, prompt=prompt)
         output, _ = run(prompt=prompt, provider=args.provider, model=args.model,
                         timeout=args.timeout, max_output_tokens=args.max_output_tokens,
                         budget_profile=args.budget_profile,
                         reasoning_effort=args.reasoning_effort,
                         container_boundary=args.container_boundary,
                         container_boundary_sha256=args.container_boundary_sha256,
+                        owner_worker_attempt_id=args.owner_worker_attempt_id,
+                        owner_provider_deadline_ns=args.owner_provider_deadline_ns,
+                        candidate_round_input=candidate_input,
                         purpose=args.purpose, semantic_repository=args.semantic_repository,
                         source_formalization_handoff=args.source_formalization_handoff,
                         source_formalization_handoff_sha256=args.source_formalization_handoff_sha256,

@@ -1,0 +1,366 @@
+{
+  "schema": "owner-provider-deadline-qualification@1",
+  "recorded_utc": "2026-10-16T00:05:43.777993+00:00",
+  "accelerate_base": "3acd8ef6aaf05356cae79c5cdbb741e804c455c5",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the pinned sibling datasets checkout; accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "static reads/AST/edits only",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/owner-provider-deadline-20261015-01",
+  "qualification_counts": {
+    "tests": 687,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 21
+  },
+  "qualified_modules": [
+    "api.test_candidate_dispatch",
+    "api.test_finite_proof_query_worker_dispatch",
+    "api.test_owner_provider_deadline_launcher",
+    "api.test_router_candidate_dispatch",
+    "api.test_router_failure_diagnostics",
+    "api.test_router_implementation_runner",
+    "api.test_router_owner_provider_deadline",
+    "api.test_router_owner_worker_attempt_identity",
+    "api.test_router_prompt_selection",
+    "api.test_router_provider_failure_diagnostics",
+    "benchmarks.agent_supervisor.container_coding.test_numerical_obligation_worker_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_owner_candidate_refresh_lifecycle",
+    "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_source_formalization_worker_deployment",
+    "benchmarks.agent_supervisor.container_coding.test_source_view_worker_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_owner_provider_deadline",
+    "test.api.test_owner_worker_attempt",
+    "test.api.test_source_formalization_context",
+    "test.api.test_stream_absolute_deadline",
+    "test.api.test_stream_process_group_cleanup"
+  ],
+  "qualifying_runs": [
+    "deadline-router-v01",
+    "deadline-stream-archive-v01",
+    "deadline-transport-monitor-v01",
+    "deadline-owner-source-regressions-v01",
+    "deadline-native-router-regression-v01",
+    "deadline-launcher-v01"
+  ],
+  "runs": [
+    {
+      "label": "deadline-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "deadline-environment-v01",
+        "started_utc": "2026-10-15T23:58:38.856212+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T23:58:39.007517+00:00"
+      },
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "deadline-launcher-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "deadline-launcher-v01",
+        "started_utc": "2026-10-16T00:03:48.946508+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:03:49.651885+00:00"
+      },
+      "junit": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_owner_provider_deadline_launcher"
+        ],
+        "bytes": 1244,
+        "sha256": "996a463dc541b323064f2a7ad4e7ede2cf4cc0ad750c6123e0240654f8d06d96"
+      },
+      "stdout.log": {
+        "bytes": 1083,
+        "sha256": "fa004a3a1db13cd1f3b2c54f2d5a9557fe2e946ecea3488c4391e47c0476ac11"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "deadline-native-router-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "deadline-native-router-regression-v01",
+        "started_utc": "2026-10-16T00:02:57.447123+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:03:48.842606+00:00"
+      },
+      "junit": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_candidate_dispatch",
+          "api.test_finite_proof_query_worker_dispatch"
+        ],
+        "bytes": 705,
+        "sha256": "4d6f75cd03f3e40fb28e69edd8bc91cc9fa37178bf06a6743aa481ae6a0a38b9"
+      },
+      "stdout.log": {
+        "bytes": 26175,
+        "sha256": "e02899faf84b99eafd53fa0a1d039e730991a1109d3d0ef509ede833ea5b4112"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "deadline-owner-source-regressions-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "deadline-owner-source-regressions-v01",
+        "started_utc": "2026-10-16T00:01:30.828248+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:01:43.882885+00:00"
+      },
+      "junit": {
+        "tests": 177,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_numerical_obligation_worker_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_owner_candidate_refresh_lifecycle",
+          "benchmarks.agent_supervisor.container_coding.test_source_formalization_worker_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_source_view_worker_wiring",
+          "test.api.test_owner_worker_attempt",
+          "test.api.test_source_formalization_context"
+        ],
+        "bytes": 287756,
+        "sha256": "dba6b5f4c93c371bf455d0fe62d66113c041b73bacccc04580f3eb8b4244bb49"
+      },
+      "stdout.log": {
+        "bytes": 283307,
+        "sha256": "489cbfee653ac7170364a05954e168d4e26631d24226d7c8f042d0f275eac048"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "deadline-router-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "deadline-router-v01",
+        "started_utc": "2026-10-15T23:59:00.503767+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T23:59:13.384496+00:00"
+      },
+      "junit": {
+        "tests": 211,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_router_candidate_dispatch",
+          "api.test_router_failure_diagnostics",
+          "api.test_router_implementation_runner",
+          "api.test_router_owner_provider_deadline",
+          "api.test_router_owner_worker_attempt_identity",
+          "api.test_router_prompt_selection",
+          "api.test_router_provider_failure_diagnostics"
+        ],
+        "bytes": 33846,
+        "sha256": "f360e9f5cd26258abd780a195e27616c90740166c2827ed07377d20e87d08c36"
+      },
+      "stdout.log": {
+        "bytes": 29453,
+        "sha256": "693aba9c0272c36c5d2233d6ffb3219a5e0b84b7eb6b415987ee2587eb9deb60"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "deadline-stream-archive-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "deadline-stream-archive-v01",
+        "started_utc": "2026-10-16T00:00:26.841871+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:00:42.725213+00:00"
+      },
+      "junit": {
+        "tests": 232,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_stream_absolute_deadline",
+          "test.api.test_stream_process_group_cleanup"
+        ],
+        "bytes": 49167,
+        "sha256": "7e49e5c19a331afb3a512bde860ebe76de292c97e5c6e39c61d27431b9c4236e"
+      },
+      "stdout.log": {
+        "bytes": 43103,
+        "sha256": "3f78cfc0f0dd3f6ff14d27fb081b739c5e9e0d958d348f8f28b622c73884bccf"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "deadline-transport-monitor-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "deadline-transport-monitor-v01",
+        "started_utc": "2026-10-16T00:01:30.830024+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:01:34.404572+00:00"
+      },
+      "junit": {
+        "tests": 58,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring",
+          "test.api.test_owner_provider_deadline"
+        ],
+        "bytes": 10963,
+        "sha256": "8d807802774076003bfe56432eada0fe624c17c4b3b4cf499ce2816ab70f0341"
+      },
+      "stdout.log": {
+        "bytes": 9633,
+        "sha256": "c3f753f04df960544605e56594f8c876218c2992d11658a1a2df225db2badb9b"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "source_verification": "Final runtime source hashes verified. The target-cwd preparation correction preceded transport and streamed-launcher qualification; later additions were tests and documentation.",
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "docker_runs": 0,
+  "real_boundaries": [
+    "Original daemon absolute deadline flows through existing streamed launcher to an exact selected owner wrapper",
+    "Actual anonymous memfd, mode0400, all four seals, canonical bounded bytes and exactbinaryfloat nanosecond floor",
+    "Actual direct-parent PID/start/UID/boot, process/mount namespaces and available time namespace, literal command and target directory inode",
+    "Different parent and target working directories; actual foreign grandchild refusal",
+    "Private markers removed and descriptor closed on consumption/refusal and Popen construction failure",
+    "Existing explicitly inherited archive descriptor survives independently; owner deadline descriptor closes before on_started",
+    "Generated owner monitor creates actual inert child, enforces prebirth/postregistration/postwait expiry and original remaining wait",
+    "Actual timeout child reap with false waited census; cleanup retains its independent grace interval",
+    "Owner local timeout can only shorten the inherited limit; invalid local timeout cannot erase it",
+    "Prompt capture stops before I/O after expiry and uses the same remaining budget",
+    "Ordinary coding router recomputes remaining after initialization and final descriptor context; preserves subsecond timeout and zero calls on expiry",
+    "Native candidate launcher/typed router retains successful and failed provider-stub accounting",
+    "Generic streams, existing census/source/broker lifecycle, finite-proof pre-Popen refusal and runtime archive compatibility"
+  ],
+  "authored_fixture_boundaries": [
+    "Temporary host shebang executable substitutes for the exact installed wrapper path",
+    "Generated entry fragments and monitor execute with authored deployment boundary and sudo cleanup observation",
+    "Router provider/catalog and container-boundary seams author local responses and invocation observations",
+    "Existing native candidate fixture authors Quack transport, deployment UID/path admission and provider initialization"
+  ],
+  "limitations": [
+    "Generated production script source is wired, but no Docker deployment/installation or actual cross-UID sudo qualification was performed",
+    "Deadline handoff is a restriction only; it carries no task, quantitative resource, dispatch, retry or completion authority",
+    "Only the literal installed owner wrapper is automatically selected; generic commands retain their existing transport",
+    "Planning, decision dialogues and provider-free paths have the owner wait limit, without the ordinary-coding router deadline argument",
+    "Provider timeout remains relative inside adapters; the absolute outer owner wait still bounds adapter preparation/execution",
+    "Cleanup may continue under independent grace after deadline; expiry does not prove descendants have stopped",
+    "Original host native handles cannot be reconstructed from this serialized deadline payload",
+    "Shared native ownership, writable allocation delegation, quantitative production resource handoff and explicit second-child policy remain open",
+    "No candidate retry default, target execution, proof acceptance or automatic task completion enabled",
+    "Provider-stub usage is authored, not billing or measured model cost",
+    "No matched TerminalBench trial, total token savings or legal autoformalization correctness claim"
+  ]
+}

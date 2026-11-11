@@ -1,0 +1,14 @@
+{
+  "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": {
+    "bytes": 3271027,
+    "sha256": "15f073bb60859500044527a0dfb26ad3ce812a23299242530b64c01c05ec9ca7"
+  },
+  "test/api/test_protected_git_worktree_creation.py": {
+    "bytes": 13526,
+    "sha256": "deeed4820145e9bdcdcf7fabf1bba49e70bec9704999c244d4d669101a78749b"
+  },
+  "docs/agent_supervisor/terminal_token_metadata_plan.md": {
+    "bytes": 115596,
+    "sha256": "8c755b659604a5d955b9bb9d0dda2108b54a6b4f58256f39b45a38819bc34a06"
+  }
+}

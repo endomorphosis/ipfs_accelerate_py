@@ -246,7 +246,7 @@ def classify_board_stall(
     )
     if selectable:
         if runtime.idle_for_s >= idle_stall_seconds:
-            return StallVerdict(True, "idle_incomplete", "attention", selectable)
+            return StallVerdict(True, "idle_with_open_work", "attention", selectable)
         return StallVerdict(False, "selectable_grace", "none", selectable)
     if incomplete:
         return StallVerdict(True, "idle_incomplete", "successor_tasks", incomplete)
