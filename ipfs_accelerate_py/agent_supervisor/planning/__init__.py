@@ -43,6 +43,7 @@ PLANNING_OWNED_MODULES: Final[tuple[str, ...]] = (
     "formal_planning_metrics",
     "formal_planning_rollout",
     "formal_replanner",
+    "parallel_lane_planner",
     "ir_learning_campaign_planner",
     "plan_evaluator",
     "plan_failure_memory",
@@ -56,6 +57,7 @@ PLANNING_LANDED_MODULES: Final[tuple[str, ...]] = (
     "plan_failure_memory",
     "formal_planning_metrics",
     "formal_planning_rollout",
+    "parallel_lane_planner",
 )
 
 # Packages that must not be imported by planning (DAG / cycle guard).

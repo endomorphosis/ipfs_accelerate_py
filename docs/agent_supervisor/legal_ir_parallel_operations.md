@@ -325,3 +325,13 @@ No dependent service or configuration is enabled by this source publication.
 Runtime databases, attestation keys, test caches, generated logs, and historical
 large-blob branch ancestry are excluded from Git publication. Their local files
 and branch references are preserved; no cleanup or history rewrite is implied.
+
+
+The independent parallel-lane planning owner from the patent/legal worktree is
+also retained through the maintained planning package. Its three software tests
+passed on 2026-11-14; it proposes conflict-graph slices and grants no execution or
+completion authority. The older daemon variant that completed protected outputs
+without validation, and resolved code add/add conflicts by larger content, is
+preserved on `preserve/patent-parallel-pending-20261114` rather than overwriting
+current main safeguards. The exact legacy home cleanup/configuration variant is
+preserved on `preserve/home-legacy-cleanup-20261114` for the same reason.
