@@ -387,3 +387,18 @@ without validation, and resolved code add/add conflicts by larger content, is
 preserved on `preserve/patent-parallel-pending-20261114` rather than overwriting
 current main safeguards. The exact legacy home cleanup/configuration variant is
 preserved on `preserve/home-legacy-cleanup-20261114` for the same reason.
+
+
+The exact historical native-bootstrap proposal from accelerator commit
+`8e02f9bed9f2a84a5a5245f90b0775ae1e806260` is now retained in its original
+`docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/`
+directory. Consult its `HISTORICAL_SOURCE.md` and source-preservation manifest.
+All 67 original source, test, fixture and documentation blobs retain their
+original bytes, modes, task IDs, failed controls and receipts. Static checks
+verified the Git blob/SHA256/size inventory, parsed 23 Python files and parsed
+the JSON documents; no archived helper, test or request was imported or run.
+The proposal remains uninstalled. Productive dispatch, runtime fault and
+cancellation qualification, native-resource qualification, and legal/model/Lean
+acceptance remain unresolved. This documentation recovery grants no current
+permission, resource capacity, source adoption, or operational qualification;
+current supervisor/runtime/resource owners retain authority.
