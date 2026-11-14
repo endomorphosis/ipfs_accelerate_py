@@ -1,0 +1,22 @@
+{
+  "base_publication_head": "be5547c51a0237c643287df2aecc357c1f5a15fb",
+  "canonical_attempt_cap": 2,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "github_qualification": "skipped_by_user",
+  "goals": [
+    "NADM-01: concrete source-bound native admin runtime",
+    "NADM-02: four original Git bootstrap hooks",
+    "NADM-03: actual same-PID full-phase original-host cap2 refusal qualification"
+  ],
+  "provider_or_model_calls": false,
+  "runtime_installation": false,
+  "schema": "legal-ir-native-bootstrap-phase-plan@1",
+  "scope_limits": [
+    "Cap2 host refusal permits original read-only SQL borrow/catalog witnesses; no SQL writes/reconnect/caller-close or consumed attempt.",
+    "Four Git source hooks preserve all original unbound branches and command outcome validators. Bound native refusal cannot fall back.",
+    "Use exact original public SDK root/phase in final PID, never copied grants or a nested generic worker.",
+    "Docker and clean source-generation capsule-copy paths remain outside this initial Git-only qualification."
+  ],
+  "status": "source_authoring"
+}

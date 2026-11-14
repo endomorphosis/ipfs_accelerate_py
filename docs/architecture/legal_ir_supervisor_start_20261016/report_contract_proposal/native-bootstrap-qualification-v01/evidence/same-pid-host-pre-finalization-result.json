@@ -1,0 +1,638 @@
+{
+  "Docker_calls": false,
+  "acceptance_authority": false,
+  "actual_Popen_observations": [
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1540771,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1554224,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1554598,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1555202,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1556895,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1557403,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1557464,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1557685,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1557892,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1558682,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1559205,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1560090,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1560815,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1560907,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1560996,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1561072,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1561147,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1561486,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1561841,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1562749,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1563023,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1563123,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1563134,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1563360,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1563545,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1564230,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1565775,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1566129,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1566136,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1566522,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1567020,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1567150,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1567296,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1568238,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1568824,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1568907,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1568932,
+      "session": 1518884
+    },
+    {
+      "owner_pid": 1518884,
+      "pgid": 1540771,
+      "pid": 1568942,
+      "session": 1518884
+    }
+  ],
+  "actual_cap_two_case": {
+    "Git_calls_inside_host_refusal": false,
+    "SELECT_witnesses_during_measured_refusal": 4,
+    "SQL_writes_during_measured_refusal": 0,
+    "acceptance_authority": false,
+    "actual_private_DuckDB_connection": true,
+    "actual_same_PID_three_CPU_phase": true,
+    "canonical_task_selection_or_cap_exhaustion_proved": false,
+    "canonical_tasks_accepted": 0,
+    "completion_authority": false,
+    "configured_profile_refusal_qualified": true,
+    "constructor_Git_custody_attested_by_this_component": false,
+    "full_original_daemon_class_constructed": true,
+    "hard_host_or_constructor_quota_qualified": false,
+    "host_finished": true,
+    "host_pending": false,
+    "original_cap_two": true,
+    "original_counter_row_unchanged": true,
+    "original_guard_calls": 1,
+    "passed": true,
+    "production_hook_deployed": false,
+    "provider_calls_performed": false,
+    "reviewed_composed_daemon_sha256": "39fc698864435ad9668ee88fcf86390ab2b34d048663a1096d08851b7abcca9d",
+    "same_borrow_identity_observations": 1,
+    "schema": "legal-ir-full-original-host-cap-two-case@1"
+  },
+  "actual_consumed_ordinal_qualified": false,
+  "actual_three_CPU_phase_lease_id": "8dab5792079e4f1cab752a71cdd67f6d",
+  "actual_three_CPU_root_lease_id": "beb6bc20856e4d44a40b21f366e8ef92",
+  "bootstrap_admin_bound_observation": {
+    "anchor_birth": "128017070",
+    "anchor_pid": 1540771,
+    "closed": false,
+    "command_count": 37,
+    "consumer": {
+      "acquired_at": 1792262097.0686193,
+      "cancelled": false,
+      "child_process_slots": 0,
+      "cpu_slots": 1,
+      "gpu_memory_mb": 0,
+      "lane": "orchestration",
+      "lease_id": "ebe80f7b4a5c4957b893e40a2724d051",
+      "memory_mb": 1,
+      "owner_pid": 1518884,
+      "parent_lease_id": "6c231b9e8dd5457c9f16da7c90221e2c",
+      "released": false,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 1.4079269021749496e-06
+    },
+    "host_pid": 1518884,
+    "native_child": {
+      "birth": "128017070",
+      "pid": 1540771
+    },
+    "native_owner_status": "active",
+    "native_prior_children": [],
+    "pending": false,
+    "portable_projection_grants_authority": false,
+    "released": false,
+    "session_pid": 1518884,
+    "total_output_bytes": 25405
+  },
+  "bootstrap_admin_check_true_passed": true,
+  "bootstrap_admin_closed_observation": {
+    "anchor_birth": "128017070",
+    "anchor_pid": 1540771,
+    "closed": true,
+    "command_count": 37,
+    "consumer": {
+      "acquired_at": 1792262097.0686193,
+      "cancelled": true,
+      "child_process_slots": 0,
+      "cpu_slots": 1,
+      "gpu_memory_mb": 0,
+      "lane": "orchestration",
+      "lease_id": "ebe80f7b4a5c4957b893e40a2724d051",
+      "memory_mb": 1,
+      "owner_pid": 1518884,
+      "parent_lease_id": "6c231b9e8dd5457c9f16da7c90221e2c",
+      "released": true,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 1.4079269021749496e-06
+    },
+    "host_pid": 1518884,
+    "native_child": {
+      "birth": "128017070",
+      "pid": 1540771
+    },
+    "native_owner_status": "active",
+    "native_prior_children": [],
+    "pending": false,
+    "portable_projection_grants_authority": false,
+    "released": false,
+    "session_pid": 1518884,
+    "total_output_bytes": 25405
+  },
+  "bootstrap_admin_component_semantics": [
+    {
+      "ordinal": 1,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 2,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 3,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 4,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 5,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 6,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 7,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 8,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 9,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 10,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 11,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 12,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 13,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 14,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 15,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 16,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 17,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 18,
+      "passed": true,
+      "text": false
+    },
+    {
+      "ordinal": 19,
+      "passed": true,
+      "text": true
+    },
+    {
+      "ordinal": 20,
+      "passed": true,
+      "text": false
+    }
+  ],
+  "bootstrap_admin_nonzero_check_false_passed": true,
+  "bootstrap_admin_release": {
+    "authority": "one_actual_child_of_existing_phase_no_additional_host_root",
+    "cleanup_error": null,
+    "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+    "external_file_growth_monitored": false,
+    "last_local_usage": {
+      "attempt_bytes": 0,
+      "attempt_limit_bytes": 33554432,
+      "checked_at": 1792262213.4570878,
+      "external_charged_bytes": 0,
+      "full_ledger_check": false,
+      "group_rss": {
+        "available": true,
+        "live_processes": 1,
+        "rss_bytes": 8675328
+      },
+      "memory_limit_bytes": 536870912,
+      "process_slot_estimate_exceeded": false,
+      "reserved_child_process_slots": 4,
+      "scope": "owned_attempt_and_original_process_group",
+      "total_attempt_charged_bytes": 0
+    },
+    "ledger_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-daemon-resource-control/disk-reservations.json",
+    "profile": "parented-phase-sampled/v1",
+    "record": {
+      "artifacts_durable_asserted": true,
+      "attempt_directory": {
+        "device": 66306,
+        "inode": 75370649,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-same-pid-full-host-20261017-r01/admin"
+      },
+      "attempt_exceeded_reservation": false,
+      "child": {
+        "birth": "128017070",
+        "pid": 1540771
+      },
+      "child_process_slots": 4,
+      "cpu_slots": 1,
+      "created_at": 1792262026.1212437,
+      "external_charges": {},
+      "final_accounting": {
+        "additional_requested_bytes": 0,
+        "charged_bytes": 158768755731,
+        "inventory": {
+          "apparent_bytes": 121532001491,
+          "entry_count": 1568101,
+          "special_file_count": 61,
+          "symlink_count": 2899
+        },
+        "limit_bytes": 160000000000,
+        "minimum_filesystem_free_bytes": 350183849984,
+        "observed_apparent_bytes": 121532001491,
+        "outstanding_full_reservations_bytes": 37236754240,
+        "scope": "named_roots_only_apparent_bytes"
+      },
+      "final_attempt_bytes": 0,
+      "final_external_charged_bytes": 0,
+      "final_total_charged_bytes": 0,
+      "finalization_profile": {
+        "global_accounting_seconds": 17.971149169141427,
+        "global_inventory_count": 1,
+        "ledger_lock_wait_seconds": 0.0004618559032678604,
+        "process_check_seconds": 0.017901509068906307,
+        "schema_version": "daemon-resource-finalization-profile/v1",
+        "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+        "strict_attempt_inventory_count": 1,
+        "strict_attempt_inventory_seconds": 0.00018984009511768818
+      },
+      "last_usage": {
+        "additional_requested_bytes": 0,
+        "attempt_bytes": 0,
+        "attempt_limit_bytes": 33554432,
+        "charged_bytes": 158802310163,
+        "checked_at": 1792262231.5755968,
+        "external_charged_bytes": 0,
+        "group_rss": {
+          "available": true,
+          "live_processes": 0,
+          "rss_bytes": 0
+        },
+        "inventory": {
+          "apparent_bytes": 121532001491,
+          "entry_count": 1568101,
+          "special_file_count": 61,
+          "symlink_count": 2899
+        },
+        "limit_bytes": 160000000000,
+        "memory_limit_bytes": 536870912,
+        "minimum_filesystem_free_bytes": 350183849984,
+        "observed_apparent_bytes": 121532001491,
+        "outstanding_full_reservations_bytes": 37270308672,
+        "process_slot_estimate_exceeded": false,
+        "reserved_child_process_slots": 4,
+        "scope": "named_roots_only_apparent_bytes",
+        "total_attempt_charged_bytes": 0
+      },
+      "memory_mb": 512,
+      "native_lease_id": "6c231b9e8dd5457c9f16da7c90221e2c",
+      "owner_pid": 1518884,
+      "parent_lease_id": "8dab5792079e4f1cab752a71cdd67f6d",
+      "prior_children": [],
+      "released_at": 1792262231.5846221,
+      "reservation_id": "4b16ff185f7a4369a8e7a66acf1fd130",
+      "scheduler_lane": "orchestration",
+      "scheduler_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+      "scheduler_state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+      "status": "released",
+      "storage_bytes": 33554432,
+      "workload": "canonical_parented_phase"
+    },
+    "reservation_id": "4b16ff185f7a4369a8e7a66acf1fd130",
+    "resource_lease": {
+      "acquired_at": 1792262026.1632707,
+      "cancelled": true,
+      "child_process_slots": 4,
+      "cpu_slots": 1,
+      "gpu_memory_mb": 0,
+      "lane": "orchestration",
+      "lease_id": "6c231b9e8dd5457c9f16da7c90221e2c",
+      "memory_mb": 512,
+      "owner_pid": 1518884,
+      "parent_lease_id": "8dab5792079e4f1cab752a71cdd67f6d",
+      "released": true,
+      "requires_gpu": false,
+      "unified_memory_mb": 0,
+      "wait_seconds": 1.3438984751701355e-06
+    },
+    "roots": [
+      {
+        "device": 66306,
+        "inode": 66764317,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs"
+      },
+      {
+        "device": 66306,
+        "inode": 58092485,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues"
+      },
+      {
+        "device": 66306,
+        "inode": 51016937,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/docs/implementation/reports/evidence"
+      },
+      {
+        "device": 66306,
+        "inode": 524344,
+        "path": "/tmp/pytest-of-barberb"
+      }
+    ],
+    "scheduler_lane": "orchestration",
+    "schema": "daemon-resource-reservations-v1",
+    "status": "released",
+    "storage_limit_bytes": 160000000000,
+    "workload": "canonical_parented_phase"
+  },
+  "canonical_configured_attempt_cap": 2,
+  "canonical_counter_or_cap_changed": false,
+  "canonical_tasks_accepted": 0,
+  "completion_authority": false,
+  "host_RSS_observations": [
+    {
+      "VmHWM": 217223168,
+      "VmRSS": 181440512,
+      "birth_ticks": "128006267",
+      "host_self_attachment": false,
+      "observation_only_not_kernel_quota": true,
+      "owner_pid": 1518884,
+      "stage": "before_bound_admin"
+    },
+    {
+      "VmHWM": 217223168,
+      "VmRSS": 182915072,
+      "birth_ticks": "128006267",
+      "host_self_attachment": false,
+      "observation_only_not_kernel_quota": true,
+      "owner_pid": 1518884,
+      "stage": "before_full_original_import"
+    },
+    {
+      "VmHWM": 234078208,
+      "VmRSS": 195338240,
+      "birth_ticks": "128006267",
+      "host_self_attachment": false,
+      "observation_only_not_kernel_quota": true,
+      "owner_pid": 1518884,
+      "stage": "after_original_constructor"
+    },
+    {
+      "VmHWM": 238133248,
+      "VmRSS": 204910592,
+      "birth_ticks": "128006267",
+      "host_self_attachment": false,
+      "observation_only_not_kernel_quota": true,
+      "owner_pid": 1518884,
+      "stage": "after_cap_two_refusal"
+    }
+  ],
+  "original_native_closeout_pending": true,
+  "passed": true,
+  "provider_or_model_calls": false,
+  "runtime_enabled": false,
+  "same_PID": 1518884,
+  "schema": "legal-ir-same-PID-full-host-qualification-result@1"
+}

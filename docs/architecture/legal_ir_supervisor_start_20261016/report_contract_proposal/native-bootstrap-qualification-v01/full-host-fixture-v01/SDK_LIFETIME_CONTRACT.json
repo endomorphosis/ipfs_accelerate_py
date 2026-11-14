@@ -1,0 +1,178 @@
+{
+  "schema": "legal-ir-full-host-original-SDK-lifetime-contract@1",
+  "status": "source_frozen_for_root_review_no_execution_or_runtime_activation",
+  "source_only_authoring": true,
+  "author_product_imports": 0,
+  "author_tests_jobs_Git_or_network": 0,
+  "runtime_enabled": false,
+  "canonical_tasks_accepted": 0,
+  "canonical_configured_attempt_cap": 2,
+  "canonical_historical_consumed_attempts": 2,
+  "acceptance_authority": false,
+  "completion_authority": false,
+  "native_sources": {
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986",
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py": "e19dbd913e30c6960d4a848bc2b2f15236944e55bc7718598e047fbdf664f18d",
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py": "d23e7f8a55d2563897b558502f05b11f89daa10f0ee6ff7dd2f142966ef7bce9",
+    "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py": "b9c8ca9f889366df93fd82887b7d6fcbfda9edee12a58a5667b485fe2c8a54ed"
+  },
+  "public_APIs": [
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
+      "line": 194,
+      "API": "open_existing_scheduler(state_path, expected_policy_sha256)",
+      "meaning": "Opens existing scheduler under exact policy; does not create a replacement policy, root, capacity expansion or portable grant."
+    },
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "line": 1856,
+      "API": "scheduler.acquire(ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=16, timeout=..., cancel_event=..., request_id=...)",
+      "meaning": "Actual root object acquired in final host PID; never pass owner_pid to impersonate a different process."
+    },
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "line": 953,
+      "API": "root.acquire_child(lane=ResourceLane.ORCHESTRATION, cpu_slots=3, memory_mb=4096, child_process_slots=16, timeout=..., cancel_event=..., request_id=...)",
+      "meaning": "Actual final host phase, same PID. Host receives this exact ResourceLease; generic1CPU8slot owner cannot substitute."
+    },
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "line": 44,
+      "API": "ParentedPhaseResourceReservation(..., parent_lease=actual_phase, scheduler_state_path=STATE, expected_scheduler_policy_sha256=POLICY, timeout_seconds=...)",
+      "meaning": "Actual sibling children of existing phase and durable disk claims. Existing owned0700 attempt dirs required; no overlapping outstanding attempt directories."
+    },
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "line": 166,
+      "API": "owner.native_lease",
+      "meaning": "Actual live authenticated owner lease; native consumer must derive from it and remain an actual object."
+    },
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "line": 237,
+      "API": "owner.finalize(owner.directory, artifacts_durable=True)",
+      "meaning": "Productive explicit stopped closeout requires live ancestry, no native consumers/group and durability; fresh global census is performed by original finalizer."
+    },
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py",
+      "line": 253,
+      "API": "owner.release(artifacts_durable=True)",
+      "meaning": "Explicit stopped cleanup after revocation; no consumers/group. Does not release ancestors or restore productive authority."
+    },
+    {
+      "file": "/home/barberb/lift_coding/artifacts/legal-conditions-composition-diagnostic-20261015-01/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "line": 983,
+      "API": "lease.release()",
+      "meaning": "Explicit ancestor release only after owned child work actually stops; idempotent. Context exit calls release unconditionally."
+    }
+  ],
+  "approved_fixture_topology": {
+    "root": {
+      "cpu_slots": 3,
+      "memory_mb": 4096,
+      "child_process_slots": 16,
+      "same_final_host_PID": true
+    },
+    "phase": {
+      "cpu_slots": 3,
+      "memory_mb": 4096,
+      "child_process_slots": 16,
+      "actual_child_of_root": true
+    },
+    "siblings": [
+      {
+        "role": "fixture_data",
+        "cpu_slots": 1,
+        "memory_mb": 3072,
+        "child_process_slots": 8,
+        "storage_bytes": 134217728,
+        "directory": "<fresh_attempt>/data",
+        "effects": "All private Git/DB/TMPDIR/import-copy outputs and receipts. No host self-attachment."
+      },
+      {
+        "role": "bootstrap_admin",
+        "cpu_slots": 1,
+        "memory_mb": 512,
+        "child_process_slots": 4,
+        "storage_bytes": 33554432,
+        "directory": "<fresh_attempt>/admin",
+        "effects": "Anchor and bounded administrative diagnostic/output files. Readonly initial Git command whitelist."
+      }
+    ],
+    "sum_siblings": {
+      "cpu_slots": 2,
+      "memory_mb": 3584,
+      "child_process_slots": 12,
+      "storage_bytes": 167772160
+    },
+    "host_profile": "Actual phase3CPU4096MiB16slots is passed to ReportOnlyNativeHost; fixture_data lease is not the host phase."
+  },
+  "source_import_order": [
+    "Strict bounded immutable request/source checks using stdlib only. Set no-bytecode/minimal trusted-native import environment before native imports.",
+    "Import only pinned original native SDK under a Popen-forbidding profiler; acquire original root then phase in final mainPID.",
+    "Create fresh owned0700 attempt/data/admin dirs; admit original data and admin PPR siblings before private outputs/product imports.",
+    "Actually generic-gated preparation invokes the pinned source-only assembler and charges3,807,556complete hook-source bytes, complete readonly2813-file capsule and bounded private Git seed before final owner use. It imports no product and grants no host.",
+    "Set TMPDIR/TMP/TEMP under data and umask0077; source-derived clean import copies are charged to data owner.",
+    "Import stdlib-only native_admin_execution via canonical runtime package while Popen is forbidden. If a parent package launches, refuse before child creation.",
+    "Bind exact actual executor, start/attach single same-session anchor and actual consumer, then exercise finite original Git and import full eager daemon.",
+    "Run full original constructor under same bound actual admin context. Derive host/entrygate pin-only successors from newly composed daemon source; no circular source hashes.",
+    "Leave admin binding; independently verify original anchor/group and consumer stopped. Explicit admin release after fsync. Only then construct actual host and perform private cap2 refusal.",
+    "Fsync private data and evidence, explicitly finalize/release original data owner, then release original phase/root only after original children/host/borrow all conclusively stopped."
+  ],
+  "cap_two_scope": {
+    "host_methods_unchanged_except_new_daemon_pin": true,
+    "expected_reason": "explicit_unchanged_report_only_profile_required_before_original_pass",
+    "SELECT_catalog_and_borrow_identity_witnesses_permitted": true,
+    "native_renewals_permitted": true,
+    "forbidden_during_measured_refusal": [
+      "SQL writes",
+      "new connection",
+      "reconnect",
+      "caller close",
+      "original productive _run_once",
+      "provider/model",
+      "Docker",
+      "task selection or attempt start"
+    ],
+    "actual_private_counter_and_cap_unchanged": true,
+    "not_qualified": [
+      "consumed attempt",
+      "successful productive pass",
+      "provider outcome",
+      "borrow-disposition closeout",
+      "candidate handoff",
+      "legal semantic fidelity",
+      "Lean build",
+      "cancellation administrative recovery"
+    ],
+    "canonical_task_selection_or_cap_exhaustion_proved": false
+  },
+  "failure_lifetime": {
+    "automatic_broad_with_finally_release_forbidden": true,
+    "reason": "ResourceLease.__exit__ always releases; PPR.__exit__ retains disk but may release native leaf. Catch pending INSIDE actual ancestors before automatic unwind.",
+    "retain": [
+      "actual root/phase",
+      "actual data/admin owners",
+      "executor/anchor/consumer/Popen refs",
+      "actual daemon/host",
+      "actual caller connection and borrow scope"
+    ],
+    "pending_acknowledgement": "Only component public acknowledge_stopped_native_admin_custody for existing original objects; no new Popen, retry, grant, key reconstruction or productive admission.",
+    "unknown_stopped_proof": "Retain actual samePID objects/ancestry and report pending. A finite productive deadline cannot authorize release of unknown work.",
+    "normal_known_stopped": "Explicit fsync+finalize/release both owners and ancestors; root independently checks real native/disk closeout.",
+    "known_stopped_failure": "No-resource failure exits normally. Known-stopped actual admin-only/diagnostic failure preserves a failure record and uses actual close/public stopped acknowledgement, fsync and original public owner/ancestor releases. Partial admission, unknown host/borrow or failed public closeout retains actual references; these recovery paths remain unqualified."
+  },
+  "blocked_on": [
+    "Root review and genuine36component/26hook control results",
+    "Actual original generic128MiB capsule+seed preparation and independent native finalization/root observation",
+    "Root-reviewed final same-PID request using actual prepared readonly outputs and current capacity"
+  ],
+  "frozen_dependencies": {
+    "native_admin_runtime_sha256": "12d96d89b1dfafffa1ca198510284c2c340741bb60774ec01c5011ef576697d3",
+    "native_admin_manifest_sha256": "69c6f08db4dfeed2cbddda13b1106c3ae52b99eed17988b828a8ecef04384693",
+    "hooks_manifest_sha256": "6bdb840982836f23bf05005750a8476f4f42308626b2ac53047358ac2af4ed2a",
+    "composed_daemon_sha256": "39fc698864435ad9668ee88fcf86390ab2b34d048663a1096d08851b7abcca9d",
+    "native_host_V06_sha256": "1fb433c29462fc65c15a2ea6be74cfc4c0f816c04d9a4ff95f3fc88a3e47ac0c",
+    "entry_gate_V02_sha256": "63bedb42176a195e5c9ab7c78079ef3498bccef34058462b1a07b41cbc3ab74f"
+  }
+}

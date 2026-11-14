@@ -1,0 +1,14 @@
+{
+  "acceptance_authority": false,
+  "new_daemon_sha256": "39fc698864435ad9668ee88fcf86390ab2b34d048663a1096d08851b7abcca9d",
+  "old_daemon_sha256": "67f4959c391776a1361a98f2a5f8d137e86ea5651e9ced0ab96fca3eb91f15a0",
+  "original_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/native-host-v05/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+  "original_sha256": "2b38d5a93c8e71ed02a5d52c1624a5b0a3a2a0dc759bace2b571aec6c0e956b6",
+  "positive_host_qualification": false,
+  "proposed_bytes": 33273,
+  "proposed_path": "proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+  "proposed_sha256": "1fb433c29462fc65c15a2ea6be74cfc4c0f816c04d9a4ff95f3fc88a3e47ac0c",
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-bootstrap-daemon-pin-successor@1",
+  "sole_change": "DAEMON_SHA literal; complete module AST otherwise identical."
+}

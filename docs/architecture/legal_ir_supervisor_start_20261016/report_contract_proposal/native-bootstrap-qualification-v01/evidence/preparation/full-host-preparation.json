@@ -1,0 +1,32 @@
+{
+  "acceptance_authority": false,
+  "actual_original_parent_attachment": {
+    "child_birth": 127919864,
+    "child_pgid": 1342157,
+    "child_pid": 1342157,
+    "native_leaf_id": "173a514019bb461e8e2b58aab44b35ab",
+    "original_parent_attachment_order_observed": true,
+    "parent_birth": 127918084,
+    "parent_pid": 1340028,
+    "phase_lease_id": "be1ec37f6e1d4ab69137fc2c35cc5375",
+    "portable_projection_grants_authority": false,
+    "root_lease_id": "41136dffcd0e489583c12aa7b671806c"
+  },
+  "capsule_manifest_sha256": "4cb5b370274eaa81efe6f80af2fd66c1ebcb3b31032b4ec30047e96f4a10d715",
+  "capsule_payload_bytes": 106984106,
+  "capsule_payload_file_count": 2813,
+  "capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/capsule",
+  "charged_assembled_module_bytes": 3807556,
+  "completion_authority": false,
+  "full_native_host_qualified": false,
+  "native_parent_finalization_pending": true,
+  "passed": true,
+  "private_seed_head": "e0aa7a6357847d8199471456dd31b09989785963",
+  "reviewed_worst_case_bytes": 120228846,
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-bootstrap-preparation-result@1",
+  "seed_manifest_sha256": "54ca6d9159afb41bcdaa41cf5b069aea79798e256318c551f4fabf53c6467449",
+  "seed_payload_bytes": 1158,
+  "seed_payload_file_count": 11,
+  "seed_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/git-seed"
+}

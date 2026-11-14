@@ -1,0 +1,41 @@
+{
+  "acceptance_authority": false,
+  "actual_parent_finalized": true,
+  "actual_positive_bootstrap_qualified": false,
+  "actual_root_phase_owner_rows_drained": true,
+  "canonical_tasks_accepted": 0,
+  "capacity_observation_is_not_standing_admission": true,
+  "capsule_manifest_sha256": "4cb5b370274eaa81efe6f80af2fd66c1ebcb3b31032b4ec30047e96f4a10d715",
+  "capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/capsule",
+  "disk_status": "released",
+  "final_attempt_bytes": 111365166,
+  "full_original_host_qualified": false,
+  "github_qualification": "skipped_by_user",
+  "independent_inputs": {
+    "capsule": {
+      "bytes": 106984106,
+      "files": 2813,
+      "independent_all_payload_hashes_and_modes_matched": true
+    },
+    "seed": {
+      "bytes": 1158,
+      "files": 11,
+      "independent_all_payload_hashes_and_modes_matched": true
+    }
+  },
+  "native_finalized": true,
+  "observed_epoch": 1792261435.5300457,
+  "observed_final_charged_bytes": 158876759217,
+  "original_owner_exited": true,
+  "passed": true,
+  "receipt": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/receipt.json",
+  "receipt_sha256": "3e0047df41daca6de5278925169a2f86b03892e222024df4e8b63a55635e14dc",
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-bootstrap-preparation-root-observation@1",
+  "seed_manifest_path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/GIT_SEED_MANIFEST.json",
+  "seed_manifest_sha256": "54ca6d9159afb41bcdaa41cf5b069aea79798e256318c551f4fabf53c6467449",
+  "seed_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/git-seed",
+  "unchanged_original_limit_bytes": 160000000000,
+  "worker_result": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01/full-host-preparation.json",
+  "worker_result_sha256": "39b535519084ded94598ede3efc13bd29507a80b001db3f9d05c93923e56ae6f"
+}
