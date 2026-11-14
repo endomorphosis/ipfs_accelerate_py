@@ -19,14 +19,10 @@ is side-effect free: no DuckDB handle is opened until
 
 from __future__ import annotations
 
-import ast
-import fcntl
 import hashlib
 import json
-import math
 import os
 import re
-import stat
 import subprocess
 import time
 from collections.abc import Mapping, Sequence
@@ -61,7 +57,6 @@ SHARED_IMPLEMENTATION_BRANCHES: Final[frozenset[str]] = frozenset(
 ARTEFACT_KINDS: Final[tuple[str, ...]] = (
     "ast",
     "embedding",
-    "vector_index",
     "bm25",
     "knowledge_graph",
     "proof_cache",
@@ -70,43 +65,11 @@ ARTEFACT_KINDS: Final[tuple[str, ...]] = (
 _ARTEFACT_TABLES: Final[dict[str, str]] = {
     "ast": "artefact_ast",
     "embedding": "artefact_embeddings",
-    "vector_index": "artefact_embeddings",
     "bm25": "artefact_bm25",
     "knowledge_graph": "artefact_knowledge_graph",
     "proof_cache": "artefact_proof_cache",
     "other": "artefact_generic",
 }
-_LAKE_SNAPSHOT_TABLES: Final[tuple[str, ...]] = (
-    "board_catalog",
-    "board_tasks",
-    "artefact_ast",
-    "artefact_embeddings",
-    "artefact_bm25",
-    "artefact_knowledge_graph",
-    "artefact_proof_cache",
-    "artefact_generic",
-    "control_metadata",
-)
-_CODEBASE_SKIP_DIRS: Final[frozenset[str]] = frozenset(
-    {
-        ".git",
-        ".hg",
-        ".venv",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        ".worktrees",
-        "worktrees",
-        ".pytest_cache",
-        "dist",
-        "build",
-        "site-packages",
-    }
-)
-_CODEBASE_DEFAULT_SUFFIXES: Final[tuple[str, ...]] = (".py",)
-_CODEBASE_MAX_FILES: Final = 400
-_CODEBASE_MAX_FILE_BYTES: Final = 256_000
-_VECTOR_INDEX_DIMENSIONS: Final = 64
 _SAFE_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 _TASK_HEADER = re.compile(r"^##\s+(\S+)\s*(.*)$")
 _MAX_JSON_BYTES: Final = 2 * 1024 * 1024
@@ -232,137 +195,6 @@ def infer_board_namespace(
     return "default"
 
 
-def discover_board_todo_path(
-    repo_root: str | os.PathLike[str],
-    namespace: str,
-) -> Path | None:
-    """Return the markdown taskboard for ``namespace`` when one is checked in."""
-
-    token = _safe_token(normalize_board_namespace(namespace))
-    unversioned = re.sub(r"-v\d+$", "", token)
-    stems = []
-    for raw in (token, unversioned):
-        if raw and raw not in stems:
-            stems.append(raw)
-    names: list[str] = []
-    for stem in stems:
-        underscored = stem.replace("-", "_")
-        hyphenated = stem.replace("_", "-")
-        for candidate_name in (
-            f"{underscored}.todo.md",
-            f"{hyphenated}.todo.md",
-            f"{stem}.todo.md",
-            "TASK_BOARD.md",
-            "task_board.md",
-        ):
-            if candidate_name not in names:
-                names.append(candidate_name)
-    root = Path(repo_root)
-    architecture = root / "docs" / "architecture"
-    search_roots = [architecture, root / "docs", root]
-    for stem in stems:
-        search_roots.append(architecture / stem.replace("-", "_"))
-        search_roots.append(architecture / stem.replace("_", "-"))
-    for directory in search_roots:
-        for name in names:
-            candidate = directory / name
-            if candidate.is_file():
-                return candidate
-    return None
-
-
-def _token_embedding(text: str, *, dim: int = _VECTOR_INDEX_DIMENSIONS) -> list[float]:
-    """Return a deterministic unit vector for BM25/vector-index fallbacks."""
-
-    tokens = re.findall(r"[A-Za-z0-9_]+", str(text or "").lower())
-    vector = [0.0] * max(1, int(dim))
-    if not tokens:
-        return vector
-    width = len(vector)
-    for token in tokens:
-        digest = hashlib.sha256(token.encode("utf-8")).digest()
-        index = int.from_bytes(digest[:2], "big") % width
-        sign = 1.0 if digest[2] % 2 == 0 else -1.0
-        vector[index] += sign
-    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-    return [round(value / norm, 6) for value in vector]
-
-
-def _iter_codebase_files(
-    root: Path,
-    *,
-    suffixes: Sequence[str] = _CODEBASE_DEFAULT_SUFFIXES,
-    max_files: int = _CODEBASE_MAX_FILES,
-    max_file_bytes: int = _CODEBASE_MAX_FILE_BYTES,
-) -> list[Path]:
-    allowed = {str(item).lower() for item in suffixes if str(item).strip()}
-    found: list[Path] = []
-    if not root.is_dir():
-        return found
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = [
-            name
-            for name in sorted(dirnames)
-            if name not in _CODEBASE_SKIP_DIRS and not name.startswith(".")
-        ]
-        for name in sorted(filenames):
-            path = Path(dirpath) / name
-            if path.suffix.lower() not in allowed:
-                continue
-            try:
-                if path.stat().st_size > max_file_bytes:
-                    continue
-            except OSError:
-                continue
-            found.append(path)
-            if len(found) >= max_files:
-                return found
-    return found
-
-
-def _python_module_name(path: Path, repo_root: Path) -> str:
-    try:
-        relative = path.resolve().relative_to(repo_root.resolve())
-    except ValueError:
-        relative = Path(path.name)
-    parts = list(relative.with_suffix("").parts)
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
-    return ".".join(parts) or path.stem
-
-
-def _python_ast_summary(text: str) -> dict[str, Any]:
-    try:
-        tree = ast.parse(text)
-    except SyntaxError as exc:
-        return {
-            "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
-            "functions": [],
-            "classes": [],
-            "imports": [],
-        }
-    functions: list[str] = []
-    classes: list[str] = []
-    imports: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            functions.append(node.name)
-        elif isinstance(node, ast.ClassDef):
-            classes.append(node.name)
-        elif isinstance(node, ast.Import):
-            imports.extend(alias.name for alias in node.names if alias.name)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imports.append(node.module)
-    return {
-        "ok": True,
-        "error": "",
-        "functions": sorted(set(functions))[:128],
-        "classes": sorted(set(classes))[:128],
-        "imports": sorted(set(imports))[:128],
-    }
-
-
 def control_plane_git_common_dir(repo_root: Path) -> Path:
     """Return the Git common directory without importing ``merge``."""
 
@@ -384,398 +216,10 @@ def control_plane_git_common_dir(repo_root: Path) -> Path:
     return path if path.is_absolute() else root / path
 
 
-ORCHESTRATION_DIR_ENV: Final = "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR"
-AGENT_HOME_ENV: Final = "IPFS_ACCELERATE_AGENT_HOME"
-DATABASE_HOME_HELP: Final = (
-    "Supervisor databases are under the account home in "
-    ".ipfs_accelerate/agent_supervisor: /home/<user> on Linux, "
-    "/Users/<user> on macOS, and C:\\Users\\<user> on Windows. "
-    "Set IPFS_ACCELERATE_AGENT_HOME to move that directory."
-)
-
-
-def agent_supervisor_home() -> Path:
-    """Return the per-account directory for agent-supervisor databases.
-
-    ``Path.home()`` selects the account home: ``/home/<user>`` on Linux,
-    ``/Users/<user>`` on macOS, and ``C:\\Users\\<user>`` on Windows. The
-    product directory is ``<home>/.ipfs_accelerate/agent_supervisor``. It is
-    outside every Git checkout and does not follow ``XDG_STATE_HOME``.
-    ``IPFS_ACCELERATE_AGENT_HOME`` replaces that directory.
-    """
-
-    configured = str(os.environ.get(AGENT_HOME_ENV, "") or "").strip()
-    if configured:
-        return Path(configured).expanduser()
-    return Path.home() / ".ipfs_accelerate" / "agent_supervisor"
-
-
-_LEGACY_PLATFORM_ADOPTED = False
-MANAGED_STATE_ROOT_MARKER: Final = ".agent-supervisor-managed-state.json"
-MANAGED_STATE_ROOT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/managed-state-root@1"
-
-
-def is_managed_state_root(root: Path | str) -> bool:
-    """Recognize an explicit owned custody boundary, never a name heuristic."""
-    directory = Path(root).resolve()
-    marker = directory / MANAGED_STATE_ROOT_MARKER
-    try:
-        if directory.stat().st_uid != os.getuid():
-            return False
-        descriptor = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(descriptor, "rb") as stream:
-            before = os.fstat(stream.fileno())
-            if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1 or before.st_mode & 0o022 or before.st_size > 4096:
-                return False
-            value = json.loads(stream.read(4097))
-            after = os.fstat(stream.fileno())
-        return (
-            (before.st_ino, before.st_size, before.st_mtime_ns) == (after.st_ino, after.st_size, after.st_mtime_ns)
-            and isinstance(value, dict) and value.get("schema") == MANAGED_STATE_ROOT_SCHEMA
-            and value.get("root_path") == str(directory) and value.get("owner_uid") == os.getuid()
-            and isinstance(value.get("owner_id"), str) and bool(value["owner_id"].strip())
-        )
-    except (OSError, ValueError, TypeError):
-        return False
-
-
-def register_managed_state_root(root: Path | str, *, owner_id: str) -> Path:
-    """Declare explicit state custody before native databases are created.
-
-    A valid marker excludes exactly this directory and descendants from the
-    legacy relocation scanner. Existing different or malformed declarations
-    are never overwritten; this is not a global migration-disable switch.
-    """
-    if not isinstance(owner_id, str) or not owner_id.strip() or len(owner_id) > 256:
-        raise BoardControlPlaneError("managed state owner identity is invalid")
-    directory = Path(root).expanduser().absolute()
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if directory.resolve() != directory or directory.stat().st_uid != os.getuid():
-        raise BoardControlPlaneError("managed state root ownership or path is unsafe")
-    marker = directory / MANAGED_STATE_ROOT_MARKER
-    payload = {"schema": MANAGED_STATE_ROOT_SCHEMA, "root_path": str(directory), "owner_uid": os.getuid(), "owner_id": owner_id}
-    try:
-        descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    except FileExistsError:
-        if not is_managed_state_root(directory):
-            raise BoardControlPlaneError("existing managed state marker is invalid")
-        if json.loads(marker.read_text())["owner_id"] != owner_id:
-            raise BoardControlPlaneError("managed state root belongs to another owner")
-        return marker
-    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-        stream.write(_canonical_json(payload) + "\n")
-        stream.flush()
-        os.fsync(stream.fileno())
-    return marker
-
-
-def adopt_legacy_platform_databases() -> int:
-    """Move unlocked DuckDB files out of the old ``~/.local`` platform dirs.
-
-    The destination keeps the relative path under
-    ``<agent_supervisor_home>/legacy-platform-state``. Locked files and the
-    extra-gate ``control.duckdb`` owner and explicitly registered managed
-    state subtrees stay where they are. The scan runs
-    once per process.
-    """
-
-    global _LEGACY_PLATFORM_ADOPTED
-    if _LEGACY_PLATFORM_ADOPTED:
-        return 0
-    _LEGACY_PLATFORM_ADOPTED = True
-    home = Path.home()
-    destination_root = agent_supervisor_home() / "legacy-platform-state"
-    moved = 0
-    for legacy_root in (
-        home / ".local" / "state" / "ipfs_accelerate_py",
-        home / ".local" / "share" / "ipfs_accelerate_py",
-    ):
-        if not legacy_root.is_dir():
-            continue
-        for directory, dirnames, filenames in os.walk(legacy_root):
-            current = Path(directory)
-            if is_managed_state_root(current):
-                dirnames[:] = []
-                continue
-            dirnames[:] = [
-                name
-                for name in dirnames
-                if name not in {".git", "node_modules", "__pycache__"}
-                and name != "sidecar-quarantine"
-            ]
-            for name in filenames:
-                if not name.endswith(".duckdb"):
-                    continue
-                if (
-                    name in _SEALED_CHECKOUT_DUCKDB_NAMES
-                    or name.startswith("quack-lane-control")
-                ):
-                    continue
-                source = current / name
-                if not source.is_file() or source.is_symlink():
-                    continue
-                try:
-                    relative = source.relative_to(legacy_root)
-                except ValueError:
-                    continue
-                destination = destination_root / relative
-                if destination.exists():
-                    continue
-                if _path_locked(source) or any(
-                    _path_locked(companion)
-                    for companion in _duckdb_companions(source)
-                ):
-                    continue
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    os.rename(source, destination)
-                except OSError:
-                    continue
-                moved += 1
-                for companion in _duckdb_companions(source):
-                    if (
-                        not companion.exists()
-                        or companion.is_symlink()
-                        or _path_locked(companion)
-                    ):
-                        continue
-                    target = destination.parent / companion.name
-                    if target.exists():
-                        continue
-                    try:
-                        os.rename(companion, target)
-                    except OSError:
-                        continue
-    return moved
-
-
-def orchestration_state_root() -> Path:
-    """Parent of per-repository orchestration DuckDB catalogs.
-
-    The default is ``<agent_supervisor_home>/orchestration``. Set
-    ``IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR`` to replace only that subtree.
-    The first unconfigured lookup also moves unlocked DuckDB files out of
-    ``~/.local/state/ipfs_accelerate_py`` and
-    ``~/.local/share/ipfs_accelerate_py``.
-    """
-
-    configured = str(os.environ.get(ORCHESTRATION_DIR_ENV, "") or "").strip()
-    if configured:
-        return Path(configured).expanduser()
-    adopt_legacy_platform_databases()
-    return agent_supervisor_home() / "orchestration"
-
-
-def orchestration_scope_for_identity(identity_root: Path | str) -> Path:
-    """Return the orchestration directory for one already-resolved Git identity."""
-
-    digest = hashlib.sha256(str(Path(identity_root).resolve()).encode("utf-8")).hexdigest()[:20]
-    return orchestration_state_root() / digest
-
-
-def orchestration_scope_dir(anchor: Path | str) -> Path:
-    """Stable directory for one repository, keyed by Git identity but not stored in ``.git``."""
-
-    path = Path(anchor).expanduser()
-    current = path if path.is_dir() else path.parent
-    identity_root: Path | None = None
-    for parent in (current, *current.parents):
-        if (parent / ".git").exists():
-            identity_root = control_plane_git_common_dir(parent)
-            break
-    if identity_root is None:
-        identity_root = current.resolve()
-    return orchestration_scope_for_identity(identity_root)
-
-
-def _catalog_busy(directory: Path) -> bool:
-    """Return whether a process holds a lock on a catalog file in ``directory``."""
-
-    if not directory.exists():
-        return False
-    for path in directory.rglob("*"):
-        if not path.is_file() or path.is_symlink():
-            continue
-        name = path.name
-        if not (
-            name.endswith(".duckdb")
-            or name.endswith(".duckdb.wal")
-            or name.endswith(".lock")
-        ):
-            continue
-        try:
-            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-        except OSError:
-            continue
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        except BlockingIOError:
-            return True
-        finally:
-            os.close(fd)
-    return False
-
-
-def _path_locked(path: Path) -> bool:
-    if not path.exists() or path.is_symlink():
-        return False
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    except OSError:
-        return False
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fcntl.flock(fd, fcntl.LOCK_UN)
-    except BlockingIOError:
-        return True
-    finally:
-        os.close(fd)
-    return False
-
-
-def _duckdb_companions(database: Path) -> tuple[Path, ...]:
-    name = database.name
-    parent = database.parent
-    return (
-        Path(str(database) + ".wal"),
-        parent / f".{name}.lock",
-        parent / f".{name}.writer.lock",
-        parent / f".{name}.state-owner.lock",
-    )
-
-
-_SEALED_CHECKOUT_DUCKDB_NAMES = frozenset(
-    {
-        "control.duckdb",
-        "quack-lane-control.duckdb",
-        "quack-lane-control.coordination.duckdb",
-        "quack-lane-control.execution.duckdb",
-    }
-)
-
-
-def repo_resident_duckdb(path: Path | str, *, relocate: bool = True) -> Path:
-    """Place a checkout DuckDB file under the orchestration home.
-
-    Files under the system temp directory stay put, as do the extra-gate
-    ``control.duckdb`` owner, sealed VRIF lane catalogs, and files that are
-    already outside a Git checkout. An unlocked file inside a checkout is
-    moved, with its WAL and lock companions. A held lock keeps the current
-    path. ``relocate=False`` only computes the destination.
-    """
-
-    import tempfile
-
-    candidate = Path(path).expanduser()
-    absolute = candidate if candidate.is_absolute() else Path.cwd() / candidate
-    try:
-        absolute.resolve(strict=False).relative_to(Path(tempfile.gettempdir()).resolve())
-        return absolute
-    except ValueError:
-        pass
-    if (
-        absolute.suffix.lower() not in {".duckdb", ".ddb"}
-        or absolute.name in _SEALED_CHECKOUT_DUCKDB_NAMES
-    ):
-        return absolute
-    try:
-        absolute.resolve(strict=False).relative_to(orchestration_state_root().resolve())
-        return absolute
-    except ValueError:
-        pass
-    repo: Path | None = None
-    for parent in (absolute.parent, *absolute.parent.parents):
-        if (parent / ".git").exists():
-            repo = parent
-            break
-    if repo is None:
-        return absolute
-    try:
-        relative = absolute.resolve(strict=False).relative_to(repo.resolve())
-    except ValueError:
-        return absolute
-    if "sidecar-quarantine" in relative.parts:
-        return absolute
-    parts: list[str] = []
-    for part in relative.parts:
-        safe = "".join(char if char.isalnum() or char in "._-" else "_" for char in part)
-        parts.append((safe or "_")[:120])
-    destination = orchestration_scope_dir(repo).joinpath("catalogs", *parts)
-    if destination == absolute or not relocate:
-        return destination
-    if not absolute.exists() or absolute.is_symlink():
-        return destination
-    if _path_locked(absolute) or any(
-        _path_locked(companion) for companion in _duckdb_companions(absolute)
-    ):
-        return absolute
-    if destination.exists():
-        return destination
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        os.rename(absolute, destination)
-    except OSError:
-        return absolute
-    for companion in _duckdb_companions(absolute):
-        if not companion.exists() or companion.is_symlink() or _path_locked(companion):
-            continue
-        target = destination.parent / companion.name
-        if target.exists():
-            continue
-        try:
-            os.rename(companion, target)
-        except OSError:
-            continue
-    return destination
-
-
-def adopt_legacy_catalog(legacy: Path, destination: Path) -> bool:
-    """Move an unlocked legacy catalog onto ``destination`` when that path is free.
-
-    A held lock or an existing destination leaves ``legacy`` where it is.
-    Returns whether the directory was moved.
-    """
-
-    source = Path(legacy)
-    target = Path(destination)
-    if not source.exists() or source.is_symlink() or target.exists():
-        return False
-    if _catalog_busy(source):
-        return False
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        os.rename(source, target)
-    except OSError:
-        return False
-    return True
-
-
 def default_control_plane_root(repo_root: Path) -> Path:
-    """Return the shared control-plane directory for every worktree of ``repo``.
+    """Return the shared control-plane directory for every worktree of ``repo``."""
 
-    The Git common directory identifies the repository. The catalog itself
-    lives under ``agent_supervisor_home()``, not inside ``.git``. An unlocked
-    catalog left at ``.git/agent-board-control-plane`` is moved on first use.
-    """
-
-    destination = orchestration_scope_dir(repo_root) / "board-control-plane"
-    legacy = control_plane_git_common_dir(repo_root) / CONTROL_PLANE_DIRECTORY_NAME
-    adopt_legacy_catalog(legacy, destination)
-    return destination
-
-
-def orchestration_database(anchor: Path | str, *parts: str) -> Path:
-    """Return one DuckDB catalog path under the repository orchestration scope.
-
-    ``parts`` is a relative path such as ``("bundle", "coordination.duckdb")``.
-    The Git common directory identifies the repository and is not the storage
-    location.
-    """
-
-    if not parts:
-        raise ValueError("orchestration database path requires at least one component")
-    return orchestration_scope_dir(anchor).joinpath(*parts)
+    return control_plane_git_common_dir(repo_root) / CONTROL_PLANE_DIRECTORY_NAME
 
 
 def board_database_path(root: Path, namespace: str) -> Path:
@@ -1035,20 +479,8 @@ def ensure_board_implementation_branch(
     }
 
 
-BOARD_EXTENSION_INSTALL_POLICY_ENV = (
-    "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY"
-)
-BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY = "load_only"
-BOARD_EXTENSION_INSTALL_POLICY_DISABLED = "disabled"
-
-
-def _try_load_extension(
-    connection: Any,
-    name: str,
-    *,
-    allow_install: bool = True,
-) -> str:
-    """Load a local extension, optionally permitting an INSTALL fallback.
+def _try_load_extension(connection: Any, name: str) -> str:
+    """Load a locally installed extension; INSTALL only if LOAD fails.
 
     The sealed :class:`DuckDBConnection` policy locks
     ``enable_external_access=false`` at connect time, which makes community
@@ -1061,11 +493,6 @@ def _try_load_extension(
         connection.execute(f"LOAD {name}")
         return ""
     except Exception as load_exc:
-        if not allow_install:
-            return (
-                f"LOAD {type(load_exc).__name__}: {load_exc}; "
-                "INSTALL disabled by policy"
-            )
         try:
             connection.execute(f"INSTALL {name}")
             connection.execute(f"LOAD {name}")
@@ -1417,45 +844,6 @@ class BoardControlPlane:
             count += 1
             if count >= _MAX_TASKS:
                 break
-        self._ingest_task_dependency_graph(board, tasks)
-        return count
-
-    def _ingest_task_dependency_graph(
-        self,
-        namespace: str,
-        tasks: Sequence[Mapping[str, Any]],
-    ) -> int:
-        """Project board dependency edges into the DuckLake knowledge graph."""
-
-        count = 0
-        for raw in tasks:
-            if not isinstance(raw, Mapping):
-                continue
-            task_id = str(
-                raw.get("task_id") or raw.get("id") or raw.get("task_alias") or ""
-            ).strip()
-            if not task_id:
-                continue
-            depends = raw.get("depends_on") or raw.get("dependencies") or []
-            if isinstance(depends, str):
-                items = [item.strip() for item in depends.split(",") if item.strip()]
-            elif isinstance(depends, Sequence):
-                items = [str(item).strip() for item in depends if str(item).strip()]
-            else:
-                items = []
-            for index, dependency in enumerate(items):
-                if dependency.lower() in {"none", "n/a", "-"}:
-                    continue
-                self.put_artefact(
-                    "knowledge_graph",
-                    board_namespace=namespace,
-                    artefact_id=f"dep:{task_id}:{index}:{dependency}",
-                    subject=task_id,
-                    predicate="depends_on",
-                    object=dependency,
-                    payload={"kind": "board_dependency"},
-                )
-                count += 1
         return count
 
     def ingest_markdown_board(
@@ -1567,8 +955,6 @@ class BoardControlPlane:
         selected = str(kind or "other").strip().lower()
         if selected not in ARTEFACT_KINDS:
             selected = "other"
-        if selected == "vector_index":
-            selected = "embedding"
         board = normalize_board_namespace(board_namespace)
         identity = str(artefact_id or "").strip()
         if not identity:
@@ -1769,16 +1155,16 @@ class BoardControlPlane:
         )
         if self.ducklake_attached:
             try:
-                self._project_relations_to_lake()
-            except Exception as exc:
+                connection.execute(
+                    "CREATE OR REPLACE TABLE lake.board_catalog AS "
+                    "SELECT * FROM board_catalog"
+                )
+                connection.execute(
+                    "CREATE OR REPLACE TABLE lake.board_tasks AS "
+                    "SELECT * FROM board_tasks"
+                )
+            except Exception:
                 self.ducklake_attached = False
-                self.backend = (
-                    "duckdb+quack" if self.quack_loaded else "hermetic-duckdb"
-                )
-                self.extension_errors = (
-                    *self.extension_errors,
-                    f"ducklake_projection: {type(exc).__name__}: {exc}",
-                )
         count_row = connection.execute(
             "SELECT COUNT(*) FROM board_catalog"
         ).fetchone()
@@ -1789,299 +1175,6 @@ class BoardControlPlane:
             "ducklake_attached": self.ducklake_attached,
             "quack_loaded": self.quack_loaded,
         }
-
-    def _project_relations_to_lake(self) -> None:
-        """Copy catalog, tasks, and codebase artefacts into the DuckLake catalog."""
-
-        if not self.ducklake_attached:
-            return
-        connection = self._conn()
-        for table in _LAKE_SNAPSHOT_TABLES:
-            safe = "".join(
-                character if character.isalnum() or character == "_" else "_"
-                for character in table
-            )
-            connection.execute(
-                f'CREATE OR REPLACE TABLE lake."{safe}" AS SELECT * FROM "{safe}"'
-            )
-
-    def ingest_codebase_artefacts(
-        self,
-        repo_root: str | os.PathLike[str],
-        namespace: str,
-        *,
-        source_root: str | os.PathLike[str] | None = None,
-        max_files: int = _CODEBASE_MAX_FILES,
-        suffixes: Sequence[str] = _CODEBASE_DEFAULT_SUFFIXES,
-        proof_cache_paths: Sequence[str | os.PathLike[str]] = (),
-    ) -> dict[str, Any]:
-        """Index one codebase snapshot into AST / vector / KG / proof DuckLake tables."""
-
-        board = normalize_board_namespace(namespace)
-        root = Path(repo_root)
-        scan_root = Path(source_root) if source_root is not None else root
-        files = _iter_codebase_files(
-            scan_root,
-            suffixes=suffixes,
-            max_files=max_files,
-        )
-        ast_count = 0
-        embedding_count = 0
-        bm25_count = 0
-        kg_count = 0
-        proof_count = 0
-        for path in files:
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-            try:
-                relative = path.resolve().relative_to(root.resolve()).as_posix()
-            except ValueError:
-                relative = path.name
-            summary = (
-                _python_ast_summary(text) if path.suffix.lower() == ".py" else {"ok": True}
-            )
-            self.put_artefact(
-                "ast",
-                board_namespace=board,
-                artefact_id=f"ast:{relative}",
-                path=relative,
-                digest=digest,
-                payload={
-                    "suffix": path.suffix.lower(),
-                    "bytes": len(text.encode("utf-8")),
-                    **summary,
-                },
-            )
-            ast_count += 1
-            tokens = " ".join(
-                part
-                for part in (
-                    relative,
-                    " ".join(summary.get("classes") or ()),
-                    " ".join(summary.get("functions") or ()),
-                    " ".join(summary.get("imports") or ()),
-                )
-                if part
-            )
-            vector = _token_embedding(tokens or relative)
-            self.put_artefact(
-                "vector_index",
-                board_namespace=board,
-                artefact_id=f"vec:{relative}",
-                model="sha256-token-v1",
-                dim=len(vector),
-                vector=vector,
-                text=tokens or relative,
-                payload={"path": relative, "digest": digest},
-            )
-            embedding_count += 1
-            self.put_artefact(
-                "bm25",
-                board_namespace=board,
-                artefact_id=f"bm25:{relative}",
-                field="source",
-                tokens=tokens or relative,
-                payload={"path": relative},
-            )
-            bm25_count += 1
-            module = _python_module_name(path, root)
-            self.put_artefact(
-                "knowledge_graph",
-                board_namespace=board,
-                artefact_id=f"file:{relative}",
-                subject=board,
-                predicate="contains_file",
-                object=relative,
-                payload={"module": module, "digest": digest},
-            )
-            kg_count += 1
-            for imported in summary.get("imports") or ():
-                self.put_artefact(
-                    "knowledge_graph",
-                    board_namespace=board,
-                    artefact_id=f"imp:{relative}:{imported}",
-                    subject=module,
-                    predicate="imports",
-                    object=str(imported),
-                    payload={"path": relative},
-                )
-                kg_count += 1
-            parse_ok = bool(summary.get("ok", True))
-            self.put_artefact(
-                "proof_cache",
-                board_namespace=board,
-                artefact_id=f"parse:{relative}",
-                obligation_id="ast.parse",
-                status="verified" if parse_ok else "failed",
-                payload={
-                    "path": relative,
-                    "digest": digest,
-                    "error": summary.get("error") or "",
-                },
-            )
-            proof_count += 1
-        proof_count += self.ingest_proof_cache_files(
-            board,
-            proof_cache_paths or self._discover_proof_cache_files(root),
-        )
-        self.aggregate_boards()
-        return {
-            "schema": BOARD_CONTROL_PLANE_SCHEMA,
-            "board_namespace": board,
-            "source_root": str(scan_root),
-            "file_count": len(files),
-            "ast_count": ast_count,
-            "embedding_count": embedding_count,
-            "bm25_count": bm25_count,
-            "knowledge_graph_count": kg_count,
-            "proof_cache_count": proof_count,
-            "proof_cache_ingestion": self.last_proof_cache_ingestion,
-            "backend": self.backend,
-            "ducklake_attached": self.ducklake_attached,
-        }
-
-    def _discover_proof_cache_files(self, repo_root: Path) -> list[Path]:
-        names = (
-            "formal_verification_cache.duckdb",
-            "doctor_proof_cache.sqlite3",
-            "doctor_proof_cache.duckdb",
-        )
-        found: list[Path] = []
-        search_roots = (
-            repo_root / "data" / "agent_supervisor",
-            repo_root / "workspace" / "agent-supervisor",
-        )
-        for directory in search_roots:
-            if not directory.is_dir():
-                continue
-            for dirpath, dirnames, filenames in os.walk(directory, followlinks=False):
-                dirnames[:] = [
-                    name
-                    for name in dirnames
-                    if name not in _CODEBASE_SKIP_DIRS
-                ]
-                for name in filenames:
-                    if name in names:
-                        found.append(Path(dirpath) / name)
-                        if len(found) >= 16:
-                            return found
-        return found
-
-    def ingest_proof_cache_page(
-        self, namespace: str, path: str | os.PathLike[str], *,
-        after_key_id: str = "", page_size: int = 512,
-    ) -> dict[str, Any]:
-        """Copy one ordered historical page, exposing omissions and continuation.
-
-        The cursor is a key, not an authority token or a database snapshot.
-        Separate calls may observe different cache generations; a completed
-        traversal alone cannot establish current repository proof coverage.
-        """
-        from .duckdb_state import open_duckdb_connection
-
-        if type(page_size) is not int or not 1 <= page_size <= 512:
-            raise BoardControlPlaneError("proof page size must be an integer from 1 to 512")
-        if type(after_key_id) is not str or len(after_key_id.encode()) > 8192:
-            raise BoardControlPlaneError("bounded proof continuation key required")
-        board = normalize_board_namespace(namespace)
-        source = Path(path).absolute()
-        report = dict(schema="board-proof-cache-page@1", source=str(source),
-            after_key_id=after_key_id, next_after_key_id=None, scanned=0, ingested=0,
-            omissions=[], status="unavailable", traversal_complete=False,
-            snapshot_consistent=False, proof_authority=False, completion_authority=False)
-        if not source.is_file() or source.suffix.lower() not in {".duckdb", ".ddb"}:
-            report["omissions"].append({"reason": "missing_or_unsupported_cache_file"})
-            return report
-        if source.resolve() == self.database_path.resolve():
-            report["omissions"].append({"reason": "board_catalog_is_not_a_proof_cache"})
-            return report
-        try:
-            cache = open_duckdb_connection(source, timeout_seconds=1, memory_limit="64MB", threads=1)
-            try:
-                rows = cache.execute("""SELECT key_id, key_json, entry_json FROM proof_cache_entries
-                    WHERE key_id > ? ORDER BY key_id LIMIT ?""", [after_key_id, page_size + 1]).fetchall()
-            finally:
-                cache.close()
-        except Exception as exc:
-            report["omissions"].append({"reason": "cache_read_unavailable", "error_type": type(exc).__name__})
-            return report
-        selected = rows[:page_size]
-        report["scanned"] = len(selected)
-        for row in selected:
-            key_id = row[0]
-            if type(key_id) is not str or not key_id or len(key_id.encode()) > 8192:
-                report["omissions"].append({"reason": "invalid_cache_key"})
-                continue
-            try:
-                if (type(row[1]) is not str or type(row[2]) is not str
-                        or len(row[1].encode()) + len(row[2].encode()) > 2 * 1024 * 1024):
-                    raise ValueError("oversized cache row")
-                key = json.loads(row[1]); entry = json.loads(row[2])
-                if type(key) is not dict or type(entry) is not dict:
-                    raise ValueError("non-object cache row")
-            except (TypeError, ValueError):
-                report["omissions"].append({"reason": "malformed_cache_row", "key_id": key_id})
-                continue
-            # Full locator/key identity avoids collisions between equal basenames
-            # or keys sharing the old 80-character prefix. Entry flags are data.
-            identity = hashlib.sha256(_canonical_json({"source": str(source.resolve()),
-                                                       "key_id": key_id}).encode()).hexdigest()
-            self.put_artefact("proof_cache", board_namespace=board,
-                artefact_id="cache:" + identity,
-                obligation_id=str(key.get("obligation") or key_id)[:240],
-                status="historical_candidate", payload={"source": str(source), "key_id": key_id,
-                    "key": key, "entry": entry, "proof_authority": False,
-                    "completion_authority": False, "requires_fresh_verification": True})
-            report["ingested"] += 1
-        more = len(rows) > page_size
-        report["next_after_key_id"] = selected[-1][0] if more else None
-        report["traversal_complete"] = not more
-        report["status"] = "partial" if report["omissions"] else ("page" if more else "complete")
-        return report
-
-    def ingest_proof_cache_files(
-        self, namespace: str, paths: Sequence[str | os.PathLike[str]], *, max_pages: int = 128,
-    ) -> int:
-        """Compatibility count API; complete pages and omissions are retained.
-
-        ``last_proof_cache_ingestion`` records bounds, unavailable files and
-        continuation keys. Use ``ingest_proof_cache_page`` to resume a bounded
-        traversal. Historical records never admit proof or completion.
-        """
-        if type(max_pages) is not int or not 1 <= max_pages <= 4096:
-            raise BoardControlPlaneError("proof ingestion max_pages must be from 1 to 4096")
-        reports = []
-        total = 0
-        for path in paths:
-            after = ""
-            for _ in range(max_pages):
-                report = self.ingest_proof_cache_page(namespace, path, after_key_id=after)
-                reports.append(report)
-                total += report["ingested"]
-                next_key = report["next_after_key_id"]
-                if next_key is None:
-                    break
-                if not isinstance(next_key, str) or next_key <= after:
-                    report["omissions"].append({"reason": "nonadvancing_cache_cursor"})
-                    report["status"] = "partial"
-                    break
-                after = next_key
-            else:
-                reports[-1]["omissions"].append({"reason": "page_budget_exhausted"})
-                reports[-1]["status"] = "partial"
-        self.last_proof_cache_ingestion = {
-            "schema": "board-proof-cache-ingestion@1", "ingested": total, "pages": reports,
-            "traversal_complete": all(r["traversal_complete"] for r in reports
-                if r["next_after_key_id"] is None) and all(
-                    not r["omissions"] for r in reports),
-            "snapshot_consistent": False, "proof_authority": False, "completion_authority": False}
-        report_id = hashlib.sha256(_canonical_json(self.last_proof_cache_ingestion).encode()).hexdigest()
-        self.put_artefact("other", board_namespace=namespace,
-            artefact_id="proof-cache-ingestion:" + report_id, payload=self.last_proof_cache_ingestion)
-        return total
 
     def _materialize_board_database(self, namespace: str, path: Path) -> None:
         """Write a queryable per-board DuckDB sibling for Quack/DuckLake attach."""
@@ -2145,8 +1238,6 @@ def _open_extension_capable_connection(
     database_path: Path,
     *,
     timeout_seconds: float,
-    allow_extension_install: bool,
-    allow_extension_load: bool,
 ) -> DuckDBConnection:
     """Open the catalog with a raw DuckDB handle that can LOAD Quack/DuckLake."""
 
@@ -2163,46 +1254,11 @@ def _open_extension_capable_connection(
     except ImportError:
         lock_context.__exit__(None, None, None)
         raise
-    raw = None
     try:
-        if allow_extension_install:
-            configuration = {}
-        elif allow_extension_load:
-            configuration = {
-                "autoinstall_known_extensions": "false",
-                "autoload_known_extensions": "false",
-                "enable_external_access": "true",
-                "allow_unsigned_extensions": "false",
-            }
-        else:
-            configuration = {
-                "autoinstall_known_extensions": "false",
-                "autoload_known_extensions": "false",
-                "enable_external_access": "false",
-                "allow_unsigned_extensions": "false",
-                "threads": "1",
-                "memory_limit": "128MB",
-                "lock_configuration": "true",
-            }
-        raw = duckdb.connect(str(database_path), config=configuration)
-        if allow_extension_install or allow_extension_load:
-            raw.execute("SET threads=1")
-            raw.execute("SET memory_limit='128MB'")
-        else:
-            settings = raw.execute(
-                "SELECT current_setting('autoinstall_known_extensions'), "
-                "current_setting('autoload_known_extensions'), "
-                "current_setting('enable_external_access'), "
-                "current_setting('allow_unsigned_extensions'), "
-                "current_setting('lock_configuration')"
-            ).fetchone()
-            if settings != (False, False, False, False, True):
-                raise BoardControlPlaneError(
-                    "board extension denial policy did not lock exactly"
-                )
+        raw = duckdb.connect(str(database_path))
+        raw.execute("SET threads=1")
+        raw.execute("SET memory_limit='128MB'")
     except BaseException:
-        if raw is not None:
-            raw.close()
         lock_context.__exit__(None, None, None)
         raise
     wrapped = DuckDBConnection.wrap(raw)
@@ -2211,116 +1267,52 @@ def _open_extension_capable_connection(
     return wrapped
 
 
-def _lock_extension_capable_connection(
-    connection: DuckDBConnection,
+def open_board_control_plane(
+    repo_root: str | os.PathLike[str],
     *,
-    allowed_root: Path | None = None,
-) -> None:
-    """Close the bounded extension-load window and make denial immutable."""
-
-    expected_root: Path | None = None
-    if allowed_root is not None:
-        resolved_root = allowed_root.resolve(strict=True)
-        if not resolved_root.is_dir():
-            raise BoardControlPlaneError(
-                "board DuckLake storage root is unavailable"
-            )
-        connection.execute("SET allowed_directories = ?", [[str(resolved_root)]])
-        expected_root = resolved_root
-    connection.execute("SET autoinstall_known_extensions=false")
-    connection.execute("SET autoload_known_extensions=false")
-    connection.execute("SET enable_external_access=false")
-    connection.execute("SET allow_unsigned_extensions=false")
-    connection.execute("SET lock_configuration=true")
-    settings = connection.execute(
-        "SELECT current_setting('autoinstall_known_extensions'), "
-        "current_setting('autoload_known_extensions'), "
-        "current_setting('enable_external_access'), "
-        "current_setting('allow_unsigned_extensions'), "
-        "current_setting('lock_configuration'), "
-        "current_setting('allowed_directories')"
-    ).fetchone()
-    observed = tuple(settings[index] for index in range(len(settings or ())))
-    directories = observed[5] if len(observed) == 6 else None
-    directories_are_confined = expected_root is None and directories == []
-    if expected_root is not None and isinstance(directories, list):
-        directories_are_confined = True
-        normalized: list[Path] = []
-        for item in directories:
-            try:
-                candidate = Path(str(item)).resolve(strict=False)
-                if expected_root is None:
-                    directories_are_confined = False
-                    break
-                candidate.relative_to(expected_root)
-            except (OSError, RuntimeError, ValueError):
-                directories_are_confined = False
-                break
-            normalized.append(candidate)
-        directories_are_confined = (
-            directories_are_confined
-            and expected_root is not None
-            and expected_root in normalized
-            and len(normalized) == len(set(normalized))
-        )
-    if observed[:5] != (False, False, False, False, True) or not (
-        directories_are_confined
-    ):
-        raise BoardControlPlaneError(
-            "board extension denial policy did not lock exactly"
-        )
-
-
-def _initialize_open_board_control_plane(
-    connection: DuckDBConnection,
-    *,
-    catalog_root: Path,
-    database_path: Path,
-    configured_policy: str,
-    installation_allowed: bool,
+    root: str | os.PathLike[str] | None = None,
+    timeout_seconds: float = 30.0,
 ) -> BoardControlPlane:
-    """Finish bounded extension setup before exposing the open connection."""
+    """Open (or create) the repo-wide DuckDB + Quack board control plane."""
+
+    catalog_root = Path(root) if root is not None else default_control_plane_root(
+        Path(repo_root)
+    )
+    catalog_root.mkdir(parents=True, exist_ok=True)
+    database_path = catalog_root / CONTROL_DATABASE_NAME
+    try:
+        connection = _open_extension_capable_connection(
+            database_path,
+            timeout_seconds=timeout_seconds,
+        )
+    except ImportError as exc:
+        raise BoardControlPlaneUnavailableError(
+            "DuckDB is required for the board control plane"
+        ) from exc
+    except Exception as exc:
+        raise BoardControlPlaneError(
+            f"could not open board control plane: {exc}"
+        ) from exc
 
     extension_errors: list[str] = []
     quack_loaded = False
     ducklake_loaded = False
     ducklake_attached = False
-    if configured_policy == BOARD_EXTENSION_INSTALL_POLICY_DISABLED:
-        extension_errors.extend(
-            (
-                "quack: extension loading disabled by policy",
-                "ducklake: extension loading disabled by policy",
-            )
-        )
+    quack_error = _try_load_extension(connection, "quack")
+    if quack_error:
+        extension_errors.append(f"quack: {quack_error}")
     else:
-        quack_error = _try_load_extension(
-            connection,
-            "quack",
-            allow_install=installation_allowed,
-        )
-        if quack_error:
-            extension_errors.append(f"quack: {quack_error}")
+        quack_loaded = True
+    ducklake_error = _try_load_extension(connection, "ducklake")
+    if ducklake_error:
+        extension_errors.append(f"ducklake: {ducklake_error}")
+    else:
+        ducklake_loaded = True
+        attach_error = _attach_ducklake(connection, catalog_root)
+        if attach_error:
+            extension_errors.append(f"ducklake_attach: {attach_error}")
         else:
-            quack_loaded = True
-        ducklake_error = _try_load_extension(
-            connection,
-            "ducklake",
-            allow_install=installation_allowed,
-        )
-        if ducklake_error:
-            extension_errors.append(f"ducklake: {ducklake_error}")
-        else:
-            ducklake_loaded = True
-            attach_error = _attach_ducklake(connection, catalog_root)
-            if attach_error:
-                extension_errors.append(f"ducklake_attach: {attach_error}")
-            else:
-                ducklake_attached = True
-        if not installation_allowed:
-            _lock_extension_capable_connection(
-                connection,
-                allowed_root=catalog_root if ducklake_attached else None,
-            )
+            ducklake_attached = True
     if ducklake_attached and quack_loaded:
         backend = "ducklake+quack"
     elif quack_loaded:
@@ -2343,73 +1335,6 @@ def _initialize_open_board_control_plane(
     return plane
 
 
-def open_board_control_plane(
-    repo_root: str | os.PathLike[str],
-    *,
-    root: str | os.PathLike[str] | None = None,
-    timeout_seconds: float = 30.0,
-    allow_extension_install: bool | None = None,
-) -> BoardControlPlane:
-    """Open (or create) the repo-wide DuckDB + Quack board control plane."""
-
-    configured_policy = str(
-        os.environ.get(BOARD_EXTENSION_INSTALL_POLICY_ENV, "") or ""
-    ).strip()
-    if configured_policy not in {
-        "",
-        BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY,
-        BOARD_EXTENSION_INSTALL_POLICY_DISABLED,
-    }:
-        raise BoardControlPlaneError(
-            "board extension installation policy is invalid"
-        )
-    if (
-        allow_extension_install is not None
-        and type(allow_extension_install) is not bool
-    ):
-        raise BoardControlPlaneError(
-            "allow_extension_install must be boolean or None"
-        )
-    installation_allowed = (
-        configured_policy == "" and allow_extension_install is not False
-    )
-
-    catalog_root = Path(root) if root is not None else default_control_plane_root(
-        Path(repo_root)
-    )
-    catalog_root.mkdir(parents=True, exist_ok=True)
-    database_path = catalog_root / CONTROL_DATABASE_NAME
-    try:
-        connection = _open_extension_capable_connection(
-            database_path,
-            timeout_seconds=timeout_seconds,
-            allow_extension_install=installation_allowed,
-            allow_extension_load=(
-                configured_policy != BOARD_EXTENSION_INSTALL_POLICY_DISABLED
-            ),
-        )
-    except ImportError as exc:
-        raise BoardControlPlaneUnavailableError(
-            "DuckDB is required for the board control plane"
-        ) from exc
-    except Exception as exc:
-        raise BoardControlPlaneError(
-            f"could not open board control plane: {exc}"
-        ) from exc
-
-    try:
-        return _initialize_open_board_control_plane(
-            connection,
-            catalog_root=catalog_root,
-            database_path=database_path,
-            configured_policy=configured_policy,
-            installation_allowed=installation_allowed,
-        )
-    except BaseException:
-        connection.close()
-        raise
-
-
 VALIDATION_PYTHON_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
 VALIDATION_PYTHON_MODULES_ENV: Final = (
@@ -2418,21 +1343,6 @@ VALIDATION_PYTHON_MODULES_ENV: Final = (
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV: Final = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
 )
-IMPLEMENTATION_PROVIDER_ENV: Final = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
-)
-IMPLEMENTATION_FALLBACK_PROVIDER_ENV: Final = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
-)
-IMPLEMENTATION_FALLBACK_TRIGGER_ENV: Final = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
-)
-GROK_MODEL_ENV: Final = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
-CODEX_MODEL_ENV: Final = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
-CODEX_REASONING_EFFORT_ENV: Final = (
-    "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
-)
-DEFAULT_BOARD_GROK_MODEL: Final = "grok-4.7"
 
 
 def _todo_scheduler_stem(todo_path: str | os.PathLike[str] | None) -> str:
@@ -2576,68 +1486,6 @@ def apply_board_validation_runtime(
     }
 
 
-def apply_board_provider_runtime(
-    repo_root: str | os.PathLike[str],
-    todo_path: str | os.PathLike[str] | None = None,
-    *,
-    environ: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Bind the board's reviewed Grok/Codex route when the process lacks one.
-
-    Official ``configured_board_scheduler`` launches already export
-    ``IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.7``.  Operator fallbacks that
-    invoke ``implementation_daemon`` directly inherit no provider env and
-    then dispatch the packaged grok-4.5 default.  Applying the scheduler
-    ``provider`` block keeps fallbacks on grok-4.7.
-    """
-
-    target = os.environ if environ is None else environ
-    if str(target.get(GROK_MODEL_ENV) or "").strip():
-        return {
-            "applied": False,
-            "reason": "already_configured",
-            "grok_model": str(target.get(GROK_MODEL_ENV) or ""),
-        }
-    config_path = discover_board_scheduler_config(repo_root, todo_path)
-    provider: Mapping[str, Any] | None = None
-    if config_path is not None:
-        try:
-            payload = json.loads(config_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            payload = None
-        if isinstance(payload, Mapping) and isinstance(
-            payload.get("provider"), Mapping
-        ):
-            provider = payload["provider"]
-    grok_model = ""
-    if provider is not None:
-        grok_model = str(provider.get("primary_model_id") or "").strip()
-        primary = str(provider.get("primary_provider_id") or "").strip()
-        fallback = str(provider.get("fallback_provider_id") or "").strip()
-        trigger = str(provider.get("fallback_trigger") or "").strip()
-        codex_model = str(provider.get("fallback_model_id") or "").strip()
-        effort = str(provider.get("fallback_reasoning_effort") or "").strip()
-        if primary:
-            target[IMPLEMENTATION_PROVIDER_ENV] = primary
-        if fallback:
-            target[IMPLEMENTATION_FALLBACK_PROVIDER_ENV] = fallback
-        if trigger:
-            target[IMPLEMENTATION_FALLBACK_TRIGGER_ENV] = trigger
-        if codex_model:
-            target[CODEX_MODEL_ENV] = codex_model
-        if effort:
-            target[CODEX_REASONING_EFFORT_ENV] = effort
-    if not grok_model:
-        grok_model = DEFAULT_BOARD_GROK_MODEL
-    target[GROK_MODEL_ENV] = grok_model
-    return {
-        "applied": True,
-        "reason": "bound_scheduler_provider_runtime",
-        "config_path": str(config_path) if config_path is not None else "",
-        "grok_model": grok_model,
-    }
-
-
 def isolate_board_runtime(
     *,
     repo_root: str | os.PathLike[str],
@@ -2649,7 +1497,6 @@ def isolate_board_runtime(
     ensure_branch: bool = True,
     ensure_worktree: bool = True,
     ingest_todo: bool = True,
-    ingest_codebase: bool | None = None,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve isolation + open/register the control plane for one board.
@@ -2666,7 +1513,6 @@ def isolate_board_runtime(
         state_prefix=state_prefix,
     )
     validation_runtime = apply_board_validation_runtime(repo_root, todo_path)
-    provider_runtime = apply_board_provider_runtime(repo_root, todo_path)
     branch = resolve_board_implementation_branch(merge_target_branch, namespace)
     branch_result: dict[str, Any] = {
         "created": False,
@@ -2718,7 +1564,6 @@ def isolate_board_runtime(
         "worktree_result": worktree_result,
         "board_worktree": worktree_result.get("worktree") or "",
         "validation_runtime": validation_runtime,
-        "provider_runtime": provider_runtime,
         "control_plane": None,
         "registration": None,
     }
@@ -2728,21 +1573,10 @@ def isolate_board_runtime(
         payload["control_plane_error"] = str(exc)
         return payload
     try:
-        markdown_todo: Path | None = None
-        supplied = Path(todo_path) if todo_path is not None else None
-        if (
-            ingest_todo
-            and supplied is not None
-            and supplied.is_file()
-            and supplied.suffix.lower() in {".md", ".markdown"}
-        ):
-            markdown_todo = supplied
-        if markdown_todo is None:
-            markdown_todo = discover_board_todo_path(repo_root, namespace)
-        if markdown_todo is not None:
+        if ingest_todo and todo_path is not None and Path(todo_path).is_file():
             registration = plane.ingest_markdown_board(
                 namespace,
-                markdown_todo,
+                todo_path,
                 merge_target_branch=branch,
                 extra=extra,
             )
@@ -2755,19 +1589,6 @@ def isolate_board_runtime(
                 extra=extra,
             )
         payload["registration"] = registration
-        should_ingest_codebase = (
-            bool(ingest_codebase)
-            if ingest_codebase is not None
-            else os.environ.get(
-                "IPFS_ACCELERATE_AGENT_DUCKLAKE_INGEST_CODEBASE", ""
-            ).strip()
-            in {"1", "true", "yes", "on"}
-        )
-        if should_ingest_codebase:
-            payload["codebase_artefacts"] = plane.ingest_codebase_artefacts(
-                repo_root,
-                namespace,
-            )
         payload["control_plane"] = {
             "root": str(plane.root),
             "database_path": str(plane.database_path),
@@ -2791,7 +1612,6 @@ __all__ = [
     "BoardControlPlaneUnavailableError",
     "IMPLEMENTATION_BRANCH_PREFIX",
     "SHARED_IMPLEMENTATION_BRANCHES",
-    "apply_board_provider_runtime",
     "apply_board_validation_runtime",
     "discover_board_scheduler_config",
     "board_database_path",
@@ -2803,7 +1623,6 @@ __all__ = [
     "control_plane_git_common_dir",
     "default_control_plane_root",
     "default_board_worktree_parent",
-    "discover_board_todo_path",
     "ensure_board_implementation_branch",
     "ensure_board_implementation_worktree",
     "infer_board_namespace",

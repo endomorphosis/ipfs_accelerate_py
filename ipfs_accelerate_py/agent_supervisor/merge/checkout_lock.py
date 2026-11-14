@@ -14,8 +14,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-import stat as stat_module
-from typing import Any, Callable, Final, Iterator, Literal, Mapping, Sequence
+from typing import Any, Callable, Iterator, Literal, Mapping
 
 try:
     import fcntl
@@ -42,9 +41,13 @@ CRASH_FENCE_RECONCILIATION_LOCK_NAME = (
 # writes run while the lease is held.
 DEFAULT_CHECKOUT_MAINTENANCE_MAX_HOLD_SECONDS = 2.0
 DEFAULT_MERGE_TRAIN_DIRECTORY_NAME = "agent-merge-trains"
-DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME = "agent-objective-admission-locks"
+DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME = (
+    "agent-objective-admission-locks"
+)
 BACKLOG_REFINERY_AUTHOR_EMAIL = "accelerator-backlog-refinery@example.invalid"
-GENERATED_PROTECTED_BOARD_COMMIT_MARKER = "[agent-supervisor:generated-protected-board]"
+GENERATED_PROTECTED_BOARD_COMMIT_MARKER = (
+    "[agent-supervisor:generated-protected-board]"
+)
 
 
 def generated_protected_board_commit_subject(subject: str) -> str:
@@ -178,8 +181,6 @@ class CheckoutMaintenanceLease:
         self._lease_id = lease_id
         self.metadata.setdefault("kind", "checkout-maintenance")
         self.metadata.setdefault("pid", os.getpid())
-        if "expires_at" not in self.metadata:
-            self.metadata["expires_at"] = time.time() + self.max_hold_seconds
         self.metadata.setdefault("owner_script", Path(sys.argv[0]).name)
 
     @property
@@ -304,23 +305,6 @@ class CheckoutMaintenanceLease:
                         "reason": "checkout_maintenance_lease_malformed",
                         "lock_path": str(self.lock_path),
                     }
-                try:
-                    expires_at = float(existing.get("expires_at") or 0.0)
-                except (TypeError, ValueError):
-                    expires_at = 0.0
-                if expires_at > 0 and expires_at <= time.time():
-                    try:
-                        self.lock_path.unlink()
-                    except FileNotFoundError:
-                        continue
-                    except OSError as exc:
-                        return False, {
-                            "blocked": True,
-                            "reason": "checkout_maintenance_lease_cleanup_failed",
-                            "lock_path": str(self.lock_path),
-                            "error": f"{type(exc).__name__}: {exc}",
-                        }
-                    continue
                 active = True
                 if owner_is_active is not None:
                     try:
@@ -447,228 +431,6 @@ class CheckoutMaintenanceLease:
                     f"{float(hold):.6f}s > {self.max_hold_seconds:.6f}s"
                 )
 
-@contextmanager
-def serialized_lock_update(
-    lock_path: Path,
-    *,
-    timeout_seconds: float | None = None,
-    poll_seconds: float = 0.05,
-) -> Iterator[None]:
-    """Serialize create/inspect/replace operations for one durable lock path.
-
-    The durable JSON lock remains the long-lived ownership record.  This
-    adjacent advisory guard is held only while that record is inspected or
-    replaced, closing the stale-owner check/unlink race between the supervisor
-    and its managed implementation daemon.
-    """
-
-    from .workspace_quarantine import claim_update
-    with claim_update(lock_path):
-        if fcntl is None and msvcrt is None:
-            raise RuntimeError("durable lock replacement requires an advisory file-lock backend")
-        guard_path = lock_path.with_name(f".{lock_path.name}.update.lock")
-        guard_path.parent.mkdir(parents=True, exist_ok=True)
-        flags = os.O_CREAT | os.O_RDWR
-        flags |= getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(guard_path, flags, 0o600)
-        locked = False
-        deadline = (
-            None if timeout_seconds is None else time.monotonic() + max(0.0, float(timeout_seconds))
-        )
-        try:
-            if fcntl is not None:
-                if deadline is None:
-                    fcntl.flock(fd, fcntl.LOCK_EX)
-                else:
-                    while True:
-                        try:
-                            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                            break
-                        except BlockingIOError:
-                            remaining = deadline - time.monotonic()
-                            if remaining <= 0:
-                                raise TimeoutError("timed out serializing durable lock update")
-                            time.sleep(min(max(0.001, float(poll_seconds)), remaining))
-            else:
-                assert msvcrt is not None
-                if os.fstat(fd).st_size == 0:
-                    os.write(fd, b"\0")
-                while True:
-                    os.lseek(fd, 0, os.SEEK_SET)
-                    try:
-                        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                        break
-                    except OSError as exc:
-                        if exc.errno not in {
-                            errno.EACCES,
-                            errno.EAGAIN,
-                            errno.EDEADLK,
-                        }:
-                            raise
-                        if deadline is not None and deadline - time.monotonic() <= 0:
-                            raise TimeoutError("timed out serializing durable lock update")
-                        sleep_seconds = max(0.001, float(poll_seconds))
-                        if deadline is not None:
-                            sleep_seconds = min(
-                                sleep_seconds,
-                                max(0.0, deadline - time.monotonic()),
-                            )
-                        if sleep_seconds <= 0:
-                            raise TimeoutError("timed out serializing durable lock update")
-                        time.sleep(sleep_seconds)
-            locked = True
-            yield
-        finally:
-            try:
-                if locked:
-                    if fcntl is not None:
-                        fcntl.flock(fd, fcntl.LOCK_UN)
-                    else:
-                        assert msvcrt is not None
-                        os.lseek(fd, 0, os.SEEK_SET)
-                        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-            finally:
-                os.close(fd)
-
-
-def git_common_dir(repo_root: Path) -> Path:
-    """Return the repository common git directory for a checkout."""
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--git-common-dir"],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return repo_root / ".git"
-    stdout = result.stdout or ""
-    if result.returncode != 0 or not stdout.strip():
-        return repo_root / ".git"
-    path = Path(stdout.strip())
-    return path if path.is_absolute() else repo_root / path
-
-
-def checkout_mutation_lock_path(
-    repo_root: Path,
-    *,
-    lock_name: str = DEFAULT_CHECKOUT_MUTATION_LOCK_NAME,
-) -> Path:
-    """Return a repo-wide lock path for parent checkout mutations."""
-
-    return git_common_dir(repo_root) / lock_name
-
-
-def board_scoped_checkout_mutation_lock_path(
-    repo_root: Path,
-    board_namespace: str,
-) -> Path:
-    """Return the merge lock used by one task-board namespace.
-
-    Distinct boards sharing a Git common directory no longer contend on
-    ``implementation-main-merge.lock``. Two supervisors with the same
-    namespace still serialize on the same inode.
-    """
-
-    from ..task_sources.board_control_plane import board_merge_lock_name
-
-    return checkout_mutation_lock_path(
-        repo_root,
-        lock_name=board_merge_lock_name(board_namespace),
-    )
-
-
-def board_scoped_protected_path_maintenance_lock_path(
-    repo_root: Path,
-    board_namespace: str,
-) -> Path:
-    """Return the protected-path maintenance lock for one board namespace."""
-
-    from ..task_sources.board_control_plane import board_protected_path_lock_name
-
-    return checkout_mutation_lock_path(
-        repo_root,
-        lock_name=board_protected_path_lock_name(board_namespace),
-    )
-
-
-def objective_admission_lock_path(objective_path: Path) -> Path:
-    """Return a durable lock outside a Git worktree when one is available.
-
-    Objective admission locks must survive for the lifetime of cooperating
-    processes: unlinking an advisory lock after use creates an inode race.
-    Keeping that persistent coordination file beside a tracked objective,
-    however, makes an otherwise clean integration checkout permanently dirty.
-    A repository's common Git directory is shared by the processes operating
-    on that checkout while remaining outside its status surface.
-
-    Git-less callers retain the historical adjacent-lock fallback.
-    """
-
-    objective = Path(objective_path).resolve()
-    cwd = objective.parent
-    while not cwd.exists() and cwd.parent != cwd:
-        cwd = cwd.parent
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel", "--git-common-dir"],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        result = None
-    lines = (
-        [line.strip() for line in (result.stdout or "").splitlines()]
-        if result is not None and result.returncode == 0
-        else []
-    )
-    if len(lines) >= 2:
-        top = Path(lines[0]).resolve()
-        try:
-            objective.relative_to(top)
-        except ValueError:
-            pass
-        else:
-            common_dir = Path(lines[1])
-            if not common_dir.is_absolute():
-                common_dir = (cwd / common_dir).resolve()
-            safe_name = (
-                "".join(
-                    character if character.isalnum() or character in "-._" else "-"
-                    for character in objective.name
-                ).strip("-")
-                or "objective"
-            )
-            binding = f"{top}\0{objective}".encode("utf-8")
-            digest = hashlib.sha256(binding).hexdigest()[:20]
-            return (
-                common_dir
-                / DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME
-                / f"{safe_name[:64]}-{digest}.lock"
-            )
-    return objective.with_name(f".{objective.name}.admission.lock")
-
-
-def checkout_repository_id(repo_root: Path) -> str:
-    """Return a stable local identity shared by all worktrees of one Git repo."""
-
-    common_dir = git_common_dir(repo_root)
-    try:
-        identity_source = str(common_dir.resolve())
-    except (OSError, RuntimeError):
-        identity_source = str(common_dir)
-    return "repository:" + content_identity(
-        {
-            "kind": "local-git-common-directory",
-            "path": identity_source,
-        }
-    )
-
 
 def _verified_checkout_repository_id(repo_root: Path) -> str | None:
     """Return a repository identity only when Git proves the common directory.
@@ -757,21 +519,247 @@ def checkout_lock_repository_matches(
     return observed_repository_id == expected_repository_id
 
 
+@contextmanager
+def serialized_lock_update(
+    lock_path: Path,
+    *,
+    timeout_seconds: float | None = None,
+    poll_seconds: float = 0.05,
+) -> Iterator[None]:
+    """Serialize create/inspect/replace operations for one durable lock path.
+
+    The durable JSON lock remains the long-lived ownership record.  This
+    adjacent advisory guard is held only while that record is inspected or
+    replaced, closing the stale-owner check/unlink race between the supervisor
+    and its managed implementation daemon.
+    """
+
+    if fcntl is None and msvcrt is None:
+        raise RuntimeError(
+            "durable lock replacement requires an advisory file-lock backend"
+        )
+    guard_path = lock_path.with_name(f".{lock_path.name}.update.lock")
+    guard_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_CREAT | os.O_RDWR
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(guard_path, flags, 0o600)
+    locked = False
+    deadline = (
+        None
+        if timeout_seconds is None
+        else time.monotonic() + max(0.0, float(timeout_seconds))
+    )
+    try:
+        if fcntl is not None:
+            if deadline is None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            else:
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError(
+                                "timed out serializing durable lock update"
+                            )
+                        time.sleep(
+                            min(max(0.001, float(poll_seconds)), remaining)
+                        )
+        else:
+            assert msvcrt is not None
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b"\0")
+            while True:
+                os.lseek(fd, 0, os.SEEK_SET)
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno not in {
+                        errno.EACCES,
+                        errno.EAGAIN,
+                        errno.EDEADLK,
+                    }:
+                        raise
+                    if (
+                        deadline is not None
+                        and deadline - time.monotonic() <= 0
+                    ):
+                        raise TimeoutError(
+                            "timed out serializing durable lock update"
+                        )
+                    sleep_seconds = max(0.001, float(poll_seconds))
+                    if deadline is not None:
+                        sleep_seconds = min(
+                            sleep_seconds,
+                            max(0.0, deadline - time.monotonic()),
+                        )
+                    if sleep_seconds <= 0:
+                        raise TimeoutError(
+                            "timed out serializing durable lock update"
+                        )
+                    time.sleep(sleep_seconds)
+        locked = True
+        yield
+    finally:
+        try:
+            if locked:
+                if fcntl is not None:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                else:
+                    assert msvcrt is not None
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        finally:
+            os.close(fd)
+
+
+def git_common_dir(repo_root: Path) -> Path:
+    """Return the repository common git directory for a checkout."""
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return repo_root / ".git"
+    stdout = result.stdout or ""
+    if result.returncode != 0 or not stdout.strip():
+        return repo_root / ".git"
+    path = Path(stdout.strip())
+    return path if path.is_absolute() else repo_root / path
+
+
+def checkout_mutation_lock_path(
+    repo_root: Path,
+    *,
+    lock_name: str = DEFAULT_CHECKOUT_MUTATION_LOCK_NAME,
+) -> Path:
+    """Return a repo-wide lock path for parent checkout mutations."""
+
+    return git_common_dir(repo_root) / lock_name
+
+def board_scoped_checkout_mutation_lock_path(
+    repo_root: Path,
+    board_namespace: str,
+) -> Path:
+    """Return the merge lock used by one task-board namespace."""
+
+    from ..task_sources.board_control_plane import board_merge_lock_name
+
+    return checkout_mutation_lock_path(
+        repo_root,
+        lock_name=board_merge_lock_name(board_namespace),
+    )
+
+
+def board_scoped_protected_path_maintenance_lock_path(
+    repo_root: Path,
+    board_namespace: str,
+) -> Path:
+    """Return the protected-path maintenance lock for one board namespace."""
+
+    from ..task_sources.board_control_plane import board_protected_path_lock_name
+
+    return checkout_mutation_lock_path(
+        repo_root,
+        lock_name=board_protected_path_lock_name(board_namespace),
+    )
+
+
+def objective_admission_lock_path(objective_path: Path) -> Path:
+    """Return a durable lock outside a Git worktree when one is available.
+
+    Objective admission locks must survive for the lifetime of cooperating
+    processes: unlinking an advisory lock after use creates an inode race.
+    Keeping that persistent coordination file beside a tracked objective,
+    however, makes an otherwise clean integration checkout permanently dirty.
+    A repository's common Git directory is shared by the processes operating
+    on that checkout while remaining outside its status surface.
+
+    Git-less callers retain the historical adjacent-lock fallback.
+    """
+
+    objective = Path(objective_path).resolve()
+    cwd = objective.parent
+    while not cwd.exists() and cwd.parent != cwd:
+        cwd = cwd.parent
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel", "--git-common-dir"],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        result = None
+    lines = (
+        [line.strip() for line in (result.stdout or "").splitlines()]
+        if result is not None and result.returncode == 0
+        else []
+    )
+    if len(lines) >= 2:
+        top = Path(lines[0]).resolve()
+        try:
+            objective.relative_to(top)
+        except ValueError:
+            pass
+        else:
+            common_dir = Path(lines[1])
+            if not common_dir.is_absolute():
+                common_dir = (cwd / common_dir).resolve()
+            safe_name = "".join(
+                character
+                if character.isalnum() or character in "-._"
+                else "-"
+                for character in objective.name
+            ).strip("-") or "objective"
+            binding = f"{top}\0{objective}".encode("utf-8")
+            digest = hashlib.sha256(binding).hexdigest()[:20]
+            return (
+                common_dir
+                / DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME
+                / f"{safe_name[:64]}-{digest}.lock"
+            )
+    return objective.with_name(f".{objective.name}.admission.lock")
+
+
+def checkout_repository_id(repo_root: Path) -> str:
+    """Return a stable local identity shared by all worktrees of one Git repo."""
+
+    common_dir = git_common_dir(repo_root)
+    try:
+        identity_source = str(common_dir.resolve())
+    except (OSError, RuntimeError):
+        identity_source = str(common_dir)
+    return (
+        "repository:"
+        + content_identity(
+            {
+                "kind": "local-git-common-directory",
+                "path": identity_source,
+            }
+        )
+    )
+
+
 def merge_target_queue_dir(
     repo_root: Path,
     target_branch: str,
 ) -> Path:
     """Return the queue namespace for one physical repository and target ref.
 
-    Older supervisors used one queue directly under ``agent-merge-train``
-    inside the Git common directory. The catalog now lives under the account
-    home in ``.ipfs_accelerate/agent_supervisor`` (``/home/<user>`` on Linux,
-    ``/Users/<user>`` on macOS, ``C:\\Users\\<user>`` on Windows), unless
-    ``IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR`` or
-    ``IPFS_ACCELERATE_AGENT_HOME`` is set. Every worktree of the repository
-    shares that directory. Target-scoped
-    directories still keep upgraded producers invisible to old repo-wide
-    consumers. ``.git`` is not a database directory.
+    Older supervisors used one queue directly under ``agent-merge-train``.
+    Keeping target-scoped queues in a new directory prevents a still-running
+    legacy consumer from claiming requests produced by upgraded daemons.
     """
 
     branch = str(target_branch or "").strip()
@@ -780,33 +768,14 @@ def merge_target_queue_dir(
     repository_id = checkout_repository_id(repo_root)
     binding = f"{repository_id}\0{branch}".encode("utf-8")
     digest = hashlib.sha256(binding).hexdigest()[:20]
-    safe_branch = (
-        "".join(
-            character if character.isalnum() or character in "-._" else "-" for character in branch
-        ).strip("-")
-        or "target"
-    )
-    from ..task_sources.board_control_plane import (
-        adopt_legacy_catalog,
-        orchestration_database,
-        orchestration_scope_dir,
-    )
-
-    legacy_root = git_common_dir(repo_root) / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
-    destination_root = orchestration_scope_dir(repo_root) / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
-    if legacy_root.is_dir() and not legacy_root.is_symlink():
-        for child in list(legacy_root.iterdir()):
-            if child.is_symlink():
-                continue
-            adopt_legacy_catalog(child, destination_root / child.name)
-        try:
-            legacy_root.rmdir()
-        except OSError:
-            pass
-    return orchestration_database(
-        repo_root,
-        DEFAULT_MERGE_TRAIN_DIRECTORY_NAME,
-        f"{safe_branch[:48]}-{digest}",
+    safe_branch = "".join(
+        character if character.isalnum() or character in "-._" else "-"
+        for character in branch
+    ).strip("-") or "target"
+    return (
+        git_common_dir(repo_root)
+        / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME
+        / f"{safe_branch[:48]}-{digest}"
     )
 
 
@@ -822,40 +791,24 @@ def checkout_lock_metadata(
 ) -> dict[str, Any]:
     """Build JSON-serializable metadata for a checkout mutation lock."""
 
-    worktree_root = str(repo_root.resolve())
-    # Do not persist the Git-less namespace fallback as repository authority.
-    # A blank identity makes upgraded liveness checks fail closed until Git
-    # can prove the relationship from ``worktree_root``.
-    repository_id = _verified_checkout_repository_id(repo_root) or ""
     payload: dict[str, Any] = {
         "kind": kind,
         "pid": os.getpid(),
         "owner_script": owner_script if owner_script is not None else Path(sys.argv[0]).name,
-        # Keep the historical field empty during the rolling migration.
-        # Older daemons compare a nonempty repo_root by exact path and would
-        # otherwise steal a live lease written from a sibling worktree.
-        "repo_root": "",
-        "worktree_root": worktree_root,
-        "repository_id": repository_id,
+        "repo_root": str(repo_root.resolve()),
         "task_id": task_id,
         "attempt": int(attempt or 0),
         "branch": branch,
     }
     if extra:
         payload.update(extra)
-    # Repository authority is derived from the actual checkout and must not
-    # be replaceable through caller-provided supplemental metadata.
-    payload["repo_root"] = ""
-    payload["worktree_root"] = worktree_root
-    payload["repository_id"] = repository_id
     if not str(payload.get("lease_id") or ""):
         payload["lease_id"] = content_identity(
             {
                 "kind": "checkout-mutation-lease",
                 "pid": os.getpid(),
                 "thread_id": threading.get_ident(),
-                "repository_id": repository_id,
-                "worktree_root": worktree_root,
+                "repo_root": payload["repo_root"],
                 "task_id": task_id,
                 "attempt": int(attempt or 0),
                 "branch": branch,
@@ -917,7 +870,11 @@ def read_checkout_mutation_lease(
     """Return a stable, fully published checkout lease when one exists."""
 
     metadata, identity = _read_checkout_lock(lock_path)
-    if metadata is None or identity is None or not str(metadata.get("lease_id") or ""):
+    if (
+        metadata is None
+        or identity is None
+        or not str(metadata.get("lease_id") or "")
+    ):
         return None
     return CheckoutMutationLease(
         lock_path=lock_path,
@@ -1007,7 +964,9 @@ def _atomic_replace_checkout_mutation_lease(
         while offset < len(data):
             written = os.write(temp_fd, data[offset:])
             if written <= 0:
-                raise OSError("short write while replacing checkout mutation lease")
+                raise OSError(
+                    "short write while replacing checkout mutation lease"
+                )
             offset += written
         os.fsync(temp_fd)
         replacement_stat = os.fstat(temp_fd)
@@ -1084,7 +1043,9 @@ def adopt_inactive_checkout_mutation_lease(
                     return None
             except Exception:
                 return None
-            confirmed, confirmed_identity = _read_checkout_lock(lease.lock_path)
+            confirmed, confirmed_identity = _read_checkout_lock(
+                lease.lock_path
+            )
             if confirmed != current or confirmed_identity != identity:
                 return None
             return _atomic_replace_checkout_mutation_lease(
@@ -1129,7 +1090,9 @@ def _try_publish_checkout_mutation_lease(
         while offset < len(data):
             written = os.write(temp_fd, data[offset:])
             if written <= 0:
-                raise OSError("short write while publishing checkout mutation lease")
+                raise OSError(
+                    "short write while publishing checkout mutation lease"
+                )
             offset += written
         os.fsync(temp_fd)
         # Capture the identity from the file descriptor we exclusively own.
@@ -1262,7 +1225,11 @@ def remove_inactive_checkout_mutation_lock(
                 current is None
                 or identity is None
                 or current != expected
-                or (expected_lease_id and str(current.get("lease_id") or "") != expected_lease_id)
+                or (
+                    expected_lease_id
+                    and str(current.get("lease_id") or "")
+                    != expected_lease_id
+                )
             ):
                 return False
             try:
@@ -1285,16 +1252,12 @@ def release_checkout_mutation_lease(
     lease: CheckoutMutationLease,
     *,
     timeout_seconds: float = 1.0,
-    require_exact_metadata: bool = False,
 ) -> bool:
-    """Idempotently release only the exact lease acquired by the caller.
+    """Release the exact lease, or confirm that it is already absent.
 
-    A missing lock is already released.  Treating that state as failure leaves
-    a daemon's in-memory ``release_pending`` context permanently wedged after
-    another fenced transaction has legitimately reclaimed and removed the
-    durable record.  Existing replacement or malformed records still fail
-    closed and are never removed by this caller. Source-maintenance callers
-    can also require the complete metadata to match at the unlink boundary.
+    A fully published replacement is never removed. Confirmed absence is an
+    idempotent success so a caller cannot retain a stale in-memory lease
+    forever after another recovery path has already removed its durable lock.
     """
 
     try:
@@ -1302,17 +1265,18 @@ def release_checkout_mutation_lease(
             lease.lock_path,
             timeout_seconds=timeout_seconds,
         ):
-            current, identity = _read_checkout_lock(lease.lock_path)
-            if current is None and not lease.lock_path.exists():
+            state = _checkout_mutation_lease_state_unlocked(lease)
+            if state == "absent":
                 return True
-            if (
-                current is None
-                or identity != (lease.device, lease.inode)
-                or str(current.get("lease_id") or "") != lease.lease_id
-                or (require_exact_metadata and current != dict(lease.metadata))
-            ):
+            if state != "current":
                 return False
-            lease.lock_path.unlink()
+            try:
+                lease.lock_path.unlink()
+            except FileNotFoundError:
+                return (
+                    _checkout_mutation_lease_state_unlocked(lease)
+                    == "absent"
+                )
             return True
     except (FileNotFoundError, TimeoutError):
         return False
@@ -1331,18 +1295,13 @@ def checkout_lock_owner_is_active(
     kind = str(metadata.get("kind") or "")
     if kind and kind != expected_kind:
         return False
-    if expected_repo_root is not None:
-        repository_match = checkout_lock_repository_matches(
-            metadata,
-            expected_repo_root,
-        )
-        if repository_match is False:
+    repo_root = str(metadata.get("repo_root") or "")
+    if expected_repo_root is not None and repo_root:
+        try:
+            if Path(repo_root).resolve() != expected_repo_root.resolve():
+                return False
+        except OSError:
             return False
-        if repository_match is None:
-            # Repository identity is part of lease ownership. An inability to
-            # prove it must preserve the incumbent record, even when its PID
-            # is unavailable, so uncertainty cannot become lock theft.
-            return True
     # A protected mutation recovery record is an intentionally retained
     # durable fence, not an ordinary process lease.  Its owning daemon may
     # have exited after changing a generated board.  Preserve it so the next
@@ -1358,128 +1317,10 @@ def checkout_lock_owner_is_active(
         return False
     owner_script = str(metadata.get("owner_script") or "")
     command_line = process_command_line(pid)
-    if owner_script and command_line and owner_script not in command_line:
+    if owner_script and owner_script not in command_line:
         # Module launches (``python -m package.worker``) expose the module
         # name, not the source filename, in argv.
         owner_module_stem = Path(owner_script).stem
         if not owner_module_stem or owner_module_stem not in command_line:
             return False
     return True
-
-
-UNHELD_GIT_CONTROL_LOCK_NAMES: Final = ("index.lock", "HEAD.lock")
-
-
-def git_lock_inode_is_open(
-    lock_path: Path,
-    *,
-    proc_root: Path = Path("/proc"),
-) -> bool | None:
-    """Return whether any process still holds ``lock_path`` open.
-
-    Git's lock files are empty even while a live ``update-ref`` /
-    ``update-index`` child owns them. After SIGTERM or reboot those fds
-    vanish and leftover 0-byte files brick exclusive-owner admission.
-    ``None`` means ``/proc`` could not prove the answer; callers fail closed.
-    """
-
-    try:
-        identity = lock_path.lstat()
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return None
-    if not stat_module.S_ISREG(identity.st_mode) or stat_module.S_ISLNK(
-        identity.st_mode
-    ):
-        return None
-    if not proc_root.exists():
-        return None
-    target = (int(identity.st_dev), int(identity.st_ino))
-    try:
-        entries = tuple(proc_root.iterdir())
-    except OSError:
-        return None
-    for entry in entries:
-        if not entry.name.isdigit():
-            continue
-        fd_dir = entry / "fd"
-        try:
-            descriptors = tuple(fd_dir.iterdir())
-        except OSError:
-            continue
-        for descriptor in descriptors:
-            try:
-                observed = os.stat(descriptor, follow_symlinks=True)
-            except OSError:
-                continue
-            if (int(observed.st_dev), int(observed.st_ino)) == target:
-                return True
-    return False
-
-
-def reclaim_unheld_empty_git_lock_files(
-    lock_paths: Sequence[Path],
-    *,
-    proc_root: Path = Path("/proc"),
-) -> dict[str, Any]:
-    """Unlink leftover empty Git control locks with no live file holder.
-
-    Non-empty lock files are left in place so a foreign/malformed lock still
-    fails closed. Empty unheld locks are the post-reboot / post-SIGTERM
-    git-guard leftover that otherwise raises ``candidate Git guard is
-    contended`` after a 10s wait.
-    """
-
-    removed: list[str] = []
-    skipped: list[dict[str, Any]] = []
-    for raw in lock_paths:
-        path = Path(raw)
-        try:
-            identity = path.lstat()
-        except FileNotFoundError:
-            skipped.append({"path": str(path), "reason": "absent"})
-            continue
-        except OSError as exc:
-            skipped.append(
-                {
-                    "path": str(path),
-                    "reason": "stat_failed",
-                    "error_type": type(exc).__name__,
-                }
-            )
-            continue
-        if (
-            not stat_module.S_ISREG(identity.st_mode)
-            or stat_module.S_ISLNK(identity.st_mode)
-            or identity.st_uid != os.geteuid()
-            or identity.st_nlink != 1
-        ):
-            skipped.append({"path": str(path), "reason": "unsafe_identity"})
-            continue
-        if int(identity.st_size) != 0:
-            skipped.append({"path": str(path), "reason": "nonempty"})
-            continue
-        holder = git_lock_inode_is_open(path, proc_root=proc_root)
-        if holder is None:
-            skipped.append({"path": str(path), "reason": "holder_unknown"})
-            continue
-        if holder is True:
-            skipped.append({"path": str(path), "reason": "held"})
-            continue
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            skipped.append({"path": str(path), "reason": "absent"})
-            continue
-        except OSError as exc:
-            skipped.append(
-                {
-                    "path": str(path),
-                    "reason": "unlink_failed",
-                    "error_type": type(exc).__name__,
-                }
-            )
-            continue
-        removed.append(str(path))
-    return {"removed": removed, "skipped": skipped}

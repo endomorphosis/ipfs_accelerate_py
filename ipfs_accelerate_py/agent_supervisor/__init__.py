@@ -27,12 +27,12 @@ Deprecated ``AGENT_SUPERVISOR_G0xx_*`` and ``AGENT_SUPERVISOR_EVIDENCE_CLUSTER_*
 spellings remain as aliases of the semantic names.
 """
 
+from types import MappingProxyType as _MappingProxyType
+
 import importlib as _importlib
 import os as _os
 import sys as _sys
-import types as _types
 from pathlib import Path
-from types import MappingProxyType as _MappingProxyType
 
 # ---------------------------------------------------------------------------
 # Domain-layout cutover identity (semantic names; board IDs as string values)
@@ -84,7 +84,6 @@ AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
     "core",
     "control",
     "task_sources",
-    "federation",
     "context",
     "analysis",
     "proof",
@@ -104,7 +103,6 @@ AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
 AGENT_SUPERVISOR_CORE_PACKAGES = ("core",)
 AGENT_SUPERVISOR_CONTROL_PACKAGES = ("control",)
 AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES = ("task_sources",)
-AGENT_SUPERVISOR_FEDERATION_PACKAGES = ("federation",)
 AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES = (
     "context",
     "prompt",
@@ -195,6 +193,7 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "audit_scanner": "analysis",
     "authorization_logic": "control",
     "backlog_refinery": "objectives",
+    "board_control_plane": "task_sources",
     "bundle_optimizer": "objectives",
     "bundle_supervisor": "objectives",
     "cache_coordinator": "analysis",
@@ -374,7 +373,6 @@ AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE = {
     "task_proposal_router": "planning",
     "task_quality": "planning",
     "task_source": "task_sources",
-    "taskboard_ingest": "task_sources",
     "taskboard_store": "task_sources",
     "todo_vector_index": "task_sources",
     "validation_commands": "validation",
@@ -543,6 +541,7 @@ AGENT_SUPERVISOR_CONTROL_STEMS = (
     "lifecycle_orchestrator",
 )
 AGENT_SUPERVISOR_TASK_SOURCES_STEMS = (
+    "board_control_plane",
     "dataset_store",
     "duckdb_state",
     "duckdb_task_source",
@@ -550,7 +549,6 @@ AGENT_SUPERVISOR_TASK_SOURCES_STEMS = (
     "persistent_task_queue",
     "task_identity",
     "task_source",
-    "taskboard_ingest",
     "taskboard_store",
     "todo_vector_index",
 )
@@ -682,58 +680,14 @@ class _LandedModuleAliasFinder:
         except Exception:
             return None
 
-        class _AliasModuleType(_types.ModuleType):
-            """Historical alias that mirrors setattr onto the domain module.
-
-            Method bodies on landed modules resolve free names through the
-            canonical module globals.  Tests still import and monkeypatch the
-            historical flat path; without write-through, those patches never
-            reach the functions that adoption/fencing actually call.
-            """
-
-            _ALIAS_META = frozenset(
-                {
-                    "__name__",
-                    "__loader__",
-                    "__package__",
-                    "__spec__",
-                    "__canonical_module__",
-                    "__dict__",
-                    "__class__",
-                    "__file__",
-                    "__cached__",
-                    "__builtins__",
-                    "__doc__",
-                    "__path__",
-                    "__annotations__",
-                }
-            )
-
-            def __setattr__(self, name: str, value: object) -> None:  # type: ignore[override]
-                super().__setattr__(name, value)
-                if name in self._ALIAS_META:
-                    return
-                canonical = self.__dict__.get("__canonical_module__")
-                if canonical is not None:
-                    setattr(canonical, name, value)
-
-            def __delattr__(self, name: str) -> None:  # type: ignore[override]
-                if name in self.__dict__:
-                    super().__delattr__(name)
-                if name in self._ALIAS_META:
-                    return
-                canonical = self.__dict__.get("__canonical_module__")
-                if canonical is not None and hasattr(canonical, name):
-                    delattr(canonical, name)
-
         class _AliasLoader:
             def create_module(self, spec):  # type: ignore[no-untyped-def]
                 # Returning the canonical module object here lets importlib
                 # overwrite its import metadata with the historical alias.
                 # A later canonical import then executes a second module and
-                # breaks public symbol identity.  Allocate a lightweight alias
-                # module subclass that write-throughs monkeypatches instead.
-                return _AliasModuleType(spec.name)
+                # breaks public symbol identity.  Let importlib allocate a
+                # lightweight alias module instead.
+                return None
 
             def exec_module(self, module_):  # type: ignore[no-untyped-def]
                 # Re-export the canonical objects without copying import
@@ -1855,16 +1809,66 @@ _LAZY_DOMAIN_EXPORT_ALIASES = {
     "normalize_formal_unsat_core": "normalize_unsat_core",
 }
 
-from .self_improvement.self_improvement_completion import (
-    SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA,
-    SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS,
-    SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID,
-    SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION,
-    SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS,
-    SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS,
-    evaluate_self_improvement_root_completion,
-)
+# Load self_improvement_completion without executing self_improvement/__init__.py.
+# That package __init__ still re-exports the heavy flat self_improvement.py, which
+# pulls todo_daemon.llm -> optional ipfs_datasets_py onto cold import (ASREF-G090
+# provider-free package import gate). Dual-copied ownership remains under
+# self_improvement/; this loader only avoids the temporary re-export side effect.
+def _load_self_improvement_completion_cold():
+    import importlib.util
+    from pathlib import Path
 
+    package_name = f"{__name__}.self_improvement"
+    canonical = f"{package_name}.self_improvement_completion"
+    # Prefer a fully imported package module when the package is already live.
+    existing = _sys.modules.get(canonical)
+    if existing is not None and getattr(existing, "__file__", None):
+        return existing
+    cold_name = f"{__name__}._self_improvement_completion_cold"
+    existing_cold = _sys.modules.get(cold_name)
+    if existing_cold is not None:
+        return existing_cold
+    path = (
+        Path(__file__).resolve().parent
+        / "self_improvement"
+        / "self_improvement_completion.py"
+    )
+    # Load under an isolated module name so we never leave a stub
+    # self_improvement package in sys.modules (that would block the real package
+    # __init__ later). Relative imports resolve via __package__ alone.
+    spec = importlib.util.spec_from_file_location(cold_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load self_improvement_completion from {path}")
+    module = importlib.util.module_from_spec(spec)
+    module.__package__ = package_name
+    _sys.modules[cold_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_self_improvement_completion = _load_self_improvement_completion_cold()
+SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA
+)
+SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS
+)
+SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID
+)
+SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION
+)
+SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS
+)
+SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS = (
+    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
+)
+evaluate_self_improvement_root_completion = (
+    _self_improvement_completion.evaluate_self_improvement_root_completion
+)
+del _self_improvement_completion
 __all__ = [
     "RESOURCE_ADMISSION_EVENT_TYPES",
     "RESOURCE_ADMISSION_METRICS_SCHEMA",
@@ -3489,12 +3493,6 @@ _COLD_DISCOVERY_SURFACES = (
         "interface": "SupervisorControlService@1",
     },
     {
-        "id": "federation",
-        "module": f"{__name__}.federation",
-        "role": "service",
-        "interface": "CausalAbstractionSupervisorFederation@1",
-    },
-    {
         "id": "deterministic_doctor_service",
         "module": f"{__name__}.control.deterministic_doctor_service",
         "role": "service",
@@ -3579,7 +3577,6 @@ def agent_supervisor_cold_help() -> dict:
             "package": __name__,
             "contracts": f"{__name__}.control.control_contracts",
             "control_service": f"{__name__}.control.control_plane",
-            "federation": f"{__name__}.federation",
             "doctor_service": f"{__name__}.control.deterministic_doctor_service",
             "adaptive_planner": f"{__name__}.planning.adaptive_planner",
         },
@@ -3976,16 +3973,12 @@ V2_STABLE_EXPORTS = AGENT_SUPERVISOR_V2_STABLE_EXPORTS
 def agent_supervisor_v2_discovery_manifest():
     """Return static Python discovery for the canonical v2 control catalog."""
 
-    return _control_contracts.ControlDiscoveryManifest(
-        surface=_control_contracts.ControlSurface.PYTHON
-    )
+    return ControlDiscoveryManifest(surface=ControlSurface.PYTHON)
 
 
 # Preserve exact function identity with the transport-neutral publication
 # entry point.  Adapters must call the same catalog validator.
-agent_supervisor_v2_control_surface_publication = (
-    _control_plane.control_service_publication
-)
+agent_supervisor_v2_control_surface_publication = control_service_publication
 
 __all__.extend(
     name
@@ -4006,7 +3999,6 @@ __all__.extend(
         "AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_IDS",
         "AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS",
         "AGENT_SUPERVISOR_DOMAIN_PACKAGES",
-        "AGENT_SUPERVISOR_FEDERATION_PACKAGES",
         "AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS",
         "AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES",
         "AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE",
