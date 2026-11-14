@@ -356,3 +356,69 @@ def test_watchdog_does_not_complete_a_runtime_budget_hold_with_stored_evidence(t
     assert report["repair_report"]["executor_started"] is False
     assert report["repair_report"]["hold_removed"] is False
     assert dict(repo.get_task("task:held")) == before
+
+
+# Pure modeled repository/clock controls. They grant no actual board, legal,
+# native, storage, provider or operator-hold authority.
+@pytest.mark.parametrize("entry", ["tick", "readonly_serve"])
+def test_recorded_stall_rechecks_new_dependency_evidence_without_another_repair(
+    monkeypatch, entry
+):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import board_stall_watchdog as owner
+    now = [100.0]
+    monkeypatch.setattr(owner.time, "monotonic", lambda: now[0])
+    repo = _Repo((_blocked("LIR-NEW-EVIDENCE"),))
+    watchdog = BoardStallWatchdog()
+    repairs = []
+    def repair(target, spec):
+        repairs.append(dict(spec))
+        return resolution_repair_subagent(target, spec)
+    first = watchdog.tick(repo, operator_hold_present=False, spawn_repair=repair)
+    assert first["action"] == "start_repair_subagent"
+    assert repo.release_calls == 2 and len(repairs) == 1
+    # Evidence can become eligible without changing the blocked alias or hold.
+    repo._release = {"completed": [{"task_alias": "LIR-NEW-EVIDENCE"}], "spawned": []}
+    now[0] += 121.0
+    if entry == "tick":
+        second = watchdog.tick(repo, operator_hold_present=False, spawn_repair=repair)
+    else:
+        second = serve(repo, watchdog=watchdog, once=True, spawn_repair=repair,
+            readonly_observe=lambda: observe_tasks(repo._records, operator_hold_present=False))
+    assert second["action"] == "progressed"
+    assert repo.release_calls == 3 and len(repairs) == 1
+    assert second["set_ready"] is False and second["grant_admission"] is False
+    assert second["executor_start_allowed"] is False
+
+
+@pytest.mark.parametrize("entry", ["tick", "readonly_serve"])
+def test_expired_unchanged_stall_rechecks_release_but_keeps_repair_deduplication(
+    monkeypatch, entry, tmp_path
+):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import board_stall_watchdog as owner
+    now = [100.0]
+    monkeypatch.setattr(owner.time, "monotonic", lambda: now[0])
+    repo = _Repo((_blocked("LIR-STILL-PENDING"),))
+    hold = tmp_path / "operator.hold"
+    hold.write_bytes(b"preserve existing operator hold\n")
+    watchdog = BoardStallWatchdog()
+    repairs = []
+    def repair(target, spec):
+        repairs.append(dict(spec))
+        return resolution_repair_subagent(target, spec)
+    watchdog.tick(repo, operator_hold_present=True, spawn_repair=repair)
+    assert repo.release_calls == 2 and len(repairs) == 1
+    now[0] += 121.0
+    if entry == "tick":
+        second = watchdog.tick(repo, operator_hold_present=True, spawn_repair=repair)
+    else:
+        second = serve(repo, watchdog=watchdog, once=True, spawn_repair=repair,
+            hold_path=hold,
+            readonly_observe=lambda: observe_tasks(repo._records, operator_hold_present=True))
+    assert second["action"] == "stall_recorded"
+    assert repo.release_calls == 3 and len(repairs) == 1
+    # The renewed check suppresses an immediate additional writable retry.
+    watchdog.tick(repo, operator_hold_present=True, spawn_repair=repair)
+    assert repo.release_calls == 3 and len(repairs) == 1
+    assert second["preserve_operator_hold"] is True
+    assert hold.read_bytes() == b"preserve existing operator hold\n"
+    assert second["set_ready"] is False and second["executor_start_allowed"] is False

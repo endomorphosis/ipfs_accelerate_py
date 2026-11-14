@@ -625,3 +625,104 @@ def test_spent_final_slot_delayed_publication_cannot_start_after_fixed_expiry(tm
     assert (fresh/'intent.json').exists()and not(fresh/'terminal.json').exists()
     assert v.fleet._repair_budget_spent(v._job())==2 and v.command_runner.call_count==1
     assert (v.session.metadata_root/'ledger-busy-slot-01.json').exists()
+
+
+# Outer-wait controls below model only configured command selection; the final
+# physical helper test separately exercises actual engine Popen and genuine wait.
+# No fixture here claims current board/epoch, Source/native or storage authority.
+def _outer_wait_command_case(tmp_path, monkeypatch, *, stage='validate', ledger=True):
+    root=tmp_path/'outer-wait-model';root.mkdir()
+    metadata=root/'metadata';metadata.mkdir()
+    owner=_operational_put(root/'owner.py',b'# Fictional configured owner, never executed.\n')
+    command=runtime.OwnerCommand(('/private/python',owner['path'],'{freeze_path}','{receipt_path}'),
+        ('/private/python',owner['path'],'verify','{receipt_path}'),(owner,),1)
+    v=object.__new__(runtime.CandidateRuntime)
+    v.runtime_policy=SimpleNamespace(validation_owner=command,adoption_owner=command,
+        validation_admission_retry=None,validation_ledger_busy_retry={'modeled':'DATA'} if ledger else None)
+    v.config={'repair_worker':{'candidate_runtime':{'modeled':'DATA'}}}
+    v.policy=SimpleNamespace(repository_root=root)
+    v.session=SimpleNamespace(metadata_root=metadata,candidate_root=root/'candidate',binding={'modeled':'DATA'},
+        freeze={'freeze_sha256':'b'*64,'source_commitment':'c'*64})
+    v.token='a'*32;v.attempt_number=1;v.authority=Mock();v._remaining_seconds=Mock(return_value=1000)
+    v.ledger_busy_selected_context=None
+    invocation=metadata/('original-'+stage+'-invocation')
+    v._ledger_busy_invocation=Mock(return_value=invocation)
+    wait_ref={'path':str(invocation/'modeled-original-wait.json'),'bytes':1,'sha256':'d'*64}
+    v._validation_command_wait=Mock(return_value=(SimpleNamespace(returncode=1,stdout='',stderr=''),wait_ref))
+    v.command_runner=Mock(side_effect=AssertionError('validation bypassed original outer wait'))
+    v._failed_validation_disposition=Mock(return_value={'modeled':'retained_failed_validation'})
+    return SimpleNamespace(value=v,invocation=invocation,wait_ref=wait_ref,command=command)
+
+
+@_operational_pytest.mark.parametrize('code',[1,75])
+def test_ledger_busy_validation_preserves_outer_wait_before_failed_terminal(tmp_path,monkeypatch,code):
+    c=_outer_wait_command_case(tmp_path,monkeypatch);v=c.value
+    v._validation_command_wait.return_value=(SimpleNamespace(returncode=code,stdout='failed DATA',stderr=''),c.wait_ref)
+    observed=v._owner_command('validate')
+    assert observed=={'modeled':'retained_failed_validation'}
+    assert v._validation_command_wait.call_count==1 and v.command_runner.call_count==0
+    terminal=runtime._json(runtime._read(c.invocation/'terminal.json'))
+    assert terminal=={'command_returncode':code,'verifier_returncode':None,'original_owner_wait':c.wait_ref}
+    assert v._failed_validation_disposition.call_args.args[2]==terminal
+    assert v._validation_command_wait.call_args.args[2]==c.command.timeout_seconds
+    assert runtime._json(runtime._read(c.invocation/'intent.json'))['attempt_number']==1
+    assert not any('retry-'in p.name for p in v.session.metadata_root.iterdir())
+
+
+def test_ledger_busy_success_wait_survives_separate_verifier_refusal(tmp_path,monkeypatch):
+    c=_outer_wait_command_case(tmp_path,monkeypatch);v=c.value
+    v._validation_command_wait.return_value=(SimpleNamespace(returncode=0,stdout='',stderr=''),c.wait_ref)
+    v.command_runner=Mock(return_value=SimpleNamespace(returncode=1,stdout='',stderr=''))
+    assert v._owner_command('validate') is None
+    assert v._validation_command_wait.call_count==v.command_runner.call_count==1
+    assert v.command_runner.call_args.args[0][2]=='verify'
+    assert runtime._json(runtime._read(c.invocation/'terminal.json'))=={
+        'command_returncode':0,'verifier_returncode':1,'original_owner_wait':c.wait_ref}
+    v._failed_validation_disposition.assert_not_called()
+
+
+def test_ledger_busy_unknown_wait_writes_no_terminal_and_never_replays(tmp_path,monkeypatch):
+    c=_outer_wait_command_case(tmp_path,monkeypatch);v=c.value
+    v._validation_command_wait.side_effect=ValueError('modeled genuine wait unknown')
+    with _operational_pytest.raises(ValueError,match='genuine wait unknown'):
+        v._owner_command('validate')
+    assert(c.invocation/'intent.json').exists()and not(c.invocation/'terminal.json').exists()
+    assert v._owner_command('validate')is None
+    assert v._validation_command_wait.call_count==1
+    v.command_runner.assert_not_called();v._failed_validation_disposition.assert_not_called()
+
+
+@_operational_pytest.mark.parametrize('stage,ledger',[('validate',False),('adopt',True)])
+def test_outer_wait_change_preserves_default_and_adoption_runner(tmp_path,monkeypatch,stage,ledger):
+    c=_outer_wait_command_case(tmp_path,monkeypatch,stage=stage,ledger=ledger);v=c.value
+    v.command_runner=Mock(return_value=SimpleNamespace(returncode=1,stdout='',stderr=''))
+    observed=v._owner_command(stage)
+    assert observed==({'modeled':'retained_failed_validation'}if stage=='validate'else None)
+    assert v.command_runner.call_count==1
+    v._validation_command_wait.assert_not_called()
+    assert runtime._json(runtime._read(c.invocation/'terminal.json'))=={
+        'command_returncode':1,'verifier_returncode':None}
+
+
+@_operational_pytest.mark.parametrize('code',[0,1])
+def test_original_validation_wait_helper_records_real_engine_exit_and_complete_output(tmp_path,code):
+    import sys
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
+    v=object.__new__(runtime.CandidateRuntime);v.command_runner=runtime.run_command
+    v.runtime_policy=SimpleNamespace(sources=(runtime._pin(Path(engine.__file__).absolute()),))
+    v.policy=SimpleNamespace(repository_root=tmp_path)
+    intent=_operational_put(tmp_path/'intent.json',{'fictional_command_only':True})
+    argv=[sys.executable,'-I','-B','-c',f'import sys;print("outer-wait stdout");print("outer-wait stderr",file=sys.stderr);sys.exit({code})']
+    completed,pin=v._validation_command_wait(argv,tmp_path,10)
+    saved=runtime._json(runtime._checked(pin))
+    assert completed.returncode==saved['returncode']==saved['actual_process_returncode']==code
+    assert saved['actual_Popen_returned']is True and saved['actual_process_waited']is True
+    assert saved['argv']==argv and saved['intent']==intent
+    assert saved['stdout']==completed.stdout=='outer-wait stdout\n'
+    assert saved['stderr']==completed.stderr=='outer-wait stderr\n'
+    assert saved['command_started_monotonic']<=saved['command_finished_monotonic']
+    assert saved['owning_command_timeout_seconds']==10
+    assert saved['provider_started']is False and saved['coding_attempts_incremented']is False
+    assert saved['engine_source']==v.runtime_policy.sources[0]
+    assert saved['runner_identity']['pid']>0 and int(saved['runner_identity']['birth'])>0
+    assert runtime._pin(tmp_path/'intent.json')==intent

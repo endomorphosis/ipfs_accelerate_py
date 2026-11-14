@@ -3940,3 +3940,116 @@ def test_public_source_lease_preserves_cold_control_order_without_entering_lease
         assert value['control_prefix']==[str(s.control),str(s.datasets)] and value['guard_denials']==[]
     else:assert value['legacy_D_prepend_preserved']is True
     assert all(Path(path).read_bytes()==raw for path,raw in before.items())
+
+
+# Cancelled retained owner controls: typed boundaries are explicitly modeled DATA.
+@pytest.fixture
+def cancelled_retained_source_custody_DATA(typed_v5_modeled_boundaries, monkeypatch):
+    s=typed_v5_modeled_boundaries;c=s.c
+    c.policy['validation']['source_qualification']={'explicit_modeled_source_mode':True}
+    s.terminal['reservation'].update(status='retained',cleanup_error=None)
+    s.terminal['reservation']['record']['status']='retained'
+    checks=[]
+    def source_plan(policy,plan,invocation):
+        assert policy is c.policy and plan is c.context['plan'] and invocation==c.context['invocation']
+        checks.append('plan');s.events.append('source_plan')
+        return {'explicit_modeled_current_source_scope':True}
+    monkeypatch.setattr(owners,'_source_qualification_plan',source_plan)
+    def old_report(*args,**kwargs):
+        raise ValueError('modeled legacy failed-report path remains closed')
+    monkeypatch.setattr(owners,'_source_qualification_failed_custody',old_report)
+    verdict={'value':{'verdict':'proven_original_cancelled_retained_native_closed',
+        'source_custody_closed':True,'storage_release_authorized':False}}
+    def inspector(terminal,raw,**arguments):
+        assert terminal==s.terminal and raw==c.raw
+        assert arguments['returncode']==c.process.returncode==1
+        assert arguments['owner_pid']==c.identity['pid'] and arguments['owner_birth']==c.identity['birth']
+        assert arguments['cleanup_profile']=='cancelled_retained_v5'
+        assert arguments['original_wait_deadline_monotonic']==c.deadline==1360.0
+        assert checks==['plan'] and not c.closed
+        s.native_calls.append(('cancelled_retained',terminal,arguments));s.events.append('native_inspector')
+        return verdict['value']
+    c.inspector=inspector
+    return SimpleNamespace(base=s,c=c,checks=checks,verdict=verdict,inspector=inspector)
+
+
+def test_source_qualification_typed_timeout_closes_retained_custody_without_report_credit(
+        cancelled_retained_source_custody_DATA):
+    f=cancelled_retained_source_custody_DATA;s=f.base
+    completed=s.result(kind='timeout',public=124,actual=1)
+    witness=s.record(completed);parent=f.c.finish(completed,witness)
+    assert parent['closure_kind']=='original_cancelled_retained_native_closed'
+    assert parent['source_closed'] is parent['native_closed'] is True
+    assert parent['storage_status']=='retained'
+    assert parent['storage_release_authorized'] is parent['retry_authorized'] is False
+    assert s.events.index('source_plan')<s.events.index('native_inspector')<s.events.index('source_exit')
+    assert s.verified==[] and f.checks==['plan']
+    saved=json.loads(Path(f.c.wait_ref['path']).read_bytes())
+    assert saved['returncode']==124 and saved['actual_process_returncode']==1
+    assert not (s.invocation/'source-qualification-receipt.json').exists()
+    assert not (s.invocation/'exports/trusted-validation.json').exists()
+    # No underlying test/call count or qualified worker claim is established.
+
+
+@pytest.mark.parametrize('fault',['completed_kind','wrong_public','not_waited','incomplete_capture',
+    'wrong_process_pid','wrong_birth','wrong_engine_origin','source_guard','source_plan','unknown_native',
+    'expired_before','expired_after_inspection','unknown_profile_verdict'])
+def test_source_qualification_cancelled_retained_binding_fault_never_closes_source(
+        cancelled_retained_source_custody_DATA,monkeypatch,fault):
+    f=cancelled_retained_source_custody_DATA;s=f.base;c=f.c
+    options=dict(kind='timeout',public=124,actual=1)
+    if fault=='completed_kind':options['kind']='completed'
+    elif fault=='wrong_public':options['public']=1
+    elif fault=='not_waited':options['waited']=False
+    elif fault=='incomplete_capture':options['output']='incomplete'
+    elif fault=='wrong_process_pid':options['edits']={'process_pid':c.process.pid+1}
+    completed=s.result(**options);witness=s.record(completed)
+    if fault=='wrong_birth':witness['runner_identity']={**c.identity,'birth':'99999'}
+    elif fault=='wrong_engine_origin':c.engine_source={**c.engine_source,'path':'/untrusted/engine.py'}
+    elif fault=='source_guard':
+        def guard():raise ValueError('modeled current source changed')
+        c.guard=guard
+    elif fault=='source_plan':
+        def plan(*args):raise ValueError('modeled source plan changed')
+        monkeypatch.setattr(owners,'_source_qualification_plan',plan)
+    elif fault=='unknown_native':
+        f.verdict['value']={'verdict':'requires_original_native_cleanup',
+            'source_custody_closed':False,'storage_release_authorized':False}
+    elif fault=='unknown_profile_verdict':
+        f.verdict['value']={'verdict':'proven_original_productive_native_closed_storage_separate',
+            'source_custody_closed':True,'storage_release_authorized':False}
+    elif fault=='expired_before':s.now['value']=c.deadline
+    elif fault=='expired_after_inspection':
+        def inspector(*args,**kwargs):
+            result=f.inspector(*args,**kwargs);s.now['value']=c.deadline;return result
+        c.inspector=inspector
+    with pytest.raises(ValueError):c.finish(completed,witness)
+    assert c.closed is False and 'source_exit'not in s.events and s.verified==[]
+    assert not (s.invocation/'source-qualification-receipt.json').exists()
+
+
+def test_source_qualification_cancelled_retained_late_actual_source_exit_is_not_acceptance(
+        cancelled_retained_source_custody_DATA):
+    f=cancelled_retained_source_custody_DATA;s=f.base;c=f.c
+    old_close=c.stack.close
+    def late_close():old_close();s.now['value']=c.deadline
+    c.stack.close=late_close
+    completed=s.result(kind='timeout',public=124,actual=1);witness=s.record(completed)
+    with pytest.raises(ValueError,match='Source exit completed after'):c.finish(completed,witness)
+    assert c.closed is True and 'source_exit'in s.events
+    late=json.loads((s.invocation/'source-custody-late-close.json').read_bytes())
+    assert late['source_closed'] is True and late['validation_accepted'] is False
+    assert late['storage_release_authorized'] is late['retry_authorized'] is False
+    assert not (s.invocation/'source-qualification-receipt.json').exists()
+
+
+@pytest.mark.parametrize('mode',['repair','report_failure'])
+def test_source_qualification_cancelled_profile_is_not_a_default_or_completed_failure_bypass(
+        cancelled_retained_source_custody_DATA,mode):
+    f=cancelled_retained_source_custody_DATA;s=f.base;c=f.c
+    if mode=='repair':c.policy['validation'].pop('source_qualification')
+    completed=s.result(kind=('completed' if mode=='report_failure' else 'timeout'),
+        public=(1 if mode=='report_failure' else 124),actual=1);witness=s.record(completed)
+    with pytest.raises((ValueError,KeyError,FileNotFoundError)):c.finish(completed,witness)
+    assert c.closed is False and 'source_exit'not in s.events
+    assert not any(call[0]=='cancelled_retained' for call in s.native_calls)

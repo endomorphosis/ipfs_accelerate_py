@@ -267,9 +267,14 @@ class BoardStallWatchdog:
 
     def __init__(self) -> None:
         self._idle_signatures: set[str] = set()
+        self._idle_checked_at: dict[str, float] = {}
 
     def idle_recorded(self, signature: str) -> bool:
-        return signature in self._idle_signatures
+        # Recheck dependency evidence after one normal 120-second interval.
+        # Keep the separate repair signature so an unchanged stall does not
+        # launch another repair callback merely because its check expired.
+        return (signature in self._idle_signatures
+                and time.monotonic() - self._idle_checked_at.get(signature, float("-inf")) < 120.0)
 
     def tick(
         self,
@@ -286,7 +291,8 @@ class BoardStallWatchdog:
         if int(observation["active_count"]) > 0 or int(observation["incomplete_count"]) == 0:
             return decide_board_stall(observation)
         signature = str(observation["signature"])
-        if signature in self._idle_signatures:
+        repair_already_requested = signature in self._idle_signatures
+        if self.idle_recorded(signature):
             decision = decide_board_stall(
                 observation,
                 release_result={"completed": [], "spawned": []},
@@ -309,12 +315,18 @@ class BoardStallWatchdog:
         decision = decide_board_stall(
             observation,
             release_result=release_result,
-            repair_already_requested=False,
+            repair_already_requested=repair_already_requested,
         )
         decision["signature"] = signature
         if decision["action"] != "start_repair_subagent":
+            if decision["action"] == "stall_recorded":
+                self._idle_checked_at[signature] = time.monotonic()
+            elif decision["action"] == "progressed":
+                self._idle_signatures.discard(signature)
+                self._idle_checked_at.pop(signature, None)
             return decision
         self._idle_signatures.add(signature)
+        self._idle_checked_at[signature] = time.monotonic()
         repair = spawn_repair or resolution_repair_subagent
         report = repair(repo, decision["repair_spec"])
         decision["repair_report"] = dict(report)
@@ -324,6 +336,7 @@ class BoardStallWatchdog:
             )
         if report.get("spawned") or report.get("completed"):
             self._idle_signatures.discard(signature)
+            self._idle_checked_at.pop(signature, None)
         return decision
 
 
