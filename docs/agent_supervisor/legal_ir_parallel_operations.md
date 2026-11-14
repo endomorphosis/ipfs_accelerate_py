@@ -311,16 +311,68 @@ regression coverage only. They do not activate a service, renew a resource or
 repair authorization, qualify an original native executor, admit legal meaning,
 or establish a checked statutory corpus.
 
-The incomplete dependency-release modules, probes, watchdog, and their two
-regression owners are preserved together on
-`preserve/incomplete-dependency-release-20261114`. They are excluded from main
-because the maintained `IntentRepository` has no
-`release_dependency_satisfied_blocks` operation. Calling the new watchdog on a
-synthetic blocked catalogue reproduced an `AttributeError` and a
-`release_failed` result. The next step is to implement and independently test
-that transactional operation in the existing repository owner, preserving
-revision checks, evidence requirements, operator holds, and admission boundaries.
-No dependent service or configuration is enabled by this source publication.
+The initial publication preserved the incomplete dependency-release scope on
+`preserve/incomplete-dependency-release-20261114`. Its real watchdog integration
+failed with `AttributeError` / `release_failed` because `IntentRepository` had no
+`release_dependency_satisfied_blocks` operation. That historical failure and
+exact original source remain preserved.
+
+The follow-up implements that operation in the maintained repository, reusing
+its write transaction, task upsert, revision CAS, current-evidence gate, revision
+history, completion receipts, and domain events. The pure decision owner and
+board watchdog now call the real operation. An eligible manual dependency gate
+requires explicit acceptance and its own current recorded evidence. Every
+eligible evidence row must explicitly bind the exact `task_authority_spec_cid`
+and `dependency_snapshot` (task CID, revision, status, and authority spec CID
+for every dependency); declared source/artifact/version bindings are also
+retained. The repository never stamps an old receipt with a new binding.
+Changed source fields, unknown identity fields, acceptance, or dependency
+revisions leave old evidence pending. Exact evidence IDs are filtered before
+checking acceptance, so a shared digest cannot import another record's kind.
+Bare notes cannot replace validation without an explicit kind/digest policy.
+
+Eligible high-level goals can gain deterministic, blocked obligations through
+the existing pure decomposition contract. Decomposition preserves the original
+blocked reason and dependencies and is idempotent; it does not prove a clause.
+A source-bound target is not split into weaker targets. Active blockers,
+review/publication holds, explicit runtime permission/budget contracts, and
+persisted claims/leases remain with their existing authority owners, including
+expired leases and exhausted retry histories. No ready status, admission,
+permission, hold removal, retry reset, or scientific execution is granted.
+Borrowed connections require an active owner transaction and the caller owns
+rollback. Unbound local calls own one transaction; child identity conflicts
+roll back the entire change.
+
+Compatibility is intentionally stricter for this new automatic path: legacy
+unbound metadata receipts stay pending, and a dependency chain needs newly
+recorded downstream evidence after a predecessor's revision changes. Existing
+manual completion and packet-admission APIs retain their existing behavior.
+The focused source-only regression owner is
+`test/api/test_agent_supervisor_dependency_release_repository.py`; the original
+watchdog integration now exercises the real repository. Final qualification
+recorded 56 actual passes, zero skips/failures, in 92.61 seconds across these two
+owners and selected existing evidence, CAS, control-receipt, event-rebuild,
+manual-completion and dependency-packet regressions. The private evidence record
+is `accelerate-dependency-release-adversarial-20261114-v07.xml`. Earlier checks
+retain their actual outcomes: the first adversarial pass had seven test-fixture
+errors from implicit ready status, corrected to explicit blocked updates; one
+later invocation hit the existing test-seal database lock and ran no tests. The
+owner process was allowed to finish before the successful sequential rerun;
+no seal, lock, retry history, or budget was reset. These are software results,
+not a native Lean, scientific training, legal-review, or live activation result.
+
+Thirty original native/scientific probe and full historical target-suite paths
+remain on the preservation branch rather than being treated as qualified
+automatic completion routes. The full preserved suite also reproduces a
+collection error for missing `modality_error_report_probe`; it is not a passing
+result. These preserved routes require producer-specific integration and their
+normal resource admission before qualification. Source-marker matches, fixed
+probe constants, and old receipts do not establish scientific or legal success.
+No service, live supervisor task, native Lean process, model, or paid provider
+was started by this follow-up. The next smallest source-only task is to adapt
+one existing producer to the exact binding contract and test that its original
+and changed dependency receipts are accepted and rejected respectively, without
+automatic rebinding or source-marker completion.
 
 Runtime databases, attestation keys, test caches, generated logs, and historical
 large-blob branch ancestry are excluded from Git publication. Their local files
