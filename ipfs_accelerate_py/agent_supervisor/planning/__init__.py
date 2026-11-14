@@ -33,7 +33,6 @@ PLANNING_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.plannin
 # Stems owned by asref/planning in docs/architecture/asref/move_map.json.
 PLANNING_OWNED_MODULES: Final[tuple[str, ...]] = (
     "adaptive_planner",
-    "campaign_prompt_handoff",
     "formal_plan_compiler",
     "formal_plan_conformance",
     "formal_plan_context",
@@ -43,7 +42,7 @@ PLANNING_OWNED_MODULES: Final[tuple[str, ...]] = (
     "formal_planning_metrics",
     "formal_planning_rollout",
     "formal_replanner",
-    "ir_learning_campaign_planner",
+    "parallel_lane_planner",
     "plan_evaluator",
     "plan_failure_memory",
     "proof_carrying_planner",
@@ -56,6 +55,7 @@ PLANNING_LANDED_MODULES: Final[tuple[str, ...]] = (
     "plan_failure_memory",
     "formal_planning_metrics",
     "formal_planning_rollout",
+    "parallel_lane_planner",
 )
 
 # Packages that must not be imported by planning (DAG / cycle guard).
