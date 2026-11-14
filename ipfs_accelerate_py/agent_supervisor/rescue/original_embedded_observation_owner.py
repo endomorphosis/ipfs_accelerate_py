@@ -820,6 +820,57 @@ def process_spawn_receipts(attempt,digest,host):
         all_recorded_original_births_stopped=True,resource_or_completion_authority=False)
 
 
+def _closed_storage_admission_capacity_refusal(value, digest, result, *, stage, root, phase):
+    """Describe only the already-closed storage-open-before-record negative.
+
+    These are primitive observations of the real original handles after their
+    existing release/absence check. This neither releases a claim nor admits a
+    new request, and a missing/ambiguous observation remains an ordinary error.
+    """
+    state=result.get('reservation')
+    if not (stage=='parented_storage_open_before_record'
+            and result.get('error_type')=='DaemonResourceError'
+            and result.get('error')=='storage reservation capacity exceeded'
+            and type(result.get('resource_capacity_observation'))is dict
+            and result.get('control_effects')=='not_started'
+            and result.get('completed')is False
+            and result.get('original_native_compute_closed')is True
+            and result.get('source_READ_closed')is True
+            and result.get('absolute_resource_operation_deadline_closed')is True
+            and result.get('child_launch_attempted')is False
+            and result.get('child_reaped')is False
+            and result.get('child_returncode')is None
+            and result.get('cleanup_errors')==[] and result.get('received_signals')==[]
+            and type(state)is dict and state.get('status')=='not_entered'
+            and state.get('record')is None and state.get('resource_lease')is None
+            and state.get('cleanup_error')is None
+            and state.get('ledger_path')==value['resource_ledger']
+            and result.get('database_preimage_before_grants')==value['database_preimage']
+            and type(result.get('elapsed_seconds'))in(int,float)
+            and 0<=result['elapsed_seconds']<value['timeout_seconds']
+            and root is not None and phase is not None
+            and root.released is True and phase.released is True
+            and root.parent_lease_id is None and phase.parent_lease_id==root.lease_id
+            and root.lease_id!=phase.lease_id
+            and root.owner_pid==phase.owner_pid==result.get('owner_pid')):
+        return None
+    if any(key in result for key in ('execution_request','external_precharge','external_before',
+            'external_after','external_output_parent_identities','parent_capacity_handoff',
+            'process_spawn_receipts','sampled_process_custody','sampled_process_custody_final',
+            'database_preimage_observed','database_postimage','allowed_subprocess_events')):
+        return None
+    def row(lease):
+        return {key:getattr(lease,key)for key in ('lease_id','parent_lease_id','owner_pid',
+            'lane','cpu_slots','memory_mb','child_process_slots','released')}
+    return dict(schema='original-orchestration-storage-admission-refusal/v1',
+        stage=stage,request_sha256=digest,owner_pid=result['owner_pid'],
+        owner_birth=result['owner_birth'],owner_boot_id=result['owner_boot_id'],
+        orchestration_lease_ids=[root.lease_id,phase.lease_id],root=row(root),phase=row(phase),
+        native_ancestry_closed=True,storage_record_created=False,
+        storage_native_lease_created=False,child_launch_attempted=False,
+        external_charge_created=False,task_completion_authority=False)
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--request',required=True,type=Path)
@@ -836,6 +887,7 @@ def main():
     lease_module=load_source_lease()
     contexts=[];root=phase=owner=child=tracker=None
     owner_entered=False;birth=None;child_started=False;child_reaped=False;child_launch_attempted=False
+    storage_admission_stage=None
     resource_scope=None;cleanup_scope=None;resource_scope_entered=False;cleanup_scope_entered=False
     compute_closed=False;storage_status='not_requested';failure=None;cleanup_errors=[]
     cancelled=threading.Event();signals=[];started=time.monotonic();deadline=started+value['timeout_seconds']
@@ -896,7 +948,8 @@ def main():
              and attempt.lstat().st_mode&0o777==0o700,'caller-prepared private attempt changed before original admission')
         owner=_new_original_parented_reservation(value,ParentedPhaseResourceReservation,
             attempt=attempt,parent_lease=phase,timeout_seconds=remaining())
-        owner.__enter__();owner_entered=True;storage_status='active'
+        storage_admission_stage='parented_storage_open_before_record'
+        owner.__enter__();owner_entered=True;storage_status='active';storage_admission_stage=None
         need(owner.to_dict()['workload']=='canonical_parented_phase'
              and owner.to_dict()['scheduler_lane']=='orchestration','original control-purpose profile required')
         # One immutable logical catalog bundle covers DB, WAL and writer lock.
@@ -1087,6 +1140,10 @@ def main():
         except BaseException as clock_error:
             cleanup_errors.append(type(clock_error).__name__+': '+str(clock_error))
         if result['source_READ_closed'] and not cleanup_errors:
+            if storage_admission_stage is not None and type(failure)is host.DaemonResourceError:
+                negative=_closed_storage_admission_capacity_refusal(value,args.expected_request_sha256,
+                    result,stage=storage_admission_stage,root=root,phase=phase)
+                if negative is not None:result['storage_admission_capacity_refusal']=negative
             for number,handler in previous.items():signal.signal(number,handler)
             print(json.dumps(result,sort_keys=True),flush=True)
         else:

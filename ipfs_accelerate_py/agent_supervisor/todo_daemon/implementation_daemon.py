@@ -81691,6 +81691,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional DuckDB path for fenced task claims (defaults beside --database-path).",
     )
     parser.add_argument(
+        "--execution-path",
+        type=Path,
+        default=None,
+        help=(
+            "Optional DuckDB path for this daemon's execution store. "
+            "When omitted, a single lane still derives a sidecar beside --database-path."
+        ),
+    )
+    parser.add_argument(
         "--owner-session-id",
         default="",
         help="Daemon session identity used for fenced claims.",
@@ -82198,14 +82207,20 @@ def main(argv: list[str] | None = None) -> None:
             if args.native_metadata_execution_task_cid:
                 from ..task_sources.database_task_source import DatabaseTaskSource
                 metadata_source_kwargs = {
-                    "task_source": DatabaseTaskSource(Path(database_path),
+                    "task_source": DatabaseTaskSource(
+                        Path(database_path),
                         owner_id="native-metadata-executor:" + str(args.owner_session_id),
-                        install_schema=False),
+                        install_schema=False,
+                        # Signed packet evidence stays current for this one task.
+                        # The repository default drops it after one hour.
+                        evidence_freshness_seconds=0,
+                    ),
                     "close_task_source": True,
                 }
             daemon: Any = DatabaseImplementationDaemon(
                 database_path=Path(database_path),
                 coordination_path=getattr(args, "coordination_path", None),
+                execution_path=getattr(args, "execution_path", None),
                 state_dir=Path(args.state_dir),
                 state_prefix=str(args.state_prefix),
                 owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
@@ -82395,6 +82410,17 @@ def main(argv: list[str] | None = None) -> None:
                     from .native_owner_bootstrap import observe_typed_database_without_dispatch
                     result = observe_typed_database_without_dispatch(daemon)
                 elif args.native_metadata_execution_task_cid:
+                    state_dir = Path(args.state_dir)
+                    state_dir.mkdir(parents=True, exist_ok=True)
+                    os.chmod(state_dir, 0o700)
+                    if (
+                        not state_dir.is_dir()
+                        or state_dir.stat().st_uid != os.geteuid()
+                        or state_dir.stat().st_mode & 0o077
+                    ):
+                        raise RuntimeError(
+                            "native metadata execution state directory is not private"
+                        )
                     result = daemon.run_native_metadata_validation(
                         task_cid=args.native_metadata_execution_task_cid,
                         expected_revision=args.native_metadata_execution_task_revision,

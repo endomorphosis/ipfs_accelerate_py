@@ -100,7 +100,16 @@ def _result(observation, **changes):
             "stderr": "", "timed_out": False, **changes}
 
 
-def test_control_events_cannot_postpone_task_stall_repair(tmp_path):
+def test_control_events_cannot_postpone_task_stall_heal(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_heals
+
+    heals = []
+
+    def apply_heal(board, state):
+        heals.append((board["id"], state["observation"]["reason_codes"]))
+        return {"status": "wait", "recipe": "native_lanes_own_independent_todos"}
+
+    monkeypatch.setattr(fleet_heals, "apply_supervisor_heal", apply_heal)
     board = _board(tmp_path)
     authority = {"task_count": 2, "task_statuses": {"T-001": "completed", "T-002": "in_progress"}}
     runner = Runner(_observation(progress_token=live_board_probe._progress({**authority, "event_cursor": 1})))
@@ -113,12 +122,11 @@ def test_control_events_cannot_postpone_task_stall_repair(tmp_path):
         latest = fleet.tick_board(board, state_root, apply=True, runner=runner, now=now)
     assert latest["last_progress_at"] == 100
     assert latest["health"] == "stalled"
-    assert latest["last_action"] == "repair"
-    repairs = [call for call in runner.calls if call["argv"][0] == "repair"]
-    assert len(repairs) == 1
-    incident = json.loads(Path(repairs[0]["argv"][2]).read_text())
-    assert incident["action"] == "repair"
-    assert "no_task_progress" in incident["observation"]["reason_codes"]
+    assert latest["last_action"] == "supervisor_heal"
+    assert not [call for call in runner.calls if call["argv"][0] == "repair"]
+    assert len(heals) == 1
+    assert heals[0][0] == board["id"]
+    assert "no_task_progress" in heals[0][1]
 
 
 def _native_observation(status="in_progress", *, completed=32, receipts=32,

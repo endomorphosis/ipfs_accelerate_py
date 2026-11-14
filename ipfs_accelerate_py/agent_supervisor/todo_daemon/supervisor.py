@@ -290,6 +290,7 @@ def active_validation_subprocess_exists(root_pid: Any) -> bool:
         "tsc --noemit", "run_legal_ir_10m_smoke.sh", "run_legal_ir_8h_canary.sh",
         "run_hammer_leanstral_smoke.sh", "run_hammer_leanstral_hparam.sh",
         "uscode_modal_daemon_runner",
+        "build_state_laws_snapshot_sparse_graphrag.py", "watch_state_laws_snapshot_graphrag.py",
     )
     for item in descendant_processes(root_pid):
         command = item.get("argv") or item.get("cmdline")

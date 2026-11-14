@@ -22,5 +22,13 @@
   "actions_path": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/fleet-events.jsonl",
   "merge_queue_dir": "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/merge-queue",
   "merge_stale_seconds": 1800,
-  "repeated_error_threshold": 3
+  "repeated_error_threshold": 3,
+  "dependency_services": [
+    {
+      "service": "ipfs-legal-ir-retained-capacity-recovery.service",
+      "timer": "ipfs-legal-ir-retained-capacity-recovery.timer",
+      "max_runtime_seconds": 300,
+      "max_idle_seconds": 180
+    }
+  ]
 }

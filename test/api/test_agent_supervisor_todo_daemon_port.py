@@ -79,7 +79,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
 )
 from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
     _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    _DEFAULT_GROK_TIMEOUT_SECONDS,
     _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
@@ -4756,22 +4756,22 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
 
 
 def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
+    monkeypatch.delenv("GROK_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
 
+    grok_timeout = _timeout_seconds(
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_GROK_TIMEOUT_SECONDS,
+    )
     codex_timeout = _timeout_seconds(
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
         _DEFAULT_CODEX_TIMEOUT_SECONDS,
     )
-    copilot_timeout = _timeout_seconds(
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_COPILOT_TIMEOUT_SECONDS,
-    )
 
-    assert codex_timeout == 900
-    assert copilot_timeout == 600
+    assert grok_timeout == 900
+    assert codex_timeout == 600
     assert (
-        codex_timeout + copilot_timeout
+        grok_timeout + codex_timeout
         < merge_resolver.DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
     )
 
@@ -15342,7 +15342,58 @@ def test_implementation_supervisor_repairs_malformed_state_file(tmp_path):
     assert any(event["type"] == "state_file_repaired" for event in events)
 
 
+def _maintenance_status_fixture_state(monkeypatch):
+    """Use a declared JSON projection without the unrelated native DB router."""
+    def save(state, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = vars(state)
+        rendered = json.dumps(payload, sort_keys=True) + "\n"
+        before = path.read_text(encoding="utf-8") if path.exists() else None
+        path.write_text(rendered, encoding="utf-8")
+        return before != rendered
+
+    def load(cls, path):
+        if not path.exists():
+            return cls()
+        return cls(**json.loads(path.read_text(encoding="utf-8")))
+
+    monkeypatch.setattr(TodoTaskState, "save", save)
+    monkeypatch.setattr(TodoTaskState, "load", classmethod(load))
+
+
+def _maintenance_status_fixture_supervisor(monkeypatch, config):
+    """Keep heartbeat tests independent of Git discovery and board ingestion."""
+    module = implementation_supervisor_module
+    monkeypatch.setattr(module, "_control_plane_probe_root", lambda root: Path(root))
+    monkeypatch.setattr(
+        module, "isolate_board_runtime",
+        lambda **kwargs: {"projection_authoritative": False},
+    )
+    supervisor = TodoImplementationSupervisor(config)
+    monkeypatch.setattr(
+        supervisor, "_control_plane_status_projection",
+        lambda: {"control_plane_update_pending": False},
+    )
+    monkeypatch.setattr(supervisor, "_proof_rollout_status_fields", lambda strategy=None: {})
+    monkeypatch.setattr(supervisor, "_autonomous_unstall_status", lambda: {})
+    def unavailable_native_observation(*, daemon_pid, observed_at, supervisor_birth):
+        return {
+            "schema": "ipfs-accelerate/unavailable-child-recovery-safety@1",
+            "observed_at": observed_at, "supervisor_process_birth": dict(supervisor_birth),
+            "safe": False, "blockers": ["fixture_native_quiescence_unprovided"]
+                + (["managed_daemon_present"] if daemon_pid else []),
+            "state_source": "fixture-native-quiescence-unavailable",
+            "board_namespace": config.board_namespace,
+            "active_worker_count": None, "active_worker_pids": None,
+            "worker_descendant_count": None, "worker_phase": None,
+            "lease_or_task_mutation_authority": False,
+        }
+    monkeypatch.setattr(supervisor, "_unavailable_child_recovery_status", unavailable_native_observation)
+    return supervisor
+
+
 def test_implementation_supervisor_run_once_refreshes_recovery_status(tmp_path, monkeypatch):
+    _maintenance_status_fixture_state(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -15363,7 +15414,7 @@ def test_implementation_supervisor_run_once_refreshes_recovery_status(tmp_path, 
         encoding="utf-8",
     )
     state_dir = repo / "state"
-    supervisor = TodoImplementationSupervisor(
+    supervisor = _maintenance_status_fixture_supervisor(monkeypatch,
         TodoSupervisorConfig(
             todo_path=todo_path,
             state_path=state_dir / "task_state.json",
@@ -15381,10 +15432,44 @@ def test_implementation_supervisor_run_once_refreshes_recovery_status(tmp_path, 
         observed_statuses.append(json.loads(status_path.read_text(encoding="utf-8")))
         return {}
 
+    # This test observes heartbeat publication at the objective-refill callback;
+    # repository repair, checkout leases and scan persistence have their own tests.
+    state_dir.mkdir(parents=True, exist_ok=True)
+    TodoTaskState(ready_count=0, completed_count=1).save(supervisor.config.state_path)
+    lease = {"fixture": "maintenance-status-only"}
+    released_leases = []
+    monkeypatch.setattr(supervisor, "_acquire_implementation_maintenance_lease", lambda: (lease, {}))
+    monkeypatch.setattr(supervisor, "_release_implementation_maintenance_lease", released_leases.append)
+    for method in (
+        "_recover_retained_generated_checkout_lease", "provisionally_complete_terminal_goals",
+        "ensure_event_log_file", "ensure_state_file", "detect_stale_worktrees",
+        "repair_stale_active_execution_state", "release_completed_leftover_execution",
+        "repair_main_checkout_merge_state", "repair_generated_dirty_checkouts",
+        "reconcile_backlogged_worktrees", "recover_already_merged_reconciliation_candidates",
+        "cleanup_backlogged_worktrees", "ensure_strategy_file", "ensure_todo_board_for_refill",
+        "migrate_legacy_objective_goal_completion", "reconcile_objective_task_janitor",
+        "_persist_refill_result", "_attempt_budget_exhaustion_status",
+    ):
+        monkeypatch.setattr(supervisor, method, lambda *args, **kwargs: {})
+    for method in (
+        "record_reconciliation_guardrails", "release_completed_guardrail_blocks",
+        "record_retry_budget_guardrails", "record_dependency_guardrails",
+        "_objective_goals_for_finding_mapping",
+    ):
+        monkeypatch.setattr(supervisor, method, lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        implementation_supervisor_module, "scan_identity",
+        lambda root: SimpleNamespace(repository_id=str(root), tree_id="fixture-unversioned-no-git"),
+    )
+    monkeypatch.setattr(supervisor, "is_stuck", lambda state, *, now_ts: (False, ""))
+    monkeypatch.setattr(supervisor, "_record_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(supervisor, "_run_protected_refill_mutation", lambda **kwargs: kwargs["callback"]())
+    monkeypatch.setattr(supervisor, "refill_codebase_backlog", lambda: {})
     monkeypatch.setattr(supervisor, "refill_objective_backlog", fake_objective_refill)
 
     supervisor.run_once()
 
+    assert released_leases == [lease]
     assert observed_statuses
     assert observed_statuses[0]["status"] == "agentic_maintenance_started"
     assert observed_statuses[0]["last_agentic_maintenance_status"] == "running"
@@ -15397,37 +15482,11 @@ def test_implementation_supervisor_run_once_refreshes_recovery_status(tmp_path, 
     assert final_status["last_agentic_maintenance_status"] == "completed"
 
 
-def test_implementation_supervisor_watchdog_refreshes_child_maintenance_status(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    supervisor = TodoImplementationSupervisor(
-        TodoSupervisorConfig(
-            todo_path=repo / "todo.md",
-            state_path=state_dir / "task_state.json",
-            strategy_path=state_dir / "strategy.json",
-            events_path=state_dir / "supervisor_events.jsonl",
-            state_dir=state_dir,
-            repo_root=repo,
-        )
-    )
-
-    update_phase, finish = supervisor._begin_supervisor_maintenance_heartbeat(
-        "watchdog",
-        daemon_pid=os.getpid(),
-    )
-    update_phase("objective_refill")
-    finish("completed")
-
-    status = json.loads((state_dir / "portal_supervisor_status.json").read_text(encoding="utf-8"))
-    assert status["daemon_pid"] == os.getpid()
-    assert status["daemon_pid_alive"] is True
-    assert status["active_agentic_maintenance_has_daemon"] is True
-    assert status["last_agentic_maintenance_phase"] == "objective_refill"
-    assert status["last_agentic_maintenance_status"] == "completed"
-
-
-def test_implementation_supervisor_watchdog_throttles_maintenance(tmp_path, monkeypatch):
+@pytest.mark.parametrize("birth_case", ("alive", "missing", "prior_birth"))
+def test_implementation_supervisor_watchdog_refreshes_child_maintenance_status(
+    tmp_path, monkeypatch, birth_case
+):
+    _maintenance_status_fixture_state(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -15435,7 +15494,80 @@ def test_implementation_supervisor_watchdog_throttles_maintenance(tmp_path, monk
     state_dir = repo / "state"
     state_dir.mkdir()
     TodoTaskState(ready_count=0, completed_count=1).save(state_dir / "task_state.json")
-    supervisor = TodoImplementationSupervisor(
+    supervisor = _maintenance_status_fixture_supervisor(monkeypatch,
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    # The current process supplies a genuine live birth for the unit fixture;
+    # the prior generation keeps the same numeric PID but must stay non-live.
+    current_birth = implementation_supervisor_module.read_process_birth(os.getpid())
+    assert current_birth is not None
+    assert current_birth.start_time_ticks > 1
+    managed_birth = {
+        "alive": current_birth,
+        "missing": None,
+        "prior_birth": replace(
+            current_birth, start_time_ticks=current_birth.start_time_ticks - 1
+        ),
+    }[birth_case]
+    child = SimpleNamespace(pid=os.getpid(), identity_process_birth=managed_birth)
+    status_path = state_dir / "portal_supervisor_status.json"
+    snapshots = []
+
+    def fake_maintenance(update_phase):
+        snapshots.append(json.loads(status_path.read_text(encoding="utf-8")))
+        update_phase("objective_refill")
+        snapshots.append(json.loads(status_path.read_text(encoding="utf-8")))
+        return {"stuck": False, "main_checkout_repair": {"repaired": False}}
+
+    # Isolate unrelated worker/control-plane observations while retaining the
+    # actual watchdog caller, heartbeat writer, and birth-based liveness owner.
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(supervisor, "_active_validation_subprocess_exists", lambda: False)
+    monkeypatch.setattr(supervisor, "_current_supervisor_checkout_lease", lambda: None)
+    monkeypatch.setattr(
+        supervisor, "_control_plane_status_projection",
+        lambda: {"control_plane_update_pending": False},
+    )
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", fake_maintenance)
+
+    decision = supervisor._supervisor_loop_watchdog_decision(None, child, {})
+    snapshots.append(json.loads(status_path.read_text(encoding="utf-8")))
+
+    assert decision.action == "continue"
+    assert len(snapshots) == 3
+    for status in snapshots:
+        assert status["daemon_pid"] == child.pid
+        assert status["daemon_pid_alive"] is (birth_case == "alive")
+        assert status["daemon_process_birth"] == (
+            managed_birth.to_dict() if managed_birth is not None else None
+        )
+        assert status["active_agentic_maintenance_has_daemon"] is True
+        assert "managed_daemon_present" in status["unavailable_child_recovery"]["blockers"]
+    assert [status["last_agentic_maintenance_phase"] for status in snapshots] == [
+        "watchdog", "objective_refill", "objective_refill"
+    ]
+    assert [status["last_agentic_maintenance_status"] for status in snapshots] == [
+        "running", "running", "completed"
+    ]
+
+
+def test_implementation_supervisor_watchdog_throttles_maintenance(tmp_path, monkeypatch):
+    _maintenance_status_fixture_state(monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    TodoTaskState(ready_count=0, completed_count=1).save(state_dir / "task_state.json")
+    supervisor = _maintenance_status_fixture_supervisor(monkeypatch,
         TodoSupervisorConfig(
             todo_path=todo_path,
             state_path=state_dir / "task_state.json",
@@ -15814,6 +15946,7 @@ def test_daemon_health_forwards_control_plane_source_drift(tmp_path):
 
 
 def test_implementation_supervisor_watchdog_skips_active_progress_maintenance(tmp_path, monkeypatch):
+    _maintenance_status_fixture_state(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -15837,7 +15970,7 @@ def test_implementation_supervisor_watchdog_skips_active_progress_maintenance(tm
         last_progress_at=now.isoformat(),
         ready_count=1,
     ).save(state_path)
-    supervisor = TodoImplementationSupervisor(
+    supervisor = _maintenance_status_fixture_supervisor(monkeypatch,
         TodoSupervisorConfig(
             todo_path=todo_path,
             state_path=state_path,
@@ -15869,6 +16002,7 @@ def test_implementation_supervisor_watchdog_defers_maintenance_for_selectable_wo
     tmp_path,
     monkeypatch,
 ):
+    _maintenance_status_fixture_state(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -15882,7 +16016,7 @@ def test_implementation_supervisor_watchdog_defers_maintenance_for_selectable_wo
         ready_task_ids=["AUTO-002"],
         selectable_ready_task_ids=["AUTO-002"],
     ).save(state_path)
-    supervisor = TodoImplementationSupervisor(
+    supervisor = _maintenance_status_fixture_supervisor(monkeypatch,
         TodoSupervisorConfig(
             todo_path=todo_path,
             state_path=state_path,

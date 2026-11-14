@@ -596,6 +596,104 @@ def _attach_watchdog_liveness(config: dict[str, Any], summary: dict[str, Any], n
             attachment["incident_log_error"] = f"{type(exc).__name__}: {exc}"[:512]
 
 
+def _dependency_unit_state(unit: str, deadline_monotonic: float) -> dict[str, str]:
+    """Observe one exact unit; no start, restart, signal or repair is selectable."""
+    remaining = deadline_monotonic - time.monotonic()
+    if remaining <= 0:
+        raise ValueError("dependency observation deadline exhausted")
+    properties = ("Id,LoadState,ActiveState,SubState,Type,Result,ExecMainStatus,"
+                  "ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic,Triggers")
+    try:
+        observed = lane_monitor.subprocess.run(
+            ["systemctl", "--user", "show", "--no-pager", "--property=" + properties, "--", unit],
+            text=True, capture_output=True, timeout=min(3.0, remaining), check=False)
+    except (OSError, lane_monitor.subprocess.TimeoutExpired) as error:
+        raise ValueError("dependency unit observation unavailable") from error
+    if observed.returncode != 0 or len(observed.stdout) > 8192:
+        raise ValueError("dependency unit observation failed or exceeded its bound")
+    result = {}
+    for line in observed.stdout.splitlines():
+        if "=" not in line:
+            raise ValueError("invalid dependency unit property")
+        key, value = line.split("=", 1)
+        if key in result or key not in properties.split(","):
+            raise ValueError("duplicate or unexpected dependency unit property")
+        result[key] = value
+    if result.get("Id") != unit or result.get("LoadState") != "loaded":
+        raise ValueError("exact dependency unit is not loaded")
+    return result
+
+
+def dependency_services_diagnostics(bindings: Any, *, deadline_monotonic: float) -> dict[str, Any]:
+    """Read opt-in oneshot/timer health without changing native-lane semantics."""
+    result = {"schema": "board-service-dependency-diagnostics/v1", "configured": True,
+              "available": False, "services": [], "issues": [],
+              "action_authority": False, "completion_authority": False,
+              "automatic_source_repin_authorized": False}
+    try:
+        if type(bindings) is not list or not 1 <= len(bindings) <= 4:
+            raise ValueError("finite dependency service bindings required")
+        seen = set()
+        for binding in bindings:
+            if (type(binding) is not dict or set(binding) != {"service", "timer", "max_runtime_seconds", "max_idle_seconds"}
+                    or type(binding["service"]) is not str
+                    or not re.fullmatch(r"[A-Za-z0-9_.@:-]+\.service", binding["service"])
+                    or type(binding["timer"]) is not str
+                    or binding["timer"] != binding["service"][:-8] + ".timer"
+                    or binding["service"] in seen
+                    or type(binding["max_runtime_seconds"]) is not int
+                    or not 1 <= binding["max_runtime_seconds"] <= 300
+                    or type(binding["max_idle_seconds"]) is not int
+                    or not 1 <= binding["max_idle_seconds"] <= 3600):
+                raise ValueError("closed unique oneshot/timer binding required")
+            seen.add(binding["service"])
+        for binding in bindings:
+            item = {**binding, "healthy": False, "status": "unavailable", "action": "none"}
+            try:
+                service = _dependency_unit_state(binding["service"], deadline_monotonic)
+                timer = _dependency_unit_state(binding["timer"], deadline_monotonic)
+                item.update(service_observation=service, timer_observation=timer)
+                if service.get("Type") != "oneshot":
+                    raise ValueError("dependency must remain a oneshot")
+                if (timer.get("ActiveState") != "active"
+                        or timer.get("SubState") not in {"waiting", "running"}
+                        or timer.get("Triggers", "").split() != [binding["service"]]):
+                    raise ValueError("dependency timer unavailable or targets another unit")
+                active = service.get("ActiveState")
+                if active in {"active", "activating"}:
+                    start = service.get("ExecMainStartTimestampMonotonic", "")
+                    if not start.isdecimal() or not 0 < int(start) < 2**63:
+                        raise ValueError("oneshot start clock unavailable")
+                    elapsed = time.monotonic() - int(start) / 1_000_000
+                    if not 0 <= elapsed <= binding["max_runtime_seconds"]:
+                        raise ValueError("oneshot exceeded its original runtime bound")
+                    item.update(healthy=True, status="in_progress", elapsed_seconds=elapsed)
+                elif (active == "inactive" and service.get("SubState") == "dead"
+                        and service.get("Result") == "success" and service.get("ExecMainStatus") == "0"):
+                    start = service.get("ExecMainStartTimestampMonotonic", "")
+                    exited = service.get("ExecMainExitTimestampMonotonic", "")
+                    if (not start.isdecimal() or not exited.isdecimal()
+                            or not 0 < int(start) <= int(exited) < 2**63):
+                        raise ValueError("successful oneshot start/exit clocks unavailable or reversed")
+                    now = time.monotonic()
+                    age = now - int(exited) / 1_000_000
+                    if not 0 <= age <= binding["max_idle_seconds"]:
+                        raise ValueError("successful oneshot exit is stale or in the future")
+                    item.update(healthy=True, status="scheduled_idle", successful_exit_age_seconds=age)
+                else:
+                    raise ValueError("oneshot failed or successful exit is not established")
+            except (OSError, ValueError, TypeError, OverflowError) as error:
+                item["reason"] = str(error)[:512]
+                result["issues"].append({"code": "dependency_service_unhealthy",
+                    "service": binding["service"], "timer": binding["timer"],
+                    "reason": item["reason"]})
+            result["services"].append(item)
+        result["available"] = not result["issues"]
+    except (OSError, ValueError, TypeError, OverflowError) as error:
+        result["issues"].append({"code": "dependency_service_binding_invalid", "reason": str(error)[:512]})
+    return result
+
+
 def monitor_fleet(config: dict[str, Any], *, apply: bool = False) -> dict[str, Any]:
     Path(config["lock_path"]).parent.mkdir(parents=True, exist_ok=True)
     with lane_monitor._open_regular(config["lock_path"], append=True) as lock:
@@ -635,6 +733,8 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
     # The optional observation must leave time to publish inside the existing
     # 90s oneshot. An absent binding adds no clock or watchdog I/O.
     liveness_deadline = time.monotonic() + 80 if "watchdog_liveness" in config else None
+    dependency_deadline = (liveness_deadline if liveness_deadline is not None else
+        time.monotonic() + 80 if "dependency_services" in config else None)
     now = time.time()
     issues = []
     # Separate lane locks, health files, and restart budgets make these calls
@@ -660,6 +760,13 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
                "lane_count": len(lanes), "healthy_lane_count": sum(bool(lane["health"].get("healthy")) for lane in lanes),
                "lanes": lanes, "duplicate_active_tasks": duplicates, "merge_queue": merges, "issues": issues,
                "completion_authority": False, "task_counts_aggregated": False}
+    if "dependency_services" in config:
+        dependencies = dependency_services_diagnostics(config["dependency_services"],
+            deadline_monotonic=dependency_deadline)
+        summary["dependency_services"] = dependencies
+        issues.extend(dependencies["issues"])
+        if dependencies["issues"]:
+            summary.update(healthy=False, status="attention_required")
     if "prerequisite_diagnostics" in config:
         attachment = prerequisite_diagnostics(config)
         summary["prerequisite_diagnostics"] = attachment

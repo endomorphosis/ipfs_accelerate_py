@@ -25,7 +25,6 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
-from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import ProjectionDeltaCheckpointStore
 from typing import Any, Callable, Mapping, Sequence
 
 from ...agent_implementation_route import (
@@ -117,6 +116,7 @@ from ..objectives.scan_receipts import (
     build_scan_result,
     scan_identity,
 )
+from ..campaign_host_capability import host_has_snapshot_builder, should_retry_stalled_task
 from ..prompt.prompt_workflow import RescueOperation, prompt_workflow_cid
 from ..rescue.rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
 from ..rescue.supervisor_watchdog import (
@@ -510,6 +510,29 @@ SELECTION_DISPOSITION_IDLE_REASON_PREFIX = "disposition_idle:"
 # --- restored PROVIDER_CAPACITY_BACKOFF_IDLE_REASON ---
 
 PROVIDER_CAPACITY_BACKOFF_IDLE_REASON = "provider_capacity_backoff"
+
+
+_DISPOSITION_SELECTION_PRIORITY = {
+    "closed_deterministic": 0,
+    "residual_llm_authorized": 1,
+    "abstain_review": 2,
+    "defer_capability": 3,
+}
+_DISPOSITION_IDLE_CLASSES = frozenset(
+    {"abstain_review", "defer_capability"}
+)
+_QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS = frozenset(
+    {"no_shard_selectable_ready_tasks", "no_tasks_found"}
+)
+_QUIESCENT_POLICY_IDLE_REASONS = frozenset(
+    {
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        PROVIDER_CAPACITY_BACKOFF_IDLE_REASON,
+    }
+)
 
 
 # --- restored IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX ---
@@ -10526,6 +10549,18 @@ class PortalImplementationSupervisor:
             }
 
         def retry(context: Any) -> Mapping[str, Any]:
+            capability = should_retry_stalled_task(affected_task_id, stall_reason=reason)
+            if not capability.retry_implementation:
+                # Reuse the current revision/claim guard and quarantine handler.
+                # A host capability decision does not grant fresh repair authority.
+                result = quarantine(context)
+                action_details["state_repair"].update(
+                    classification=capability.classification.value,
+                    retry_implementation=False,
+                    host_capability_reason=capability.reason,
+                )
+                self._record_event("host_capability_blocked", capability.to_dict())
+                return result
             repair = self.repair_blocked_progress_state(
                 state, reason, now_ts=time.time()
             )
@@ -21875,6 +21910,19 @@ class PortalImplementationSupervisor:
         )
         return max(0.0, now_ts - anchor) <= max_age_seconds + grace_seconds
 
+    def _campaign_snapshot_builder_running(self) -> bool:
+        processes: list[dict[str, Any]] = []
+        proc = Path("/proc")
+        if not proc.is_dir():
+            return False
+        for item in proc.iterdir():
+            if not item.name.isdigit():
+                continue
+            line = process_command_line(int(item.name))
+            if line:
+                processes.append({"cmdline": line})
+        return host_has_snapshot_builder(processes)
+
     def _implementation_log_stall_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
         if not state.active_task_id or not state.implementation_in_progress:
             return ""
@@ -21884,6 +21932,7 @@ class PortalImplementationSupervisor:
             self._active_agent_worker_processes()
             or state.active_phase in {"validating", "merge_reconciliation", "merge_resolver"}
             or self._active_validation_subprocess_exists()
+            or self._campaign_snapshot_builder_running()
         ):
             return ""
         threshold = max(0.0, float(self.config.implementation_log_stall_seconds))

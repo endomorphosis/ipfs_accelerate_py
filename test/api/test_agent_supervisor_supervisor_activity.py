@@ -126,8 +126,10 @@ def test_unknown_observation_clock_refuses(clock):
 def writer(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_supervisor as module
     owner = object.__new__(module.TodoImplementationSupervisor)
-    owner.config = SimpleNamespace(repo_root=tmp_path, state_path=tmp_path / "daemon.json",
-        state_dir=tmp_path, state_prefix="fixture", task_prefix="FIX", stale_seconds=120,
+    owner.config = module.TodoSupervisorConfig(
+        todo_path=tmp_path / "todo.md", events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path, state_path=tmp_path / "daemon.json", state_dir=tmp_path,
+        state_prefix="fixture", task_prefix="FIX", stale_seconds=120,
         check_interval=10, strategy_path=tmp_path / "strategy.json", implementation_timeout=300,
         implementation_max_timeout=None, watchdog_startup_grace_seconds=30)
     owner._supervisor_status_path = lambda: tmp_path / "supervisor.json"
@@ -135,6 +137,17 @@ def writer(tmp_path, monkeypatch):
     owner._proof_rollout_status_fields = lambda strategy=None: {}
     owner._autonomous_unstall_status = lambda: {}
     owner._control_plane_status_projection = lambda: {}
+    owner._unavailable_child_recovery_status = lambda **kwargs: {
+        "schema": "ipfs-accelerate/unavailable-child-recovery-safety@1",
+        "observed_at": kwargs["observed_at"],
+        "supervisor_process_birth": dict(kwargs["supervisor_birth"]),
+        "safe": False, "blockers": ["fixture_native_quiescence_unprovided"],
+        "state_source": "fixture-native-quiescence-unavailable",
+        "board_namespace": owner.config.board_namespace,
+        "active_worker_count": None, "active_worker_pids": None,
+        "worker_descendant_count": None, "worker_phase": None,
+        "lease_or_task_mutation_authority": False,
+    }
     monkeypatch.setattr(module, "utc_now", lambda: NOW.isoformat())
     return owner, module
 

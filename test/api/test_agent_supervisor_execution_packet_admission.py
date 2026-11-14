@@ -39,6 +39,24 @@ def _descriptor(path):
 
 @pytest.fixture
 def scenario(tmp_path, monkeypatch, request):
+    # This fixture owns only synthetic databases. Its mocked-unknown cases may
+    # retain a real prepared subgrant without ever entering the actual runner.
+    # The original handle's NOT_STARTED guard verifies zero borrows; no native
+    # claim/journal state or prepared internals is changed by this teardown.
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_metadata_execution as native_execution
+    from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import PreparedValidationAdmission, PreparedValidationDisposition
+    original_factory = native_execution.make_prepared_validation_admission
+    original_borrow = PreparedValidationAdmission._borrow_command
+    prepared_handles, borrow_attempts = [], set()
+    def observe_factory(**kwargs):
+        handle = original_factory(**kwargs)
+        prepared_handles.append(handle)
+        return handle
+    def observe_borrow(handle, *args, **kwargs):
+        borrow_attempts.add(id(handle))
+        return original_borrow(handle, *args, **kwargs)
+    monkeypatch.setattr(native_execution, "make_prepared_validation_admission", observe_factory)
+    monkeypatch.setattr(PreparedValidationAdmission, "_borrow_command", observe_borrow)
     workspace = tmp_path / "repository"
     workspace.mkdir()
     for name, text in (("producer.py", "pass\n"), ("verifier.py", "pass\n"), ("input.json", "{}\n")):
@@ -91,7 +109,12 @@ def scenario(tmp_path, monkeypatch, request):
     try:
         yield value
     finally:
-        intent.close()
+        try:
+            for handle in prepared_handles:
+                if id(handle) not in borrow_attempts:
+                    handle.close(disposition=PreparedValidationDisposition.NOT_STARTED)
+        finally:
+            intent.close()
 
 
 def _upsert(s, **changes):
@@ -797,16 +820,149 @@ def _metadata_daemon(s, **changes):
     return DatabaseImplementationDaemon(**options)
 
 
-def test_native_metadata_execution_runs_declared_producer_and_distinct_verifier(scenario):
+def test_native_metadata_execution_runs_declared_producer_and_distinct_verifier(scenario, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.validation import validation_scheduler
     s = scenario
-    revision = _prepare_metadata_execution(s)
+    # Pure guard regression within this real positive integration case: an
+    # explicitly supplied invalid descriptor poisons capture and cannot fall
+    # back to root A on a second invocation. Restore the genuine enclosing
+    # handoff state before performing the actual producer/verifier operation.
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_metadata_parent_resources as parent_resources
+    with monkeypatch.context() as local:
+        local.setattr(parent_resources, "_CAPTURE_ATTEMPTED", False)
+        local.setattr(parent_resources, "_CAPTURE_FAILED", False)
+        local.setattr(parent_resources, "_CAPTURED", None)
+        local.setenv(parent_resources.FD_ENV, "1")
+        with pytest.raises(parent_resources.NativeMetadataCapacityError, match="invalid_parent_capacity_fd"):
+            parent_resources._current_parent()
+        with pytest.raises(parent_resources.NativeMetadataCapacityError, match="explicit_parent_capacity_capture_failed"):
+            parent_resources._current_parent()
+    # The native default heartbeat interval is30s. Author a fresh signed180s
+    # fixture packet whose real producer spans at least one original tick.
+    # No live policy/TTL, actual0102 budget or host metric is changed.
+    s.packet["budgets"]["deadline_seconds"] = 180
+    revision = _prepare_metadata_execution(s, producer=(
+        "from pathlib import Path\nimport time\ntime.sleep(31)\n"
+        "Path('report.json').write_text('{\"metadata\":true}\\n')\n"
+        "Path('execution-order.txt').write_text('producer\\n')\n"))
     before = s.intent.get_task(s.cid)
+    owner = s.references["owner"]
+    profile = profiles.load_local_profile(repository_cid=owner["repository_cid"],
+        profile_dir=Path(owner["profile_dir"]), lifecycle_dir=Path(owner["lifecycle_dir"]), mirror=False)
+    contracts = [row for row in s.intent.current_evidence_for_task(s.cid)
+                 if row["evidence_kind"] == EVIDENCE_KIND]
+    assert len(contracts) == 1
+    contract = contracts[0]["body"]["execution_packet_contract"]["payload"]
+    expected_context = {"target_commit": profile.baseline_commit, "changed_files": (),
+        "dependency_state": {"schema": "native-metadata-scheduler-context/v1",
+            "contract_digest": contracts[0]["digest"],
+            "authority_spec_cid": contract["authority_spec_cid"],
+            "source_descriptors": deepcopy(s.packet["source_descriptors"]),
+            "inputs": deepcopy(s.packet["inputs"])}}
+    def forbidden_discovery(*args, **kwargs):
+        raise AssertionError("metadata execution must not discover repository changes or dependencies")
+    for name in ("discover_changed_files", "resolve_target_commit", "collect_dependency_state"):
+        monkeypatch.setattr(validation_scheduler, name, forbidden_discovery)
+    original_run = validation_scheduler.ValidationScheduler.run
+    scheduler_calls = []
+    enclosing_before_run = parent_resources._current_parent()
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_metadata_execution as executor
+    actual_factory = executor.make_prepared_validation_admission
+    fixed_deadline_observations = []
+    def observe_fixed_operation_deadline(**arguments):
+        handle = actual_factory(**arguments)
+        if enclosing_before_run is not None:
+            # Only nonsecret immutable clocks are observed. The current
+            # renewable ancestor TTL must never shorten this operation clock.
+            expected_deadline = min(arguments["deadline_monotonic"],
+                enclosing_before_run._value["sealed_work_deadline_monotonic"],
+                enclosing_before_run._value["sealed_native_deadline_monotonic"])
+            assert handle.deadline_monotonic == expected_deadline
+            fixed_deadline_observations.append(True)
+        return handle
+    monkeypatch.setattr(executor, "make_prepared_validation_admission", observe_fixed_operation_deadline)
+    tick_observation = {"active": True, "original_persistence_directory_opens": 0}
+    if enclosing_before_run is not None:
+        broker_parent = str(Path(enclosing_before_run._value["native_lease_token"]["state_path"]).parent)
+        def observe_original_heartbeat(event, arguments):
+            context = getattr(parent_resources._OPERATION, "value", None)
+            if (tick_observation["active"] and event == "open"
+                    and type(context) is tuple and context[0] is enclosing_before_run
+                    and context[1] == "renew" and type(arguments[0]) is str
+                    and arguments[0] == broker_parent):
+                # The earlier owner audit has already authenticated exact
+                # original heartbeat/persist frames. Opening its directory is
+                # after the real atomic broker rename, before its fsync.
+                tick_observation["original_persistence_directory_opens"] += 1
+        sys.addaudithook(observe_original_heartbeat)
+    def observe_original_run(self, commands, **kwargs):
+        assert {key: kwargs[key] for key in expected_context} == expected_context
+        assert kwargs["require_full_validation"] is True
+        assert len(commands) == 1 and commands[0].cacheable is False
+        scheduler_calls.append(deepcopy(expected_context))
+        observed = original_run(self, commands, **kwargs)
+        # This invokes the actual held grant's original live D checks after
+        # the command and serializes behind the real heartbeat native lock.
+        self._prepared_admission.assert_binding(task_cid=s.cid,
+            contract_digest=contracts[0]["digest"])
+        assert observed["results"][0]["prepared_resource_postcheck"] == {"valid": True}
+        return observed
+    monkeypatch.setattr(validation_scheduler.ValidationScheduler, "run", observe_original_run)
     with _metadata_daemon(s) as daemon:
+        # A known typed admission refusal has no authority/effect to retry:
+        # this same ready task must remain available for its first real claim.
+        before_refusal = _snapshot(s)
+        before_refusal_task = s.intent.get_task(s.cid)
+        before_refusal_evidence = s.intent.current_evidence_for_task(s.cid)
+        before_refusal_history = daemon.coordinator.lease_events(limit=100)
+        journal_root = Path(daemon.database_path).with_name("." + Path(daemon.database_path).name + ".native-metadata-execution")
+        assert not journal_root.exists()
+        def refuse_capacity_before_grant(**arguments):
+            raise parent_resources.NativeMetadataCapacityDeferred("fixture_known_preclaim_capacity_refusal")
+        with monkeypatch.context() as local:
+            local.setattr(executor, "make_prepared_validation_admission", refuse_capacity_before_grant)
+            with pytest.raises(parent_resources.NativeMetadataCapacityDeferred, match="fixture_known_preclaim_capacity_refusal"):
+                daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
+        assert s.intent.get_task(s.cid) == before_refusal_task
+        assert before_refusal_task["status"] == "ready" and before_refusal_task["revision"] == revision
+        assert s.intent.current_evidence_for_task(s.cid) == before_refusal_evidence
+        assert _snapshot(s) == before_refusal
+        assert daemon.coordinator.lease_events(limit=100) == before_refusal_history == []
+        assert not journal_root.exists()
+        assert not (s.workspace / "report.json").exists()
+        assert not (s.workspace / "execution-order.txt").exists()
+        if enclosing_before_run is not None:
+            assert enclosing_before_run._grants == {}
         result = daemon.run_native_metadata_validation(task_cid=s.cid, expected_revision=revision)
         assert result["passed"] is result["claim_released"] is True
         assert result["provider_dispatched"] is result["completion_authority"] is False
         assert result["automatic_retry_admitted"] is False
         assert [row["argv"] for row in result["commands"]] == s.execution_argv
+        assert scheduler_calls == [expected_context, expected_context]
+        if enclosing_before_run is not None:
+            assert tick_observation["original_persistence_directory_opens"] >= 1
+            assert fixed_deadline_observations == [True]
+        tick_observation["active"] = False
+        # The real enclosing-parent branch also exercises its entry denials;
+        # these observations perform no ledger/broker effect or new grant.
+        enclosing = parent_resources._current_parent()
+        if enclosing is not None:
+            from ipfs_accelerate_py.agent_supervisor.todo_daemon import native_metadata_parent_io as parent_io
+            assert parent_io.authorize_parent_capacity_io("open", ("/foreign", "w", 1), ({}, "allocate")) is None
+            with parent_resources._operation(enclosing, "inspect"):
+                context = parent_resources._OPERATION.value
+                ledger = enclosing._value["disk_ledger_path"]
+                broker = enclosing._value["native_lease_token"]["state_path"]
+                assert parent_io.authorize_parent_capacity_io("open", (ledger, "w", 1), context) is None
+                assert parent_io.authorize_parent_capacity_io("open", (broker + ".foreign.tmp", "x", 193), context) is None
+            with parent_resources._operation(enclosing, "renew"):
+                assert parent_io.authorize_parent_capacity_io("open", (broker, "w", 1), parent_resources._OPERATION.value) is None
+            import types
+            with monkeypatch.context() as local:
+                alias = types.ModuleType("private_existing_scheduler_alias")
+                local.setitem(sys.modules, "ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler", alias)
+                with pytest.raises(RuntimeError, match="ordinary original source origin differs"):
+                    parent_io.authenticate_parent_capacity_io_sources()
         assert s.execution_argv[1] != s.packet["validation_argv"]
         assert (s.workspace / "execution-order.txt").read_text() == "producer\nverifier\n"
         assert len(result["outputs"]) == 1 and result["outputs"][0]["path"] == str(s.workspace / "report.json")

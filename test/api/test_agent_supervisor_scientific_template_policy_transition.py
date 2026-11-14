@@ -174,3 +174,328 @@ def test_unissued_projection_refuses_extra_interpreter_flags(transition_case):
 def test_unissued_projection_refuses_additional_command_authority(transition_case):
     with pytest.raises(science.ExecutorHold, match='request_authority_changed'):
         project(transition_case('extra_command_authority'))
+
+
+@pytest.fixture
+def idle_source_case(tmp_path, monkeypatch):
+    """Real profile readers over files; ELF header is fixture DATA, never executed."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health as health
+    monkeypatch.setattr(science, 'health_owner', lambda: health)
+    source_root = tmp_path / 'R'
+    monkeypatch.setattr(science, 'ORIGINAL_NAMED_ROOTS',
+                        (source_root / 'workspace/test-logs',))
+    proof = tmp_path / 'proof'; proof.mkdir(mode=0o700)
+
+    def write(path, value, compact=True):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists(): path.chmod(0o600)
+        raw = value if type(value) is bytes else (json.dumps(value, sort_keys=True,
+            separators=(',', ':') if compact else None) + '\n').encode()
+        path.write_bytes(raw); path.chmod(0o400)
+        return health.descriptor(path)
+
+    roles = {key: write(tmp_path / (key + '.py'), b'# source role fixture\n')
+             for key in ('main_entrypoint', 'health_module', 'owner_source', 'driver_source')}
+    tool = write(tmp_path / 'python-fixture', b'\x7fELFfixture-not-an-executable')
+    relative = ('ipfs_datasets_py/logic/backends/process.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+        'scripts/ops/legal_ir/run_owned_validation.py')
+    extra = write(tmp_path / 'extra-source.py', b'# unrelated source fixture\n')
+    before = [write(source_root / path, b'# before source fixture\n') for path in relative]
+    original = dict(schema=health.PROFILE_SCHEMA, **roles,
+        catalogue=dict(board_namespace='fixture:science', plan_root_cid='fixture:plan',
+            repository_tree_id='fixture:tree', population_sha256='a' * 64,
+            database_uuid='fixture:db', store_generation=1),
+        unit=dict(name='fixture-science.service', argv=[tool['path'], '-B', roles['main_entrypoint']['path']],
+            interpreter=tool['path'], working_directory=str(tmp_path),
+            environment={'PYTHONDONTWRITEBYTECODE': '1'}),
+        source_descriptors=[*roles.values(), tool, extra, *before], task_scope=['fixture:task'],
+        max_age_seconds=120, max_cycle_seconds=300, proof_root=str(proof),
+        receipt_path=str(proof / 'current.json'),
+        cycle_contract=dict(plan_schema='fixture-plan/v1', plan_operation='fixture-idle'))
+    prior_ref = write(tmp_path / 'prior.json', original)
+    snapshot = write(tmp_path / 'prior-frozen.json', Path(prior_ref['path']).read_bytes())
+    after = [write(source_root / path, b'# after source fixture\n') for path in relative]
+    profile = copy.deepcopy(original); profile['source_descriptors'][-5:] = after
+    value = dict(schema='agent-supervisor/scientific-idle-source-preparation@1',
+        prior_profile_ref=prior_ref, prior_profile_snapshot_ref=snapshot,
+        profile_ref=write(tmp_path / 'current-profile.json', profile),
+        replacements=[dict(slot=6 + i, before_ref=old, after_ref=new)
+                      for i, (old, new) in enumerate(zip(before, after))])
+    spec_path = tmp_path / 'comparison-spec.json'
+
+    def freeze():
+        value['profile_ref'] = write(tmp_path / 'current-profile.json', profile)
+        return write(spec_path, value)
+
+    return dict(health=health, write=write, freeze=freeze, value=value,
+                profile=profile, original=original, spec_path=spec_path, after=after)
+
+
+def test_idle_source_preparation_uses_current_profile_reader_without_activation(idle_source_case, monkeypatch):
+    c = idle_source_case; reference = c['freeze']()
+    with pytest.raises(c['health'].ExecutorHealthError, match='descriptor_changed'):
+        c['health']._profile(c['value']['prior_profile_ref'])
+    before = {str(p): p.read_bytes() for p in reference_path_files(c['spec_path'].parent)}
+    def forbidden(*args, **kwargs):
+        raise AssertionError('preparation must not write, start processes or observe a manager')
+    monkeypatch.setattr(science, 'put', forbidden)
+    monkeypatch.setattr(science.subprocess, 'Popen', forbidden)
+    monkeypatch.setattr(c['health'], '_manager', forbidden)
+    result = science.prepare_idle_source_replacement(reference)
+    assert result['changed_source_count'] == 5 and result['source_count'] == 11
+    assert result['raw_inverse_verified'] is True and result['current_source_profile_validated'] is True
+    assert all(result[key] is False for key in ('coherent_handover_validated', 'runtime_qualified',
+        'activation_ready', 'dispatch_ready', 'hold_removal_authorized', 'authority_granted'))
+    assert result['config_template_history_unresolved'] is True
+    assert {str(p): p.read_bytes() for p in reference_path_files(c['spec_path'].parent)} == before
+
+
+def reference_path_files(root):
+    return [path for path in root.rglob('*') if path.is_file()]
+
+
+@pytest.mark.parametrize('mutation', ['sixth_source', 'role', 'unit', 'environment',
+    'task_scope', 'limits', 'bool_limit', 'float_limit', 'missing_row', 'duplicate_row',
+    'bool_slot', 'float_slot', 'reverse_rows', 'extra_spec', 'wrong_schema', 'stale_snapshot',
+    'foreign_canonical_path', 'old_ref_bool', 'source_population', 'reordered_sources',
+    'prior_noncompact', 'missing_spec_field', 'old_ref_float', 'old_ref_zero',
+    'old_ref_missing', 'old_ref_extra', 'old_ref_sha_upper', 'old_ref_sha_short',
+    'old_ref_path_type', 'old_ref_bytes_string'])
+def test_idle_source_preparation_refuses_broader_or_unbound_changes(idle_source_case, mutation):
+    c = idle_source_case; value = c['value']; profile = c['profile']
+    if mutation == 'sixth_source':
+        old = profile['source_descriptors'][5]
+        profile['source_descriptors'][5] = c['write'](Path(old['path']), b'# sixth source\n')
+    elif mutation == 'role': profile['owner_source'] = profile['driver_source']
+    elif mutation == 'unit': profile['unit']['name'] = 'other.service'
+    elif mutation == 'environment': profile['unit']['environment']['PYTHONUNBUFFERED'] = '1'
+    elif mutation == 'task_scope': profile['task_scope'].append('fixture:foreign')
+    elif mutation == 'limits': profile['max_cycle_seconds'] = 299
+    elif mutation == 'bool_limit': profile['max_age_seconds'] = True
+    elif mutation == 'float_limit': profile['max_age_seconds'] = 120.0
+    elif mutation == 'missing_row': value['replacements'].pop()
+    elif mutation == 'duplicate_row': value['replacements'][-1] = value['replacements'][0]
+    elif mutation == 'bool_slot': value['replacements'][0]['slot'] = True
+    elif mutation == 'float_slot': value['replacements'][0]['slot'] = 5.0
+    elif mutation == 'reverse_rows': value['replacements'].reverse()
+    elif mutation == 'extra_spec': value['activation_ready'] = True
+    elif mutation == 'wrong_schema': value['schema'] = 'wrong/v1'
+    elif mutation == 'stale_snapshot':
+        value['prior_profile_snapshot_ref'] = c['write'](Path(value['prior_profile_snapshot_ref']['path']),
+                                                       dict(c['original'], max_age_seconds=119))
+    elif mutation == 'foreign_canonical_path':
+        slot = value['replacements'][0]['slot']
+        value['replacements'][0]['after_ref'] = c['write'](c['spec_path'].parent / 'foreign.py', b'# foreign\n')
+        profile['source_descriptors'][slot] = value['replacements'][0]['after_ref']
+    elif mutation.startswith('old_ref_'):
+        old = value['replacements'][0]['before_ref']
+        if mutation == 'old_ref_bool': old['bytes'] = True
+        elif mutation == 'old_ref_float': old['bytes'] = float(old['bytes'])
+        elif mutation == 'old_ref_zero': old['bytes'] = 0
+        elif mutation == 'old_ref_missing': old.pop('path')
+        elif mutation == 'old_ref_extra': old['extra'] = False
+        elif mutation == 'old_ref_sha_upper': old['sha256'] = 'A' * 64
+        elif mutation == 'old_ref_sha_short': old['sha256'] = 'a' * 63
+        elif mutation == 'old_ref_path_type': old['path'] = 7
+        elif mutation == 'old_ref_bytes_string': old['bytes'] = str(old['bytes'])
+        else: raise AssertionError('unknown malformed historical descriptor')
+        # Bind the malformed historical row into both old documents as well.
+        # The negative must be structural, not just a crossed snapshot join.
+        value['prior_profile_ref'] = c['write'](Path(value['prior_profile_ref']['path']), c['original'])
+        value['prior_profile_snapshot_ref'] = c['write'](
+            Path(value['prior_profile_snapshot_ref']['path']), c['original'])
+    elif mutation == 'source_population': profile['source_descriptors'].append(profile['source_descriptors'][0])
+    elif mutation == 'prior_noncompact':
+        value['prior_profile_ref'] = c['write'](Path(value['prior_profile_ref']['path']), c['original'], compact=False)
+        value['prior_profile_snapshot_ref'] = c['write'](
+            Path(value['prior_profile_snapshot_ref']['path']), c['original'], compact=False)
+    elif mutation == 'missing_spec_field': value.pop('prior_profile_snapshot_ref')
+    else: profile['source_descriptors'][-2:] = reversed(profile['source_descriptors'][-2:])
+    with pytest.raises((science.ExecutorHold, c['health'].ExecutorHealthError)):
+        science.prepare_idle_source_replacement(c['freeze']())
+
+
+@pytest.mark.parametrize('field', ['spec', 'snapshot', 'profile'])
+def test_idle_source_preparation_requires_frozen_control_data(idle_source_case, field):
+    c = idle_source_case; reference = c['freeze']()
+    refs = dict(spec=reference, snapshot=c['value']['prior_profile_snapshot_ref'],
+                profile=c['value']['profile_ref'])
+    Path(refs[field]['path']).chmod(0o600)
+    with pytest.raises(science.ExecutorHold, match='control_not_frozen'):
+        science.prepare_idle_source_replacement(reference)
+
+
+def test_idle_source_preparation_detects_stale_current_source(idle_source_case):
+    c = idle_source_case; reference = c['freeze']()
+    c['write'](Path(c['after'][0]['path']), b'# later source\n')
+    with pytest.raises(c['health'].ExecutorHealthError, match='descriptor_changed'):
+        science.prepare_idle_source_replacement(reference)
+
+
+def test_idle_source_preparation_rechecks_source_after_first_profile_read(idle_source_case, monkeypatch):
+    c = idle_source_case; reference = c['freeze'](); actual = c['health']._profile; calls = []
+    def observed(ref):
+        result = actual(ref); calls.append(ref)
+        if len(calls) == 1:
+            c['write'](Path(c['after'][0]['path']), b'# changed during preparation\n')
+        return result
+    monkeypatch.setattr(c['health'], '_profile', observed)
+    with pytest.raises(c['health'].ExecutorHealthError, match='descriptor_changed'):
+        science.prepare_idle_source_replacement(reference)
+    assert len(calls) == 1
+
+
+# The metadata CLI must remain separate from the service parser and its effects.
+@pytest.mark.parametrize('argv_kind', ['list', 'tuple'])
+def test_idle_source_preparation_cli_real_profile_has_no_service_effects(idle_source_case, monkeypatch, capsys, argv_kind):
+    c = idle_source_case
+    reference = c['freeze']()
+    def forbidden(*args, **kwargs):
+        raise AssertionError('service or manager effect during preparation')
+    monkeypatch.setattr(science, 'serve', forbidden)
+    monkeypatch.setattr(science.threading, 'Event', forbidden)
+    monkeypatch.setattr(science.signal, 'signal', forbidden)
+    monkeypatch.setattr(c['health'], '_manager', forbidden)
+    monkeypatch.setenv('IPFS_ACCEL_SKIP_CORE', '0')
+    files = reference_path_files(c['spec_path'].parent)
+    before = {str(path): path.read_bytes() for path in files}
+    argv = ['prepare-idle-source-replacement', '--spec', reference['path'],
+            '--spec-sha256', reference['sha256']]
+    assert science.main(tuple(argv) if argv_kind == 'tuple' else argv) == 0
+    output = capsys.readouterr()
+    assert output.err == ''
+    result = json.loads(output.out)
+    assert result['schema'] == 'agent-supervisor/scientific-idle-source-comparison@1'
+    assert result['source_count'] == 11 and result['changed_source_count'] == 5
+    assert result['current_source_profile_validated'] is True
+    assert result['raw_inverse_verified'] is True
+    assert all(result[key] is False for key in ('coherent_handover_validated',
+        'runtime_qualified', 'activation_ready', 'dispatch_ready',
+        'hold_removal_authorized', 'authority_granted'))
+    assert {str(path): path.read_bytes() for path in reference_path_files(c['spec_path'].parent)} == before
+    assert os.environ['IPFS_ACCEL_SKIP_CORE'] == '1'
+
+
+@pytest.mark.parametrize('extras', [
+    ['--config', '/unselected/config'], ['--config-sha256', '0' * 64],
+    ['--known-nonstarted-recovery', '/unselected/grant'],
+    ['--known-closed-idle-recovery', '/unselected/grant'],
+    ['--bounded-generation-handover', '/unselected/grant'],
+    ['--known-source-admission-recovery', '/unselected/grant'],
+    ['--known-closed-catalogue-race-recovery', '/unselected/grant'],
+    ['--known-closed-capacity-recovery', '/unselected/grant'],
+    ['--catalogue-parser-source', '/unselected/parser'],
+    ['--catalogue-parser-sha256', '0' * 64]])
+def test_idle_source_preparation_cli_rejects_service_flags_before_effects(monkeypatch, extras):
+    calls = []
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError('effect before argument refusal')
+    monkeypatch.setattr(science, 'health_owner', forbidden)
+    monkeypatch.setattr(science, 'prepare_idle_source_replacement', forbidden)
+    monkeypatch.setattr(science, 'serve', forbidden)
+    monkeypatch.setattr(science.threading, 'Event', forbidden)
+    monkeypatch.setattr(science.signal, 'signal', forbidden)
+    monkeypatch.setenv('IPFS_ACCEL_SKIP_CORE', 'unchanged')
+    with pytest.raises(SystemExit) as error:
+        science.main(['prepare-idle-source-replacement', '--spec', '/unselected/spec',
+                      '--spec-sha256', '0' * 64, *extras])
+    assert error.value.code == 2 and calls == []
+    assert os.environ['IPFS_ACCEL_SKIP_CORE'] == 'unchanged'
+
+
+@pytest.mark.parametrize('argv', [
+    ['prepare-idle-source-replacement'],
+    ['prepare-idle-source-replacement', '--spec', '/unselected/spec'],
+    ['prepare-idle-source-replacement', '--spec-sha256', '0' * 64],
+    ['serve'], ['serve', '--config', '/unselected/config'],
+    ['serve', '--config-sha256', '0' * 64]])
+def test_idle_source_preparation_cli_preserves_both_required_argument_contracts(monkeypatch, argv):
+    calls = []
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError('effect before required argument refusal')
+    monkeypatch.setattr(science, 'health_owner', forbidden)
+    monkeypatch.setattr(science, 'serve', forbidden)
+    monkeypatch.setattr(science, 'prepare_idle_source_replacement', forbidden)
+    monkeypatch.setattr(science.threading, 'Event', forbidden)
+    monkeypatch.setattr(science.signal, 'signal', forbidden)
+    monkeypatch.setenv('IPFS_ACCEL_SKIP_CORE', 'unchanged')
+    with pytest.raises(SystemExit) as error:
+        science.main(argv)
+    assert error.value.code == 2 and calls == []
+    assert os.environ['IPFS_ACCEL_SKIP_CORE'] == 'unchanged'
+
+
+def test_idle_source_preparation_cli_digest_refuses_before_API(idle_source_case, monkeypatch, capsys):
+    c = idle_source_case; reference = c['freeze'](); calls = []
+    def forbidden(*args):
+        calls.append(args)
+        raise AssertionError('API before exact digest join')
+    monkeypatch.setattr(science, 'prepare_idle_source_replacement', forbidden)
+    assert science.main(['prepare-idle-source-replacement', '--spec', reference['path'],
+                         '--spec-sha256', '0' * 64]) == science.HOLD_EXIT
+    output = capsys.readouterr()
+    assert output.out == '' and calls == []
+    assert json.loads(output.err)['reason'] == 'idle_source_preparation_cli_digest'
+
+
+def test_idle_source_preparation_cli_requires_bytecode_guard_before_imports(monkeypatch, capsys):
+    calls = []
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError('import before bytecode guard')
+    monkeypatch.setattr(science.sys, 'dont_write_bytecode', False)
+    monkeypatch.setattr(science, 'health_owner', forbidden)
+    monkeypatch.setenv('IPFS_ACCEL_SKIP_CORE', 'unchanged')
+    assert science.main(['prepare-idle-source-replacement', '--spec', '/unselected/spec',
+                         '--spec-sha256', '0' * 64]) == science.HOLD_EXIT
+    output = capsys.readouterr()
+    assert output.out == '' and calls == []
+    assert json.loads(output.err)['reason'] == 'preparation_requires_B_and_assertions'
+    assert os.environ['IPFS_ACCEL_SKIP_CORE'] == 'unchanged'
+
+
+@pytest.mark.parametrize('field', ['coherent_handover_validated', 'runtime_qualified',
+    'activation_ready', 'dispatch_ready', 'hold_removal_authorized', 'authority_granted'])
+def test_idle_source_preparation_cli_never_publishes_authority(idle_source_case, monkeypatch, capsys, field):
+    c = idle_source_case; reference = c['freeze']()
+    result = {key: False for key in ('coherent_handover_validated', 'runtime_qualified',
+        'activation_ready', 'dispatch_ready', 'hold_removal_authorized', 'authority_granted')}
+    result[field] = True
+    monkeypatch.setattr(science, 'prepare_idle_source_replacement', lambda *_: result)
+    assert science.main(['prepare-idle-source-replacement', '--spec', reference['path'],
+                         '--spec-sha256', reference['sha256']]) == science.HOLD_EXIT
+    output = capsys.readouterr()
+    assert output.out == ''
+    assert json.loads(output.err)['reason'] == 'idle_source_preparation_cli_authority'
+
+
+def test_idle_source_preparation_cli_preserves_original_failure_reason(idle_source_case, monkeypatch, capsys):
+    c = idle_source_case; reference = c['freeze']()
+    failure = PermissionError('fixture: exact original permission denial')
+    def refused(*args):
+        raise failure
+    monkeypatch.setattr(science, 'prepare_idle_source_replacement', refused)
+    assert science.main(['prepare-idle-source-replacement', '--spec', reference['path'],
+                         '--spec-sha256', reference['sha256']]) == science.HOLD_EXIT
+    output = capsys.readouterr()
+    assert output.out == ''
+    assert json.loads(output.err)['reason'] == str(failure)
+    assert json.loads(output.err)['automatic_retry_admitted'] is False
+
+
+def test_idle_source_preparation_cli_bounds_stdout_before_publication(idle_source_case, monkeypatch, capsys):
+    c = idle_source_case; reference = c['freeze']()
+    result = {key: False for key in ('coherent_handover_validated', 'runtime_qualified',
+        'activation_ready', 'dispatch_ready', 'hold_removal_authorized', 'authority_granted')}
+    result['oversized_fixture_payload'] = 'x' * c['health'].MAX_JSON
+    monkeypatch.setattr(science, 'prepare_idle_source_replacement', lambda *_: result)
+    assert science.main(['prepare-idle-source-replacement', '--spec', reference['path'],
+                         '--spec-sha256', reference['sha256']]) == science.HOLD_EXIT
+    output = capsys.readouterr()
+    assert output.out == ''
+    assert json.loads(output.err)['reason'] == 'idle_source_preparation_cli_output_bound'

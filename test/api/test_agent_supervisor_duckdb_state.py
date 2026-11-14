@@ -3,6 +3,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import sqlite3
+import shutil
 import threading
 from pathlib import Path
 
@@ -770,3 +771,34 @@ def test_retirement_does_not_publish_an_inflight_reconnect(tmp_path, monkeypatch
     finally:
         release.set()
         connection.close()
+
+
+def test_owned_connection_checkpoint_close_allows_tmp_path_rmtree(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "owned-close"
+    workspace.mkdir()
+    database = workspace / "control.duckdb"
+    connection = open_duckdb_connection(database)
+    connection.execute("CREATE TABLE items (item_id TEXT PRIMARY KEY)")
+    connection.execute("INSERT INTO items VALUES ('item-1')")
+    connection.close()
+
+    shutil.rmtree(workspace)
+    assert not workspace.exists()
+
+
+def test_abandoned_owned_connection_cleanup_allows_tmp_path_rmtree(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "unreferenced"
+    workspace.mkdir()
+    database = workspace / "control.duckdb"
+    connection = open_duckdb_connection(database)
+    connection.execute("CREATE TABLE items (item_id TEXT PRIMARY KEY)")
+    connection.execute("INSERT INTO items VALUES ('item-1')")
+    del connection
+    gc.collect()
+    # Current canonical wrapper closes its raw handle via its registered weakref.
+    shutil.rmtree(workspace)
+    assert not workspace.exists()
