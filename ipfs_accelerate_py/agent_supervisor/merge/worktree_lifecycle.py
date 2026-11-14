@@ -16,14 +16,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import re
-import stat
 import tempfile
 import time
 import uuid
-from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -32,38 +29,19 @@ from typing import Any, Callable, Iterable, Mapping
 from .checkout_lock import git_common_dir, serialized_lock_update
 from ..proof.formal_verification_contracts import content_identity
 
-WORKTREE_LIFECYCLE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
-WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-quarantine@1"
+WORKTREE_LIFECYCLE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
 )
 WORKTREE_LIFECYCLE_DIRNAME = "agent-worktree-lifecycle"
-FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID = "asi-171:fenced-cross-lane-worktree-lifecycle"
+FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID = (
+    "asi-171:fenced-cross-lane-worktree-lifecycle"
+)
 
 DEFAULT_LEASE_SECONDS = 21_600.0
 DEFAULT_STARTUP_GRACE_SECONDS = 120.0
 DEFAULT_CLOCK: Callable[[], float] = time.time
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]+")
-_WORKTREE_QUARANTINE_NAME = re.compile(r"quarantine-[0-9a-f]{24}\.json")
-_WORKTREE_QUARANTINE_FIELDS = frozenset(
-    {
-        "schema",
-        "quarantine_id",
-        "lifecycle_record",
-        "lifecycle_authority_id",
-        "reason",
-        "fence_authority",
-        "fence_authority_id",
-        "quarantined_at",
-        "worktree_deleted",
-        "branch_deleted",
-        "cleanup_allowed",
-        "reuse_allowed",
-        "evidence_reuse_allowed",
-        "terminalized",
-    }
-)
-_MAX_WORKTREE_QUARANTINE_BYTES = 64 * 1024
 
 
 class WorkspaceLifecycleState(str, Enum):
@@ -181,34 +159,6 @@ class CleanupDecision:
         }
 
 
-def _mirror_cleanup_decision(*args: Any, **kwargs: Any) -> CleanupDecision:
-    result = CleanupDecision(*args, **kwargs)
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            mirror_work_record,
-        )
-
-        record = result.record
-        record_ref = str(
-            getattr(record, "workspace_path", "")
-            or getattr(record, "task_id", "")
-            or result.reason
-            or "cleanup-decision"
-        )
-        path = str(getattr(record, "workspace_path", "") or "")
-        mirror_work_record(
-            catalog_kind="metadata",
-            record_kind="worktree_cleanup_decision",
-            record_ref=record_ref,
-            subject_kind="path" if path else "record_cid",
-            subject_ref=path or record_ref,
-            paths=(path,) if path else (),
-        )
-    except Exception:
-        pass
-    return result
-
-
 @dataclass(frozen=True)
 class WorkspaceLifecycleRecord:
     """Durable fenced ownership record for one managed worktree attempt."""
@@ -244,7 +194,9 @@ class WorkspaceLifecycleRecord:
             raise WorktreeLifecycleError("workspace_path is required")
         if not self.branch:
             raise WorktreeLifecycleError("branch is required")
-        if not str(self.task_id or "").strip() and not str(self.canonical_task_cid or "").strip():
+        if not str(self.task_id or "").strip() and not str(
+            self.canonical_task_cid or ""
+        ).strip():
             raise WorktreeLifecycleError("task identity is required")
         if not self.record_id:
             object.__setattr__(self, "record_id", self.compute_record_id())
@@ -351,11 +303,9 @@ class WorkspaceLifecycleRecord:
 
 def _read_boot_id(*, proc_root: Path = Path("/proc")) -> str:
     try:
-        return (
-            (proc_root / "sys" / "kernel" / "random" / "boot_id")
-            .read_text(encoding="ascii")
-            .strip()
-        )
+        return (proc_root / "sys" / "kernel" / "random" / "boot_id").read_text(
+            encoding="ascii"
+        ).strip()
     except (OSError, UnicodeError):
         return ""
 
@@ -494,14 +444,6 @@ def workspace_record_filename(workspace_path: str | Path) -> str:
     return f"ws-{digest}.json"
 
 
-def workspace_quarantine_filename(workspace_path: str | Path) -> str:
-    """Return the adjacent immutable quarantine name for one workspace."""
-
-    normalized = normalize_workspace_path(workspace_path)
-    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
-    return f"quarantine-{digest}.json"
-
-
 def task_attempt_index_filename(
     *,
     canonical_task_cid: str,
@@ -510,9 +452,9 @@ def task_attempt_index_filename(
 ) -> str:
     identity = f"{canonical_task_cid or task_id}\0{int(attempt)}"
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
-    safe = (
-        _SAFE_NAME.sub("_", (canonical_task_cid or task_id or "task")[:48]).strip("._-") or "task"
-    )
+    safe = _SAFE_NAME.sub("_", (canonical_task_cid or task_id or "task")[:48]).strip(
+        "._-"
+    ) or "task"
     return f"task-{safe}-{digest}-a{int(attempt)}.json"
 
 
@@ -520,9 +462,6 @@ def lifecycle_store_dir(repo_root: Path) -> Path:
     """Return the shared durable lifecycle directory for one Git repository."""
 
     return git_common_dir(repo_root) / WORKTREE_LIFECYCLE_DIRNAME
-
-
-from .workspace_quarantine import mutation_boundary as _workspace_mutation_boundary
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -560,98 +499,16 @@ def _load_json_dict(path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _canonical_json_bytes(payload: Mapping[str, Any]) -> bytes:
-    try:
-        return (
-            json.dumps(
-                dict(payload),
-                allow_nan=False,
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise WorktreeLifecycleError(
-            "worktree quarantine payload is not canonical JSON"
-        ) from exc
-
-
-def _canonical_json_identity(payload: Mapping[str, Any]) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json_bytes(payload)
-    ).hexdigest()
-
-
-def _reject_duplicate_json_pairs(
-    pairs: list[tuple[str, Any]],
-) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate JSON key: {key}")
-        result[key] = value
-    return result
-
-
-def _validate_closed_json(value: Any) -> None:
-    """Reject non-JSON and non-finite values in immutable authority input."""
-
-    if value is None or type(value) in {str, bool, int}:
-        return
-    if type(value) is float:
-        if not math.isfinite(value):
-            raise WorktreeLifecycleError(
-                "worktree quarantine authority contains a non-finite number"
-            )
-        return
-    if type(value) is list:
-        for item in value:
-            _validate_closed_json(item)
-        return
-    if type(value) is dict:
-        if any(type(key) is not str for key in value):
-            raise WorktreeLifecycleError(
-                "worktree quarantine authority keys must be strings"
-            )
-        for item in value.values():
-            _validate_closed_json(item)
-        return
-    raise WorktreeLifecycleError(
-        "worktree quarantine authority contains a non-JSON value"
-    )
-
-
 def classify_lifecycle_race(reason: str) -> CleanupDecision:
     """Return a no-provider, no-retry decision for internal lifecycle races."""
 
-    return _mirror_cleanup_decision(
+    return CleanupDecision(
         disposition=CleanupDisposition.DENY,
         reason=reason,
         failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
         provider_call_allowed=False,
         attempt_consumed=False,
     )
-
-
-def _mirror_worktree_dead_owner_precheck(task_cid: str) -> None:
-    """Record a dead-owner precheck. Paths are not stored and the owner is not retired."""
-
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
-            mirror_work_record,
-        )
-
-        record_ref = str(task_cid or "dead-owner-precheck")
-        mirror_work_record(
-            catalog_kind="metadata",
-            record_kind="worktree_dead_owner_precheck",
-            record_ref=record_ref,
-            subject_kind="task_id",
-            subject_ref=record_ref,
-        )
-    except Exception:
-        pass
 
 
 @dataclass
@@ -699,523 +556,7 @@ class WorktreeLifecycleStore:
             attempt=attempt,
         )
 
-    def quarantine_path_for(self, workspace: str | Path) -> Path:
-        assert self.store_dir is not None
-        return self.store_dir / workspace_quarantine_filename(workspace)
-
     # ---------------------------------------------------------------- loading
-
-    def _load_strict_quarantine_payload(
-        self,
-        workspace: str | Path | None,
-        *,
-        receipt_path: Path | None = None,
-    ) -> dict[str, Any] | None:
-        """Load one immutable quarantine receipt or fail closed on any defect."""
-
-        normalized_workspace = (
-            None
-            if workspace is None
-            else normalize_workspace_path(workspace)
-        )
-        if receipt_path is None:
-            if normalized_workspace is None:
-                raise WorktreeLifecycleError(
-                    "worktree quarantine lookup is unbound"
-                )
-            path = self.quarantine_path_for(normalized_workspace)
-        else:
-            path = Path(receipt_path)
-        try:
-            named = path.lstat()
-        except FileNotFoundError:
-            return None
-        except OSError as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt is unavailable"
-            ) from exc
-        if (
-            not stat.S_ISREG(named.st_mode)
-            or named.st_uid != os.geteuid()
-            or named.st_nlink != 1
-            or stat.S_IMODE(named.st_mode) != 0o600
-            or named.st_size < 1
-            or named.st_size > _MAX_WORKTREE_QUARANTINE_BYTES
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt identity is invalid"
-            )
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-        nofollow = getattr(os, "O_NOFOLLOW", None)
-        if nofollow is None:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt requires no-follow access"
-            )
-        descriptor = -1
-        try:
-            descriptor = os.open(path, flags | nofollow)
-            before = os.fstat(descriptor)
-            if (
-                before.st_dev != named.st_dev
-                or before.st_ino != named.st_ino
-                or before.st_mode != named.st_mode
-                or before.st_uid != named.st_uid
-                or before.st_nlink != 1
-                or before.st_size != named.st_size
-            ):
-                raise WorktreeLifecycleError(
-                    "worktree quarantine receipt changed before read"
-                )
-            payload_bytes = bytearray()
-            while len(payload_bytes) <= _MAX_WORKTREE_QUARANTINE_BYTES:
-                block = os.read(
-                    descriptor,
-                    min(
-                        65_536,
-                        _MAX_WORKTREE_QUARANTINE_BYTES + 1 - len(payload_bytes),
-                    ),
-                )
-                if not block:
-                    break
-                payload_bytes.extend(block)
-            after = os.fstat(descriptor)
-        except WorktreeLifecycleError:
-            raise
-        except OSError as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt is unreadable"
-            ) from exc
-        finally:
-            if descriptor >= 0:
-                try:
-                    os.close(descriptor)
-                except OSError as exc:
-                    raise WorktreeLifecycleError(
-                        "worktree quarantine receipt close failed"
-                    ) from exc
-        if (
-            len(payload_bytes) > _MAX_WORKTREE_QUARANTINE_BYTES
-            or after.st_dev != before.st_dev
-            or after.st_ino != before.st_ino
-            or after.st_mode != before.st_mode
-            or after.st_uid != before.st_uid
-            or after.st_nlink != 1
-            or after.st_size != before.st_size
-            or after.st_mtime_ns != before.st_mtime_ns
-            or len(payload_bytes) != before.st_size
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt changed during read"
-            )
-        try:
-            decoded = bytes(payload_bytes).decode("utf-8")
-            payload = json.loads(
-                decoded,
-                object_pairs_hook=_reject_duplicate_json_pairs,
-                parse_constant=lambda value: (_ for _ in ()).throw(
-                    ValueError(f"invalid JSON constant: {value}")
-                ),
-            )
-        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt is malformed"
-            ) from exc
-        if type(payload) is not dict or set(payload) != _WORKTREE_QUARANTINE_FIELDS:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt shape is invalid"
-            )
-        if _canonical_json_bytes(payload) != bytes(payload_bytes):
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt is noncanonical"
-            )
-        if payload.get("schema") != WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt schema is invalid"
-            )
-        record_payload = payload.get("lifecycle_record")
-        fence_authority = payload.get("fence_authority")
-        if type(record_payload) is not dict or type(fence_authority) is not dict:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt authority is invalid"
-            )
-        expected_record_fields = {
-            "schema",
-            "record_id",
-            "task_id",
-            "canonical_task_cid",
-            "attempt",
-            "lane_id",
-            "state",
-            "owner",
-            "lease_id",
-            "fence",
-            "workspace_path",
-            "branch",
-            "merge_target",
-            "created_at",
-            "updated_at",
-            "expires_at",
-            "repo_root",
-            "state_dir",
-            "terminal_reason",
-        }
-        owner_payload = record_payload.get("owner")
-        if (
-            set(record_payload) != expected_record_fields
-            or any(
-                type(record_payload.get(field)) is not str
-                for field in (
-                    "schema",
-                    "record_id",
-                    "task_id",
-                    "canonical_task_cid",
-                    "lane_id",
-                    "state",
-                    "lease_id",
-                    "workspace_path",
-                    "branch",
-                    "merge_target",
-                    "repo_root",
-                    "state_dir",
-                    "terminal_reason",
-                )
-            )
-            or type(record_payload.get("attempt")) is not int
-            or type(record_payload.get("fence")) is not int
-            or any(
-                type(record_payload.get(field)) is not float
-                or not math.isfinite(record_payload[field])
-                for field in ("created_at", "updated_at", "expires_at")
-            )
-            or type(owner_payload) is not dict
-            or set(owner_payload)
-            != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
-            or any(
-                type(owner_payload.get(field)) is not int
-                for field in ("pid", "start_time_ticks", "parent_pid")
-            )
-            or type(owner_payload.get("boot_id")) is not str
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine lifecycle record shape is invalid"
-            )
-        _validate_closed_json(fence_authority)
-        if not fence_authority:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt fence authority is empty"
-            )
-        try:
-            record = WorkspaceLifecycleRecord.from_dict(record_payload)
-        except (TypeError, ValueError, WorktreeLifecycleError) as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine lifecycle record is invalid"
-            ) from exc
-        repository_binding_valid = bool(
-            record.repo_root
-            and normalize_workspace_path(record.repo_root)
-            == normalize_workspace_path(self.repo_root)
-        )
-        if (
-            not repository_binding_valid
-            and record.repo_root
-            and normalized_workspace is None
-            and receipt_path is not None
-        ):
-            # Inventory is shared by every linked checkout through Git's
-            # common directory. Authenticate sibling roots without granting
-            # direct workspace access or discarding their deny receipts.
-            try:
-                repository_binding_valid = git_common_dir(
-                    Path(record.repo_root)
-                ).samefile(git_common_dir(self.repo_root))
-            except OSError:
-                repository_binding_valid = False
-        if (
-            record_payload != record.to_dict()
-            or record.record_id != record.compute_record_id()
-            or (
-                normalized_workspace is not None
-                and normalize_workspace_path(record.workspace_path)
-                != normalized_workspace
-            )
-            or path != self.quarantine_path_for(record.workspace_path)
-            or not repository_binding_valid
-            or record.is_terminal
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine lifecycle binding is invalid"
-            )
-        if (
-            type(payload.get("reason")) is not str
-            or not payload["reason"]
-            or type(payload.get("quarantined_at")) is not float
-            or not math.isfinite(payload["quarantined_at"])
-            or any(
-                payload.get(field) is not False
-                for field in (
-                    "worktree_deleted",
-                    "branch_deleted",
-                    "cleanup_allowed",
-                    "reuse_allowed",
-                    "evidence_reuse_allowed",
-                    "terminalized",
-                )
-            )
-            or payload.get("lifecycle_authority_id")
-            != _canonical_json_identity(record_payload)
-            or payload.get("fence_authority_id")
-            != _canonical_json_identity(fence_authority)
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt claims are invalid"
-            )
-        body = {
-            key: value
-            for key, value in payload.items()
-            if key != "quarantine_id"
-        }
-        if (
-            type(payload.get("quarantine_id")) is not str
-            or payload["quarantine_id"] != _canonical_json_identity(body)
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt identity is invalid"
-            )
-        return payload
-
-    def _iter_strict_quarantine_payloads(
-        self,
-    ) -> tuple[dict[str, Any], ...]:
-        """Return a stable bounded inventory of every quarantine receipt.
-
-        Branch-only cleanup has no workspace key from which to derive a
-        marker name.  It therefore must inventory the adjacent immutable
-        receipts before granting branch deletion or reuse authority.  Any
-        malformed marker or concurrent directory change fails closed.
-        """
-
-        assert self.store_dir is not None
-        try:
-            before = self.store_dir.lstat()
-        except FileNotFoundError:
-            return ()
-        except OSError as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine inventory is unavailable"
-            ) from exc
-        if (
-            not stat.S_ISDIR(before.st_mode)
-            or self.store_dir.is_symlink()
-            or before.st_uid != os.geteuid()
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine inventory identity is invalid"
-            )
-        try:
-            entries = tuple(self.store_dir.iterdir())
-        except OSError as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine inventory is unavailable"
-            ) from exc
-        if len(entries) > 1_000_000:
-            raise WorktreeLifecycleError(
-                "worktree quarantine inventory bound exceeded"
-            )
-        candidates: list[Path] = []
-        for entry in entries:
-            if not entry.name.startswith("quarantine-"):
-                continue
-            if _WORKTREE_QUARANTINE_NAME.fullmatch(entry.name) is None:
-                raise WorktreeLifecycleError(
-                    "worktree quarantine inventory name is invalid"
-                )
-            candidates.append(entry)
-        payloads: list[dict[str, Any]] = []
-        for path in sorted(candidates, key=lambda item: item.name):
-            payload = self._load_strict_quarantine_payload(
-                None,
-                receipt_path=path,
-            )
-            if payload is None:
-                raise WorktreeLifecycleError(
-                    "worktree quarantine inventory changed during read"
-                )
-            payloads.append(payload)
-        try:
-            after = self.store_dir.lstat()
-        except OSError as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine inventory changed during read"
-            ) from exc
-        if (
-            after.st_dev != before.st_dev
-            or after.st_ino != before.st_ino
-            or after.st_mode != before.st_mode
-            or after.st_uid != before.st_uid
-            or after.st_mtime_ns != before.st_mtime_ns
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine inventory changed during read"
-            )
-        return tuple(payloads)
-
-    def load_quarantine(
-        self,
-        workspace: str | Path,
-    ) -> dict[str, Any] | None:
-        """Return a verified immutable quarantine receipt when present."""
-
-        payload = self._load_strict_quarantine_payload(workspace)
-        return None if payload is None else dict(payload)
-
-    def quarantines_for_task_attempt(
-        self,
-        *,
-        canonical_task_cid: str,
-        task_id: str,
-        attempt: int,
-    ) -> tuple[dict[str, Any], ...]:
-        """Resolve immutable markers by their exact task-attempt authority.
-
-        Unlike the mutable task index, this lookup survives loss of both the
-        workspace record and index projection.  Acquisition calls it while
-        holding the exact task-index lock, which serializes a new claim with
-        quarantine publication for the same tuple.
-        """
-
-        target_identity = str(canonical_task_cid or task_id or "")
-        target_attempt = int(attempt)
-        matches = []
-        for payload in self._iter_strict_quarantine_payloads():
-            record = payload["lifecycle_record"]
-            if (
-                str(record["canonical_task_cid"] or record["task_id"])
-                == target_identity
-                and record["attempt"] == target_attempt
-            ):
-                matches.append(payload)
-        return tuple(matches)
-
-    def iter_quarantines(self) -> tuple[dict[str, Any], ...]:
-        """Return the stable verified quarantine inventory."""
-
-        return self._iter_strict_quarantine_payloads()
-
-    def _require_not_quarantined(self, *workspaces: str | Path) -> None:
-        for workspace in workspaces:
-            if self._load_strict_quarantine_payload(workspace) is not None:
-                raise WorktreeLifecycleError(
-                    "quarantined lifecycle workspace is immutable"
-                )
-
-    def _publish_immutable_quarantine(
-        self,
-        path: Path,
-        payload: Mapping[str, Any],
-    ) -> None:
-        """Publish a 0600 single-link receipt without replacing prior bytes."""
-
-        expected = _canonical_json_bytes(payload)
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        try:
-            parent_identity = path.parent.lstat()
-        except OSError as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine parent is unavailable"
-            ) from exc
-        if (
-            not stat.S_ISDIR(parent_identity.st_mode)
-            or path.parent.is_symlink()
-            or parent_identity.st_uid != os.geteuid()
-        ):
-            raise WorktreeLifecycleError(
-                "worktree quarantine parent identity is invalid"
-            )
-        if os.path.lexists(path):
-            observed = self._load_strict_quarantine_payload(
-                payload["lifecycle_record"]["workspace_path"]
-            )
-            if observed != dict(payload):
-                raise WorktreeLifecycleError(
-                    "worktree quarantine receipt conflicts"
-                )
-            return
-        temporary = path.with_name(
-            f".{path.name}.{uuid.uuid4().hex}.tmp"
-        )
-        descriptor = -1
-        try:
-            descriptor = os.open(
-                temporary,
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | getattr(os, "O_CLOEXEC", 0)
-                | getattr(os, "O_NOFOLLOW", 0),
-                0o600,
-            )
-            remaining = memoryview(expected)
-            while remaining:
-                written = os.write(descriptor, remaining)
-                if written < 1:
-                    raise OSError("short worktree quarantine write")
-                remaining = remaining[written:]
-            os.fsync(descriptor)
-            written_identity = os.fstat(descriptor)
-            if (
-                not stat.S_ISREG(written_identity.st_mode)
-                or stat.S_IMODE(written_identity.st_mode) != 0o600
-                or written_identity.st_nlink != 1
-                or written_identity.st_uid != os.geteuid()
-                or written_identity.st_size != len(expected)
-            ):
-                raise WorktreeLifecycleError(
-                    "worktree quarantine temporary identity is invalid"
-                )
-            os.close(descriptor)
-            descriptor = -1
-            try:
-                os.link(temporary, path, follow_symlinks=False)
-            except FileExistsError:
-                pass
-            directory_descriptor = os.open(
-                path.parent,
-                os.O_RDONLY
-                | getattr(os, "O_DIRECTORY", 0)
-                | getattr(os, "O_CLOEXEC", 0)
-                | getattr(os, "O_NOFOLLOW", 0),
-            )
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-        except WorktreeLifecycleError:
-            raise
-        except OSError as exc:
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt publication failed"
-            ) from exc
-        finally:
-            if descriptor >= 0:
-                try:
-                    os.close(descriptor)
-                except OSError:
-                    pass
-            try:
-                temporary.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError as exc:
-                raise WorktreeLifecycleError(
-                    "worktree quarantine temporary cleanup failed"
-                ) from exc
-        observed = self._load_strict_quarantine_payload(
-            payload["lifecycle_record"]["workspace_path"]
-        )
-        if observed != dict(payload):
-            raise WorktreeLifecycleError(
-                "worktree quarantine receipt was not published exactly"
-            )
 
     def load_workspace(
         self,
@@ -1291,7 +632,6 @@ class WorktreeLifecycleStore:
 
     # -------------------------------------------------------------- acquisition
 
-    @_workspace_mutation_boundary("workspace_path")
     def begin_preparing(
         self,
         *,
@@ -1320,7 +660,9 @@ class WorktreeLifecycleStore:
             raise WorktreeLifecycleError("branch is required")
         now = float(self.clock())
         owner_identity = owner or current_process_birth(proc_root=self.proc_root)
-        lease = lease_id or new_lease_id(seed=f"{task_id}:{canonical_task_cid}:{attempt}:{lane_id}")
+        lease = lease_id or new_lease_id(
+            seed=f"{task_id}:{canonical_task_cid}:{attempt}:{lane_id}"
+        )
         record_path = self.workspace_path_for(workspace)
         index_path = self.task_index_path_for(
             canonical_task_cid=canonical_task_cid,
@@ -1329,30 +671,14 @@ class WorktreeLifecycleStore:
         )
 
         def _reject_other_task_attempt_claim() -> None:
-            quarantines = self.quarantines_for_task_attempt(
-                canonical_task_cid=canonical_task_cid,
-                task_id=task_id,
-                attempt=attempt,
-            )
-            if quarantines:
-                raise DuplicateAttemptError(
-                    "task/attempt is bound to a quarantined retained workspace"
-                )
             other = self.load_task_attempt(
                 canonical_task_cid=canonical_task_cid,
                 task_id=task_id,
                 attempt=attempt,
             )
-            if other is None:
-                return
-            if self._load_strict_quarantine_payload(
-                other.workspace_path
-            ) is not None:
-                raise DuplicateAttemptError(
-                    "task/attempt is bound to a quarantined retained workspace"
-                )
             if (
-                other.is_terminal
+                other is None
+                or other.is_terminal
                 or normalize_workspace_path(other.workspace_path) == workspace
             ):
                 return
@@ -1361,8 +687,7 @@ class WorktreeLifecycleStore:
                 raise DuplicateAttemptError(
                     "task/attempt already has a nonterminal workspace claim"
                 )
-            if now < float(other.expires_at):
-                raise DuplicateAttemptError("task/attempt claim lease has not expired")
+            # Dead owner: recycle/reboot must not wait out the lease.
 
         # Serialize first on the stable task/attempt identity.  A losing lane
         # is rejected before it materializes a timestamp-specific workspace
@@ -1370,33 +695,32 @@ class WorktreeLifecycleStore:
         with serialized_lock_update(index_path):
             _reject_other_task_attempt_claim()
             with serialized_lock_update(record_path):
-                self._require_not_quarantined(workspace)
                 existing = self.load_workspace(workspace)
                 if existing is not None and existing.is_nonterminal:
-                    liveness = owner_liveness(existing.owner, proc_root=self.proc_root)
+                    liveness = owner_liveness(
+                        existing.owner, proc_root=self.proc_root
+                    )
                     expired = now >= float(existing.expires_at)
                     if liveness is OwnerLiveness.ALIVE:
                         raise DuplicateAttemptError(
-                            f"workspace already claimed by live owner pid={existing.owner.pid}"
+                            "workspace already claimed by live owner "
+                            f"pid={existing.owner.pid}"
                         )
                     if liveness is OwnerLiveness.UNKNOWN:
                         raise DuplicateAttemptError(
-                            "workspace claim exists and process inspection is unavailable"
+                            "workspace claim exists and process inspection is "
+                            "unavailable"
                         )
                     if not expired and not allow_replace_stale:
                         raise DuplicateAttemptError(
                             "workspace claim exists and lease has not expired"
                         )
-                    if not expired:
-                        # Owner is dead but lease still valid: only reclaim
-                        # after expiry.
-                        raise DuplicateAttemptError(
-                            "workspace claim lease has not expired for stale owner"
-                        )
-                    # Dead + expired → reclaim with fence advancement below.
+                    # Dead owner: reclaim immediately when replace-stale is on.
                     next_fence = int(existing.fence) + 1
                 else:
-                    next_fence = 1 if existing is None else int(existing.fence) + 1
+                    next_fence = (
+                        1 if existing is None else int(existing.fence) + 1
+                    )
 
                 # Recheck after taking the workspace guard because transitions
                 # and legacy writers may update the index without this guard.
@@ -1413,7 +737,9 @@ class WorktreeLifecycleStore:
                     workspace_path=workspace,
                     branch=branch_name,
                     merge_target=str(merge_target or ""),
-                    created_at=(now if existing is None else float(existing.created_at)),
+                    created_at=(
+                        now if existing is None else float(existing.created_at)
+                    ),
                     updated_at=now,
                     expires_at=now + self.lease_seconds,
                     repo_root=str(self.repo_root.resolve(strict=False)),
@@ -1463,57 +789,6 @@ class WorktreeLifecycleStore:
                 str(Path(state_dir).resolve(strict=False)) if state_dir else ""
             ),
         }
-
-    @staticmethod
-    def _task_index_payload(
-        record: WorkspaceLifecycleRecord,
-    ) -> dict[str, Any]:
-        """Return the closed task-index projection for one lifecycle record."""
-
-        return {
-            "schema": WORKTREE_LIFECYCLE_SCHEMA,
-            "workspace_path": record.workspace_path,
-            "record_id": record.record_id,
-            "task_id": record.task_id,
-            "canonical_task_cid": record.canonical_task_cid,
-            "attempt": int(record.attempt),
-            "fence": int(record.fence),
-            "lease_id": record.lease_id,
-            "state": record.state.value,
-        }
-
-    def _require_exact_task_index(
-        self,
-        record: WorkspaceLifecycleRecord,
-        *,
-        index_path: Path,
-    ) -> None:
-        """Require an exact, closed task-index projection for ``record``."""
-
-        expected_index = self._task_index_payload(record)
-        index_payload = _load_json_dict(index_path)
-        if (
-            index_payload is None
-            or set(index_payload) != set(expected_index)
-            or type(index_payload.get("attempt")) is not int
-            or type(index_payload.get("fence")) is not int
-            or any(
-                type(index_payload.get(key)) is not str
-                for key in (
-                    "schema",
-                    "workspace_path",
-                    "record_id",
-                    "task_id",
-                    "canonical_task_cid",
-                    "lease_id",
-                    "state",
-                )
-            )
-            or index_payload != expected_index
-        ):
-            raise WorktreeLifecycleError(
-                "orphan lifecycle task index mismatch"
-            )
 
     def _require_exact_dead_owner(
         self,
@@ -1567,7 +842,40 @@ class WorktreeLifecycleStore:
                 "orphan lifecycle binding mismatch: " + ", ".join(mismatches)
             )
 
-        self._require_exact_task_index(current, index_path=index_path)
+        expected_index = {
+            "schema": WORKTREE_LIFECYCLE_SCHEMA,
+            "workspace_path": current.workspace_path,
+            "record_id": current.record_id,
+            "task_id": current.task_id,
+            "canonical_task_cid": current.canonical_task_cid,
+            "attempt": int(current.attempt),
+            "fence": int(current.fence),
+            "lease_id": current.lease_id,
+            "state": current.state.value,
+        }
+        index_payload = _load_json_dict(index_path)
+        if (
+            index_payload is None
+            or set(index_payload) != set(expected_index)
+            or type(index_payload.get("attempt")) is not int
+            or type(index_payload.get("fence")) is not int
+            or any(
+                type(index_payload.get(key)) is not str
+                for key in (
+                    "schema",
+                    "workspace_path",
+                    "record_id",
+                    "task_id",
+                    "canonical_task_cid",
+                    "lease_id",
+                    "state",
+                )
+            )
+            or index_payload != expected_index
+        ):
+            raise WorktreeLifecycleError(
+                "orphan lifecycle task index mismatch"
+            )
 
         liveness = owner_liveness(current.owner, proc_root=self.proc_root)
         if liveness is OwnerLiveness.ALIVE:
@@ -1757,280 +1065,8 @@ class WorktreeLifecycleStore:
             index_path=index_path,
             allow_terminal=allow_terminal,
         )
-        _mirror_worktree_dead_owner_precheck(
-            str(expected_canonical_task_cid or expected_task_id or "")
-        )
         return current
 
-    def quarantine_current_owner(
-        self,
-        captured: WorkspaceLifecycleRecord,
-        *,
-        fence_authority: Mapping[str, Any],
-        reason: str,
-    ) -> dict[str, Any]:
-        """Let the actual current owner retain its exact unresolved workspace.
-
-        This is a separate deny-only producer. It neither asserts a dead owner
-        nor relaxes the existing dead-owner admission or settlement protocol.
-        """
-        return self._quarantine_current_owner(
-            captured.workspace_path,
-            captured=captured,
-            fence_authority=fence_authority,
-            reason=reason,
-        )
-
-    @_workspace_mutation_boundary("workspace")
-    def _quarantine_current_owner(
-        self,
-        workspace: str | Path,
-        *,
-        captured: WorkspaceLifecycleRecord,
-        fence_authority: Mapping[str, Any],
-        reason: str,
-    ) -> dict[str, Any]:
-        if (
-            type(fence_authority) is not dict
-            or not fence_authority
-            or type(reason) is not str
-            or not reason
-            or captured.is_terminal
-            or captured.record_id != captured.compute_record_id()
-            or captured.owner != current_process_birth(proc_root=self.proc_root)
-            or owner_liveness(captured.owner, proc_root=self.proc_root)
-            is not OwnerLiveness.ALIVE
-            or normalize_workspace_path(captured.repo_root)
-            != normalize_workspace_path(self.repo_root)
-            or normalize_workspace_path(workspace)
-            != normalize_workspace_path(captured.workspace_path)
-        ):
-            raise WorktreeLifecycleError("current-owner quarantine admission failed")
-        authority = dict(fence_authority)
-        _validate_closed_json(authority)
-        quarantine_path = self.quarantine_path_for(workspace)
-        index_path = self.task_index_path_for(
-            canonical_task_cid=captured.canonical_task_cid,
-            task_id=captured.task_id,
-            attempt=captured.attempt,
-        )
-        with serialized_lock_update(quarantine_path):
-            with serialized_lock_update(index_path):
-                with serialized_lock_update(self.workspace_path_for(workspace)):
-                    current = self._load_strict_workspace_record(workspace)
-                    if current != captured:
-                        raise WorktreeLifecycleError(
-                            "current-owner quarantine lifecycle changed"
-                        )
-                    self._require_exact_task_index(current, index_path=index_path)
-                    if current.owner != current_process_birth(proc_root=self.proc_root):
-                        raise OwnershipError("current-owner quarantine process changed")
-                    existing = self._load_strict_quarantine_payload(workspace)
-                    if existing is not None:
-                        if (
-                            existing["lifecycle_record"] != captured.to_dict()
-                            or existing["fence_authority"] != authority
-                            or existing["reason"] != reason
-                        ):
-                            raise WorktreeLifecycleError(
-                                "current-owner quarantine conflicts"
-                            )
-                        return dict(existing)
-                    body = {
-                        "schema": WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA,
-                        "lifecycle_record": current.to_dict(),
-                        "lifecycle_authority_id": _canonical_json_identity(
-                            current.to_dict()
-                        ),
-                        "reason": reason,
-                        "fence_authority": authority,
-                        "fence_authority_id": _canonical_json_identity(authority),
-                        "quarantined_at": float(self.clock()),
-                        "worktree_deleted": False,
-                        "branch_deleted": False,
-                        "cleanup_allowed": False,
-                        "reuse_allowed": False,
-                        "evidence_reuse_allowed": False,
-                        "terminalized": False,
-                    }
-                    if not math.isfinite(body["quarantined_at"]):
-                        raise WorktreeLifecycleError(
-                            "current-owner quarantine time is invalid"
-                        )
-                    receipt = {**body, "quarantine_id": _canonical_json_identity(body)}
-                    self._publish_immutable_quarantine(quarantine_path, receipt)
-                    return dict(receipt)
-
-    @_workspace_mutation_boundary("workspace")
-    def quarantine_exact_dead_owner(
-        self,
-        workspace: str | Path,
-        *,
-        expected_record_id: str,
-        expected_fence: int,
-        expected_lease_id: str,
-        expected_task_id: str,
-        expected_canonical_task_cid: str,
-        expected_attempt: int,
-        expected_branch: str,
-        expected_merge_target: str,
-        expected_repo_root: str,
-        expected_state_dir: str,
-        fence_authority: Mapping[str, Any],
-        reason: str = "process_inventory_unavailable_retained",
-        now: float | None = None,
-    ) -> dict[str, Any]:
-        """Immutably retain one exact dead-owner worktree without retiring it.
-
-        Quarantine is deliberately adjacent to the lifecycle state machine:
-        the original nonterminal record and task index remain byte-for-byte
-        unchanged.  Every lifecycle mutation and cleanup/reuse route treats
-        the marker as a permanent deny.  ``fence_authority`` is an opaque,
-        content-addressed external authorization; its owner must validate its
-        closed schema before calling this method.
-        """
-
-        if type(fence_authority) is not dict or not fence_authority:
-            raise WorktreeLifecycleError(
-                "worktree quarantine requires a closed fence authority"
-            )
-        authority = dict(fence_authority)
-        _validate_closed_json(authority)
-        if type(reason) is not str or not reason:
-            raise WorktreeLifecycleError(
-                "worktree quarantine reason is required"
-            )
-        timestamp = float(self.clock() if now is None else now)
-        if not math.isfinite(timestamp):
-            raise WorktreeLifecycleError(
-                "worktree quarantine timestamp is invalid"
-            )
-        expected_binding = self._normalized_binding(
-            task_id=expected_task_id,
-            canonical_task_cid=expected_canonical_task_cid,
-            attempt=expected_attempt,
-            workspace_path=workspace,
-            branch=expected_branch,
-            merge_target=expected_merge_target,
-            repo_root=expected_repo_root,
-            state_dir=expected_state_dir,
-        )
-        normalized_workspace = expected_binding["workspace_path"]
-        quarantine_path = self.quarantine_path_for(normalized_workspace)
-
-        def _require_existing_matches(
-            existing: Mapping[str, Any],
-        ) -> dict[str, Any]:
-            record_payload = existing["lifecycle_record"]
-            if (
-                record_payload["record_id"] != str(expected_record_id or "")
-                or record_payload["fence"] != expected_fence
-                or record_payload["lease_id"] != expected_lease_id
-                or record_payload["task_id"] != expected_binding["task_id"]
-                or record_payload["canonical_task_cid"]
-                != expected_binding["canonical_task_cid"]
-                or record_payload["attempt"] != expected_binding["attempt"]
-                or record_payload["workspace_path"]
-                != expected_binding["workspace_path"]
-                or record_payload["branch"] != expected_binding["branch"]
-                or record_payload["merge_target"]
-                != expected_binding["merge_target"]
-                or record_payload["repo_root"]
-                != expected_binding["repo_root"]
-                or record_payload["state_dir"]
-                != expected_binding["state_dir"]
-                or existing["fence_authority"] != authority
-                or existing["reason"] != reason
-            ):
-                raise WorktreeLifecycleError(
-                    "worktree quarantine receipt conflicts"
-                )
-            return dict(existing)
-
-        existing = self._load_strict_quarantine_payload(normalized_workspace)
-        if existing is not None:
-            return _require_existing_matches(existing)
-
-        prechecked = self.require_exact_dead_owner(
-            normalized_workspace,
-            expected_record_id=expected_record_id,
-            expected_fence=expected_fence,
-            expected_lease_id=expected_lease_id,
-            expected_task_id=expected_task_id,
-            expected_canonical_task_cid=expected_canonical_task_cid,
-            expected_attempt=expected_attempt,
-            expected_branch=expected_branch,
-            expected_merge_target=expected_merge_target,
-            expected_repo_root=expected_repo_root,
-            expected_state_dir=expected_state_dir,
-        )
-        record_path = self.workspace_path_for(normalized_workspace)
-        index_path = self.task_index_path_for(
-            canonical_task_cid=expected_binding["canonical_task_cid"],
-            task_id=expected_binding["task_id"],
-            attempt=expected_binding["attempt"],
-        )
-        with serialized_lock_update(quarantine_path):
-            existing = self._load_strict_quarantine_payload(
-                normalized_workspace
-            )
-            if existing is not None:
-                return _require_existing_matches(existing)
-            with serialized_lock_update(index_path):
-                with serialized_lock_update(record_path):
-                    current = self._load_strict_workspace_record(
-                        normalized_workspace
-                    )
-                    self._require_exact_dead_owner(
-                        current,
-                        expected_record_id=expected_record_id,
-                        expected_fence=expected_fence,
-                        expected_lease_id=expected_lease_id,
-                        expected_binding=expected_binding,
-                        index_path=index_path,
-                        expected_owner=prechecked.owner,
-                    )
-                    if current != prechecked or current.is_terminal:
-                        raise WorktreeLifecycleError(
-                            "worktree quarantine lifecycle record changed"
-                        )
-                    body: dict[str, Any] = {
-                        "schema": WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA,
-                        "lifecycle_record": current.to_dict(),
-                        "lifecycle_authority_id": _canonical_json_identity(
-                            current.to_dict()
-                        ),
-                        "reason": reason,
-                        "fence_authority": authority,
-                        "fence_authority_id": _canonical_json_identity(
-                            authority
-                        ),
-                        "quarantined_at": timestamp,
-                        "worktree_deleted": False,
-                        "branch_deleted": False,
-                        "cleanup_allowed": False,
-                        "reuse_allowed": False,
-                        "evidence_reuse_allowed": False,
-                        "terminalized": False,
-                    }
-                    receipt = {
-                        **body,
-                        "quarantine_id": _canonical_json_identity(body),
-                    }
-                    self._publish_immutable_quarantine(
-                        quarantine_path,
-                        receipt,
-                    )
-                    observed = self._load_strict_quarantine_payload(
-                        normalized_workspace
-                    )
-                    if observed != receipt:
-                        raise WorktreeLifecycleError(
-                            "worktree quarantine receipt changed after publication"
-                        )
-                    return dict(receipt)
-
-    @_workspace_mutation_boundary("workspace")
     def adopt_dead_owner(
         self,
         workspace: str | Path,
@@ -2083,7 +1119,6 @@ class WorktreeLifecycleStore:
             expected_state_dir=expected_state_dir,
         )
         normalized_workspace = expected_binding["workspace_path"]
-        self._require_not_quarantined(normalized_workspace)
         record_path = self.workspace_path_for(normalized_workspace)
         index_path = self.task_index_path_for(
             canonical_task_cid=expected_binding["canonical_task_cid"],
@@ -2115,7 +1150,6 @@ class WorktreeLifecycleStore:
 
         with serialized_lock_update(index_path):
             with serialized_lock_update(record_path):
-                self._require_not_quarantined(normalized_workspace)
                 current = self._load_strict_workspace_record(
                     normalized_workspace
                 )
@@ -2160,7 +1194,6 @@ class WorktreeLifecycleStore:
                 )
                 return adopted
 
-    @_workspace_mutation_boundary("workspace")
     def finalize_exact_dead_owner(
         self,
         workspace: str | Path,
@@ -2177,19 +1210,13 @@ class WorktreeLifecycleStore:
         expected_repo_root: str,
         expected_state_dir: str,
         reason: str,
-        terminal_owner: ProcessBirthIdentity | None = None,
-        terminal_lease_id: str = "",
-        now: float | None = None,
-        retain_terminal: bool = False,
     ) -> WorkspaceLifecycleRecord:
         """Terminalize and delete one phase-pinned dead-owner authority.
 
         Both durable records are authenticated again while holding the
         task-index and workspace guards.  Unlike generic owner transitions,
         this operation also pins the process-birth identity captured by the
-        caller's earlier quiescence proof.  Exact controlled-restart callers
-        may retain the terminal projection while the default reconciliation
-        path removes both authority files.
+        caller's earlier quiescence proof.
         """
 
         expected_binding = self._normalized_binding(
@@ -2211,7 +1238,6 @@ class WorktreeLifecycleStore:
         )
         with serialized_lock_update(index_path):
             with serialized_lock_update(record_path):
-                self._require_not_quarantined(normalized_workspace)
                 current = self._load_strict_workspace_record(
                     normalized_workspace
                 )
@@ -2227,144 +1253,35 @@ class WorktreeLifecycleStore:
                 )
                 terminal = current
                 if current.is_nonterminal:
-                    clock_now = float(self.clock() if now is None else now)
+                    now = float(self.clock())
                     terminal = replace(
                         current,
                         state=WorkspaceLifecycleState.TERMINAL,
-                        owner=terminal_owner or current.owner,
-                        lease_id=terminal_lease_id or current.lease_id,
                         fence=int(current.fence) + 1,
-                        updated_at=clock_now,
-                        expires_at=clock_now,
+                        updated_at=now,
+                        expires_at=now,
                         terminal_reason=str(reason or "finalized"),
                     )
                     _atomic_write_json(record_path, terminal.to_dict())
                     _atomic_write_json(
                         index_path,
-                        self._task_index_payload(terminal),
+                        {
+                            "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                            "workspace_path": terminal.workspace_path,
+                            "record_id": terminal.record_id,
+                            "task_id": terminal.task_id,
+                            "canonical_task_cid": (
+                                terminal.canonical_task_cid
+                            ),
+                            "attempt": terminal.attempt,
+                            "fence": terminal.fence,
+                            "lease_id": terminal.lease_id,
+                            "state": terminal.state.value,
+                        },
                     )
-                if not retain_terminal:
-                    record_path.unlink()
-                    index_path.unlink()
+                record_path.unlink()
+                index_path.unlink()
                 return terminal
-
-    @_workspace_mutation_boundary("workspace")
-    def repair_partial_finalize(
-        self,
-        workspace: str | Path,
-        *,
-        expected_terminal: WorkspaceLifecycleRecord,
-        expected_preterminal_state: WorkspaceLifecycleState | str,
-    ) -> WorkspaceLifecycleRecord:
-        """Repair only an exact workspace-first terminalization boundary.
-
-        ``finalize_exact_dead_owner`` publishes the full workspace authority
-        before its task-index projection.  A process crash between those two
-        atomic replacements leaves a canonical terminal workspace record and
-        the exact nonterminal predecessor index.  A prepared recovery receipt
-        can authenticate ``expected_terminal`` and use this narrow operation
-        to finish that one interrupted write without persisting predecessor
-        owner or lease details, reopening dead-owner adoption, or accepting an
-        unrelated terminal/race winner.
-
-        Both authorities are re-read under the normal task-index then
-        workspace-record lock order.  The workspace record must be exactly the
-        supplied terminal authority; the index must be its exact closed
-        projection at one lower fence and the supplied nonterminal state, with
-        the same owner-independent lease projection.  Only the stale index is
-        rewritten.
-        """
-
-        terminal = expected_terminal
-        normalized_workspace = normalize_workspace_path(workspace)
-        if not terminal.is_terminal:
-            raise WorktreeLifecycleError(
-                "partial finalize expected authority must be terminal"
-            )
-        if terminal.record_id != terminal.compute_record_id():
-            raise WorktreeLifecycleError(
-                "partial finalize terminal identity is invalid"
-            )
-        if normalize_workspace_path(terminal.workspace_path) != (
-            normalized_workspace
-        ):
-            raise OwnershipError(
-                "partial finalize terminal workspace binding mismatch"
-            )
-        if (
-            not terminal.repo_root
-            or normalize_workspace_path(terminal.repo_root)
-            != normalize_workspace_path(self.repo_root)
-        ):
-            raise OwnershipError(
-                "partial finalize terminal repository binding mismatch"
-            )
-        try:
-            preterminal_state = WorkspaceLifecycleState(
-                expected_preterminal_state
-            )
-        except ValueError as exc:
-            raise WorktreeLifecycleError(
-                "partial finalize predecessor state is invalid"
-            ) from exc
-        if preterminal_state.is_terminal:
-            raise WorktreeLifecycleError(
-                "partial finalize predecessor state must be nonterminal"
-            )
-        if int(terminal.fence) <= 1:
-            raise FenceMismatchError(
-                "partial finalize terminal fence has no predecessor"
-            )
-        if (
-            not terminal.terminal_reason
-            or float(terminal.expires_at) != float(terminal.updated_at)
-        ):
-            raise WorktreeLifecycleError(
-                "partial finalize terminal transition is invalid"
-            )
-
-        predecessor_projection = replace(
-            terminal,
-            state=preterminal_state,
-            fence=int(terminal.fence) - 1,
-        )
-        record_path = self.workspace_path_for(normalized_workspace)
-        index_path = self.task_index_path_for(
-            canonical_task_cid=terminal.canonical_task_cid,
-            task_id=terminal.task_id,
-            attempt=terminal.attempt,
-        )
-        with serialized_lock_update(index_path):
-            with serialized_lock_update(record_path):
-                self._require_not_quarantined(normalized_workspace)
-                current = self._load_strict_workspace_record(
-                    normalized_workspace
-                )
-                if current != terminal:
-                    raise WorktreeLifecycleError(
-                        "partial finalize terminal workspace mismatch"
-                    )
-                self._require_exact_task_index(
-                    predecessor_projection,
-                    index_path=index_path,
-                )
-                liveness = owner_liveness(
-                    terminal.owner,
-                    proc_root=self.proc_root,
-                )
-                if liveness is OwnerLiveness.ALIVE:
-                    raise OwnershipError(
-                        "partial finalize predecessor owner is still alive"
-                    )
-                if liveness is OwnerLiveness.UNKNOWN:
-                    raise OwnershipError(
-                        "partial finalize predecessor owner liveness is unknown"
-                    )
-                _atomic_write_json(
-                    index_path,
-                    self._task_index_payload(current),
-                )
-                return current
 
     # -------------------------------------------------------------- transitions
 
@@ -2378,9 +1295,10 @@ class WorktreeLifecycleStore:
         if str(lease_id) != str(record.lease_id):
             raise OwnershipError("lifecycle lease does not match record owner")
         if int(expected_fence) != int(record.fence):
-            raise FenceMismatchError(f"expected fence {expected_fence}, found {record.fence}")
+            raise FenceMismatchError(
+                f"expected fence {expected_fence}, found {record.fence}"
+            )
 
-    @_workspace_mutation_boundary("workspace")
     def transition(
         self,
         workspace: str | Path,
@@ -2390,38 +1308,25 @@ class WorktreeLifecycleStore:
         expected_fence: int,
         renew_lease: bool = True,
         terminal_reason: str = "",
-        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
-        """Owner-only CAS; an explicit capture also binds the full record/index.
-
-        Compare the capture under the mutation locks, not before acquiring
-        them: another task can reuse a workspace and even a lease/fence pair.
-        """
+        """Owner-only CAS state transition with optional lease renewal."""
 
         if isinstance(new_state, str):
             new_state = WorkspaceLifecycleState(new_state)
         record_path = self.workspace_path_for(workspace)
-        if expected_record is not None and type(expected_record) is not WorkspaceLifecycleRecord:
-            raise OwnershipError("captured record must be an exact lifecycle record")
-        captured_index = (self.task_index_path_for(
-            canonical_task_cid=expected_record.canonical_task_cid,
-            task_id=expected_record.task_id, attempt=expected_record.attempt,
-        ) if expected_record is not None else None)
-        with (serialized_lock_update(captured_index) if captured_index is not None else nullcontext()), serialized_lock_update(record_path):
-            self._require_not_quarantined(workspace)
-            current = (self._load_strict_workspace_record(workspace)
-                       if expected_record is not None else self.load_workspace(workspace))
+        with serialized_lock_update(record_path):
+            current = self.load_workspace(workspace)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
-            if expected_record is not None:
-                if current != expected_record:
-                    raise OwnershipError("captured record changed before lifecycle transition")
-                self._require_exact_task_index(current, index_path=captured_index)
-            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
+            self._require_owner(
+                current, lease_id=lease_id, expected_fence=expected_fence
+            )
             if current.is_terminal and new_state is not WorkspaceLifecycleState.TERMINAL:
                 raise WorktreeLifecycleError("cannot revive a terminal lifecycle record")
             now = float(self.clock())
-            expires_at = now + self.lease_seconds if renew_lease else float(current.expires_at)
+            expires_at = (
+                now + self.lease_seconds if renew_lease else float(current.expires_at)
+            )
             # Fence advances on every authoritative mutation so concurrent
             # cleaners cannot delete against a stale view.
             updated = replace(
@@ -2458,7 +1363,6 @@ class WorktreeLifecycleStore:
             )
             return updated
 
-    @_workspace_mutation_boundary("workspace", "new_workspace")
     def rebind_workspace(
         self,
         workspace: str | Path,
@@ -2466,7 +1370,6 @@ class WorktreeLifecycleStore:
         *,
         lease_id: str,
         expected_fence: int,
-        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         """Owner-only CAS rebind when pool resolution changes the physical path.
 
@@ -2478,41 +1381,43 @@ class WorktreeLifecycleStore:
 
         old_normalized = normalize_workspace_path(workspace)
         new_normalized = normalize_workspace_path(new_workspace)
-        if expected_record is not None and type(expected_record) is not WorkspaceLifecycleRecord:
-            raise OwnershipError("captured record must be an exact lifecycle record")
-        captured_index = (self.task_index_path_for(
-            canonical_task_cid=expected_record.canonical_task_cid,
-            task_id=expected_record.task_id, attempt=expected_record.attempt,
-        ) if expected_record is not None else None)
+        if old_normalized == new_normalized:
+            current = self.load_workspace(old_normalized)
+            if current is None:
+                raise WorktreeLifecycleError("lifecycle record missing")
+            self._require_owner(
+                current, lease_id=lease_id, expected_fence=expected_fence
+            )
+            return current
+
         old_path = self.workspace_path_for(old_normalized)
         new_path = self.workspace_path_for(new_normalized)
 
         def _rebind_body() -> WorkspaceLifecycleRecord:
-            self._require_not_quarantined(
-                old_normalized,
-                new_normalized,
-            )
-            current = (self._load_strict_workspace_record(old_normalized)
-                       if expected_record is not None else self.load_workspace(old_normalized))
+            current = self.load_workspace(old_normalized)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
-            if expected_record is not None:
-                if current != expected_record:
-                    raise OwnershipError("captured record changed before lifecycle rebind")
-                self._require_exact_task_index(current, index_path=captured_index)
-            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
-            if old_normalized == new_normalized:
-                return current
+            self._require_owner(
+                current, lease_id=lease_id, expected_fence=expected_fence
+            )
             if current.is_terminal:
-                raise WorktreeLifecycleError("cannot rebind a terminal lifecycle record")
+                raise WorktreeLifecycleError(
+                    "cannot rebind a terminal lifecycle record"
+                )
             existing_new = self.load_workspace(new_normalized)
             if existing_new is not None and existing_new.is_nonterminal:
-                other_live = owner_liveness(existing_new.owner, proc_root=self.proc_root)
+                other_live = owner_liveness(
+                    existing_new.owner, proc_root=self.proc_root
+                )
                 if other_live is not OwnerLiveness.DEAD:
-                    raise DuplicateAttemptError("target workspace already has a nonterminal claim")
+                    raise DuplicateAttemptError(
+                        "target workspace already has a nonterminal claim"
+                    )
                 now = float(self.clock())
                 if now < float(existing_new.expires_at):
-                    raise DuplicateAttemptError("target workspace claim lease has not expired")
+                    raise DuplicateAttemptError(
+                        "target workspace claim lease has not expired"
+                    )
             now = float(self.clock())
             updated = replace(
                 current,
@@ -2554,17 +1459,15 @@ class WorktreeLifecycleStore:
                     pass
             return updated
 
-        # Captured ownership follows the index -> workspace lock order used
-        # by creation/adoption. Lock both physical paths in a stable order;
-        # equal paths require one non-recursive advisory guard.
-        with (serialized_lock_update(captured_index) if captured_index is not None else nullcontext()):
-            if old_path == new_path:
-                with serialized_lock_update(old_path):
-                    return _rebind_body()
-            first, second = sorted([old_path, new_path], key=lambda item: str(item))
-            with serialized_lock_update(first):
-                with serialized_lock_update(second):
-                    return _rebind_body()
+        # Lock both paths in a stable order.  When filenames collide, one
+        # advisory guard is enough (non-recursive flock would deadlock).
+        if old_path == new_path:
+            with serialized_lock_update(old_path):
+                return _rebind_body()
+        first, second = sorted([old_path, new_path], key=lambda item: str(item))
+        with serialized_lock_update(first):
+            with serialized_lock_update(second):
+                return _rebind_body()
 
     def mark_active(
         self,
@@ -2572,14 +1475,12 @@ class WorktreeLifecycleStore:
         *,
         lease_id: str,
         expected_fence: int,
-        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
             WorkspaceLifecycleState.ACTIVE,
             lease_id=lease_id,
             expected_fence=expected_fence,
-            expected_record=expected_record,
         )
 
     def mark_settling(
@@ -2588,14 +1489,12 @@ class WorktreeLifecycleStore:
         *,
         lease_id: str,
         expected_fence: int,
-        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
             WorkspaceLifecycleState.SETTLING,
             lease_id=lease_id,
             expected_fence=expected_fence,
-            expected_record=expected_record,
         )
 
     def mark_terminal(
@@ -2605,7 +1504,6 @@ class WorktreeLifecycleStore:
         lease_id: str,
         expected_fence: int,
         reason: str = "owner_terminal",
-        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> WorkspaceLifecycleRecord:
         return self.transition(
             workspace,
@@ -2614,10 +1512,8 @@ class WorktreeLifecycleStore:
             expected_fence=expected_fence,
             renew_lease=False,
             terminal_reason=reason,
-            expected_record=expected_record,
         )
 
-    @_workspace_mutation_boundary("workspace")
     def renew_lease(
         self,
         workspace: str | Path,
@@ -2627,85 +1523,27 @@ class WorktreeLifecycleStore:
     ) -> WorkspaceLifecycleRecord:
         """Heartbeat: advance fence and push expiry without changing state."""
 
-        captured = self._load_strict_workspace_record(workspace)
         record_path = self.workspace_path_for(workspace)
-        index_path = self.task_index_path_for(
-            canonical_task_cid=captured.canonical_task_cid,
-            task_id=captured.task_id,
-            attempt=captured.attempt,
-        )
-        with serialized_lock_update(index_path):
-            with serialized_lock_update(record_path):
-                self._require_not_quarantined(workspace)
-                current = self._load_strict_workspace_record(workspace)
-                self._require_owner(
-                    current,
-                    lease_id=lease_id,
-                    expected_fence=expected_fence,
-                )
-                if current.record_id != current.compute_record_id():
-                    raise WorktreeLifecycleError(
-                        "lifecycle record identity is invalid"
-                    )
-                if normalize_workspace_path(current.workspace_path) != (
-                    normalize_workspace_path(workspace)
-                ):
-                    raise OwnershipError(
-                        "lifecycle workspace binding changed during renewal"
-                    )
-                if (
-                    not current.repo_root
-                    or normalize_workspace_path(current.repo_root)
-                    != normalize_workspace_path(self.repo_root)
-                ):
-                    raise OwnershipError(
-                        "lifecycle repository binding changed during renewal"
-                    )
-                if current != captured:
-                    raise WorktreeLifecycleError(
-                        "lifecycle record changed during lease renewal"
-                    )
-                self._require_exact_task_index(
-                    current,
-                    index_path=index_path,
-                )
-                if current.is_terminal:
-                    raise WorktreeLifecycleError(
-                        "cannot renew a terminal lifecycle record"
-                    )
-                clock_now = float(self.clock())
-                updated = replace(
-                    current,
-                    fence=int(current.fence) + 1,
-                    updated_at=clock_now,
-                    expires_at=clock_now + self.lease_seconds,
-                )
-                _atomic_write_json(record_path, updated.to_dict())
-                _atomic_write_json(
-                    index_path,
-                    self._task_index_payload(updated),
-                )
-                return updated
+        with serialized_lock_update(record_path):
+            current = self.load_workspace(workspace)
+            if current is None:
+                raise WorktreeLifecycleError("lifecycle record missing")
+            self._require_owner(
+                current, lease_id=lease_id, expected_fence=expected_fence
+            )
+            if current.is_terminal:
+                raise WorktreeLifecycleError("cannot renew a terminal lifecycle record")
+            now = float(self.clock())
+            updated = replace(
+                current,
+                fence=int(current.fence) + 1,
+                updated_at=now,
+                expires_at=now + self.lease_seconds,
+            )
+            _atomic_write_json(record_path, updated.to_dict())
+            return updated
 
     # ---------------------------------------------------------------- cleanup
-
-    def _same_lane_state_dir(
-        self,
-        record: WorkspaceLifecycleRecord | None,
-        expected_state_dir: str | Path = "",
-    ) -> bool:
-        """True when the record is owned by the caller's exact lane state dir."""
-
-        if record is None:
-            return False
-        # Empty paths must not normalize to cwd and look "same-lane".
-        expected_raw = str(expected_state_dir or "").strip()
-        current_raw = str(record.state_dir or "").strip()
-        if not expected_raw or not current_raw:
-            return False
-        expected = normalize_workspace_path(expected_raw)
-        current = normalize_workspace_path(current_raw)
-        return bool(expected and current and expected == current)
 
     def evaluate_cleanup(
         self,
@@ -2713,7 +1551,6 @@ class WorktreeLifecycleStore:
         workspace_path: str | Path | None = None,
         branch: str = "",
         caller_lease_id: str = "",
-        expected_state_dir: str | Path = "",
         now: float | None = None,
     ) -> CleanupDecision:
         """Decide whether cleanup may delete/prune/unregister a worktree.
@@ -2721,67 +1558,31 @@ class WorktreeLifecycleStore:
         Nonterminal claims are never cleaned, including the window between
         ``git worktree add`` and child-process discovery, even when the branch
         tip is an ancestor of the merge target.
-
-        Same-lane callers may reclaim a *provably dead* owner without waiting
-        for the full lease window so a crashed daemon does not pin a task for
-        ``DEFAULT_LEASE_SECONDS`` (default 6h). Peer lanes remain lease-gated.
         """
 
         clock_now = float(self.clock() if now is None else now)
         record: WorkspaceLifecycleRecord | None = None
-        quarantine: dict[str, Any] | None = None
         if workspace_path is not None:
-            quarantine = self._load_strict_quarantine_payload(workspace_path)
-            if quarantine is not None:
-                record = WorkspaceLifecycleRecord.from_dict(
-                    quarantine["lifecycle_record"]
-                )
             record = self.load_workspace(workspace_path)
-        if quarantine is None and branch:
-            target_branch = str(branch).removeprefix("refs/heads/")
-            for candidate in self._iter_strict_quarantine_payloads():
-                candidate_record = WorkspaceLifecycleRecord.from_dict(
-                    candidate["lifecycle_record"]
-                )
-                if (
-                    candidate_record.branch.removeprefix("refs/heads/")
-                    == target_branch
-                ):
-                    quarantine = candidate
-                    record = candidate_record
-                    break
         if record is None and branch:
-            matches = [item for item in self.find_by_branch(branch) if item.is_nonterminal]
+            matches = [
+                item
+                for item in self.find_by_branch(branch)
+                if item.is_nonterminal
+            ]
             if matches:
                 # Prefer the newest nonterminal claim for the branch.
                 record = max(matches, key=lambda item: (item.updated_at, item.fence))
 
-        if quarantine is None and record is not None:
-            quarantine = self._load_strict_quarantine_payload(
-                record.workspace_path
-            )
-        if quarantine is not None:
-            quarantined_record = WorkspaceLifecycleRecord.from_dict(
-                quarantine["lifecycle_record"]
-            )
-            return _mirror_cleanup_decision(
-                disposition=CleanupDisposition.DENY,
-                reason="quarantined_worktree_retained",
-                record=quarantined_record,
-                failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
-                provider_call_allowed=False,
-                attempt_consumed=False,
-            )
-
         if record is None:
-            return _mirror_cleanup_decision(
+            return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,
                 reason="no_lifecycle_record",
                 record=None,
             )
 
         if record.is_terminal:
-            return _mirror_cleanup_decision(
+            return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,
                 reason="terminal_record",
                 record=record,
@@ -2789,7 +1590,7 @@ class WorktreeLifecycleStore:
 
         # Owner may always settle/dispose its own workspace.
         if caller_lease_id and caller_lease_id == record.lease_id:
-            return _mirror_cleanup_decision(
+            return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,
                 reason="caller_is_record_owner",
                 record=record,
@@ -2797,7 +1598,7 @@ class WorktreeLifecycleStore:
 
         liveness = owner_liveness(record.owner, proc_root=self.proc_root)
         if liveness is OwnerLiveness.ALIVE:
-            return _mirror_cleanup_decision(
+            return CleanupDecision(
                 disposition=CleanupDisposition.DENY,
                 reason=f"nonterminal_{record.state.value}_owner_alive",
                 record=record,
@@ -2807,7 +1608,7 @@ class WorktreeLifecycleStore:
             )
 
         if liveness is OwnerLiveness.UNKNOWN:
-            return _mirror_cleanup_decision(
+            return CleanupDecision(
                 disposition=CleanupDisposition.DENY,
                 reason="process_inspection_unavailable",
                 record=record,
@@ -2816,19 +1617,16 @@ class WorktreeLifecycleStore:
                 attempt_consumed=False,
             )
 
-        # Owner is dead.  Peer lanes still require lease expiry (plus optional
-        # grace for brand-new preparing records that may be mid-publication).
-        # Same-lane recovery may reclaim immediately after that grace so a
-        # crashed worker cannot pin ready tasks for the full lease window.
+        # Owner is dead.  Still require lease expiry (plus optional grace for
+        # brand-new preparing records that may be mid-publication).
         age = clock_now - float(record.created_at)
         expired = clock_now >= float(record.expires_at)
-        same_lane = self._same_lane_state_dir(record, expected_state_dir)
         if not expired:
             if (
                 record.state is WorkspaceLifecycleState.PREPARING
                 and age < self.startup_grace_seconds
             ):
-                return _mirror_cleanup_decision(
+                return CleanupDecision(
                     disposition=CleanupDisposition.DENY,
                     reason="preparing_startup_grace",
                     record=record,
@@ -2836,16 +1634,7 @@ class WorktreeLifecycleStore:
                     provider_call_allowed=False,
                     attempt_consumed=False,
                 )
-            if same_lane:
-                return _mirror_cleanup_decision(
-                    disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
-                    reason="owner_dead_same_lane_reclaim",
-                    record=record,
-                    failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
-                    provider_call_allowed=False,
-                    attempt_consumed=False,
-                )
-            return _mirror_cleanup_decision(
+            return CleanupDecision(
                 disposition=CleanupDisposition.DENY,
                 reason="owner_dead_lease_unexpired",
                 record=record,
@@ -2854,7 +1643,7 @@ class WorktreeLifecycleStore:
                 attempt_consumed=False,
             )
 
-        return _mirror_cleanup_decision(
+        return CleanupDecision(
             disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
             reason="stale_owner_lease_expired",
             record=record,
@@ -2863,7 +1652,6 @@ class WorktreeLifecycleStore:
             attempt_consumed=False,
         )
 
-    @_workspace_mutation_boundary("workspace")
     def reclaim_stale(
         self,
         workspace: str | Path,
@@ -2881,8 +1669,6 @@ class WorktreeLifecycleStore:
         clock_now = float(self.clock() if now is None else now)
         record_path = self.workspace_path_for(workspace)
         with serialized_lock_update(record_path):
-            if self._load_strict_quarantine_payload(workspace) is not None:
-                return None
             current = self.load_workspace(workspace)
             if current is None:
                 return None
@@ -2904,140 +1690,18 @@ class WorktreeLifecycleStore:
             _atomic_write_json(record_path, updated.to_dict())
             return updated
 
-    @_workspace_mutation_boundary("workspace")
-    def reclaim_dead_owner_for_controlled_restart(
-        self,
-        workspace: str | Path,
-        *,
-        expected_state_dir: str | Path,
-        reclaimer_lease_id: str = "",
-        reclaimer: ProcessBirthIdentity | None = None,
-        reason: str = "controlled_restart_dead_owner",
-        now: float | None = None,
-    ) -> WorkspaceLifecycleRecord | None:
-        """Fence a dead same-lane owner during an explicit controlled restart.
-
-        Normal cleanup remains lease-expiry gated.  This recovery path is for
-        an operator-controlled daemon restart and fails closed unless the
-        record belongs to this repository and exact lane state directory and
-        the prior process-birth identity is provably dead.
-        """
-
-        if not str(expected_state_dir or "").strip():
-            return None
-        expected_state = normalize_workspace_path(expected_state_dir)
-        expected_repo = normalize_workspace_path(self.repo_root)
-        try:
-            captured = self._load_strict_workspace_record(workspace)
-        except WorktreeLifecycleError:
-            return None
-        if captured.is_terminal:
-            return None
-        if (
-            not captured.repo_root
-            or normalize_workspace_path(captured.repo_root) != expected_repo
-        ):
-            return None
-        if (
-            not captured.state_dir
-            or normalize_workspace_path(captured.state_dir) != expected_state
-        ):
-            return None
-
-        expected = {
-            "expected_record_id": captured.record_id,
-            "expected_fence": captured.fence,
-            "expected_lease_id": captured.lease_id,
-            "expected_task_id": captured.task_id,
-            "expected_canonical_task_cid": captured.canonical_task_cid,
-            "expected_attempt": captured.attempt,
-            "expected_branch": captured.branch,
-            "expected_merge_target": captured.merge_target,
-            "expected_repo_root": captured.repo_root,
-            "expected_state_dir": captured.state_dir,
-        }
-        try:
-            verified = self.require_exact_dead_owner(workspace, **expected)
-            if verified != captured:
-                return None
-            return self.finalize_exact_dead_owner(
-                workspace,
-                expected_owner=captured.owner,
-                reason=str(reason or "controlled_restart_dead_owner"),
-                terminal_owner=(
-                    reclaimer
-                    or current_process_birth(proc_root=self.proc_root)
-                ),
-                terminal_lease_id=(
-                    reclaimer_lease_id
-                    or new_lease_id(seed="controlled-restart-reclaim")
-                ),
-                now=float(self.clock() if now is None else now),
-                retain_terminal=True,
-                **expected,
-            )
-        except WorktreeLifecycleError:
-            return None
-
-    def reclaim_dead_owners_for_controlled_restart(
-        self,
-        *,
-        expected_state_dir: str | Path,
-        reclaimer_lease_id: str = "",
-        reason: str = "controlled_restart_dead_owner",
-    ) -> list[WorkspaceLifecycleRecord]:
-        """Fence all provably dead records owned by one restarted lane."""
-
-        recovered: list[WorkspaceLifecycleRecord] = []
-        for record in list(self.iter_records()):
-            if record.is_terminal:
-                continue
-            updated = self.reclaim_dead_owner_for_controlled_restart(
-                record.workspace_path,
-                expected_state_dir=expected_state_dir,
-                reclaimer_lease_id=reclaimer_lease_id,
-                reason=reason,
-            )
-            if updated is not None:
-                recovered.append(updated)
-        return recovered
-
-    @_workspace_mutation_boundary("workspace")
     def compare_and_delete(
         self,
         workspace: str | Path,
         *,
         expected_fence: int,
         lease_id: str = "",
-        expected_record: WorkspaceLifecycleRecord | None = None,
     ) -> bool:
-        """Delete matching ownership, with strict capture checks when supplied.
-
-        An explicit capture requires its exact terminal record and task index;
-        an absent row is not proof that this caller performed deletion. Legacy
-        callers without a capture retain their existing idempotent behavior.
-        """
+        """Remove the lifecycle record only when fence (and optional lease) match."""
 
         record_path = self.workspace_path_for(workspace)
-        if expected_record is not None and type(expected_record) is not WorkspaceLifecycleRecord:
-            raise OwnershipError("captured record must be an exact lifecycle record")
-        captured_index = (self.task_index_path_for(
-            canonical_task_cid=expected_record.canonical_task_cid,
-            task_id=expected_record.task_id, attempt=expected_record.attempt,
-        ) if expected_record is not None else None)
-        with (serialized_lock_update(captured_index) if captured_index is not None else nullcontext()), serialized_lock_update(record_path):
-            if self._load_strict_quarantine_payload(workspace) is not None:
-                return False
-            if expected_record is not None:
-                try:
-                    current = self._load_strict_workspace_record(workspace)
-                    if current != expected_record or not current.is_terminal:
-                        return False
-                    self._require_exact_task_index(current, index_path=captured_index)
-                except WorktreeLifecycleError:
-                    return False
-            else:
-                current = self.load_workspace(workspace)
+        with serialized_lock_update(record_path):
+            current = self.load_workspace(workspace)
             if current is None:
                 return True
             if int(current.fence) != int(expected_fence):
@@ -3059,74 +1723,53 @@ class WorktreeLifecycleStore:
                 pass
             return True
 
-    @_workspace_mutation_boundary("workspace_path")
     def authorize_cleanup(
         self,
         *,
         workspace_path: str | Path,
         branch: str = "",
         caller_lease_id: str = "",
-        expected_state_dir: str | Path = "",
     ) -> CleanupDecision:
         """Evaluate and, when stale, reclaim under the store lock path.
 
         This is the single entry point cleanup code should call before
         ``git worktree remove`` / prune / branch delete / pool reuse.
-
-        Pass ``expected_state_dir`` (the caller's lane state directory) so a
-        dead same-lane owner can be terminalized without waiting for the full
-        lease window. Peer callers omit it and remain lease-expiry gated.
         """
 
         decision = self.evaluate_cleanup(
             workspace_path=workspace_path,
             branch=branch,
             caller_lease_id=caller_lease_id,
-            expected_state_dir=expected_state_dir,
         )
         if decision.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW:
             # Branch fallback can find a preparing claim whose provisional
             # workspace differs from the stable pooled path supplied by the
             # caller. Reclaim the authoritative record, never the lookup hint.
             reclaim_workspace = (
-                decision.record.workspace_path if decision.record is not None else workspace_path
+                decision.record.workspace_path
+                if decision.record is not None
+                else workspace_path
             )
-            reclaimer = caller_lease_id or new_lease_id(seed="reclaim")
-            reclaimed: WorkspaceLifecycleRecord | None = None
-            # Same-lane dead owners may still be inside the advertised lease
-            # window; reclaim_stale refuses those. Use the controlled-restart
-            # fence which requires a provably dead birth identity + matching
-            # state_dir.
-            if decision.reason == "owner_dead_same_lane_reclaim":
-                lane_state = expected_state_dir or (
-                    decision.record.state_dir if decision.record is not None else ""
-                )
-                if lane_state:
-                    reclaimed = self.reclaim_dead_owner_for_controlled_restart(
-                        reclaim_workspace,
-                        expected_state_dir=lane_state,
-                        reclaimer_lease_id=reclaimer,
-                        reason=decision.reason,
-                    )
-            if reclaimed is None:
-                reclaimed = self.reclaim_stale(
-                    reclaim_workspace,
-                    reclaimer_lease_id=reclaimer,
-                    reason=decision.reason,
-                )
+            reclaimed = self.reclaim_stale(
+                reclaim_workspace,
+                reclaimer_lease_id=caller_lease_id or new_lease_id(seed="reclaim"),
+                reason=decision.reason,
+            )
             if reclaimed is None:
                 # Lost the reclaim race; re-evaluate.
                 refreshed = self.evaluate_cleanup(
                     workspace_path=workspace_path,
                     branch=branch,
                     caller_lease_id=caller_lease_id,
-                    expected_state_dir=expected_state_dir,
                 )
-                if refreshed.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW:
+                if (
+                    refreshed.disposition
+                    is CleanupDisposition.RECLAIM_THEN_ALLOW
+                ):
                     # Re-evaluation still requires an authoritative reclaim.
                     # Never expose that unresolved intermediate disposition as
                     # mutation authority to the caller.
-                    return _mirror_cleanup_decision(
+                    return CleanupDecision(
                         disposition=CleanupDisposition.DENY,
                         reason="stale_reclaim_race_unresolved",
                         record=refreshed.record,
@@ -3135,13 +1778,9 @@ class WorktreeLifecycleStore:
                         attempt_consumed=False,
                     )
                 return refreshed
-            return _mirror_cleanup_decision(
+            return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,
-                reason=(
-                    "reclaimed_dead_same_lane_owner"
-                    if decision.reason == "owner_dead_same_lane_reclaim"
-                    else "reclaimed_stale_record"
-                ),
+                reason="reclaimed_stale_record",
                 record=reclaimed,
                 failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
                 provider_call_allowed=False,
@@ -3191,7 +1830,6 @@ __all__ = [
     "OwnershipError",
     "ProcessBirthIdentity",
     "WORKTREE_LIFECYCLE_DIRNAME",
-    "WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA",
     "WORKTREE_LIFECYCLE_SCHEMA",
     "WorkspaceLifecycleRecord",
     "WorkspaceLifecycleState",
@@ -3206,5 +1844,4 @@ __all__ = [
     "owner_liveness",
     "proc_available",
     "read_process_birth",
-    "workspace_quarantine_filename",
 ]
