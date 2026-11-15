@@ -503,6 +503,52 @@ def test_real_resume_without_parent_fence_still_requires_child_readiness(tmp_pat
         _reap_startup_lane(pid)
 
 
+def test_missing_symlink_log_target_keeps_the_fence_until_restored(tmp_path: Path) -> None:
+    lane = _startup_lane(tmp_path)
+    log_path = tmp_path / "supervisor.log"
+    target = tmp_path / "retired-evidence" / "logs" / "supervisor.log"
+    log_path.symlink_to(target)
+    lane["log_path"] = str(log_path)
+    lock_path = tmp_path / "test.resume.lock"
+    pid = None
+    try:
+        with lock_path.open("a") as parent_fence:
+            fcntl.flock(parent_fence, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            failed = lane_resume.resume_stopped_lane(
+                lane, repo_root=tmp_path, resume_lock_fd=parent_fence.fileno(),
+            )
+            assert failed["restarted"] is failed["readiness_verified"] is False
+            assert failed["reason"].startswith("resume_spawn_failed:")
+            assert not (tmp_path / "lane.pid").exists()
+            assert not (tmp_path / "test_status.json").exists()
+            assert log_path.is_symlink() and not target.exists()
+            with lock_path.open("a") as contender:
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Restore only the configured stream destination. The original
+            # symlink and the pending gate retain their identities and bytes.
+            target.parent.mkdir(parents=True)
+            ready = lane_resume.resume_stopped_lane(
+                lane, repo_root=tmp_path, resume_lock_fd=parent_fence.fileno(),
+            )
+            assert ready["restarted"] is ready["readiness_verified"] is ready["lock_handoff"] is True
+            pid = ready["new_pid"]
+            assert _running(pid) and int((tmp_path / "lane.pid").read_text()) == pid
+            status = json.loads((tmp_path / "test_status.json").read_text())
+            assert status["pid"] == pid and status["heartbeat_at_ms"] > 0
+            assert status["state"] != "stopped"
+        with lock_path.open("a") as contender:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        if pid is not None:
+            _reap_startup_lane(pid)
+    assert log_path.is_symlink() and log_path.readlink() == target
+    assert target.is_file()
+    assert "- Status: pending" in (tmp_path / "board.md").read_text()
+    assert ready["work_complete"] is ready["completion_authority"] is False
+
+
 def test_handoff_descriptor_cannot_steal_or_unlock_another_open_descriptions_fence(tmp_path: Path) -> None:
     lane = _startup_lane(tmp_path)
     lock_path = tmp_path / "test.resume.lock"

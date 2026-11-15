@@ -124,6 +124,42 @@ def test_finished_stopped_lane_does_not_dispatch_a_stale_heartbeat_repair(rig, p
     assert "private-argument" not in json.dumps(result)
 
 
+@pytest.mark.parametrize("task_status", ["completed", "pending"])
+def test_recycled_pid_file_is_checked_against_live_proc_identity(rig, task_status):
+    config, now, lane, live, probe = rig
+    (config.repo_root / "todo.md").write_text(
+        f"## VOG-001 Work\n- Status: {task_status}\n- Depends on:\n"
+    )
+    # The incident's saved lane PID had been reused by a fresh, unrelated
+    # process. Exercise the actual /proc probe as well as the argv verifier.
+    recycled_pid = os.getpid()
+    (lane / "vog_bundle_supervisor.pid").write_text(str(recycled_pid))
+    status(lane, pid=recycled_pid, state="stopped", phase="lane_resume_exited",
+           active_task_id="", terminal_reason="resume_duration_elapsed",
+           heartbeat_at_ms=(now - 22 * 24 * 3600) * 1000)
+    (lane / "supervisor.log").unlink()
+    assert probe_process(recycled_pid)["alive"] is True
+
+    def current(pid):
+        return probe_process(pid) if pid == recycled_pid else probe(pid)
+
+    state = {}
+    result = observe(config, state, now=now, probe=current)
+    process = result["lanes"][0]["process"]
+    assert process["pid"] == recycled_pid
+    assert process["alive"] is process["identity_verified"] is False
+    assert process["identity_reason"] == "lane_identity_mismatch"
+    assert "argv" not in process and "cwd" not in process
+    assert kinds(result) == ({"lane_dead_pending"} if task_status == "pending" else set())
+    if task_status == "completed":
+        result = tick(config, state, apply=True, now=now, probe=current,
+                      worker=lambda *_: pytest.fail("repair ran for a recycled PID without work"))
+        assert result["action"] == "healthy"
+        assert result["pending_task_ids"] == result["selectable_task_ids"] == []
+        assert not state.get("attempts")
+    assert result["work_complete"] is result["completion_authority"] is False
+
+
 @pytest.mark.parametrize("mismatch", ["module", "repo", "board", "lane", "status", "pid", "duplicate", "script"])
 def test_unrelated_live_pid_cannot_mask_a_dead_lane_with_pending_work(rig, mismatch):
     config, now, lane, live, probe = rig
@@ -332,8 +368,9 @@ def test_provider_usage_limit_does_not_exhaust_the_attempt_budget(rig):
     config.report_seconds = 100000
     config.max_cooldown_seconds = 3600
     live[200] = False
+    retry_text = time.strftime("%b %d, %Y %I:%M %p", time.localtime(now + 3600))
     message = ("You\u2019ve hit your usage limit. Visit https://chatgpt.com/settings/usage "
-               "to purchase more credits or try again at Nov 4th, 2026 7:35 AM.")
+               f"to purchase more credits or try again at {retry_text}.")
     body = "\n".join([
         json.dumps({"type": "thread.started", "thread_id": "quota"}),
         json.dumps({"type": "turn.started"}),
@@ -368,6 +405,8 @@ def test_provider_usage_limit_does_not_exhaust_the_attempt_budget(rig):
     capped = tick(config, state, apply=True, now=now + 20, probe=probe, worker=fail)
     assert capped["action"] == "provider_backoff"
     assert capped["reason"] == "provider_usage_limit"
+    assert capped["next_dispatch_at"] > now + 20
+    assert record["count"] == 3
     assert len(calls) == 1
     calls[0].write_text(body + json.dumps({"type": "item.completed", "item": {"type": "agent_message"}}) + "\n")
     record["count"] = 3
@@ -385,6 +424,32 @@ def _provider_log(message):
         json.dumps({"type": "error", "message": message}),
         json.dumps({"type": "turn.failed", "error": {"message": message}}),
     ]) + "\n"
+
+
+def test_provider_backoff_preserves_the_signature_cap_after_wait_expiry(rig):
+    config, now, lane, live, probe = rig
+    config.report_seconds = 100000
+    live[200] = False
+    config.state_dir.mkdir(parents=True)
+    prior_log = config.state_dir / f"worker-{'0' * 16}-1.log"
+    prior_log.write_text(_provider_log("Usage limit reached. Try again in 1 hour."))
+    os.utime(prior_log, (now, now))
+    signature = observe(config, {}, now=now, probe=probe)["signature"]
+    record = {"count": config.max_attempts, "next_dispatch_at": 0}
+    state = {"attempts": {signature: record}}
+
+    def unexpected_worker(*_):
+        pytest.fail("a provider wait cannot erase an exhausted signature budget")
+
+    waiting = tick(config, state, apply=True, now=now, probe=probe, worker=unexpected_worker)
+    assert waiting["action"] == "provider_backoff"
+    assert waiting["next_dispatch_at"] == pytest.approx(now + 3600)
+    assert record["count"] == config.max_attempts
+    expired = tick(config, state, apply=True, now=now + 3601, probe=probe, worker=unexpected_worker)
+    assert expired["signature"] == signature
+    assert expired["action"] == "attention_required"
+    assert record["count"] == config.max_attempts
+    assert expired["work_complete"] is expired["completion_authority"] is False
 
 
 def test_rate_limit_before_work_waits_from_the_log_time(rig):

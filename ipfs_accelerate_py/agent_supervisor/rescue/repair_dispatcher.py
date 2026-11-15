@@ -2190,6 +2190,13 @@ def tick(
             telemetry["completion_authority"] = False
         elif router_blocked:
             pass
+        elif isinstance(provider_retry_at, (int, float)) and now < float(provider_retry_at):
+            # A still-valid provider wait survives a signature change even
+            # when the new signature has no quota-only logs to refund. Keep
+            # its attempt cap intact until that wait expires.
+            telemetry["action"] = "provider_backoff"
+            telemetry["reason"] = "provider_usage_limit"
+            telemetry["next_dispatch_at"] = float(provider_retry_at)
         elif record["count"] >= config.max_attempts and not _rearm_clean_idle(record, state, observation):
             recovered_retry_at = _recover_quota_exhaustion(config, signature, record, now)
             telemetry["attempt_count"] = record["count"]
@@ -2218,10 +2225,6 @@ def tick(
             telemetry["action"] = "waiting_external_gate"
             telemetry["reason"] = "unchanged_exit75_frontier"
             telemetry["attempt_count"] = record["count"]
-        elif isinstance(provider_retry_at, (int, float)) and now < float(provider_retry_at):
-            telemetry["action"] = "provider_backoff"
-            telemetry["reason"] = "provider_usage_limit"
-            telemetry["next_dispatch_at"] = float(provider_retry_at)
         elif not apply:
             telemetry["action"] = "would_dispatch"
         elif now < telemetry["next_dispatch_at"]:
