@@ -419,3 +419,30 @@ cancellation qualification, native-resource qualification, and legal/model/Lean
 acceptance remain unresolved. This documentation recovery grants no current
 permission, resource capacity, source adoption, or operational qualification;
 current supervisor/runtime/resource owners retain authority.
+
+
+## SAWM source availability before unit binding — 2026-11-15
+
+The existing runtime-assets preflight and schema binding owner now check
+the selected SAWM source before writing a unit drop-in or reloading. The
+operator, scheduler configuration, direct package initializers and both
+native observation entrypoints must be present in the configured checkout;
+a residual data-only directory, overlay or nested checkout cannot supply
+the missing direct entrypoints. Missing source reports
+`supervisor_source_assets_unavailable` with `missing_source_assets`.
+
+Fresh qualification on 2026-11-15 passed all 26 selected software cases
+against the current 177-source closure under the unchanged 120-second
+productive budget. Original Source, Native validation-resource, process
+and storage custody closed; only this successful run released its own
+32 MiB promise. The whole owning module and the unchanged legacy symlink
+case were not run. Reload and metadata-mirror callbacks were in memory;
+these fixtures do not establish a live daemon reload. Earlier failures
+and qualifications retain their original source epochs and evidence.
+See the [exact source and test record](evidence/legal-ir-sawm-source-availability-20261115.json).
+
+This source availability check does not restore missing SAWM generation
+state, deploy or activate a service, authorize adoption/completion, renew
+a retry or repair budget, or establish model quality, statutory review or
+native Lean proof. The four LegalIR lanes, existing operator holds and
+resource limits remain unchanged.
