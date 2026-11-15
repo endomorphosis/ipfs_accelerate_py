@@ -61,6 +61,8 @@ ACTOR_PATH = Path(__file__).absolute().with_name('native_embedded_observation_dr
 QUALIFIED_F07_ACTOR = Path('/home/barberb/lift_coding/.worktrees/legal-ir-scientific-capsule-reuse-20261031/ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py')
 QUALIFIED_F07_ACTOR_SHA = '2e9ba7653bbc0939bb41f1fbbdd14f5f0e9a51fd78577dbbb5aa044fc14e3ea6'
 SCHEMA = 'legal-ir-original-native-control-request/v1'
+ARCHIVED_IMPORT_SCOPE = 'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies'
+READ_ONLY_IMPORT_SCOPE = 'read-only normal import checks clean HEAD/tree without archiving a control-plane capsule; implementation is forbidden'
 FIELDS = {'schema','purpose','request_id','argv','cwd','attempt_directory','source_sha256',
           'cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds',
           'scheduler_state_path','expected_scheduler_policy_sha256','resource_ledger',

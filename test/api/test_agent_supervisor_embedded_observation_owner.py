@@ -806,3 +806,65 @@ def test_unknown_policy_never_constructs_parented_reservation(owner,tmp_path):
             lambda *args,**kwargs:calls.append((args,kwargs)),attempt=tmp_path,
             parent_lease=object(),timeout_seconds=17.5)
     assert calls==[]
+
+
+# Scope constants are shared literal contracts, not import/cache/Native grants.
+@pytest.mark.parametrize('scope_name',['ARCHIVED_IMPORT_SCOPE','READ_ONLY_IMPORT_SCOPE'])
+def test_import_scope_constants_match_driver_and_allow_both_closed_constructor_profiles(
+        owner,driver,tmp_path,monkeypatch,scope_name):
+    value,plan,path=_request(owner,driver,tmp_path,monkeypatch)
+    scope=getattr(driver,scope_name)
+    assert type(scope)is str and getattr(owner,scope_name)==scope
+    c=plan['native_metadata_cli'];c['import_head_capsule_Git']['scope']=scope
+    plan_ref=_write(path,plan);value['argv'][6]=plan_ref['sha256'];value['source_sha256'][str(path)]=plan_ref['sha256']
+    request=tmp_path/'scope-positive-request.json';reference=_write(request,value)
+    reads=[];actual=owner.regular
+    def recorded(path,*args):reads.append(str(path));return actual(path,*args)
+    def forbidden(*_,**__):raise AssertionError('constructor scope validation cannot enter Source/resource/DB/process ownership')
+    monkeypatch.setattr(owner,'regular',recorded)
+    monkeypatch.setattr(owner,'load_source_lease',forbidden)
+    monkeypatch.setattr(owner,'_open_original_scheduler',forbidden)
+    monkeypatch.setattr(owner.subprocess,'Popen',forbidden)
+    parsed,raw=owner.request(request,reference['sha256'])
+    assert parsed==value and raw==request.read_bytes()
+    assert owner.validate_import_git_binding(c) is c['import_head_capsule_Git']
+    assert driver.validate_import_git_binding(c) is c['import_head_capsule_Git']
+    assert str(owner.DATABASE)not in reads
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+    assert parsed['expected_scheduler_policy_sha256']==owner.POLICY
+    assert parsed['source_roots']==[str(owner.R),str(owner.A)]
+
+
+@pytest.mark.parametrize('scope',[
+    None,False,0,'','archived','read-only',
+    'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies ',
+    'READ-ONLY NORMAL IMPORT CHECKS CLEAN HEAD/TREE WITHOUT ARCHIVING A CONTROL-PLANE CAPSULE; IMPLEMENTATION IS FORBIDDEN',
+],ids=['null','boolean','integer','empty','short-archive','short-readonly','trailing-space','case-change'])
+def test_import_scope_unknown_values_refuse_before_any_owner_or_process(owner,driver,tmp_path,monkeypatch,scope):
+    value,plan,path=_request(owner,driver,tmp_path,monkeypatch)
+    c=plan['native_metadata_cli'];c['import_head_capsule_Git']['scope']=scope
+    plan_ref=_write(path,plan);value['argv'][6]=plan_ref['sha256'];value['source_sha256'][str(path)]=plan_ref['sha256']
+    request=tmp_path/'scope-negative-request.json';reference=_write(request,value)
+    def forbidden(*_,**__):raise AssertionError('unknown scope must refuse without owners or processes')
+    monkeypatch.setattr(owner,'load_source_lease',forbidden)
+    monkeypatch.setattr(owner,'_open_original_scheduler',forbidden)
+    monkeypatch.setattr(owner.subprocess,'Popen',forbidden)
+    with pytest.raises(RuntimeError,match='original immutable HEAD read scope required'):
+        owner.request(request,reference['sha256'])
+    with pytest.raises(RuntimeError,match='original immutable HEAD read scope required'):
+        driver.validate_import_git_binding(c)
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('scope_name',['ARCHIVED_IMPORT_SCOPE','READ_ONLY_IMPORT_SCOPE'])
+def test_import_scope_literals_do_not_bypass_exact_HEAD_metadata(owner,driver,tmp_path,monkeypatch,scope_name):
+    _,plan,_=_request(owner,driver,tmp_path,monkeypatch)
+    c=plan['native_metadata_cli'];capsule=c['import_head_capsule_Git']
+    capsule['scope']=getattr(driver,scope_name)
+    assert owner.validate_import_git_binding(c) is capsule
+    assert driver.validate_import_git_binding(c) is capsule
+    capsule['payload_bytes']+=1
+    with pytest.raises(RuntimeError,match='original HEAD count/byte metadata differs'):
+        owner.validate_import_git_binding(c)
+    with pytest.raises(RuntimeError,match='original HEAD count/byte metadata differs'):
+        driver.validate_import_git_binding(c)
