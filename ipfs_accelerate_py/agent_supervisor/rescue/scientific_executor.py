@@ -4222,6 +4222,90 @@ def _source_generation_source_inventory(reference, profile):
 
 
 
+def _source_generation_current_qualification_profile(value, *, policy=None):
+    """Select one explicit metadata contract; never upgrade an old receipt."""
+    pairs = {
+        ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
+         'closed_v5_current_Source'): None,
+        ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
+         'closed_v5_current_immutable_Source'): 'agent-supervisor/immutable-source-qualification@1',
+        ('agent-supervisor/scientific-source-generation-current-v5-qualification@2',
+         'closed_v5_current_immutable_parent_Source'): 'agent-supervisor/immutable-source-qualification@2',
+    }
+    need(type(value.get('schema')) is str and type(value.get('qualification_profile')) is str,
+         'source_generation_current_v5_profile_required')
+    pair = (value['schema'], value['qualification_profile'])
+    need(pair in pairs, 'source_generation_current_v5_profile_required')
+    expected = pairs[pair]
+    if policy is not None:
+        validation = policy['validation']
+        if expected is None:
+            matches = 'source_qualification' not in validation
+        else:
+            actual = validation.get('source_qualification')
+            matches = type(actual) is dict and actual.get('schema') == expected
+        need(matches, 'source_generation_v5_qualification_profile_policy_mismatch')
+    return expected
+
+
+def _source_generation_delegated_source_binding(policy, plan, summary, custody, report,
+        request_ref, invocation, profile):
+    """Join archived parent delegation DATA; acquire no lock or process.
+
+    The existing SDK verifier owns the original Source42 derivation, actual
+    held FD/nonce/ancestry checks and later genuine closure. This reader binds
+    its saved attestation to physical source identities and the same report;
+    it does not claim an independently current Git or kernel observation.
+    """
+    h = health_owner()
+    mode = 'delegated-original-parent-read/v1'
+    source_profile = policy['validation']['source_qualification']
+    h._keys(source_profile, {'schema', 'snapshot', 'required_source_bodies', 'source_custody_mode'},
+            'source_generation_delegated_policy_shape')
+    need(source_profile['schema'] == 'agent-supervisor/immutable-source-qualification@2'
+         and source_profile['source_custody_mode'] == mode,
+         'source_generation_delegated_policy_required')
+    bindings = plan.get('source_root_bindings')
+    physical = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
+    need(physical[1] == str(Path(profile['main_entrypoint']['path']).parents[3])
+         and type(bindings) is list and len(bindings) == 2,
+         'source_generation_delegated_physical_roots_changed')
+    canonical = []
+    for binding, physical_root in zip(bindings, physical, strict=True):
+        h._keys(binding, {'physical_root', 'canonical_root'}, 'source_generation_delegated_root_binding_shape')
+        need(binding['physical_root'] == physical_root
+             and type(binding['canonical_root']) is str,
+             'source_generation_delegated_root_binding_changed')
+        canonical.append(str(h._path(binding['canonical_root'])))
+    need(canonical[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
+         and len(set(canonical)) == len(set(physical)) == 2,
+         'source_generation_delegated_canonical_roots_changed')
+    identity = plan.get('parent_identity')
+    h._keys(identity, {'pid', 'birth'}, 'source_generation_delegated_parent_identity_shape')
+    nonce = plan.get('parent_nonce_sha256')
+    need(h._integer(identity['pid'], 1, 2**63-1)
+         and type(identity['birth']) is str and identity['birth'].isascii()
+         and identity['birth'].isdecimal() and 0 < len(identity['birth']) <= 32
+         and int(identity['birth']) > 0
+         and type(nonce) is str and len(nonce) == 64 and set(nonce) <= set('0123456789abcdef'),
+         'source_generation_delegated_parent_identity_or_nonce_changed')
+    observation = report.get('parent_source_observation')
+    h._bound(observation)
+    need(observation['path'] == plan.get('parent_source_observation_path')
+         and h._path(observation['path']).parent == invocation
+         and plan.get('execution_request_path') == request_ref['path'],
+         'source_generation_delegated_original_observation_or_request_changed')
+    joined = dict(source_custody_mode=mode, parent_source_observation=observation,
+        parent_nonce_sha256=nonce, parent_identity=identity, source_root_bindings=bindings)
+    need(all(_source_generation_same(frame.get(key), expected)
+             for frame in (report, summary, custody) for key, expected in joined.items())
+         and report.get('schema') == 'immutable-source-parent-delegated-validation@1'
+         and report.get('source_READ_closed') is False
+         and report.get('source_READ_admission_complete') is False,
+         'source_generation_delegated_original_parent_report_binding_changed')
+    return physical, canonical
+
+
 def _source_generation_qualification(reference, profile, selected):
     """The new technical epoch requires the CURRENT canonical owned-v5 SDK.
 
@@ -4239,9 +4323,9 @@ def _source_generation_qualification(reference, profile, selected):
         'invocation_root', 'owning_test_root', 'required_raw_subjects', 'source_inventory_subjects', 'owning_test_sources',
         'expected_function_case_counts', 'runtime_activation_or_task_authority'},
         'source_generation_current_v5_qualification_shape')
-    need(value['schema'] == 'agent-supervisor/scientific-source-generation-current-v5-qualification@1'
-         and value['qualification_profile'] in ('closed_v5_current_Source', 'closed_v5_current_immutable_Source')
-         and value['runtime_activation_or_task_authority'] is False,
+    source_qualification_schema = _source_generation_current_qualification_profile(value)
+    delegated_source = source_qualification_schema == 'agent-supervisor/immutable-source-qualification@2'
+    need(value['runtime_activation_or_task_authority'] is False,
          'source_generation_current_v5_profile_required')
     owner_ref = value['qualification_owner_source_ref']; h._bound(owner_ref)
     actual_reader_ref = owner.descriptor(Path(owner.__file__).absolute())
@@ -4258,8 +4342,7 @@ def _source_generation_qualification(reference, profile, selected):
              'source_generation_original_incoming_SDK_or_source_generation_changed')
         policy = source_data['policy']
         immutable_source = 'source_qualification' in policy['validation']
-        need((value['qualification_profile'] == 'closed_v5_current_immutable_Source') == immutable_source,
-             'source_generation_v5_qualification_profile_policy_mismatch')
+        _source_generation_current_qualification_profile(value, policy=policy)
         plan = h._document(value['plan_ref'])
         request = h._document(value['request_ref']); terminal = h._document(value['terminal_ref'])
         invocation = h._path(value['invocation_root'])
@@ -4309,10 +4392,17 @@ def _source_generation_qualification(reference, profile, selected):
              'source_generation_incoming_parent_not_archived_DATA_only')
         parent = archived['original_parent_source_closeout']
         custody = parent['parent_source_custody']
-        source_roots = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
-        need(source_roots[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
-             and source_roots[1] == str(Path(profile['main_entrypoint']['path']).parents[3])
-             and custody['source_closed'] is True and custody['native_closed'] is True,
+        if delegated_source:
+            delegated_report = h._document(h.descriptor(Path(request['attempt_directory'])/'exports/trusted-validation.json'))
+            physical_roots, source_roots = _source_generation_delegated_source_binding(
+                policy, plan, summary, custody, delegated_report, value['request_ref'], invocation, profile)
+        else:
+            source_roots = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
+            need(source_roots[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
+                 and source_roots[1] == str(Path(profile['main_entrypoint']['path']).parents[3]),
+                 'source_generation_original_current_v5_not_closed')
+            physical_roots = source_roots
+        need(custody['source_closed'] is True and custody['native_closed'] is True,
              'source_generation_original_current_v5_not_closed')
         for receipt, root in zip(custody['source_receipts'], source_roots):
             h._keys(receipt, {'schema_version', 'canonical_root', 'cooperative', 'lock_path', 'mode', 'waited_seconds'},
@@ -4324,7 +4414,7 @@ def _source_generation_qualification(reference, profile, selected):
                  'source_generation_current_v5_two_original_Source_roots_required')
         subjects = value['required_raw_subjects']; package = value['source_inventory_subjects']
         tests = value['owning_test_sources']
-        datasets = ORIGINAL_NAMED_ROOTS[0].parents[1]
+        datasets = Path(physical_roots[0]) if delegated_source else ORIGINAL_NAMED_ROOTS[0].parents[1]
         paths = [str(datasets/relative) for relative in (
             'ipfs_datasets_py/logic/backends/process.py',
             'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
@@ -4653,6 +4743,10 @@ def _source_generation_review(spec_ref, profile_ref, profile, config):
          and _source_generation_same(spec['profile_ref'], profile_ref)
          and _source_generation_same(h._profile(profile_ref), profile), 'source_generation_spec_authority')
     comparison = prepare_idle_source_replacement(spec['preparation_spec_ref'])
+    # Explicit fifteen-source preparation is DATA only. CLI4 owner/driver,
+    # runtime and template transition require a separate coherent contract.
+    need(comparison['schema'] == 'agent-supervisor/scientific-idle-source-comparison@1',
+         'source_generation_physical_CLI4_coherent_transition_unqualified')
     need(_source_generation_same(comparison['prior_profile_ref'], spec['prior_profile_ref'])
          and _source_generation_same(comparison['prior_profile_snapshot_ref'], spec['prior_profile_snapshot_ref'])
          and comparison['changed_source_count'] == 5 and comparison['raw_inverse_verified'] is True,
@@ -5192,6 +5286,114 @@ def closed_capacity_deferral(profile, request_ref, request, root, kind, process,
         if context is not None: _close_source_generation_context(context)
 
 
+_SOURCE_GENERATION_R_ROLES = (
+    'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'scripts/ops/legal_ir/run_owned_validation.py')
+
+
+_SOURCE_GENERATION_R_RELOCATIONS = (
+    'ipfs_datasets_py/__init__.py',
+    'ipfs_datasets_py/ipfs_backend_router.py',
+    'ipfs_datasets_py/logic/__init__.py',
+    'ipfs_datasets_py/optimizers/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+    'ipfs_datasets_py/router_deps.py')
+
+
+def _source_generation_physical_R_binding(binding, replacements=None):
+    """Explicit archived mapping DATA, never an independent Git/Source check."""
+    h = health_owner()
+    h._keys(binding, {'physical_root', 'canonical_root'}, 'source_generation_preparation_root_binding_shape')
+    physical = h._path(binding['physical_root']); canonical = h._path(binding['canonical_root'])
+    need(str(physical) == binding['physical_root'] and str(canonical) == binding['canonical_root']
+         and canonical == ORIGINAL_NAMED_ROOTS[0].parents[1]
+         and physical != canonical and physical not in canonical.parents and canonical not in physical.parents,
+         'source_generation_preparation_root_binding_changed')
+    if replacements is not None:
+        expected = {str(canonical/relative): str(physical/relative) for relative in _SOURCE_GENERATION_R_ROLES}
+        need(type(replacements) is list and len(replacements) == len(expected),
+             'source_generation_preparation_mapping_exact_five')
+        seen = set(); slots = []
+        for row in replacements:
+            h._keys(row, {'slot', 'before_ref', 'after_ref'}, 'source_generation_preparation_mapping_row')
+            for key in ('before_ref', 'after_ref'):
+                h._keys(row[key], {'path', 'bytes', 'sha256'}, 'source_generation_preparation_mapping_descriptor')
+                ref = row[key]
+                need(type(ref['path']) is str and h._integer(ref['bytes'], 1, h.MAX_SOURCE)
+                     and type(ref['sha256']) is str and len(ref['sha256']) == 64
+                     and set(ref['sha256']) <= set('0123456789abcdef'),
+                     'source_generation_preparation_mapping_descriptor_bounds')
+            old, new = row['before_ref']['path'], row['after_ref']['path']
+            need(old in expected and expected[old] == new and old not in seen
+                 and type(row['slot']) is int and row['slot'] >= 0 and row['slot'] not in slots,
+                 'source_generation_preparation_mapping_role_or_alias')
+            seen.add(old); slots.append(row['slot'])
+        need(seen == set(expected) and slots == sorted(slots), 'source_generation_preparation_mapping_population')
+    return dict(binding)
+
+
+def _source_generation_physical_R_preparation_closure(value, binding):
+    """Explicit fifteen-file constructor DATA; no live namespace/import claim.
+
+    The original five changed bodies and ten identical-payload relocations
+    stay distinct. Namespace metadata is not a source body or compile receipt.
+    A coherent CLI4 template/driver transition is a separate unresolved gate.
+    """
+    h = health_owner(); canonical = Path(binding['canonical_root']); physical = Path(binding['physical_root'])
+    relocations = value['source_relocations']
+    need(type(relocations) is list and len(relocations) == len(_SOURCE_GENERATION_R_RELOCATIONS),
+         'idle_source_preparation_exact_ten_relocations_required')
+    expected = {str(canonical/relative): str(physical/relative)
+                for relative in _SOURCE_GENERATION_R_RELOCATIONS}
+    seen = set(); slots = []
+    for row in relocations:
+        h._keys(row, {'slot', 'before_ref', 'after_ref'}, 'idle_source_preparation_relocation_shape')
+        for key in ('before_ref', 'after_ref'):
+            ref = row[key]
+            h._keys(ref, {'path', 'bytes', 'sha256'}, 'idle_source_preparation_relocation_descriptor')
+            need(type(ref['path']) is str and h._integer(ref['bytes'], 1, h.MAX_SOURCE)
+                 and type(ref['sha256']) is str and len(ref['sha256']) == 64
+                 and set(ref['sha256']) <= set('0123456789abcdef'),
+                 'idle_source_preparation_relocation_descriptor_bounds')
+        before, after = row['before_ref'], row['after_ref']
+        need(before['path'] in expected and expected[before['path']] == after['path']
+             and before['path'] not in seen and _same_payload(before, after)
+             and type(row['slot']) is int and row['slot'] >= 0 and row['slot'] not in slots,
+             'idle_source_preparation_relocation_role_payload_or_slot')
+        seen.add(before['path']); slots.append(row['slot'])
+    need(seen == set(expected) and slots == sorted(slots),
+         'idle_source_preparation_relocation_population_or_order')
+    profile = value['physical_source_profile']
+    h._keys(profile, {'schema', 'source_root_binding', 'source_descriptors', 'normal_namespace_profiles'},
+            'idle_source_preparation_physical_profile_shape')
+    rows = value['replacements'] + relocations
+    need(profile['schema'] == 'native-embedded-physical-R-source@1'
+         and _source_generation_same(profile['source_root_binding'], binding)
+         and _source_generation_same(profile['source_descriptors'],
+             sorted((row['after_ref'] for row in rows), key=lambda pin: pin['path'])),
+         'idle_source_preparation_physical_profile_exact_fifteen')
+    namespaces = profile['normal_namespace_profiles']
+    need(type(namespaces) is list and len(namespaces) == 1,
+         'idle_source_preparation_one_namespace_required')
+    namespace = namespaces[0]
+    h._keys(namespace, {'fullname', 'path', 'device', 'inode', 'initializer_absent'},
+            'idle_source_preparation_namespace_shape')
+    need(namespace['fullname'] == 'ipfs_datasets_py.logic.backends'
+         and namespace['path'] == str(physical/'ipfs_datasets_py/logic/backends')
+         and type(namespace['device']) is int and namespace['device'] > 0
+         and type(namespace['inode']) is int and namespace['inode'] > 0
+         and namespace['initializer_absent'] is True,
+         'idle_source_preparation_namespace_metadata_changed')
+    return relocations, profile
+
+
 def prepare_idle_source_replacement(spec_ref):
     """Compare five current R sources; issue no handover or runtime authority.
 
@@ -5202,10 +5404,18 @@ def prepare_idle_source_replacement(spec_ref):
     """
     h = health_owner()
     value = h._document(spec_ref)
+    extended = type(value) is dict and value.get('schema') == 'agent-supervisor/scientific-idle-source-preparation@3'
     h._keys(value, {'schema', 'prior_profile_ref', 'prior_profile_snapshot_ref',
-                   'profile_ref', 'replacements'}, 'idle_source_preparation_spec_shape')
-    need(value['schema'] == 'agent-supervisor/scientific-idle-source-preparation@1',
+                   'profile_ref', 'replacements'} | ({'source_root_binding'} if extended else set())
+                   | ({'source_relocations', 'physical_source_profile'} if extended else set()),
+                   'idle_source_preparation_spec_shape')
+    need(value['schema'] in ('agent-supervisor/scientific-idle-source-preparation@1',
+                             'agent-supervisor/scientific-idle-source-preparation@3'),
          'idle_source_preparation_schema')
+    binding = (_source_generation_physical_R_binding(value['source_root_binding'], value['replacements'])
+               if extended else None)
+    relocations, physical_profile = (_source_generation_physical_R_preparation_closure(value, binding)
+                                    if extended else ([], None))
     frozen = {}
     for reference in (spec_ref, value['prior_profile_snapshot_ref'], value['profile_ref']):
         h._bound(reference)
@@ -5241,6 +5451,10 @@ def prepare_idle_source_replacement(spec_ref):
         'scripts/ops/legal_ir/run_owned_validation.py')}
     rows = value['replacements']
     need(type(rows) is list and len(rows) == 5, 'idle_source_preparation_exact_five_required')
+    changed_paths = expected
+    if extended:
+        expected = expected | {str(source_root/relative) for relative in _SOURCE_GENERATION_R_RELOCATIONS}
+        rows = sorted(rows + relocations, key=lambda row: row['slot'])
     slots = []; paths = set()
     inverse = dict(profile); inverse['source_descriptors'] = list(after)
     for row in rows:
@@ -5260,8 +5474,11 @@ def prepare_idle_source_replacement(spec_ref):
              canonical(row['after_ref']) == canonical(after[slot]),
              'idle_source_preparation_source_row_join')
         path = row['before_ref']['path']
-        need(path == row['after_ref']['path'] and path in expected and path not in paths
-             and row['before_ref']['sha256'] != row['after_ref']['sha256'],
+        need((row['after_ref']['path'] == str(Path(binding['physical_root'])/Path(path).relative_to(source_root))
+              if extended and path in expected else path == row['after_ref']['path'])
+             and path in expected and path not in paths
+             and ((row['before_ref']['sha256'] != row['after_ref']['sha256'])
+                  if path in changed_paths else _same_payload(row['before_ref'], row['after_ref'])),
              'idle_source_preparation_exact_canonical_paths')
         slots.append(slot); paths.add(path); inverse['source_descriptors'][slot] = before[slot]
     need(slots == sorted(slots) and paths == expected and
@@ -5280,10 +5497,15 @@ def prepare_idle_source_replacement(spec_ref):
              ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
               'st_size', 'st_mtime_ns', 'st_ctime_ns')) == stamp,
              'idle_source_preparation_control_changed')
-    return dict(schema='agent-supervisor/scientific-idle-source-comparison@1',
+    return dict(schema=('agent-supervisor/scientific-idle-source-comparison@3' if extended else
+                        'agent-supervisor/scientific-idle-source-comparison@1'),
+        **({'source_root_binding': binding} if extended else {}),
+        **({'source_relocations': relocations, 'physical_source_profile': physical_profile,
+            'relocated_source_count': 15, 'namespace_metadata_is_compile_evidence': False,
+            'native_driver_template_transition_unresolved': True} if extended else {}),
         spec_ref=dict(spec_ref), prior_profile_ref=dict(value['prior_profile_ref']),
         prior_profile_snapshot_ref=dict(value['prior_profile_snapshot_ref']),
-        profile_ref=dict(value['profile_ref']), replacements=rows,
+        profile_ref=dict(value['profile_ref']), replacements=value['replacements'],
         source_count=len(after), changed_source_count=5, raw_inverse_verified=True,
         current_source_profile_validated=True, coherent_handover_validated=False,
         config_template_history_unresolved=True, runtime_qualified=False,
