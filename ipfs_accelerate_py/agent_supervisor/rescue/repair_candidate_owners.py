@@ -1620,6 +1620,24 @@ class _V5ValidationSourceCustody:
                         "source_custody_closed": True, "storage_release_authorized": False},
                         "original V5 cancelled retained native closure remains unknown")
                     value = {"closure_kind": "original_cancelled_retained_native_closed", "storage_status": "retained"}
+                elif (type(row) is dict and row.get("status") == "retained" and reservation.get("cleanup_error") is None
+                      and "source_qualification" in self.policy["validation"]
+                      and observation.completion_kind == "completed"
+                      and completed.returncode == self.process.returncode == 1
+                      and type(terminal.get("failure")) is dict
+                      and terminal["failure"].get("error_type") == "RuntimeError"
+                      and type(terminal["failure"].get("returncode")) is int
+                      and terminal["failure"]["returncode"] != 0
+                      and terminal["failure"].get("error") == "validation command failed with returncode "+str(terminal["failure"]["returncode"])
+                      and terminal["failure"].get("received_signals") == []):
+                    self.clock()
+                    _source_qualification_plan(self.policy, self.context["plan"], Path(self.context["invocation"]))
+                    verdict = self.inspector(terminal, self.raw, **arguments,
+                        original_wait_deadline_monotonic=self.deadline, cleanup_profile="failed_retained_v5")
+                    need(verdict == {"verdict": "proven_original_failed_retained_native_closed",
+                        "source_custody_closed": True, "storage_release_authorized": False},
+                        "original V5 failed retained native closure remains unknown")
+                    value = {"closure_kind": "original_failed_retained_native_closed", "storage_status": "retained"}
                 elif type(row) is dict and row.get("status") == "retained" and reservation.get("cleanup_error") is None:
                     self.clock()
                     if "source_qualification" in self.policy["validation"]:
